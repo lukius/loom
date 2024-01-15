@@ -1,0 +1,50 @@
+test_as:
+  networks:
+    lan1: "200.100.0.0/24"
+    lan2: "100.200.0.0/24"
+    lan3: "150.10.10.0/24"
+  hosts:
+    h1:
+        network: "lan1"
+        address: "200.100.0.10"
+    h2:
+        network: "lan2"
+        address: "100.200.0.20"
+    h3:
+        network: "lan3"
+        address: "150.10.10.30"                  
+  routers:
+    r1:
+        interfaces:
+            eth0:
+                network: "lan1"
+                address: "200.100.0.1"      
+                cost: 10
+            eth1:
+                network: "lan2"
+                address: "100.200.0.1"      
+                cost: 15
+    r2:
+        interfaces:
+            eth0:
+                network: "lan1"
+                address: "200.100.0.254"      
+                cost: 5
+            eth1:
+                network: "lan2"
+                address: "100.200.0.2"      
+                cost: 8                                
+            eth2:
+                network: "lan3"
+                address: "150.10.10.1"      
+                cost: 15  
+    r3:
+        interfaces:
+            eth0:
+                network: "lan2"
+                address: "100.200.0.10"      
+                cost: 20
+            eth1:
+                network: "lan3"
+                address: "150.10.10.10"      
+                cost: 5  
