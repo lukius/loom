@@ -1,5 +1,4 @@
 import unittest
-import yaml
 from parser import Parser
 
 class ParserTest(unittest.TestCase):
