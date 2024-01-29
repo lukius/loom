@@ -13,3 +13,6 @@ class Network(Entity):
 
     def mask(self):
         return self._mask
+
+    def contains(self, address):
+        return True

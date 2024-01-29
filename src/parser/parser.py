@@ -1,7 +1,8 @@
 import yaml
 
 from .exception import ParsingException
-from entities import AS, Network, Router, Host
+from entities import AS, Network, Router, Host, Interface, EntityNotFoundException
+from .validator import SystemValidator
 
 
 class Parser(object):
@@ -23,29 +24,77 @@ class Parser(object):
         system_dict = content['as']
         name = self._get_name(system_dict)
         system = AS(name)
+        validator = SystemValidator(system)
 
         if 'networks' not in system_dict:
             self._fail('no networks in AS')
-        self._parse_networks(system, system_dict['networks'])
+        self._parse_networks(system, validator, system_dict['networks'])
 
         if 'routers' in system_dict:
-            self._parse_routers(system, system_dict['routers'])
+            self._parse_routers(system, validator, system_dict['routers'])
 
         if 'hosts' in system_dict:
-            self._parse_hosts(system, system_dict['hosts'])
+            self._parse_hosts(system, validator, system_dict['hosts'])
 
         return system
 
-    def _parse_routers(self, system: AS, router_dict: dict):
-        pass
-
-    def _parse_networks(self, system: AS, network_dict: dict):
+    def _parse_networks(self, system: AS, validator: SystemValidator, network_dict: dict):
         for name, addr in network_dict.items():
-            address, mask = self._parse_net_address(name, addr)
+            address, mask = self._parse_net_address(name, addr, validator)
+
             net = Network(name, address, mask)
+            result = validator.validate_network(net)
+            if not result.ok():
+                self._fail(f'{name}: {result.reason()}')
+
             system.add_network(net)
 
-    def _parse_net_address(self, name: str, addr: str) -> tuple:
+    def _parse_routers(self, system: AS, validator: SystemValidator, router_dict: dict):
+        for name, obj in router_dict.items():
+            if 'interfaces' not in obj:
+                self._fail(f'{name}: no interfaces declared')
+
+            router = Router(name)
+
+            for iface_name, iface in obj['interfaces'].items():
+                if 'network' not in iface:
+                    self._fail(f'{name}: {iface_name}: no network assigned')
+                net_name = iface['network']
+                try:
+                    net = system.get_network(net_name)
+                except EntityNotFoundException:
+                    self._fail(f'{name}: {iface_name}: network not found')
+
+                if 'address' not in iface:
+                    self._fail(f'{name}: {iface_name}: no address assigned')
+                address = iface['address']
+                result = validator.validate_address(address)
+                if not result.ok():
+                    self._fail(f'{name}: {iface_name}: {result.reason()}')
+
+                cost = 1
+                if 'cost' in iface:
+                    cost = iface['cost']
+                try:
+                    cost = int(cost)
+                except ValueError:
+                    self._fail(f'{name}: {iface_name}: invalid cost')
+
+                iface = Interface(iface_name, net, address, cost)
+                router.add_interface(iface)
+
+            result = validator.validate_router(router)
+            if not result.ok():
+                self._fail(f'{name}: {result.reason()}')
+
+            system.add_router(router)
+
+
+
+    def _parse_hosts(self, system: AS, validator: SystemValidator, host_dict: dict):
+        pass
+
+    def _parse_net_address(self, name: str, addr: str, validator: SystemValidator) -> tuple:
         if '/' not in addr:
             self._fail(f'{name}: missing netmask')
 
@@ -55,27 +104,11 @@ class Parser(object):
         except ValueError:
             self._fail(f'{name}: invalid netmask {mask}')
 
-        octets = address.split('.')
-        msg = f'{name}: invalid address {address}'
-        if len(octets) != 4:
-            self._fail(msg)
-
-        try:
-            octets[0] = int(octets[0])
-            octets[1] = int(octets[1])
-            octets[2] = int(octets[2])
-            octets[3] = int(octets[3])
-        except ValueError:
-            self._fail(msg)
-
-        for i in range(4):
-            if octets[i] < 0 or octets[i] > 255:
-                self._fail(f'{name}: invalid address {address}')
+        result = validator.validate_address(address)
+        if not result.ok():
+            self._fail(f'{name}: {result.reason()}')
 
         return address, mask
-
-    def _parse_hosts(self, system: AS, host_dict: dict):
-        pass
 
     def _get_name(self, obj: dict) -> str:
         if 'name' in obj:

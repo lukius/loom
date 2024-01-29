@@ -12,7 +12,7 @@ class ParserTest(unittest.TestCase):
         nets = system.networks()
         self.assertEquals(len(nets), 1)
 
-        net = nets[0]
+        net = nets['lan1']
         self.assertEquals(net.name(), "lan1")
         self.assertEquals(net.address(), "100.100.100.0")
         self.assertEquals(net.mask(), 24)
@@ -21,13 +21,13 @@ class ParserTest(unittest.TestCase):
         routers = system.routers()
         self.assertEquals(len(routers), 1)
 
-        router = routers[0]
+        router = routers['r1']
         self.assertEquals(router.name(), "r1")
 
         interfaces = router.interfaces()
         self.assertEquals(len(interfaces), 1)
 
-        interface = interfaces[0]
+        interface = interfaces['eth0']
         self.assertEquals(interface.name(), "eth0")
         self.assertEquals(interface.network().name(), "lan1")
         self.assertEquals(interface.address(), "100.100.100.1")
