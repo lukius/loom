@@ -22,11 +22,12 @@ class Network(Entity):
             for _, interface in self._interfaces.items()
         }
 
-    def contains(self, device: NetworkDevice) -> bool:
+    def has_device(self, device: NetworkDevice) -> bool:
         for _, iface in device.interfaces().items():
-            if self.contains(iface.address()):
+            net_iface = self._interfaces.get(iface.name())
+            if net_iface is not None and net_iface.device() == device:
                 return True
         return False
 
-    def contains(self, address: Address) -> bool:
+    def contains_address(self, address: Address) -> bool:
         return self._address.matches(address)

@@ -105,7 +105,7 @@ class DeviceValidator(Validator):
             net = iface.network()
             addr = iface.address()
 
-            if not net.contains(addr):
+            if not net.contains_address(addr):
                 return ValidationFailure(f'invalid address for network {net.name()}')
 
             if self._addr_already_used(addrs_by_net, iface):

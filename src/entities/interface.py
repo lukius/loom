@@ -8,6 +8,7 @@ class Interface(Entity):
         self._net = network
         self._address = address
         self._cost = cost
+        self._device = None
 
     def device(self):
         return self._device
