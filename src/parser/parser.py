@@ -51,7 +51,7 @@ class Parser(object):
 
     def _parse_routers(self, system: AS, validator: SystemValidator, router_dict: dict):
         for name, obj in router_dict.items():
-            if 'interfaces' not in obj:
+            if obj is None or 'interfaces' not in obj:
                 self._fail(f'{name}: no interfaces declared')
 
             router = Router(name)
@@ -93,7 +93,7 @@ class Parser(object):
 
     def _parse_hosts(self, system: AS, validator: SystemValidator, host_dict: dict):
         for name, obj in host_dict.items():
-            if 'network' not in obj:
+            if obj is None or 'network' not in obj:
                 self._fail(f'{name}: no network assigned')
             net_name = obj['network']
             try:
@@ -125,6 +125,8 @@ class Parser(object):
         address, mask = addr.split('/')
         try:
             mask = int(mask)
+            if mask < 0 or mask > 32:
+                raise ValueError
         except ValueError:
             self._fail(f'{name}: invalid netmask {mask}')
 

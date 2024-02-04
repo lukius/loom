@@ -86,7 +86,7 @@ class AddressValidator(Validator):
 class NetworkValidator(Validator):
 
     def validate(self, net: Network) -> ValidationResult:
-        for _, sys_net in self._system.networks():
+        for _, sys_net in self._system.networks().items():
             if sys_net.name() == net.name():
                 return ValidationFailure(f'network already exists')
 

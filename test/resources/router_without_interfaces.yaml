@@ -1,0 +1,11 @@
+as:
+  name: "test_as"
+  networks:
+    lan1: "100.100.100.0/24"
+    lan2: "100.100.200.0/24"
+  routers:
+    r1:
+  hosts:
+    h1:
+        network: "lan1"
+        address: "100.100.100.1"
