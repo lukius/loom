@@ -3,18 +3,9 @@ from parser import Parser
 
 class ParserTest(unittest.TestCase):
 
-    def test_parser(self):
-        system = Parser('test/resources/one_net.yaml').parse()
+    def test_simple_network(self):
+        system = Parser('test/resources/simple_network.yaml').parse()
         self.assertEquals(system.name(), "test_as")
-
-        # Network assertions
-        nets = system.networks()
-        self.assertEquals(len(nets), 1)
-
-        net = nets['lan1']
-        self.assertEquals(net.name(), "lan1")
-        self.assertEquals(net.address(), "100.100.100.0")
-        self.assertEquals(net.mask(), 24)
 
         # Router assertions
         routers = system.routers()
@@ -36,9 +27,24 @@ class ParserTest(unittest.TestCase):
         hosts = system.hosts()
         self.assertEquals(len(hosts), 1)
 
-        host = hosts[0]
+        host = hosts['h1']
         self.assertEquals(host.name(), "h1")
 
         host_net = host.network()
         self.assertEquals(host_net.name(), "lan1")
-        self.assertEquals(host.address, "100.100.100.10")
+        self.assertEquals(host.address(), "100.100.100.10")
+
+        # Network assertions
+        nets = system.networks()
+        self.assertEquals(len(nets), 1)
+
+        net = nets['lan1']
+        self.assertEquals(net.name(), "lan1")
+        self.assertEquals(net.address(), "100.100.100.0/24")
+
+        devices = net.devices()
+        self.assertEquals(len(devices), 2)
+        self.assertIn('h1', devices)
+        self.assertEquals(devices['h1'], host)
+        self.assertIn('r1', devices)
+        self.assertEquals(devices['r1'], router)

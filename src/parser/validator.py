@@ -1,6 +1,6 @@
 from collections import defaultdict
 
-from entities import Network, Router, Host
+from entities import Network, Router, Host, NetworkDevice
 
 
 class ValidationResult(object):
@@ -35,8 +35,8 @@ class SystemValidator(object):
     def __init__(self, system):
         self._addr_validator = AddressValidator(system)
         self._net_validator = NetworkValidator(system)
-        self._router_validator = RouterValidator(system)
-        self._host_validator = HostValidator(system)
+        self._router_validator = DeviceValidator(system)
+        self._host_validator = DeviceValidator(system)
 
     def validate_address(self, address: str) -> ValidationResult:
         return self._addr_validator.validate(address)
@@ -96,12 +96,12 @@ class NetworkValidator(Validator):
         return ValidationSuccess()
 
 
-class RouterValidator(Validator):
+class DeviceValidator(Validator):
 
-    def validate(self, router: Router) -> ValidationResult:
+    def validate(self, device: NetworkDevice) -> ValidationResult:
         addrs_by_net = defaultdict(lambda: set())
 
-        for iface in router.interfaces().values():
+        for iface in device.interfaces().values():
             net = iface.network()
             addr = iface.address()
 
@@ -128,10 +128,4 @@ class RouterValidator(Validator):
         net_name = entity.network().name()
         addr = entity.address()
         return addr in addrs_by_net[net_name]
-
-
-class HostValidator(Validator):
-
-    def validate(self, host: Host) -> ValidationResult:
-        pass
 

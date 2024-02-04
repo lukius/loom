@@ -9,6 +9,9 @@ class Interface(Entity):
         self._address = address
         self._cost = cost
 
+    def device(self):
+        return self._device
+
     def network(self):
         return self._net
 
@@ -17,3 +20,6 @@ class Interface(Entity):
 
     def cost(self):
         return self._cost
+
+    def _set_device(self, device):
+        self._device = device

@@ -19,10 +19,27 @@ class BaseAddress(object):
     def octets(self) -> list:
         return list(self._octets)
 
+    def __repr__(self) -> str:
+        return str(self)
+
 
 class Address(BaseAddress):
 
-    pass
+    def __str__(self) -> str:
+        return self._address
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, str):
+            try:
+                other = Address(other)
+            except Exception:
+                return False
+        if other.__class__ != self.__class__:
+            return False
+        return self._address == other._address
+
+    def __hash__(self) -> int:
+        return hash(self._address)
 
 
 class NetworkAddress(BaseAddress):
@@ -32,9 +49,13 @@ class NetworkAddress(BaseAddress):
         super().__init__(address)
         self._mask = int(mask)
 
-    def matches(self, address: Address) -> bool:
-        octets = address.octets()
+    def mask(self) -> int:
+        return self._mask
 
+    def matches(self, address: Address) -> bool:
+        return self._matches(address.octets())
+
+    def _matches(self, octets: List[int]) -> bool:
         idx, bits = divmod(self._mask, 8)
         bitmask = 0xff - (1 << (8 - bits)) + 1
 
@@ -48,6 +69,23 @@ class NetworkAddress(BaseAddress):
                 return False
 
         return True
+
+    def __str__(self) -> str:
+        return f'{self._address}/{self._mask}'
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, str):
+            try:
+                other = NetworkAddress(other)
+            except Exception:
+                return False
+        if other.__class__ != self.__class__:
+            return False
+        return self._matches(other.octets()) and self._mask == other._mask
+
+    def __hash__(self) -> int:
+        return hash(self._address) ^ self._mask
+
 
 
 

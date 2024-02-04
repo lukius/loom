@@ -30,3 +30,6 @@ class AS(Entity):
 
     def add_router(self, router):
         self._routers[router.name()] = router
+
+    def add_host(self, host):
+        self._hosts[host.name()] = host

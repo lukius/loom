@@ -1,7 +1,7 @@
 import yaml
 
 from .exception import ParsingException
-from entities import AS, Network, Router, Host, Interface, EntityNotFoundException
+from entities import AS, Network, Router, Host, Interface, NetworkAddress, Address, EntityNotFoundException
 from .validator import SystemValidator
 
 
@@ -40,9 +40,9 @@ class Parser(object):
 
     def _parse_networks(self, system: AS, validator: SystemValidator, network_dict: dict):
         for name, addr in network_dict.items():
-            address, mask = self._parse_net_address(name, addr, validator)
+            address = self._parse_net_address(name, addr, validator)
 
-            net = Network(name, address, mask)
+            net = Network(name, address)
             result = validator.validate_network(net)
             if not result.ok():
                 self._fail(f'{name}: {result.reason()}')
@@ -67,10 +67,11 @@ class Parser(object):
 
                 if 'address' not in iface:
                     self._fail(f'{name}: {iface_name}: no address assigned')
-                address = iface['address']
-                result = validator.validate_address(address)
+                addr_str = iface['address']
+                result = validator.validate_address(addr_str)
                 if not result.ok():
                     self._fail(f'{name}: {iface_name}: {result.reason()}')
+                address = Address(addr_str)
 
                 cost = 1
                 if 'cost' in iface:
@@ -81,6 +82,7 @@ class Parser(object):
                     self._fail(f'{name}: {iface_name}: invalid cost')
 
                 iface = Interface(iface_name, net, address, cost)
+                net.add_interface(iface)
                 router.add_interface(iface)
 
             result = validator.validate_router(router)
@@ -89,12 +91,34 @@ class Parser(object):
 
             system.add_router(router)
 
-
-
     def _parse_hosts(self, system: AS, validator: SystemValidator, host_dict: dict):
-        pass
+        for name, obj in host_dict.items():
+            if 'network' not in obj:
+                self._fail(f'{name}: no network assigned')
+            net_name = obj['network']
+            try:
+                net = system.get_network(net_name)
+            except EntityNotFoundException:
+                self._fail(f'{name}: network not found')
 
-    def _parse_net_address(self, name: str, addr: str, validator: SystemValidator) -> tuple:
+            if 'address' not in obj:
+                self._fail(f'{name}: no address assigned')
+            addr_str = obj['address']
+            result = validator.validate_address(addr_str)
+            if not result.ok():
+                self._fail(f'{name}: {result.reason()}')
+            address = Address(addr_str)
+
+            host = Host(name, net, address)
+
+            result = validator.validate_host(host)
+            if not result.ok():
+                self._fail(f'{name}: {result.reason()}')
+
+            net.add_interface(host.interface())
+            system.add_host(host)
+
+    def _parse_net_address(self, name: str, addr: str, validator: SystemValidator) -> NetworkAddress:
         if '/' not in addr:
             self._fail(f'{name}: missing netmask')
 
@@ -108,7 +132,7 @@ class Parser(object):
         if not result.ok():
             self._fail(f'{name}: {result.reason()}')
 
-        return address, mask
+        return NetworkAddress(addr)
 
     def _get_name(self, obj: dict) -> str:
         if 'name' in obj:
