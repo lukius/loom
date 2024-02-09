@@ -109,7 +109,15 @@ class Parser(object):
                 self._fail(f'{name}: {result.reason()}')
             address = Address(addr_str)
 
-            host = Host(name, net, address)
+            gw_address = None
+            if 'gateway' in obj:
+                addr_str = obj['gateway']
+                result = validator.validate_address(addr_str)
+                if not result.ok():
+                    self._fail(f'{name}: {result.reason()}')
+                gw_address = Address(addr_str)
+
+            host = Host(name, net, address, gw_address)
 
             result = validator.validate_host(host)
             if not result.ok():

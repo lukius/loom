@@ -13,12 +13,13 @@ class EntitiesTest(unittest.TestCase):
         self._addr1_net2 = Address('192.168.10.25')
 
     def test_host(self):
-        host = Host('host', self._network1, self._addr1_net1)
+        host = Host('host', self._network1, self._addr1_net1, self._addr2_net1)
         self.assertEqual(host.name(), 'host')
         self.assertEqual(host.address(), '192.168.1.15')
         self.assertEqual(host.network().name(), 'lan1')
         self.assertEqual(len(host.interfaces()), 1)
         self.assertEqual(host.interface().address(), '192.168.1.15')
+        self.assertEqual(host.gateway(), '192.168.1.100')
 
     def test_interface(self):
         iface = Interface('iface', self._network1, self._addr1_net1)

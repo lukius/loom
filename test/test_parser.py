@@ -7,22 +7,22 @@ class ParserTest(unittest.TestCase):
 
     def test_simple_network(self):
         system = Parser(f'{self.FILE_PATH}/simple_network.yaml').parse()
-        self.assertEqual(system.name(), "test_as")
+        self.assertEqual(system.name(), 'test_as')
 
         # Router assertions
         routers = system.routers()
         self.assertEqual(len(routers), 1)
 
         router = routers['r1']
-        self.assertEqual(router.name(), "r1")
+        self.assertEqual(router.name(), 'r1')
 
         interfaces = router.interfaces()
         self.assertEqual(len(interfaces), 1)
 
         interface = interfaces['eth0']
-        self.assertEqual(interface.name(), "eth0")
-        self.assertEqual(interface.network().name(), "lan1")
-        self.assertEqual(interface.address(), "100.100.100.1")
+        self.assertEqual(interface.name(), 'eth0')
+        self.assertEqual(interface.network().name(), 'lan1')
+        self.assertEqual(interface.address(), '100.100.100.1')
         self.assertEqual(interface.cost(), 10)
 
         # Host assertions
@@ -30,19 +30,22 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(len(hosts), 1)
 
         host = hosts['h1']
-        self.assertEqual(host.name(), "h1")
+        self.assertEqual(host.name(), 'h1')
 
         host_net = host.network()
-        self.assertEqual(host_net.name(), "lan1")
-        self.assertEqual(host.address(), "100.100.100.10")
+        self.assertEqual(host_net.name(), 'lan1')
+        self.assertEqual(host.address(), '100.100.100.10')
+
+        gw_address = host.gateway()
+        self.assertIsNone(gw_address)
 
         # Network assertions
         nets = system.networks()
         self.assertEqual(len(nets), 1)
 
         net = nets['lan1']
-        self.assertEqual(net.name(), "lan1")
-        self.assertEqual(net.address(), "100.100.100.0/24")
+        self.assertEqual(net.name(), 'lan1')
+        self.assertEqual(net.address(), '100.100.100.0/24')
 
         devices = net.devices()
         self.assertEqual(len(devices), 2)
@@ -53,40 +56,40 @@ class ParserTest(unittest.TestCase):
 
     def test_two_networks(self):
         system = Parser(f'{self.FILE_PATH}/two_networks.yaml').parse()
-        self.assertEqual(system.name(), "test_as")
+        self.assertEqual(system.name(), 'test_as')
 
         # Router assertions
         routers = system.routers()
         self.assertEqual(len(routers), 2)
 
         router1 = routers['r1']
-        self.assertEqual(router1.name(), "r1")
+        self.assertEqual(router1.name(), 'r1')
 
         interfaces = router1.interfaces()
         self.assertEqual(len(interfaces), 1)
 
         interface = interfaces['eth0']
-        self.assertEqual(interface.name(), "eth0")
-        self.assertEqual(interface.network().name(), "lan1")
-        self.assertEqual(interface.address(), "100.100.100.1")
+        self.assertEqual(interface.name(), 'eth0')
+        self.assertEqual(interface.network().name(), 'lan1')
+        self.assertEqual(interface.address(), '100.100.100.1')
         self.assertEqual(interface.cost(), 10)
 
         router2 = routers['r2']
-        self.assertEqual(router2.name(), "r2")
+        self.assertEqual(router2.name(), 'r2')
 
         interfaces = router2.interfaces()
         self.assertEqual(len(interfaces), 2)
 
         interface = interfaces['eth0']
-        self.assertEqual(interface.name(), "eth0")
-        self.assertEqual(interface.network().name(), "lan2")
-        self.assertEqual(interface.address(), "100.100.200.1")
+        self.assertEqual(interface.name(), 'eth0')
+        self.assertEqual(interface.network().name(), 'lan2')
+        self.assertEqual(interface.address(), '100.100.200.1')
         self.assertEqual(interface.cost(), 5)
 
         interface = interfaces['eth1']
-        self.assertEqual(interface.name(), "eth1")
-        self.assertEqual(interface.network().name(), "lan1")
-        self.assertEqual(interface.address(), "100.100.100.2")
+        self.assertEqual(interface.name(), 'eth1')
+        self.assertEqual(interface.network().name(), 'lan1')
+        self.assertEqual(interface.address(), '100.100.100.2')
         self.assertEqual(interface.cost(), 5)
 
         # Host assertions
@@ -94,19 +97,22 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(len(hosts), 1)
 
         host = hosts['h1']
-        self.assertEqual(host.name(), "h1")
+        self.assertEqual(host.name(), 'h1')
 
         host_net = host.network()
-        self.assertEqual(host_net.name(), "lan1")
-        self.assertEqual(host.address(), "100.100.100.10")
+        self.assertEqual(host_net.name(), 'lan1')
+        self.assertEqual(host.address(), '100.100.100.10')
+
+        gw_address = host.gateway()
+        self.assertEqual(gw_address, '100.100.100.2')
 
         # Network assertions
         nets = system.networks()
         self.assertEqual(len(nets), 2)
 
         net = nets['lan1']
-        self.assertEqual(net.name(), "lan1")
-        self.assertEqual(net.address(), "100.100.100.0/24")
+        self.assertEqual(net.name(), 'lan1')
+        self.assertEqual(net.address(), '100.100.100.0/24')
 
         devices = net.devices()
         self.assertEqual(len(devices), 3)
@@ -118,8 +124,8 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(devices['r2'], router2)
 
         net = nets['lan2']
-        self.assertEqual(net.name(), "lan2")
-        self.assertEqual(net.address(), "100.100.200.0/22")
+        self.assertEqual(net.name(), 'lan2')
+        self.assertEqual(net.address(), '100.100.200.0/22')
 
         devices = net.devices()
         self.assertEqual(len(devices), 1)
@@ -173,6 +179,9 @@ class ParserTest(unittest.TestCase):
 
     def test_missing_host_address(self):
         self._run_parsing_error_test('missing_host_address', 'no address assigned')
+
+    def test_invalid_host_gateway(self):
+        self._run_parsing_error_test('invalid_gateway', 'gateway address not in host network')
 
     def _run_parsing_error_test(self, filename, expected_msg):
         parser = Parser(f'{self.FILE_PATH}/{filename}.yaml')

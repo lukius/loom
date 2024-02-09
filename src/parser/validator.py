@@ -36,7 +36,7 @@ class SystemValidator(object):
         self._addr_validator = AddressValidator(system)
         self._net_validator = NetworkValidator(system)
         self._router_validator = DeviceValidator(system)
-        self._host_validator = DeviceValidator(system)
+        self._host_validator = HostValidator(system)
 
     def validate_address(self, address: str) -> ValidationResult:
         return self._addr_validator.validate(address)
@@ -129,3 +129,17 @@ class DeviceValidator(Validator):
         addr = entity.address()
         return addr in addrs_by_net[net_name]
 
+
+class HostValidator(DeviceValidator):
+
+    def validate(self, host: Host) -> ValidationResult:
+        result = super().validate(host)
+        if not result.ok():
+            return result
+
+        network = host.network()
+        gw_address = host.gateway()
+        if gw_address is not None and not network.contains_address(gw_address):
+            return ValidationFailure(f'gateway address not in host network')
+
+        return ValidationSuccess()
