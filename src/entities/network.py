@@ -1,3 +1,5 @@
+import queue
+
 from .base import Entity
 from .device import NetworkDevice
 from .address import Address
@@ -9,12 +11,14 @@ class Network(Entity):
         super().__init__(name)
         self._address = address
         self._interfaces = dict()
+        self._in_queue = queue.Queue()
 
     def address(self):
         return self._address
 
     def add_interface(self, interface):
         self._interfaces[interface.name()] = interface
+        interface._set_out_queue(self._in_queue)
 
     def devices(self) -> dict:
         return {

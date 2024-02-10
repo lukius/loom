@@ -1,8 +1,11 @@
 from typing import List
+from threading import Lock
 
 from .device import NetworkDevice
 from .address import NetworkAddress, Address
 from .interface import Interface
+from .packet import Datagram, RoutingMessage, Frame
+
 
 class RoutingRule(object):
 
@@ -62,7 +65,16 @@ class RoutingTable(object):
 
     def __init__(self):
         self._rules = list()
+        self._lock = Lock()
 
+    def with_lock(func):
+        def func_with_lock(self, *args, **kwargs):
+            with self._lock:
+                return func(self, *args, **kwargs)
+
+        return func_with_lock
+
+    @with_lock
     def add_rule(self, prefix, next_hop, interface):
         new_rule = RoutingRule(prefix, next_hop, interface)
 
@@ -73,12 +85,14 @@ class RoutingTable(object):
 
         self._rules.append(new_rule)
 
+    @with_lock
     def remove_rule(self, prefix):
         for i, rule in enumerate(self._rules):
             if prefix == rule.prefix():
                 del self._rules[i]
                 break
 
+    @with_lock
     def match(self, address: Address) -> MatchingResult:
         longest_prefix = -1
         longest_prefix_idx = -1
@@ -98,6 +112,8 @@ class RoutingTable(object):
         rule = self._rules[longest_prefix_idx]
         return MatchingSuccess(rule.next_hop(), rule.interface())
 
+    with_lock = staticmethod(with_lock)
+
 
 
 class Router(NetworkDevice):
@@ -105,3 +121,24 @@ class Router(NetworkDevice):
     def __init__(self, name):
         super().__init__(name)
         self._routing_table = RoutingTable()
+
+    def _handle_message(self, msg):
+        if msg.type() != RoutingMessage:
+            # TODO: exception
+            raise Exception('unexpected message')
+        self._handle_routing_message(msg)
+
+    def _handle_routing_message(self, msg: RoutingMessage):
+        pass
+
+    def _handle_forwarding(self, packet: Datagram):
+        dest = packet.destination()
+        result = self._routing_table.match(dest)
+        if not result.succeeded():
+            # TODO
+            raise Exception(f'no route to host {dest}')
+
+        out_iface = result.interface()
+        next_hop = result.next_hop()
+
+        out_iface.send_to(packet, next_hop)

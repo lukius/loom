@@ -14,6 +14,19 @@ class NetworkDevice(Entity):
         self._interfaces[interface.name()] = interface
         interface._set_device(self)
 
+    def handle_packet(self, packet, interface):
+        dst = packet.destination()
+        if dst == interface.address():
+            self._handle_message(packet.payload())
+        else:
+            self._handle_forwarding(packet)
+
+    def _handle_message(self, msg):
+        raise NotImplementedError
+
+    def _handle_forwarding(self, packet):
+        raise NotImplementedError
+
     def __eq__(self, other):
         return (self.__class__ == other.__class__ and
                 self.name() == other.name())
