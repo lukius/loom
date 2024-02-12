@@ -1,3 +1,5 @@
+import uuid
+
 from .address import Address
 
 
@@ -30,8 +32,22 @@ class Datagram(Packet):
 
 class Message(object):
 
+    def __init__(self):
+        self._id = uuid.uuid4()
+
     def type(self):
         return self.__class__
+
+    def id(self):
+        return self._id
+
+    def __eq__(self, other):
+        if other.__class__ != self.__class__:
+            return False
+        return self._id == other.id()
+
+    def __hash__(self):
+        return hash(self._id)
 
 
 class RoutingMessage(Message):

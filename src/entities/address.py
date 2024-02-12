@@ -87,5 +87,7 @@ class NetworkAddress(BaseAddress):
         return hash(self._address) ^ self._mask
 
 
+NullAddress = Address('0.0.0.0')
+
 
 

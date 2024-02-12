@@ -18,8 +18,8 @@ class Interface(Entity):
         self._in_queue = queue.Queue()
         self._out_queue = None
 
-        self._pkt_thread = threading.Thread(target=self._pkt_loop, daemon=True)
         self._stopped = False
+        self._pkt_thread = threading.Thread(target=self._pkt_loop, daemon=True)
         self._pkt_thread.start()
 
     def device(self):
@@ -34,9 +34,18 @@ class Interface(Entity):
     def cost(self):
         return self._cost
 
+    def stop(self):
+        self._in_queue.put(None)
+
+    def join(self):
+        self._pkt_thread.join()
+
     def send_to(self, datagram: Datagram, dst_addr: Address):
         frame = Frame(src_addr=self._address, dst_addr=dst_addr, payload=datagram)
         self._out_queue.put(frame)
+
+    def receive(self, datagram):
+        self._in_queue.put(datagram)
 
     def _set_device(self, device):
         self._device = device
@@ -46,8 +55,11 @@ class Interface(Entity):
 
     def _pkt_loop(self):
         while not self._stopped:
-            packet = self._in_queue.get()
+            frame = self._in_queue.get()
+            if frame is None:
+                self._stopped = True
+                continue
             if self._device is None:
                 # TODO: interface not ready exception
                 raise Exception('interface not ready')
-            self._device.handle_packet(packet, self)
+            self._device.handle_packet(frame.payload(), self)

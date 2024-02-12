@@ -2,9 +2,10 @@ from typing import List
 from threading import Lock
 
 from .device import NetworkDevice
-from .address import NetworkAddress, Address
+from .address import NetworkAddress, Address, NullAddress
 from .interface import Interface
 from .packet import Datagram, RoutingMessage, Frame
+from .event import EventTracer
 
 
 class RoutingRule(object):
@@ -122,6 +123,9 @@ class Router(NetworkDevice):
         super().__init__(name)
         self._routing_table = RoutingTable()
 
+    def routing_table(self):
+        return self._routing_table
+
     def _handle_message(self, msg):
         if msg.type() != RoutingMessage:
             # TODO: exception
@@ -140,5 +144,9 @@ class Router(NetworkDevice):
 
         out_iface = result.interface()
         next_hop = result.next_hop()
+        if next_hop == NullAddress:
+            next_hop = packet.destination()
 
         out_iface.send_to(packet, next_hop)
+
+        return EventTracer.datagram_forwarded(src=out_iface.address(), dst=next_hop, datagram=packet)

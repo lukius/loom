@@ -1,6 +1,8 @@
 from .device import NetworkDevice
 from .interface import Interface
 from .packet import UserMessage, Datagram
+from .event import EventTracer
+from .address import Address
 
 
 class Host(NetworkDevice):
@@ -26,17 +28,17 @@ class Host(NetworkDevice):
     def gateway(self):
         return self._gw_address
 
-    def send_message_to(self, message, addr):
-        msg = UserMessage(message)
-        src = self.interface().address()
+    def send_message_to(self, msg: UserMessage, addr: Address):
+        src = self.address()
         datagram = Datagram(src_addr=src, dst_addr=addr, payload=msg)
         self._interface.send_to(datagram, dst_addr=self._gw_address)
+
+        return EventTracer.message_sent(src=src, dst=addr, msg=msg)
 
     def _handle_message(self, msg):
         if msg.type() != UserMessage:
             raise Exception('Unknown message type')
-        print(f'{self._name} received {msg.payload()}')
-        # TODO: event logging
+        return EventTracer.message_received(src=self.address(), msg=msg)
 
     def _handle_forwarding(self, packet):
         # TODO

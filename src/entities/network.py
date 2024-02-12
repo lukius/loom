@@ -1,4 +1,5 @@
 import queue
+import threading
 
 from .base import Entity
 from .device import NetworkDevice
@@ -12,6 +13,10 @@ class Network(Entity):
         self._address = address
         self._interfaces = dict()
         self._in_queue = queue.Queue()
+
+        self._stopped = False
+        self._pkt_thread = threading.Thread(target=self._pkt_loop, daemon=True)
+        self._pkt_thread.start()
 
     def address(self):
         return self._address
@@ -35,3 +40,27 @@ class Network(Entity):
 
     def contains_address(self, address: Address) -> bool:
         return self._address.matches(address)
+
+    def stop(self):
+        for _, iface in self._interfaces.items():
+            iface.stop()
+        self._in_queue.put(None)
+
+    def join(self):
+        self._pkt_thread.join()
+
+    def _interface_with_address(self, address):
+        for _, iface in self._interfaces.items():
+            if iface.address() == address:
+                return iface
+        raise Exception(f'{address} not in {self._name}')
+
+    def _pkt_loop(self):
+        while not self._stopped:
+            packet = self._in_queue.get()
+            if packet is None:
+                self._stopped = True
+                continue
+            dst = packet.destination()
+            dst_interface = self._interface_with_address(dst)
+            dst_interface.receive(packet)
