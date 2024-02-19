@@ -45,3 +45,10 @@ class AddressTest(unittest.TestCase):
 
         for addr in host_addrs:
             self.assertFalse(net_addr.matches(addr))
+
+    def test_broadcast_address(self):
+        net_addr = NetworkAddress('100.100.100.0/24')
+        self.assertEqual(net_addr.broadcast(), '100.100.100.255')
+
+        net_addr = NetworkAddress('100.100.96.0/21')
+        self.assertEqual(net_addr.broadcast(), '100.100.103.255')

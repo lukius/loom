@@ -21,6 +21,9 @@ class Network(Entity):
     def address(self):
         return self._address
 
+    def broadcast_address(self):
+        return self._address.broadcast()
+
     def add_interface(self, interface):
         self._interfaces[interface.name()] = interface
         interface._set_out_queue(self._in_queue)
@@ -49,6 +52,21 @@ class Network(Entity):
     def join(self):
         self._pkt_thread.join()
 
+    def _dispatch_packet(self, packet):
+        dst = packet.destination()
+        if dst == self.broadcast_address():
+            self._dispatch_broadcast(packet)
+        else:
+            self._dispatch_unicast(packet, dst)
+
+    def _dispatch_unicast(self, packet, dst):
+        dst_interface = self._interface_with_address(dst)
+        dst_interface.receive(packet)
+
+    def _dispatch_broadcast(self, packet):
+        for _, dst_iface in self._interfaces.items():
+            dst_iface.receive(packet)
+
     def _interface_with_address(self, address):
         for _, iface in self._interfaces.items():
             if iface.address() == address:
@@ -61,6 +79,5 @@ class Network(Entity):
             if packet is None:
                 self._stopped = True
                 continue
-            dst = packet.destination()
-            dst_interface = self._interface_with_address(dst)
-            dst_interface.receive(packet)
+            self._dispatch_packet(packet)
+

@@ -55,6 +55,18 @@ class NetworkAddress(BaseAddress):
     def matches(self, address: Address) -> bool:
         return self._matches(address.octets())
 
+    def broadcast(self) -> Address:
+        idx, bits = divmod(self._mask, 8)
+        octets = list()
+        for i in range(idx):
+            octets.append(self._octets[i])
+        bitmask = (1 << (8 - bits)) - 1
+        octets.append(self._octets[idx] | bitmask)
+        for i in range(idx+1, 4):
+            octets.append(0xff)
+        addr_str = '.'.join(map(str, octets))
+        return Address(addr_str)
+
     def _matches(self, octets: List[int]) -> bool:
         idx, bits = divmod(self._mask, 8)
         bitmask = 0xff - (1 << (8 - bits)) + 1

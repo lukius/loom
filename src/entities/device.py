@@ -16,12 +16,13 @@ class NetworkDevice(Entity):
 
     def handle_packet(self, packet, interface):
         dst = packet.destination()
-        if dst == interface.address():
-            self._handle_message(packet.payload())
+        net_broadcast_addr = interface.network().broadcast_address()
+        if dst == interface.address() or dst == net_broadcast_addr:
+            self._handle_message(packet.payload(), interface)
         else:
             self._handle_forwarding(packet)
 
-    def _handle_message(self, msg):
+    def _handle_message(self, msg, interface):
         raise NotImplementedError
 
     def _handle_forwarding(self, packet):

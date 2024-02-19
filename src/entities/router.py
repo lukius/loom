@@ -4,8 +4,10 @@ from threading import Lock
 from .device import NetworkDevice
 from .address import NetworkAddress, Address, NullAddress
 from .interface import Interface
-from .packet import Datagram, RoutingMessage, Frame
+from .packet import Datagram, RoutingMessage
 from .event import EventTracer
+
+from routing import RoutingProtocol
 
 
 class RoutingRule(object):
@@ -122,18 +124,18 @@ class Router(NetworkDevice):
     def __init__(self, name):
         super().__init__(name)
         self._routing_table = RoutingTable()
+        self._protocol = RoutingProtocol(self)
 
     def routing_table(self):
         return self._routing_table
 
-    def _handle_message(self, msg):
-        if msg.type() != RoutingMessage:
-            # TODO: exception
-            raise Exception('unexpected message')
-        self._handle_routing_message(msg)
+    def _handle_message(self, msg, interface):
+        if msg.type() == RoutingMessage:
+            self._handle_routing_message(msg, interface)
 
-    def _handle_routing_message(self, msg: RoutingMessage):
-        pass
+    def _handle_routing_message(self, msg: RoutingMessage, interface: Interface):
+        self._protocol.handle_incoming_message(msg, interface)
+        return EventTracer.message_received(src=interface.address(), msg=msg)
 
     def _handle_forwarding(self, packet: Datagram):
         dest = packet.destination()

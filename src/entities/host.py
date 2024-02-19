@@ -35,10 +35,9 @@ class Host(NetworkDevice):
 
         return EventTracer.message_sent(src=src, dst=addr, msg=msg)
 
-    def _handle_message(self, msg):
-        if msg.type() != UserMessage:
-            raise Exception('Unknown message type')
-        return EventTracer.message_received(src=self.address(), msg=msg)
+    def _handle_message(self, msg, interface):
+        if msg.type() == UserMessage:
+            return EventTracer.message_received(src=self.address(), msg=msg)
 
     def _handle_forwarding(self, packet):
         # TODO
