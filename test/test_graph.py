@@ -1,0 +1,67 @@
+import unittest
+
+from routing import NetworkGraph
+
+
+class GraphTest(unittest.TestCase):
+
+    def test_neighbors_and_weights(self):
+        graph = NetworkGraph()
+
+        graph.add_node('node1')
+        graph.add_node('node2')
+        graph.add_node('node3')
+
+        graph.add_edge('node1', 'node2', weight=10)
+        graph.add_edge('node1', 'node3', weight=20)
+
+        self.assertEqual(graph.weight('node1', 'node2'), 10)
+        self.assertEqual(graph.weight('node1', 'node3'), 20)
+        self.assertEqual(graph.weight('node2', 'node1'), 10)
+        self.assertIsNone(graph.weight('node2', 'node3'))
+
+        node1_neighbors = graph.neighbors('node1')
+        self.assertEqual(len(node1_neighbors), 2)
+        self.assertIn('node2', node1_neighbors)
+        self.assertIn('node3', node1_neighbors)
+        self.assertEqual(node1_neighbors['node2'], 10)
+        self.assertEqual(node1_neighbors['node3'], 20)
+
+        node3_neighbors = graph.neighbors('node3')
+        self.assertEqual(len(node3_neighbors), 1)
+        self.assertIn('node1', node3_neighbors)
+        self.assertEqual(node3_neighbors['node1'], 20)
+
+    def test_shortest_paths(self):
+        graph = NetworkGraph()
+
+        for node in ['a','b','c','d','e','f','g']:
+            graph.add_node(node)
+
+        graph.add_edge('a', 'b', weight=2)
+        graph.add_edge('a', 'c', weight=5)
+        graph.add_edge('b', 'c', weight=2)
+        graph.add_edge('b', 'd', weight=10)
+        graph.add_edge('c', 'e', weight=3)
+        graph.add_edge('c', 'g', weight=1)
+        graph.add_edge('d', 'f', weight=11)
+        graph.add_edge('e', 'd', weight=4)
+        graph.add_edge('e', 'f', weight=14)
+        graph.add_edge('e', 'g', weight=2)
+
+        distances, prevs = graph.shortest_paths('a')
+        self.assertEqual(len(distances), 6)
+        self.assertEqual(distances.get('b', 0), 2)
+        self.assertEqual(distances.get('c', 0), 4)
+        self.assertEqual(distances.get('d', 0), 11)
+        self.assertEqual(distances.get('e', 0), 7)
+        self.assertEqual(distances.get('f', 0), 21)
+        self.assertEqual(distances.get('g', 0), 5)
+
+        self.assertEqual(len(prevs), 6)
+        self.assertEqual(prevs.get('b', None), 'a')
+        self.assertEqual(prevs.get('c', None), 'b')
+        self.assertEqual(prevs.get('d', None), 'e')
+        self.assertEqual(prevs.get('e', None), 'c')
+        self.assertEqual(prevs.get('f', None), 'e')
+        self.assertEqual(prevs.get('g', None), 'c')

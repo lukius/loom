@@ -58,3 +58,6 @@ class ProtocolTest(unittest.TestCase):
         cost = msg.destinations().get(net2.address())
         self.assertIsNotNone(cost)
         self.assertEqual(cost, 20)
+
+    def test_flooding_on_incoming_message(self):
+        pass

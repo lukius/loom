@@ -9,12 +9,18 @@ class PacketHandlingTest(unittest.TestCase):
         net1 = Network('lan1', NetworkAddress('200.200.10.0/24'))
         net2 = Network('lan2', NetworkAddress('100.100.0.0/24'))
 
-        self.router = Router('r1')
         self.iface1 = Interface('eth0', net1, Address('200.200.10.1'))
         self.iface2 = Interface('eth1', net2, Address('100.100.0.254'))
         self.iface3 = Interface('eth2', net2, Address('100.100.0.250'))
+
+        net1.add_interface(self.iface1)
+        net2.add_interface(self.iface2)
+        net2.add_interface(self.iface3)
+
+        self.router = Router('r1')
         self.router.add_interface(self.iface1)
         self.router.add_interface(self.iface2)
+        self.router.add_interface(self.iface3)
 
         self.host = Host('h1', net1, Address('200.200.10.10'), gw_address=self.iface1.address())
 
