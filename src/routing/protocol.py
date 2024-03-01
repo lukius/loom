@@ -100,7 +100,7 @@ class RoutingProtocol(object):
             self._graph.add_node(src_router)
             updated = True
 
-        for prefix, cost in msg.destinations():
+        for prefix, cost in msg.destinations().items():
             if prefix not in self._graph:
                 self._graph.add_node(prefix)
                 updated = True

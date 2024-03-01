@@ -60,4 +60,54 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(cost, 20)
 
     def test_flooding_on_incoming_message(self):
-        pass
+        net1 = Network('lan1', NetworkAddress('200.200.10.0/24'))
+        net2 = Network('lan2', NetworkAddress('100.100.0.0/24'))
+        net3 = Network('lan3', NetworkAddress('10.10.10.0/24'))
+
+        r1 = Router('r1')
+        iface1 = Interface('eth0', net1, Address('200.200.10.1'), cost=10)
+        iface2 = Interface('eth1', net2, Address('100.100.0.254'), cost=20)
+        iface3 = Interface('eth2', net3, Address('10.10.10.2'), cost=1)
+        r1.add_interface(iface1)
+        r1.add_interface(iface2)
+        r1.add_interface(iface3)
+
+        r2 = Router('r2')
+        iface4 = Interface('eth0', net2, Address('100.100.0.1'), cost=15)
+        iface5 = Interface('eth1', net3, Address('10.10.10.1'), cost=5)
+        r2.add_interface(iface4)
+        r2.add_interface(iface5)
+
+        msg = RoutingMessage(src=iface4, seq=1)
+        msg.add_destination(prefix=net2.address(), cost=iface4.cost())
+        msg.add_destination(prefix=net3.address(), cost=iface5.cost())
+
+        proto = RoutingProtocol(r1)
+        proto.handle_incoming_message(msg, iface2)
+
+        datagram1, dst_addr1 = self._queue.get(timeout=0.1)
+        self.assertIn(dst_addr1, [net1.broadcast_address(), net3.broadcast_address()])
+        payload1 = datagram1.payload()
+        self.assertEqual(payload1.src_address(), iface4.address())
+        self.assertEqual(payload1.src_router(), r2)
+        self.assertEqual(payload1.seq(), 1)
+        dests1 = payload1.destinations()
+        self.assertEqual(len(dests1), 2)
+        self.assertEqual(dests1.get(net2.address(), 0), iface4.cost())
+        self.assertEqual(dests1.get(net3.address(), 0), iface5.cost())
+
+        datagram2, dst_addr2 = self._queue.get(timeout=0.1)
+        self.assertIn(dst_addr2, [net1.broadcast_address(), net3.broadcast_address()])
+        self.assertNotEqual(dst_addr1, dst_addr2)
+        payload2 = datagram2.payload()
+        self.assertEqual(payload2.src_address(), iface4.address())
+        self.assertEqual(payload2.src_router(), r2)
+        self.assertEqual(payload2.seq(), 1)
+        self.assertEqual(len(payload2.destinations()), 2)
+        dests2 = payload2.destinations()
+        self.assertEqual(len(dests2), 2)
+        self.assertEqual(dests2.get(net2.address(), 0), iface4.cost())
+        self.assertEqual(dests2.get(net3.address(), 0), iface5.cost())
+
+        with self.assertRaises(queue.Empty):
+            self._queue.get(timeout=0.1)
