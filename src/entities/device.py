@@ -37,3 +37,9 @@ class NetworkDevice(Entity):
 
     def __hash__(self):
         return hash(self.name()) ^ hash(self.__class__)
+
+    def __str__(self):
+        return f'{self.__class__.__name__} {self.name()}'
+
+    def __repr__(self):
+        return str(self)

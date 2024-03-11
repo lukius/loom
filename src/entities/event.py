@@ -89,37 +89,29 @@ class EventTracer(object):
         with cls._lock:
             event = cls._events.get(msg)
 
-        if event is None:
-            raise Exception('event not found')
-
-        return event.on_sent(src, dst, msg)
+        if event is not None:
+            return event.on_sent(src, dst, msg)
 
     @classmethod
     def message_received(cls, src, msg):
         with cls._lock:
             event = cls._events.get(msg)
 
-        if event is None:
-            raise Exception('event not found')
-
-        return event.on_received(src, msg)
+        if event is not None:
+            return event.on_received(src, msg)
 
     @classmethod
     def datagram_forwarded(cls, src, dst, datagram):
         with cls._lock:
             event = cls._events.get(datagram.payload())
 
-        if event is None:
-            raise Exception('event not found')
-
-        return event.on_forwarded(src, dst, datagram)
+        if event is not None:
+            return event.on_forwarded(src, dst, datagram)
 
     @classmethod
     def dump(cls, event_id):
-        if event_id not in cls._events:
-            raise Exception('event not found')
-
-        return cls._events[event_id].dump()
+        if event_id in cls._events:
+            return cls._events[event_id].dump()
 
     @classmethod
     def _message_sent_log(cls, src, dst, msg):

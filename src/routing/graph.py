@@ -55,9 +55,9 @@ class NetworkGraph(object):
             path = [node]
             current = node
             while current != src:
+                # TODO: el grafo no es conexo
                 if current not in previous:
-                    # TODO
-                    raise Exception('unexpected node')
+                    break
                 current = previous[current]
                 path.insert(0, current)
             paths[node] = path
@@ -78,7 +78,7 @@ class NetworkGraph(object):
             previous[node] = src
         visited = {src}
 
-        while len(visited) != len(self._costs):
+        while len(costs) > 0:
             item = heapq.heappop(costs)
             current_dist = item.weight()
             current = item.data()

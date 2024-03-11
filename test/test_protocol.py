@@ -38,8 +38,7 @@ class ProtocolTest(unittest.TestCase):
         router.add_interface(iface2)
 
         proto = RoutingProtocol(router)
-
-        proto._handle_update(iface1)
+        proto._handle_update()
 
         result = self._queue.get(timeout=0.1)
         self.assertIsNotNone(result)
@@ -52,9 +51,13 @@ class ProtocolTest(unittest.TestCase):
         msg = datagram.payload()
         self.assertEqual(RoutingMessage, msg.type())
         self.assertEqual(msg.seq(), 1)
-        self.assertEqual(len(msg.destinations()), 1)
+        self.assertEqual(len(msg.destinations()), 2)
         self.assertEqual(msg.src_address(), '200.200.10.1')
         self.assertEqual(msg.src_router(), router)
+
+        cost = msg.destinations().get(net1.address())
+        self.assertIsNotNone(cost)
+        self.assertEqual(cost, 10)
 
         cost = msg.destinations().get(net2.address())
         self.assertIsNotNone(cost)

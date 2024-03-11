@@ -19,11 +19,18 @@ class AS(Entity):
     def hosts(self):
         return self._hosts
 
-    def get_network(self, name):
+    def network(self, name):
         if name not in self._networks:
             raise EntityNotFoundException(name)
 
         return self._networks[name]
+
+    def device(self, name):
+        if name not in self._hosts and name not in self._routers:
+            raise EntityNotFoundException(name)
+        if name in self._hosts:
+            return self._hosts[name]
+        return self._routers[name]
 
     def add_network(self, network):
         self._networks[network.name()] = network

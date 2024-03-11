@@ -15,28 +15,28 @@ class RoutingProtocol(object):
 
         self._seqs_by_address = collections.defaultdict(lambda: 0)
         self._seqs = collections.defaultdict(lambda: 0)
-        self._prev_state = collections.defaultdict(lambda: 0)
 
         self._stopped = False
         self._keepalive_thread = threading.Thread(target=self._keepalive_loop, daemon=True)
-        self._keepalive_thread.start()
 
         self._init_graph()
+        self._graph_updated = True
+
+    def start(self):
+        self._keepalive_thread.start()
 
     def _init_graph(self):
         self._graph = NetworkGraph()
         self._graph.add_router(self._router)
-        for _, iface in self._router.interfaces().items():
-            prefix = iface.network().address()
-            cost = iface.cost()
-            self._graph.add_network(prefix)
-            self._graph.add_edge(src=self._router, dst=prefix, weight=cost)
 
     def handle_incoming_message(self, msg, interface):
         from entities.address import NullAddress
 
+        self.update_state()
+
         src_addr = msg.src_address()
         seq = msg.seq()
+
         with self._lock:
             if seq > self._seqs_by_address[src_addr]:
                 self._flood_msg(msg, interface)
@@ -50,8 +50,7 @@ class RoutingProtocol(object):
                     for prefix in self._graph.networks():
                         path = paths.get(prefix, list())
                         if len(path) < 2:
-                            # TODO
-                            raise Exception('unexpected shortest path')
+                            continue
                         next_hop_network = path[1]
                         next_hop_address = NullAddress
                         if len(path) > 2:
@@ -66,41 +65,45 @@ class RoutingProtocol(object):
                                 routing_table.add_rule(prefix, next_hop_address, iface)
                                 break
 
-    def _update_state(self):
-        state_changed = False
+    def update_state(self):
+        with self._lock:
+            self._graph_updated = False
 
-        interfaces = self._router.interfaces()
-        if len(interfaces) != len(self._prev_state):
-            state_changed = True
+            for _, iface in self._router.interfaces().items():
+                prefix = iface.network().address()
+                cost = iface.cost()
 
-        for name, iface in interfaces.items():
-            prev_cost = self._prev_state[name]
-            if prev_cost != iface.cost():
-                state_changed = True
-            self._prev_state[name] = iface.cost()
+                if prefix not in self._graph:
+                    self._graph.add_network(prefix)
+                    self._graph_updated = True
 
-        return state_changed
+                prev_cost = self._graph.weight(src=self._router, dst=prefix)
+                if prev_cost != cost:
+                    self._graph_updated = True
+                    self._graph.add_edge(src=self._router, dst=prefix, weight=cost)
 
-    def _handle_update(self, interface):
+            return self._graph_updated
+
+    def _handle_update(self):
         from entities import RoutingMessage, Datagram
 
-        # TODO: same seq
-        self._seqs[interface.name()] += 1
-        seq = self._seqs[interface.name()]
+        self.update_state()
 
-        msg = RoutingMessage(interface, seq)
+        for _, interface in self._router.interfaces().items():
+            # TODO: same seq
+            self._seqs[interface.name()] += 1
+            seq = self._seqs[interface.name()]
 
-        for name, iface in self._router.interfaces().items():
-            if name == interface.name():
-                continue
+            msg = RoutingMessage(interface, seq)
 
-            prefix = iface.network().address()
-            cost = iface.cost()
-            msg.add_destination(prefix, cost)
+            for name, iface in self._router.interfaces().items():
+                prefix = iface.network().address()
+                cost = iface.cost()
+                msg.add_destination(prefix, cost)
 
-        net_broadcast = interface.network().broadcast_address()
-        datagram = Datagram(src_addr=interface.address(), dst_addr=net_broadcast, payload=msg)
-        interface.send_to(datagram, dst_addr=net_broadcast)
+            net_broadcast = interface.network().broadcast_address()
+            datagram = Datagram(src_addr=interface.address(), dst_addr=net_broadcast, payload=msg)
+            interface.send_to(datagram, dst_addr=net_broadcast)
 
     def _flood_msg(self, msg, interface):
         from entities import Datagram
@@ -114,32 +117,29 @@ class RoutingProtocol(object):
             iface.send_to(datagram, dst_addr=net_broadcast)
 
     def _update_graph(self, msg):
-        updated = False
+        self._graph_updated = False
         src_router = msg.src_router()
 
         if src_router not in self._graph:
             self._graph.add_router(src_router)
-            updated = True
+            self._graph_updated = True
 
         for prefix, cost in msg.destinations().items():
             if prefix not in self._graph:
                 self._graph.add_network(prefix)
-                updated = True
+                self._graph_updated = True
 
             current_cost = self._graph.weight(src=src_router, dst=prefix)
             if current_cost != cost:
                 self._graph.add_edge(src=src_router, dst=prefix, weight=cost)
-                updated = True
+                self._graph_updated = True
 
-        return updated
+        return self._graph_updated
 
     def stop(self):
         self._stopped = True
 
     def _keepalive_loop(self):
         while not self._stopped:
+            self._handle_update()
             time.sleep(self.KEEPALIVE_INTERVAL)
-            state_changed = self._update_state()
-            if state_changed:
-                for _, iface in self._router.interfaces().items():
-                    self._handle_update(iface)

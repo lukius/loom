@@ -78,6 +78,10 @@ class RoutingTable(object):
         return func_with_lock
 
     @with_lock
+    def rules(self):
+        return self._rules
+
+    @with_lock
     def add_rule(self, prefix, next_hop, interface):
         new_rule = RoutingRule(prefix, next_hop, interface)
 
@@ -122,7 +126,6 @@ class RoutingTable(object):
     with_lock = staticmethod(with_lock)
 
 
-
 class Router(NetworkDevice):
 
     def __init__(self, name):
@@ -132,6 +135,9 @@ class Router(NetworkDevice):
 
     def routing_table(self):
         return self._routing_table
+
+    def start(self):
+        self._protocol.start()
 
     def _handle_message(self, msg, interface):
         if msg.type() == RoutingMessage:

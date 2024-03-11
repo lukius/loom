@@ -36,6 +36,9 @@ class Parser(object):
         if 'hosts' in system_dict:
             self._parse_hosts(system, validator, system_dict['hosts'])
 
+        for router in system.routers().values():
+            router.start()
+
         return system
 
     def _parse_networks(self, system: AS, validator: SystemValidator, network_dict: dict):
@@ -61,7 +64,7 @@ class Parser(object):
                     self._fail(f'{name}: {iface_name}: no network assigned')
                 net_name = iface['network']
                 try:
-                    net = system.get_network(net_name)
+                    net = system.network(net_name)
                 except EntityNotFoundException:
                     self._fail(f'{name}: {iface_name}: network not found')
 
@@ -97,7 +100,7 @@ class Parser(object):
                 self._fail(f'{name}: no network assigned')
             net_name = obj['network']
             try:
-                net = system.get_network(net_name)
+                net = system.network(net_name)
             except EntityNotFoundException:
                 self._fail(f'{name}: network not found')
 
