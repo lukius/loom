@@ -8,9 +8,9 @@ class GraphTest(unittest.TestCase):
     def test_neighbors_and_weights(self):
         graph = NetworkGraph()
 
-        graph.add_node('node1')
-        graph.add_node('node2')
-        graph.add_node('node3')
+        graph._add_node('node1')
+        graph._add_node('node2')
+        graph._add_node('node3')
 
         graph.add_edge('node1', 'node2', weight=10)
         graph.add_edge('node1', 'node3', weight=20)
@@ -36,7 +36,7 @@ class GraphTest(unittest.TestCase):
         graph = NetworkGraph()
 
         for node in ['a','b','c','d','e','f','g']:
-            graph.add_node(node)
+            graph._add_node(node)
 
         graph.add_edge('a', 'b', weight=2)
         graph.add_edge('a', 'c', weight=5)
@@ -49,7 +49,7 @@ class GraphTest(unittest.TestCase):
         graph.add_edge('e', 'f', weight=14)
         graph.add_edge('e', 'g', weight=2)
 
-        distances, prevs = graph.shortest_paths('a')
+        distances, prevs = graph._shortest_paths('a')
         self.assertEqual(len(distances), 6)
         self.assertEqual(distances.get('b', 0), 2)
         self.assertEqual(distances.get('c', 0), 4)
@@ -65,3 +65,13 @@ class GraphTest(unittest.TestCase):
         self.assertEqual(prevs.get('e', None), 'c')
         self.assertEqual(prevs.get('f', None), 'e')
         self.assertEqual(prevs.get('g', None), 'c')
+
+        paths = graph.shortest_paths('a')
+        self.assertEqual(len(paths), 7)
+        self.assertEqual(paths.get('a', []), ['a'])
+        self.assertEqual(paths.get('b', []), ['a', 'b'])
+        self.assertEqual(paths.get('c', []), ['a', 'b', 'c'])
+        self.assertEqual(paths.get('d', []), ['a', 'b', 'c', 'e', 'd'])
+        self.assertEqual(paths.get('e', []), ['a', 'b', 'c', 'e'])
+        self.assertEqual(paths.get('f', []), ['a', 'b', 'c', 'e', 'f'])
+        self.assertEqual(paths.get('g', []), ['a', 'b', 'c', 'g'])

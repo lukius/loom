@@ -2,7 +2,8 @@ import unittest
 import threading
 import queue
 
-from entities import Interface, RoutingProtocol, Router, Network, NetworkAddress, Address, RoutingMessage
+from parser import Parser
+from entities import Interface, RoutingProtocol, Router, Network, NetworkAddress, Address, NullAddress, RoutingMessage
 
 
 class MockThread(object):
@@ -111,3 +112,147 @@ class ProtocolTest(unittest.TestCase):
 
         with self.assertRaises(queue.Empty):
             self._queue.get(timeout=0.1)
+
+    def test_routing_table_update_on_incoming_message(self):
+        system = Parser(f'test/resources/several_networks.yaml').parse()
+        routers = system.routers()
+        r1 = routers['r1']
+        r2 = routers['r2']
+        r3 = routers['r3']
+        r4 = routers['r4']
+
+        networks = system.networks()
+        lan1 = networks['lan1']
+        lan2 = networks['lan2']
+        lan3 = networks['lan3']
+        lan4 = networks['lan4']
+        lan5 = networks['lan5']
+        lan6 = networks['lan6']
+
+        hosts = system.hosts()
+        h1 = hosts['h1']
+        h2 = hosts['h2']
+        h3 = hosts['h3']
+        h4 = hosts['h4']
+        h5 = hosts['h5']
+        h6 = hosts['h6']
+
+        r3_eth0 = r3.interface('eth0')
+        r3_eth1 = r3.interface('eth1')
+        msg = RoutingMessage(src=r3_eth0, seq=1)
+        msg.add_destination(prefix=lan4.address(), cost=r3_eth0.cost())
+        msg.add_destination(prefix=lan5.address(), cost=r3_eth1.cost())
+
+        proto = RoutingProtocol(r1)
+        r1_eth1 = r1.interface('eth1')
+
+        # First message from r3; new connectivity to lan5
+        proto.handle_incoming_message(msg, r1_eth1)
+
+        r1_table = r1.routing_table()
+
+        result = r1_table.match(h5.address())
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.next_hop(), r3_eth0.address())
+        self.assertEqual(result.interface().name(), 'eth1')
+
+        result = r1_table.match(h1.address())
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.next_hop(), NullAddress)
+        self.assertEqual(result.interface().name(), 'eth0')
+
+        result = r1_table.match(h4.address())
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.next_hop(), NullAddress)
+        self.assertEqual(result.interface().name(), 'eth1')
+
+        for unreachable_host in [h2, h3, h6]:
+            result = r1_table.match(unreachable_host.address())
+            self.assertFalse(result.succeeded())
+
+        # Second message from r2; new connectivity to lan2 and lan3
+        r2_eth0 = r2.interface('eth0')
+        r2_eth1 = r2.interface('eth1')
+        r2_eth2 = r2.interface('eth2')
+        msg = RoutingMessage(src=r2_eth1, seq=1)
+        msg.add_destination(prefix=lan2.address(), cost=r2_eth0.cost())
+        msg.add_destination(prefix=lan1.address(), cost=r2_eth1.cost())
+        msg.add_destination(prefix=lan3.address(), cost=r2_eth2.cost())
+
+        r1_eth0 = r1.interface('eth0')
+        proto.handle_incoming_message(msg, r1_eth0)
+
+        result = r1_table.match(h2.address())
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.next_hop(), r2_eth1.address())
+        self.assertEqual(result.interface().name(), 'eth0')
+
+        result = r1_table.match(h3.address())
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.next_hop(), r2_eth1.address())
+        self.assertEqual(result.interface().name(), 'eth0')
+
+        # No routing changes for h1, h4 and h5 addresses
+        result = r1_table.match(h5.address())
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.next_hop(), r3_eth0.address())
+        self.assertEqual(result.interface().name(), 'eth1')
+
+        result = r1_table.match(h1.address())
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.next_hop(), NullAddress)
+        self.assertEqual(result.interface().name(), 'eth0')
+
+        result = r1_table.match(h4.address())
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.next_hop(), NullAddress)
+        self.assertEqual(result.interface().name(), 'eth1')
+
+        for unreachable_host in [h6]:
+            result = r1_table.match(unreachable_host.address())
+            self.assertFalse(result.succeeded())
+
+        # Third message from r4; new connectivity to lan6 and routing improvements to some hosts
+        r4_eth0 = r4.interface('eth0')
+        r4_eth1 = r4.interface('eth1')
+        r4_eth2 = r4.interface('eth2')
+        msg = RoutingMessage(src=r4_eth2, seq=1)
+        msg.add_destination(prefix=lan5.address(), cost=r4_eth0.cost())
+        msg.add_destination(prefix=lan6.address(), cost=r4_eth1.cost())
+        msg.add_destination(prefix=lan2.address(), cost=r4_eth2.cost())
+
+        proto.handle_incoming_message(msg, r1_eth1)
+
+        # No routing changes for h1, h3, h4 and h5 addresses
+        result = r1_table.match(h5.address())
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.next_hop(), r3_eth0.address())
+        self.assertEqual(result.interface().name(), 'eth1')
+
+        result = r1_table.match(h1.address())
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.next_hop(), NullAddress)
+        self.assertEqual(result.interface().name(), 'eth0')
+
+        result = r1_table.match(h4.address())
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.next_hop(), NullAddress)
+        self.assertEqual(result.interface().name(), 'eth1')
+
+        # h2 is now better reached through r1.eth1 via r3
+        result = r1_table.match(h2.address())
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.next_hop(), r3_eth0.address())
+        self.assertEqual(result.interface().name(), 'eth1')
+
+        # Same for h3
+        result = r1_table.match(h3.address())
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.next_hop(), r3_eth0.address())
+        self.assertEqual(result.interface().name(), 'eth1')
+
+        # New connectivity to h6
+        result = r1_table.match(h6.address())
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.next_hop(), r3_eth0.address())
+        self.assertEqual(result.interface().name(), 'eth1')

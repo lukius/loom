@@ -89,6 +89,10 @@ class RoutingTable(object):
         self._rules.append(new_rule)
 
     @with_lock
+    def clear(self):
+        self._rules = list()
+
+    @with_lock
     def remove_rule(self, prefix):
         for i, rule in enumerate(self._rules):
             if prefix == rule.prefix():

@@ -25,14 +25,16 @@ class RoutingProtocol(object):
 
     def _init_graph(self):
         self._graph = NetworkGraph()
-        self._graph.add_node(self._router)
+        self._graph.add_router(self._router)
         for _, iface in self._router.interfaces().items():
             prefix = iface.network().address()
             cost = iface.cost()
-            self._graph.add_node(prefix)
+            self._graph.add_network(prefix)
             self._graph.add_edge(src=self._router, dst=prefix, weight=cost)
 
     def handle_incoming_message(self, msg, interface):
+        from entities.address import NullAddress
+
         src_addr = msg.src_address()
         seq = msg.seq()
         with self._lock:
@@ -42,8 +44,27 @@ class RoutingProtocol(object):
 
                 updated = self._update_graph(msg)
                 if updated:
-                    # TODO
-                    pass
+                    routing_table = self._router.routing_table()
+                    routing_table.clear()
+                    paths = self._graph.shortest_paths(self._router)
+                    for prefix in self._graph.networks():
+                        path = paths.get(prefix, list())
+                        if len(path) < 2:
+                            # TODO
+                            raise Exception('unexpected shortest path')
+                        next_hop_network = path[1]
+                        next_hop_address = NullAddress
+                        if len(path) > 2:
+                            next_hop = path[2]
+                            for _, iface in next_hop.interfaces().items():
+                                if iface.network().address() == next_hop_network:
+                                    next_hop_address = iface.address()
+                                    break
+
+                        for _, iface in self._router.interfaces().items():
+                            if iface.network().address() == next_hop_network:
+                                routing_table.add_rule(prefix, next_hop_address, iface)
+                                break
 
     def _update_state(self):
         state_changed = False
@@ -94,15 +115,15 @@ class RoutingProtocol(object):
 
     def _update_graph(self, msg):
         updated = False
-        src_router = msg.src_router().name()
+        src_router = msg.src_router()
 
         if src_router not in self._graph:
-            self._graph.add_node(src_router)
+            self._graph.add_router(src_router)
             updated = True
 
         for prefix, cost in msg.destinations().items():
             if prefix not in self._graph:
-                self._graph.add_node(prefix)
+                self._graph.add_network(prefix)
                 updated = True
 
             current_cost = self._graph.weight(src=src_router, dst=prefix)

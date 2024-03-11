@@ -10,6 +10,9 @@ class NetworkDevice(Entity):
     def interfaces(self):
         return self._interfaces
 
+    def interface(self, name):
+        return self._interfaces.get(name, None)
+
     def add_interface(self, interface):
         self._interfaces[interface.name()] = interface
         interface._set_device(self)
