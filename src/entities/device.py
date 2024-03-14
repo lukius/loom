@@ -1,4 +1,5 @@
 from .base import Entity
+from .exception import InvalidInterfaceException
 
 
 class NetworkDevice(Entity):
@@ -16,6 +17,12 @@ class NetworkDevice(Entity):
     def add_interface(self, interface):
         self._interfaces[interface.name()] = interface
         interface._set_device(self)
+
+    def update_interface(self, iface_name: str, cost: int):
+        if iface_name not in self._interfaces:
+            raise InvalidInterfaceException(self, iface_name)
+        iface = self._interfaces[iface_name]
+        iface.set_cost(cost)
 
     def handle_packet(self, packet, interface):
         dst = packet.destination()

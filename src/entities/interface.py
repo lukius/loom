@@ -34,6 +34,9 @@ class Interface(Entity):
     def cost(self):
         return self._cost
 
+    def set_cost(self, cost: int):
+        self._cost = cost
+
     def stop(self):
         self._in_queue.put(None)
 

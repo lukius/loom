@@ -7,7 +7,7 @@ from .graph import NetworkGraph
 
 class RoutingProtocol(object):
 
-    KEEPALIVE_INTERVAL = 30
+    KEEPALIVE_INTERVAL = 10
 
     def __init__(self, router):
         self._router = router

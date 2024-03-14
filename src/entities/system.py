@@ -1,5 +1,8 @@
 from .base import Entity
-from .exception import EntityNotFoundException
+from .exception import HostNotFoundException, RouterNotFoundException, NetworkNotFoundException
+from .host import Host
+from .device import NetworkDevice
+from .router import Router
 
 
 class AS(Entity):
@@ -21,15 +24,26 @@ class AS(Entity):
 
     def network(self, name):
         if name not in self._networks:
-            raise EntityNotFoundException(name)
+            raise NetworkNotFoundException(name)
 
         return self._networks[name]
 
-    def device(self, name):
-        if name not in self._hosts and name not in self._routers:
-            raise EntityNotFoundException(name)
-        if name in self._hosts:
-            return self._hosts[name]
+    def device(self, name: str) -> NetworkDevice:
+        try:
+            return self.host(name)
+        except HostNotFoundException:
+            pass
+
+        return self.router(name)
+
+    def host(self, name: str) -> Host:
+        if name not in self._hosts:
+            raise HostNotFoundException(name)
+        return self._hosts[name]
+
+    def router(self, name: str) -> Router:
+        if name not in self._routers:
+            raise RouterNotFoundException(name)
         return self._routers[name]
 
     def add_network(self, network):
@@ -40,3 +54,9 @@ class AS(Entity):
 
     def add_host(self, host):
         self._hosts[host.name()] = host
+
+    def stop(self):
+        for network in self._networks.values():
+            network.stop()
+        for router in self._routers.values():
+            router.stop()

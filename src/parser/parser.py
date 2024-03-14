@@ -1,8 +1,9 @@
 import yaml
 
 from .exception import ParsingException
-from entities import AS, Network, Router, Host, Interface, NetworkAddress, Address, EntityNotFoundException
 from .validator import SystemValidator
+from entities import AS, Network, Router, Host, Interface, NetworkAddress, Address
+from entities import NetworkNotFoundException
 
 
 class Parser(object):
@@ -65,7 +66,7 @@ class Parser(object):
                 net_name = iface['network']
                 try:
                     net = system.network(net_name)
-                except EntityNotFoundException:
+                except NetworkNotFoundException:
                     self._fail(f'{name}: {iface_name}: network not found')
 
                 if 'address' not in iface:
@@ -101,7 +102,7 @@ class Parser(object):
             net_name = obj['network']
             try:
                 net = system.network(net_name)
-            except EntityNotFoundException:
+            except NetworkNotFoundException:
                 self._fail(f'{name}: network not found')
 
             if 'address' not in obj:
