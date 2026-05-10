@@ -56,8 +56,9 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 - Run `python run_tests.py` after every change.
 
 ### Documentation — keep in sync with code
-- After any code change, audit `README.md`, this `CLAUDE.md`, and any docstrings touching the changed surface. If they are now stale, update them in the **same commit** as the code change — never leave docs for "later".
-- Things that must stay accurate: entry points and how to run them, shell command set + syntax, YAML schema, routing protocol wire format, project layout, dependencies.
+- After a code change, check whether `README.md`, this `CLAUDE.md`, or any docstrings on the changed surface are now stale. If so, update them in the same commit — do not leave docs for "later".
+- Update **only when needed**: a small internal refactor with no observable behavior change typically requires no doc edits. Behavioral, interface, layout, or workflow changes usually do.
+- Surfaces that must stay accurate when touched: entry points and how to run them, shell command set + syntax, YAML schema, routing protocol wire format, project layout, dependencies.
 - If a behavior is intentionally undocumented (e.g. an internal helper), say nothing — do not write speculative docs.
 
 ### Commits
@@ -66,7 +67,7 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 
 ### After touching code
 - Run tests (red → green → refactor cycle complete, full suite green).
-- Update `README.md`, this `CLAUDE.md`, and any affected docstrings in the same commit as the code change.
+- If the change affects behavior, interfaces, layout, build/run, or workflows, update `README.md`, this `CLAUDE.md`, and any affected docstrings in the same commit. Pure-internal refactors with no observable change usually need no doc edits.
 
 ### About this file
 - **Keep it under 200 lines.** If it grows past that, prune.
