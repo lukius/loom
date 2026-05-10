@@ -1,0 +1,2866 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>netrouting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500;600&display=swap"
+  rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+<style>
+/* ============================================================
+   layout — column widths (resizable, persisted)
+   ============================================================ */
+:root {
+  --nav-w:    264px;
+  --insp-w:   332px;
+  --splitL-w: 5px;
+  --splitR-w: 5px;
+}
+
+/* ============================================================
+   tokens
+   ============================================================ */
+:root[data-theme="light"] {
+  --bg:           #ffffff;
+  --bg-2:         #fafafa;
+  --bg-3:         #f4f4f5;
+  --bg-4:         #ededee;
+  --hover:        #f4f4f5;
+  --border:       #e4e4e7;
+  --border-2:     #d4d4d8;
+  --text:         #09090b;
+  --text-2:       #52525b;
+  --text-3:       #a1a1aa;
+  --text-4:       #d4d4d8;
+
+  --accent:       #4f46e5;
+  --accent-fg:    #ffffff;
+  --accent-bg:    #eef2ff;
+  --accent-bg-2:  #e0e7ff;
+  --accent-border:#c7d2fe;
+  --accent-text:  #4338ca;
+
+  /* per-type accents (subtle) */
+  --net:          #4f46e5;
+  --net-bg:       #eef2ff;
+  --net-border:   #c7d2fe;
+  --net-text:     #4338ca;
+
+  --host:         #0e9f6e;
+  --host-bg:      #ecfdf5;
+  --host-border:  #a7f3d0;
+  --host-text:    #047857;
+
+  --rtr:          #c026d3;
+  --rtr-bg:       #fdf4ff;
+  --rtr-border:   #f0abfc;
+  --rtr-text:     #a21caf;
+
+  --pos:          #16a34a;
+  --warn:         #d97706;
+  --neg:          #dc2626;
+
+  --canvas-bg:    #fafafa;
+  --canvas-grid:  #ededee;
+  --canvas-grid-2:#dcdce0;
+  --edge:         #c4c4c8;
+  --edge-strong:  #71717a;
+
+  --shadow-1:     0 1px 2px rgba(0,0,0,.04), 0 1px 3px rgba(0,0,0,.05);
+  --shadow-2:     0 4px 12px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-pop:   0 12px 32px rgba(0,0,0,.10), 0 2px 6px rgba(0,0,0,.06);
+
+  --accent-glow:  rgba(79,70,229,.32);
+}
+
+:root[data-theme="dark"] {
+  --bg:           #0a0a0a;
+  --bg-2:         #111113;
+  --bg-3:         #1a1a1d;
+  --bg-4:         #232328;
+  --hover:        #1a1a1d;
+  --border:       #232328;
+  --border-2:     #2e2e34;
+  --text:         #fafafa;
+  --text-2:       #a1a1aa;
+  --text-3:       #71717a;
+  --text-4:       #3f3f46;
+
+  --accent:       #818cf8;
+  --accent-fg:    #0a0a0a;
+  --accent-bg:    rgba(129,140,248,.10);
+  --accent-bg-2:  rgba(129,140,248,.18);
+  --accent-border:rgba(129,140,248,.34);
+  --accent-text:  #a5b4fc;
+
+  --net:          #818cf8;
+  --net-bg:       rgba(129,140,248,.10);
+  --net-border:   rgba(129,140,248,.30);
+  --net-text:     #a5b4fc;
+
+  --host:         #34d399;
+  --host-bg:      rgba(52,211,153,.10);
+  --host-border:  rgba(52,211,153,.30);
+  --host-text:    #6ee7b7;
+
+  --rtr:          #d946ef;
+  --rtr-bg:       rgba(217,70,239,.10);
+  --rtr-border:   rgba(217,70,239,.30);
+  --rtr-text:     #f0abfc;
+
+  --pos:          #4ade80;
+  --warn:         #fbbf24;
+  --neg:          #f87171;
+
+  --canvas-bg:    #0a0a0a;
+  --canvas-grid:  #1a1a1d;
+  --canvas-grid-2:#27272a;
+  --edge:         #3f3f46;
+  --edge-strong:  #71717a;
+
+  --shadow-1:     0 1px 2px rgba(0,0,0,.5);
+  --shadow-2:     0 4px 12px rgba(0,0,0,.4), 0 1px 2px rgba(0,0,0,.3);
+  --shadow-pop:   0 12px 32px rgba(0,0,0,.5), 0 2px 6px rgba(0,0,0,.4);
+
+  --accent-glow:  rgba(129,140,248,.45);
+}
+
+/* ============================================================
+   reset
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+button { cursor: pointer; background: none; border: 0; color: inherit; font: inherit; }
+input, select, textarea { outline: none; color: inherit; font: inherit; background: transparent; border: 0; }
+
+body {
+  font-family: 'Geist', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text);
+  background: var(--bg);
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  transition: background .25s ease, color .25s ease;
+}
+
+::selection { background: var(--accent-bg-2); color: var(--text); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-2);
+  border: 2px solid var(--bg);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+/* ============================================================
+   app shell
+   ============================================================ */
+.app {
+  position: fixed; inset: 0;
+  display: grid;
+  grid-template-rows: 56px 1fr;
+  grid-template-columns: var(--nav-w) var(--splitL-w) 1fr var(--splitR-w) var(--insp-w);
+  grid-template-areas:
+    "head head head head head"
+    "nav  splitL doc splitR insp";
+}
+
+/* ============================================================
+   splitters (column resizers)
+   ============================================================ */
+.splitter {
+  position: relative;
+  background: var(--bg);
+  cursor: col-resize;
+  z-index: 5;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.splitter::before {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 50%;
+  width: 1px;
+  margin-left: -0.5px;
+  background: var(--border);
+  transition: background .18s, width .18s, margin-left .18s, box-shadow .18s;
+}
+.splitter:hover::before {
+  width: 3px; margin-left: -1.5px;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+.splitter.dragging {
+  background: var(--accent-bg);
+}
+.splitter.dragging::before {
+  width: 3px; margin-left: -1.5px;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+.splitter-nav  { grid-area: splitL; }
+.splitter-insp { grid-area: splitR; }
+
+/* during a drag, freeze the cursor everywhere so it doesn't snap back to default
+   when the pointer leaves the 5px splitter strip */
+body.col-resizing { cursor: col-resize !important; }
+body.col-resizing * { cursor: col-resize !important; }
+
+/* ============================================================
+   header
+   ============================================================ */
+.header {
+  grid-area: head;
+  display: grid;
+  grid-template-columns: var(--nav-w) 1fr auto;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  position: relative;
+  z-index: 10;
+}
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 18px;
+  height: 100%;
+  border-right: 1px solid var(--border);
+}
+.brand .mark {
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  background:
+    linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, #000) 100%);
+  display: inline-flex; align-items: center; justify-content: center;
+  position: relative;
+  flex: none;
+}
+.brand .mark svg { color: var(--accent-fg); }
+.brand .name {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.brand .ver {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--text-3);
+  font-weight: 400;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-left: 4px;
+}
+
+.head-mid {
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 18px;
+  height: 100%;
+}
+.head-mid .crumb {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.head-mid .crumb .sep { color: var(--text-4); }
+.head-mid input.proj {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  width: 14ch;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  transition: background .12s, border-color .12s;
+}
+.head-mid input.proj:hover { background: var(--bg-3); }
+.head-mid input.proj:focus { background: var(--bg-3); border-color: var(--border-2); }
+
+.head-mid .save {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.head-mid .save .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--pos);
+}
+
+.head-actions {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 18px;
+  height: 100%;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+  background: var(--bg-3);
+  margin-right: 4px;
+}
+.theme-toggle button {
+  width: 28px; height: 24px;
+  border-radius: 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-3);
+  transition: background .15s, color .15s;
+}
+.theme-toggle button:hover { color: var(--text); }
+.theme-toggle button.active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+}
+
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 11px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--text-2);
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: background .12s, color .12s, border-color .12s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--bg-3); color: var(--text); }
+.btn.outline { border-color: var(--border); }
+.btn.outline:hover { border-color: var(--border-2); background: var(--bg-3); }
+.btn.primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+.btn.primary:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+:root[data-theme="dark"] .btn.primary {
+  background: var(--text); color: var(--bg);
+}
+.btn .ico { width: 13px; height: 13px; flex: none; }
+
+/* ============================================================
+   sidebar (nav)
+   ============================================================ */
+.nav {
+  grid-area: nav;
+  background: var(--bg-2);
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+  min-width: 0;
+}
+.nav-section { border-bottom: 1px solid var(--border); }
+.nav-section:last-child { border-bottom: 0; }
+.nav-shead {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px 8px;
+  user-select: none;
+}
+.nav-shead .left { display: flex; align-items: center; gap: 8px; }
+.nav-shead .ttl {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.nav-shead .count {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--text-3);
+  padding: 1px 5px;
+  background: var(--bg-3);
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.nav-shead .add {
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 4px;
+  color: var(--text-3);
+  transition: background .12s, color .12s;
+}
+.nav-shead .add:hover { background: var(--bg-3); color: var(--text); }
+.nav-shead .add svg { width: 12px; height: 12px; }
+
+.nav-list { padding: 0 8px 12px; }
+.nav-empty {
+  margin: 4px 8px 8px;
+  padding: 10px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--text-3);
+  text-align: center;
+  line-height: 1.5;
+}
+.nav-empty kbd {
+  display: inline-block; padding: 1px 5px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 3px;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--text-2);
+  margin: 0 1px;
+}
+.nav-row {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  gap: 9px;
+  align-items: center;
+  padding: 7px 9px;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-bottom: 1px;
+  transition: background .12s;
+}
+.nav-row:hover { background: var(--bg-3); }
+.nav-row.selected {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+.nav-row .glyph {
+  width: 14px; height: 14px;
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-3);
+}
+.nav-row.selected .glyph { color: var(--accent); }
+.nav-row .glyph.network { color: var(--net); }
+.nav-row .glyph.host    { color: var(--host); }
+.nav-row .glyph.router  { color: var(--rtr); }
+.nav-row .name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.nav-row.selected .name { color: var(--accent-text); }
+.nav-row .meta {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.nav-row.selected .meta { color: var(--accent-text); opacity: .75; }
+
+/* ============================================================
+   canvas — interactive topology
+   ============================================================ */
+.canv-wrap {
+  grid-area: doc;
+  position: relative;
+  background: var(--canvas-bg);
+  overflow: hidden;
+  user-select: none;
+}
+.canv-toolbar {
+  position: absolute; top: 12px; left: 12px;
+  z-index: 5;
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-1);
+}
+.canv-toolbar .tb-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  border-radius: 5px;
+  transition: background .12s, color .12s;
+}
+.canv-toolbar .tb-btn:hover { background: var(--bg-3); color: var(--text); }
+.canv-toolbar .tb-btn .ico { width: 14px; height: 14px; }
+.canv-toolbar .tb-btn.network .ico { color: var(--net); }
+.canv-toolbar .tb-btn.host    .ico { color: var(--host); }
+.canv-toolbar .tb-btn.router  .ico { color: var(--rtr); }
+.canv-toolbar .div { width: 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
+
+.canv-zoom {
+  position: absolute; bottom: 14px; left: 12px;
+  z-index: 5;
+  display: flex; align-items: center; gap: 2px;
+  padding: 2px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-1);
+}
+.canv-zoom button {
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 5px;
+  color: var(--text-2);
+  transition: background .12s;
+}
+.canv-zoom button:hover { background: var(--bg-3); color: var(--text); }
+.canv-zoom .lvl {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--text-2);
+  padding: 0 8px;
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+  text-align: center;
+}
+
+.canv-hint {
+  position: absolute; bottom: 14px; right: 14px;
+  z-index: 5;
+  display: flex; align-items: center; gap: 12px;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  color: var(--text-3);
+  padding: 6px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-1);
+}
+.canv-hint kbd {
+  display: inline-flex; align-items: center;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-2);
+  color: var(--text-2);
+  font-size: 10px;
+}
+.canv-hint .item { display: inline-flex; align-items: center; gap: 5px; }
+
+svg.canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  display: block;
+  cursor: grab;
+}
+svg.canvas.panning { cursor: grabbing; }
+svg.canvas.linking { cursor: crosshair; }
+
+/* edges */
+.canvas .edge {
+  fill: none;
+  stroke: var(--edge);
+  stroke-width: 1.4;
+  transition: stroke .12s, stroke-width .12s;
+}
+.canvas .edge.host { stroke: var(--edge); stroke-dasharray: 2 3; }
+.canvas .edge.router { stroke: var(--edge-strong); }
+.canvas .edge.selected { stroke: var(--accent); stroke-width: 2; }
+.canvas .edge.preview {
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-dasharray: 3 4;
+  opacity: .85;
+}
+.canvas .edge-cost {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10px;
+  fill: var(--text-2);
+  paint-order: stroke;
+  stroke: var(--canvas-bg);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  font-weight: 500;
+}
+.canvas .edge-iface {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 9.5px;
+  fill: var(--text-3);
+  paint-order: stroke;
+  stroke: var(--canvas-bg);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* node generic */
+.canvas .node { cursor: grab; }
+.canvas .node.dragging { cursor: grabbing; }
+
+/* invisible hit rect — captures pointer events across the full node bounds */
+.canvas .node .hit {
+  fill: rgba(0,0,0,0);
+  pointer-events: all;
+}
+
+.canvas .node .name {
+  font-family: 'Geist', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  fill: var(--text);
+  letter-spacing: -0.01em;
+  transition: fill .12s;
+}
+.canvas .node .sub {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-weight: 400;
+  font-size: 10.5px;
+  fill: var(--text-2);
+}
+.canvas .node .sub.empty { fill: var(--text-3); font-style: italic; }
+
+/* host / router: frameless icon with label below */
+.canvas .node.host .icon,
+.canvas .node.router .icon {
+  transition: filter .15s, transform .15s;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+.canvas .node.host .icon   { color: var(--host); }
+.canvas .node.router .icon { color: var(--rtr); }
+.canvas .node.host:hover .icon,
+.canvas .node.router:hover .icon {
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,.12));
+}
+.canvas .node.host.selected .icon,
+.canvas .node.router.selected .icon {
+  filter: drop-shadow(0 0 12px var(--accent-glow));
+}
+.canvas .node.host.selected .name,
+.canvas .node.router.selected .name {
+  fill: var(--accent);
+}
+
+/* dashed selection ring around device icon */
+.canvas .node.host .ring,
+.canvas .node.router .ring {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 3;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s;
+}
+.canvas .node.selected .ring { opacity: .85; }
+
+/* LAN: cloud silhouette */
+.canvas .node.network .cloud {
+  fill: var(--net-bg);
+  stroke: var(--net-border);
+  stroke-width: 1.4;
+  transition: stroke .12s, fill .12s, stroke-width .12s, filter .15s;
+}
+.canvas .node.network:hover .cloud {
+  stroke: var(--net);
+  filter: drop-shadow(0 4px 10px rgba(0,0,0,.06));
+}
+.canvas .node.network.selected .cloud {
+  stroke: var(--net);
+  stroke-width: 2;
+}
+.canvas .node.network .name { fill: var(--net-text); font-weight: 600; }
+.canvas .node.network.selected .name { fill: var(--accent); }
+
+/* drop highlight on LAN cloud */
+.canvas .node.network.drop-target .cloud {
+  stroke: var(--accent);
+  stroke-width: 2.4;
+  fill: var(--accent-bg-2);
+  filter: drop-shadow(0 0 16px var(--accent-glow));
+}
+.canvas .node.network.drop-target .name { fill: var(--accent); }
+
+/* empty overlay */
+.canv-empty {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+}
+.canv-empty[hidden] { display: none !important; }
+.canv-empty .inner {
+  pointer-events: auto;
+  text-align: center;
+  max-width: 420px;
+}
+.canv-empty .icon-row {
+  display: inline-flex; gap: 14px;
+  margin-bottom: 18px;
+  color: var(--text-3);
+}
+.canv-empty .icon-row svg { width: 38px; height: 38px; }
+.canv-empty .ttl {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.canv-empty .sub {
+  font-size: 13px;
+  color: var(--text-3);
+  margin-bottom: 22px;
+  line-height: 1.6;
+}
+.canv-empty .actions {
+  display: inline-flex; gap: 8px;
+}
+
+/* ============================================================
+   context menu
+   ============================================================ */
+.ctx {
+  position: fixed;
+  z-index: 200;
+  min-width: 200px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-pop);
+  padding: 4px;
+  animation: ctx-in .12s ease both;
+}
+@keyframes ctx-in { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: scale(1); } }
+.ctx .ctx-head {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 6px 10px 4px;
+}
+.ctx .ctx-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+.ctx .ctx-item:hover { background: var(--bg-3); }
+.ctx .ctx-item.danger { color: var(--neg); }
+.ctx .ctx-item.danger:hover { background: color-mix(in srgb, var(--neg) 8%, transparent); }
+.ctx .ctx-item .ico { width: 14px; height: 14px; color: var(--text-3); flex: none; }
+.ctx .ctx-item:hover .ico { color: var(--text); }
+.ctx .ctx-item.danger:hover .ico { color: var(--neg); }
+.ctx .ctx-item .meta {
+  margin-left: auto;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  color: var(--text-3);
+  font-weight: 400;
+}
+.ctx .ctx-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 6px;
+}
+
+.ctx-sub {
+  position: relative;
+}
+.ctx-sub > .ctx-item::after {
+  content: ""; margin-left: 8px;
+  width: 0; height: 0;
+  border-left: 4px solid var(--text-3);
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+}
+.ctx-sub > .ctx-panel {
+  display: none;
+  position: absolute; left: calc(100% - 4px); top: 0;
+  min-width: 180px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-pop);
+  padding: 4px;
+}
+.ctx-sub:hover > .ctx-panel { display: block; }
+
+/* ============================================================
+   inspector
+   ============================================================ */
+.insp {
+  grid-area: insp;
+  background: var(--bg-2);
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+  position: relative;
+  transition: box-shadow .25s ease;
+  min-width: 0;
+}
+.insp.flash { box-shadow: inset 4px 0 0 var(--accent); }
+.insp-empty {
+  padding: 60px 24px;
+  text-align: center;
+  color: var(--text-3);
+}
+.insp-empty .icon {
+  margin: 0 auto 16px;
+  width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.insp-empty .ttl {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+  letter-spacing: -0.01em;
+}
+.insp-empty .sub {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.6;
+  max-width: 240px;
+  margin: 0 auto;
+}
+
+.insp-head {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.insp-head .pre {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 11px;
+  color: var(--text-3);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+.insp-head .pre .pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-2);
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.insp-head .pre .pill.network { color: var(--net-text); border-color: var(--net-border); background: var(--net-bg); }
+.insp-head .pre .pill.host    { color: var(--host-text); border-color: var(--host-border); background: var(--host-bg); }
+.insp-head .pre .pill.router  { color: var(--rtr-text); border-color: var(--rtr-border); background: var(--rtr-bg); }
+.insp-head .name {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  word-break: break-word;
+  line-height: 1.2;
+}
+
+.insp-body {
+  padding: 14px 20px 20px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 11px; font-weight: 500; color: var(--text-2); }
+.field input, .field select {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  transition: border-color .12s, background .12s, box-shadow .12s;
+}
+.field input:hover, .field select:hover { border-color: var(--border-2); }
+.field input:focus, .field select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+.field .hint { font-size: 11px; color: var(--text-3); }
+
+.iflist { display: flex; flex-direction: column; gap: 8px; }
+.iface {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 10px 12px;
+  background: var(--bg);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.iface .ihead {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.iface .ihead .ttl {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.iface .ihead .ttl .pill {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--rtr-text);
+  background: var(--rtr-bg);
+  border: 1px solid var(--rtr-border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.iface .ihead .del {
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 4px;
+  color: var(--text-3);
+  font-size: 13px;
+  transition: background .12s, color .12s;
+}
+.iface .ihead .del:hover { background: var(--neg); color: #fff; }
+.iface .pair label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-3);
+  margin-bottom: 3px;
+  display: block;
+}
+.iface .pair input, .iface .pair select {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11.5px;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 6px 8px;
+  width: 100%;
+  transition: border-color .12s, box-shadow .12s;
+}
+.iface .pair input:focus, .iface .pair select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+.iface .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.iface .grid.full { grid-template-columns: 1fr; }
+.add-if {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-2);
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: transparent;
+  transition: color .12s, border-color .12s, background .12s;
+}
+.add-if:hover {
+  color: var(--accent-text); border-color: var(--accent); background: var(--accent-bg);
+}
+
+.insp-foot {
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+  padding: 12px 20px;
+  display: flex; gap: 8px;
+}
+.insp-foot button {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-2);
+  transition: all .12s;
+}
+.insp-foot button.dup:hover { color: var(--accent-text); border-color: var(--accent); background: var(--accent-bg); }
+.insp-foot button.del:hover { color: var(--neg); border-color: var(--neg); background: color-mix(in srgb, var(--neg) 8%, transparent); }
+
+/* ============================================================
+   modal
+   ============================================================ */
+.modal-bg {
+  position: fixed; inset: 0;
+  background: rgba(9,9,11,.4);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+  animation: fade-in .15s ease both;
+}
+:root[data-theme="dark"] .modal-bg { background: rgba(0,0,0,.6); }
+.modal {
+  width: min(640px, 92vw);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+  animation: slide-up .2s cubic-bezier(.2,.7,.3,1) both;
+}
+.modal-head {
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-head .ttl { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.modal-head .x {
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 5px;
+  color: var(--text-3);
+  transition: background .12s, color .12s;
+}
+.modal-head .x:hover { background: var(--bg-3); color: var(--text); }
+.modal-body { padding: 14px 20px; }
+.modal-body textarea {
+  width: 100%; min-height: 320px;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  resize: vertical;
+  transition: border-color .12s, box-shadow .12s;
+}
+.modal-body textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+.modal-foot {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-2);
+  display: flex; justify-content: flex-end; gap: 8px;
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slide-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ============================================================
+   toasts
+   ============================================================ */
+.toast-wrap {
+  position: fixed; right: 20px; bottom: 20px;
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 200;
+}
+.toast {
+  min-width: 220px;
+  max-width: 320px;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-2);
+  font-size: 12px;
+  color: var(--text);
+  animation: toast-in .2s ease both;
+  position: relative;
+  display: flex; gap: 10px; align-items: flex-start;
+}
+.toast .icon {
+  width: 16px; height: 16px;
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  margin-top: 2px;
+  background: var(--bg-3);
+  color: var(--text-2);
+  font-size: 11px;
+}
+.toast.ok .icon { background: color-mix(in srgb, var(--pos) 15%, transparent); color: var(--pos); }
+.toast.error .icon { background: color-mix(in srgb, var(--neg) 15%, transparent); color: var(--neg); }
+.toast .body .lab {
+  font-size: 10px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+  margin-bottom: 1px;
+}
+.toast .body .msg { line-height: 1.4; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ============================================================
+   load-in
+   ============================================================ */
+.header { animation: in-down .35s 0.00s both ease-out; }
+.nav    { animation: in-side .35s 0.04s both ease-out; }
+.canv-wrap   { animation: in-fade .45s 0.10s both ease-out; }
+.insp   { animation: in-side2 .35s 0.16s both ease-out; }
+@keyframes in-down  { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes in-side  { from { opacity: 0; transform: translateX(-3px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes in-side2 { from { opacity: 0; transform: translateX(3px); }  to { opacity: 1; transform: translateX(0); } }
+@keyframes in-fade  { from { opacity: 0; }                              to { opacity: 1; } }
+
+/* ============================================================
+   responsive
+   ============================================================ */
+@media (max-width: 1180px) {
+  :root { --nav-w: 240px; --insp-w: 308px; }
+  .brand { padding: 0 14px; }
+}
+@media (max-width: 980px) {
+  :root { --insp-w: 0px; --splitR-w: 0px; }
+  .insp, .splitter-insp { display: none; }
+  .head-mid .crumb { display: none; }
+  .canv-hint { display: none; }
+}
+@media (max-width: 720px) {
+  :root { --nav-w: 0px; --splitL-w: 0px; }
+  .nav, .splitter-nav { display: none; }
+  .head-mid { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- =========== ICON DEFS =========== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<defs>
+  <!-- Network / LAN: a small switch box with port lights and uplink -->
+  <symbol id="ico-net" viewBox="0 0 32 26">
+    <rect x="2.5" y="6.5" width="27" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <line x1="2.5" y1="13" x2="29.5" y2="13" stroke="currentColor" stroke-width="1" opacity="0.35"/>
+    <!-- 5 port lights inside -->
+    <rect x="6"  y="14.6" width="3" height="2.6" rx="0.4" fill="currentColor" opacity="0.7"/>
+    <rect x="11" y="14.6" width="3" height="2.6" rx="0.4" fill="currentColor" opacity="0.55"/>
+    <rect x="16" y="14.6" width="3" height="2.6" rx="0.4" fill="currentColor" opacity="0.7"/>
+    <rect x="21" y="14.6" width="3" height="2.6" rx="0.4" fill="currentColor" opacity="0.4"/>
+    <rect x="26" y="14.6" width="3" height="2.6" rx="0.4" fill="currentColor" opacity="0.7"/>
+    <!-- uplink -->
+    <line x1="16" y1="2" x2="16" y2="6.5" stroke="currentColor" stroke-width="1.5"/>
+    <circle cx="16" cy="2" r="1.2" fill="currentColor"/>
+    <!-- bottom taps -->
+    <line x1="9"  y1="19.5" x2="9"  y2="23" stroke="currentColor" stroke-width="1"/>
+    <line x1="16" y1="19.5" x2="16" y2="23" stroke="currentColor" stroke-width="1"/>
+    <line x1="23" y1="19.5" x2="23" y2="23" stroke="currentColor" stroke-width="1"/>
+    <circle cx="9"  cy="23" r="1" fill="currentColor"/>
+    <circle cx="16" cy="23" r="1" fill="currentColor"/>
+    <circle cx="23" cy="23" r="1" fill="currentColor"/>
+  </symbol>
+
+  <!-- Host: workstation / monitor with stand -->
+  <symbol id="ico-host" viewBox="0 0 28 30">
+    <!-- monitor frame -->
+    <rect x="2.5" y="3.5" width="23" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <!-- inner screen -->
+    <rect x="5" y="6" width="18" height="11" rx="0.6" fill="currentColor" opacity="0.10"/>
+    <!-- horizontal "lines" of text on screen -->
+    <line x1="6.5" y1="9"  x2="14"   y2="9"  stroke="currentColor" stroke-width="1" opacity="0.55"/>
+    <line x1="6.5" y1="11.5" x2="19" y2="11.5" stroke="currentColor" stroke-width="1" opacity="0.40"/>
+    <line x1="6.5" y1="14"  x2="11"  y2="14"  stroke="currentColor" stroke-width="1" opacity="0.55"/>
+    <!-- stand -->
+    <line x1="14" y1="19.5" x2="14" y2="24" stroke="currentColor" stroke-width="1.2"/>
+    <line x1="8"  y1="26.8" x2="20" y2="26.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="11" y1="24"   x2="17" y2="24"   stroke="currentColor" stroke-width="1.2"/>
+  </symbol>
+
+  <!-- Router: stylized 3D cube with two antennae and ethernet ports -->
+  <symbol id="ico-router" viewBox="0 0 32 30">
+    <!-- antennae -->
+    <line x1="9" y1="2.5" x2="9" y2="9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    <line x1="23" y1="2.5" x2="23" y2="9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    <circle cx="9"  cy="2.5" r="1.2" fill="currentColor"/>
+    <circle cx="23" cy="2.5" r="1.2" fill="currentColor"/>
+    <!-- main body — slight isometric: top diamond + sides -->
+    <path d="M16 8 L29 13 L16 18 L3 13 Z" fill="currentColor" opacity="0.10" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M3 13 L3 21 L16 26 L16 18 Z" fill="currentColor" opacity="0.18" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M29 13 L29 21 L16 26 L16 18 Z" fill="currentColor" opacity="0.05" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+    <!-- ports -->
+    <circle cx="6.5"  cy="16.7" r="0.9" fill="currentColor"/>
+    <circle cx="9.5"  cy="17.8" r="0.9" fill="currentColor"/>
+    <circle cx="12.5" cy="18.9" r="0.9" fill="currentColor"/>
+  </symbol>
+
+  <!-- ui glyphs -->
+  <symbol id="ui-net" viewBox="0 0 14 14">
+    <rect x="1.5" y="3.5" width="11" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/>
+    <line x1="4" y1="8.5" x2="4" y2="11" stroke="currentColor" stroke-width="1.3"/>
+    <line x1="7" y1="8.5" x2="7" y2="11" stroke="currentColor" stroke-width="1.3"/>
+    <line x1="10" y1="8.5" x2="10" y2="11" stroke="currentColor" stroke-width="1.3"/>
+  </symbol>
+  <symbol id="ui-host" viewBox="0 0 14 14">
+    <rect x="2" y="2.5" width="10" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/>
+    <line x1="5" y1="11.5" x2="9" y2="11.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+    <line x1="7" y1="9.5" x2="7" y2="11.5" stroke="currentColor" stroke-width="1"/>
+  </symbol>
+  <symbol id="ui-router" viewBox="0 0 14 14">
+    <line x1="4" y1="2" x2="4" y2="5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="10" y1="2" x2="10" y2="5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+    <rect x="2" y="5.5" width="10" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/>
+    <circle cx="4.5" cy="8.5" r="0.7" fill="currentColor"/>
+    <circle cx="7"   cy="8.5" r="0.7" fill="currentColor"/>
+    <circle cx="9.5" cy="8.5" r="0.7" fill="currentColor"/>
+  </symbol>
+</defs>
+</svg>
+
+<div class="app" id="app">
+
+  <!-- ========= HEADER ========= -->
+  <header class="header">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4">
+          <circle cx="7" cy="3" r="1.5"/>
+          <circle cx="2.5" cy="11" r="1.5"/>
+          <circle cx="11.5" cy="11" r="1.5"/>
+          <path d="M7 4.5l-4 5M7 4.5l4 5M3.5 11h7"/>
+        </svg>
+      </div>
+      <div class="name">netrouting</div>
+      <span class="ver">v0.1</span>
+    </div>
+
+    <div class="head-mid">
+      <div class="crumb">
+        <span>document</span>
+        <span class="sep">/</span>
+        <input class="proj" id="proj-name" value="test_as" spellcheck="false" />
+      </div>
+      <div class="save" id="save-state"><span class="dot"></span> autosaved</div>
+    </div>
+
+    <div class="head-actions">
+      <div class="theme-toggle" role="tablist" aria-label="theme">
+        <button data-theme-btn="light" class="active" title="Light">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="8" cy="8" r="3"/>
+            <path d="M8 1.5v1.6M8 12.9v1.6M14.5 8h-1.6M3.1 8H1.5M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1M12.6 12.6l-1.1-1.1M4.5 4.5L3.4 3.4"/>
+          </svg>
+        </button>
+        <button data-theme-btn="dark" title="Dark">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M13.2 9.7A5.5 5.5 0 0 1 6.3 2.8a5.5 5.5 0 1 0 6.9 6.9z"/>
+          </svg>
+        </button>
+      </div>
+      <button class="btn outline" id="btn-sample" title="Load sample topology">
+        <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="2.5" y="3.5" width="11" height="2" rx="0.5"/>
+          <rect x="2.5" y="7" width="8" height="2" rx="0.5"/>
+          <rect x="2.5" y="10.5" width="10" height="2" rx="0.5"/>
+        </svg>
+        Sample
+      </button>
+      <button class="btn outline" id="btn-import" title="Import YAML">
+        <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M8 11V2M4 7l4 4 4-4M2 14h12"/>
+        </svg>
+        Import
+      </button>
+      <button class="btn primary" id="btn-export" title="Export YAML">
+        <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M8 2v9M4 6l4-4 4 4M2 14h12"/>
+        </svg>
+        Export
+      </button>
+    </div>
+  </header>
+
+  <!-- ========= NAV ========= -->
+  <aside class="nav" id="nav"></aside>
+
+  <!-- splitter: nav | canvas -->
+  <div class="splitter splitter-nav" title="Drag to resize · double-click to reset"></div>
+
+  <!-- ========= CANVAS ========= -->
+  <section class="canv-wrap">
+    <!-- toolbar -->
+    <div class="canv-toolbar">
+      <button class="tb-btn network" id="tb-add-net" title="Add LAN (N)">
+        <svg class="ico"><use href="#ui-net"/></svg> LAN
+      </button>
+      <button class="tb-btn host" id="tb-add-host" title="Add host (H)">
+        <svg class="ico"><use href="#ui-host"/></svg> Host
+      </button>
+      <button class="tb-btn router" id="tb-add-router" title="Add router (R)">
+        <svg class="ico"><use href="#ui-router"/></svg> Router
+      </button>
+      <span class="div"></span>
+      <button class="tb-btn" id="tb-fit" title="Reset view">
+        <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+          <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4"/>
+        </svg>
+        Fit
+      </button>
+    </div>
+
+    <!-- zoom -->
+    <div class="canv-zoom">
+      <button id="zoom-out" title="Zoom out">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 8h10"/></svg>
+      </button>
+      <div class="lvl" id="zoom-lvl">100%</div>
+      <button id="zoom-in" title="Zoom in">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3v10M3 8h10"/></svg>
+      </button>
+    </div>
+
+    <!-- hint strip -->
+    <div class="canv-hint">
+      <span class="item">drag <kbd>shift</kbd>+drag pan</span>
+      <span class="item"><kbd>2×click</kbd> edit</span>
+      <span class="item"><kbd>right-click</kbd> menu</span>
+    </div>
+
+    <!-- the canvas -->
+    <svg class="canvas" id="canvas" xmlns="http://www.w3.org/2000/svg">
+      <g id="viewport">
+        <g id="edges-layer"></g>
+        <g id="nodes-layer"></g>
+        <g id="overlay-layer"></g>
+      </g>
+    </svg>
+
+    <!-- empty state overlay -->
+    <div class="canv-empty" id="canv-empty" hidden>
+      <div class="inner">
+        <div class="icon-row">
+          <svg viewBox="0 0 32 26" style="color:var(--net)"><use href="#ico-net"/></svg>
+          <svg viewBox="0 0 28 30" style="color:var(--host)"><use href="#ico-host"/></svg>
+          <svg viewBox="0 0 32 30" style="color:var(--rtr)"><use href="#ico-router"/></svg>
+        </div>
+        <div class="ttl">No topology yet</div>
+        <div class="sub">Add a LAN, then drop hosts and routers onto it. Or load the sample to explore.</div>
+        <div class="actions">
+          <button class="btn primary" id="empty-add-net">+ Add LAN</button>
+          <button class="btn outline" id="empty-sample">Load sample</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- splitter: canvas | inspector -->
+  <div class="splitter splitter-insp" title="Drag to resize · double-click to reset"></div>
+
+  <!-- ========= INSPECTOR ========= -->
+  <aside class="insp" id="inspector"></aside>
+
+</div>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+/* ===========================================================
+   netrouting — interactive topology canvas
+   =========================================================== */
+const STORAGE_KEY = 'netrouting.topology.v4';
+const THEME_KEY = 'netrouting.theme';
+
+const state = {
+  asName: 'test_as',
+  /* networks[name] = { cidr, x, y } */
+  networks: {},
+  /* hosts[name] = { network, address, x, y } */
+  hosts: {},
+  /* routers[name] = { interfaces: { ifn: { network, address, cost } }, x, y } */
+  routers: {},
+  selection: null,        // { kind, name }
+  view: { x: 0, y: 0, k: 1 }, // pan x,y and zoom factor
+};
+
+/* node sizes — w/h represent the icon (or cloud) bounding box centered at obj.x/obj.y;
+   labels render below this box and are included in a wider hit area at draw time */
+const NODE = {
+  network: { w: 220, h: 84 },   // cloud silhouette
+  host:    { w: 56,  h: 60 },   // workstation icon
+  router:  { w: 64,  h: 64 },   // router cube
+};
+const HIT_PAD = { network: { x: 12, top: 10, bottom: 32 }, host: { x: 18, top: 6, bottom: 36 }, router: { x: 18, top: 6, bottom: 38 } };
+
+const SAMPLE = {
+  asName: 'test_as',
+  networks: {
+    lan1: { cidr: '200.100.0.0/24', x: 460, y: 160 },
+    lan2: { cidr: '100.200.0.0/24', x: 460, y: 360 },
+    lan3: { cidr: '150.10.10.0/24', x: 460, y: 560 },
+  },
+  hosts: {
+    h1: { network: 'lan1', address: '200.100.0.10', x: 230, y: 160 },
+    h2: { network: 'lan2', address: '100.200.0.20', x: 230, y: 360 },
+    h3: { network: 'lan3', address: '150.10.10.30', x: 230, y: 560 },
+  },
+  routers: {
+    r1: { x: 720, y: 250, interfaces: {
+      eth0: { network: 'lan1', address: '200.100.0.1',   cost: 10 },
+      eth1: { network: 'lan2', address: '100.200.0.1',   cost: 15 },
+    }},
+    r2: { x: 820, y: 360, interfaces: {
+      eth0: { network: 'lan1', address: '200.100.0.254', cost: 5 },
+      eth1: { network: 'lan2', address: '100.200.0.2',   cost: 8 },
+      eth2: { network: 'lan3', address: '150.10.10.1',   cost: 15 },
+    }},
+    r3: { x: 720, y: 460, interfaces: {
+      eth0: { network: 'lan2', address: '100.200.0.10', cost: 20 },
+      eth1: { network: 'lan3', address: '150.10.10.10', cost: 5 },
+    }},
+  },
+};
+
+/* ---------- helpers ---------- */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs = {}, kids = null) {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null) continue;
+    if (k === 'class') e.setAttribute('class', v);
+    else if (k === 'text') e.textContent = v;
+    else e.setAttribute(k, v);
+  }
+  if (kids) {
+    if (Array.isArray(kids)) kids.forEach(c => c && e.appendChild(c));
+    else if (typeof kids === 'string') e.textContent = kids;
+    else e.appendChild(kids);
+  }
+  return e;
+}
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function uniqueName(prefix, dict) { let n = 1; while (dict[`${prefix}${n}`]) n++; return `${prefix}${n}`; }
+function uniqueIface(ifaces) { let n = 0; while (ifaces[`eth${n}`]) n++; return `eth${n}`; }
+function pad2(n) { return String(n).padStart(2, '0'); }
+function setSave(s) { document.getElementById('save-state').lastChild.textContent = ' ' + s; }
+
+/* ---------- persistence ---------- */
+function persist() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      asName: state.asName,
+      networks: state.networks,
+      hosts: state.hosts,
+      routers: state.routers,
+      view: state.view,
+    }));
+    setSave('autosaved');
+  } catch (_) {}
+}
+function restore() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const d = JSON.parse(raw);
+    state.asName = d.asName || 'test_as';
+    state.networks = d.networks || {};
+    state.hosts = d.hosts || {};
+    state.routers = d.routers || {};
+    if (d.view) state.view = d.view;
+    return true;
+  } catch (_) { return false; }
+}
+function loadSample() {
+  state.asName = SAMPLE.asName;
+  state.networks = JSON.parse(JSON.stringify(SAMPLE.networks));
+  state.hosts = JSON.parse(JSON.stringify(SAMPLE.hosts));
+  state.routers = JSON.parse(JSON.stringify(SAMPLE.routers));
+  state.selection = null;
+  state.view = { x: 0, y: 0, k: 1 };
+  fitView();
+  document.getElementById('proj-name').value = state.asName;
+  renderAll();
+  persist();
+  toast('Sample topology loaded', 'ok');
+}
+
+/* ---------- toast ---------- */
+function toast(msg, kind = '', label = null) {
+  const wrap = document.getElementById('toasts');
+  const elT = document.createElement('div');
+  elT.className = `toast ${kind}`;
+  const iconSvg = kind === 'ok'
+    ? `<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg>`
+    : kind === 'error'
+      ? `<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l6 6M9 3l-6 6"/></svg>`
+      : `<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="0.7" fill="currentColor"/></svg>`;
+  elT.innerHTML = `
+    <div class="icon">${iconSvg}</div>
+    <div class="body">
+      ${label ? `<div class="lab">${escapeHtml(label)}</div>` : ''}
+      <div class="msg">${escapeHtml(msg)}</div>
+    </div>
+  `;
+  wrap.appendChild(elT);
+  setTimeout(() => {
+    elT.style.transition = 'opacity .3s, transform .3s';
+    elT.style.opacity = 0;
+    elT.style.transform = 'translateY(6px)';
+    setTimeout(() => elT.remove(), 320);
+  }, 2400);
+}
+
+/* ---------- layout (resizable panes) ---------- */
+const LAYOUT_KEY = 'netrouting.layout';
+const LAYOUT_DEF = { navW: 264, inspW: 332 };
+const LAYOUT_LIMITS = {
+  navW:  { min: 200, max: 520 },
+  inspW: { min: 240, max: 600 },
+};
+function loadLayout() {
+  try {
+    const raw = localStorage.getItem(LAYOUT_KEY);
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    if (typeof d.navW === 'number')  document.documentElement.style.setProperty('--nav-w',  d.navW  + 'px');
+    if (typeof d.inspW === 'number') document.documentElement.style.setProperty('--insp-w', d.inspW + 'px');
+  } catch (_) {}
+}
+function persistLayout() {
+  try {
+    const cs = getComputedStyle(document.documentElement);
+    const navW  = parseInt(cs.getPropertyValue('--nav-w'),  10);
+    const inspW = parseInt(cs.getPropertyValue('--insp-w'), 10);
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify({ navW, inspW }));
+  } catch (_) {}
+}
+function wireResizers() {
+  const setup = (sel, varName, sign, key) => {
+    const handle = document.querySelector(sel);
+    if (!handle) return;
+
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      handle.setPointerCapture?.(e.pointerId);
+      handle.classList.add('dragging');
+      document.body.classList.add('col-resizing');
+      const startX = e.clientX;
+      const startW = parseInt(getComputedStyle(document.documentElement).getPropertyValue(varName), 10);
+
+      const onMove = (ev) => {
+        const dx = ev.clientX - startX;
+        let w = startW + dx * sign;
+        const lim = LAYOUT_LIMITS[key];
+        w = Math.max(lim.min, Math.min(lim.max, w));
+        document.documentElement.style.setProperty(varName, w + 'px');
+      };
+      const onUp = () => {
+        handle.classList.remove('dragging');
+        document.body.classList.remove('col-resizing');
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        persistLayout();
+      };
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    });
+
+    handle.addEventListener('dblclick', () => {
+      document.documentElement.style.setProperty(varName, LAYOUT_DEF[key] + 'px');
+      persistLayout();
+    });
+  };
+
+  setup('.splitter-nav',  '--nav-w',  +1, 'navW');   // drag right widens nav
+  setup('.splitter-insp', '--insp-w', -1, 'inspW');  // drag right shrinks inspector
+}
+
+/* ---------- theme ---------- */
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  document.querySelectorAll('[data-theme-btn]').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-theme-btn') === theme);
+  });
+  try { localStorage.setItem(THEME_KEY, theme); } catch (_) {}
+}
+function initTheme() {
+  let t = 'light';
+  try { t = localStorage.getItem(THEME_KEY) || 'light'; } catch (_) {}
+  if (t !== 'dark' && t !== 'light') t = 'light';
+  applyTheme(t);
+}
+
+/* ---------- mark dirty ---------- */
+function markDirty() {
+  setSave('saving…');
+  clearTimeout(markDirty._t);
+  markDirty._t = setTimeout(() => persist(), 200);
+}
+
+/* ---------- layout: assign defaults to objects without positions ---------- */
+function ensurePositions() {
+  // simple grid fallback
+  const FALLBACK_X = 700, FALLBACK_Y = 200, GAP = 220;
+  let i = 0;
+  for (const [n, nv] of Object.entries(state.networks)) {
+    if (typeof nv.x !== 'number' || typeof nv.y !== 'number') {
+      nv.x = FALLBACK_X; nv.y = FALLBACK_Y + i * GAP;
+    }
+    i++;
+  }
+  i = 0;
+  for (const [hn, h] of Object.entries(state.hosts)) {
+    if (typeof h.x !== 'number' || typeof h.y !== 'number') {
+      const target = state.networks[h.network];
+      if (target) { h.x = target.x - 230; h.y = target.y + (i % 2 === 0 ? -20 : 20); }
+      else { h.x = 220; h.y = 180 + i * 110; }
+    }
+    i++;
+  }
+  i = 0;
+  for (const [rn, r] of Object.entries(state.routers)) {
+    if (typeof r.x !== 'number' || typeof r.y !== 'number') {
+      const ifs = Object.values(r.interfaces || {});
+      const targetNets = ifs.map(f => state.networks[f.network]).filter(Boolean);
+      if (targetNets.length) {
+        const avgY = targetNets.reduce((a, n) => a + n.y, 0) / targetNets.length;
+        r.x = (targetNets[0].x || FALLBACK_X) + 230; r.y = avgY + (i - 1) * 30;
+      } else {
+        r.x = 900; r.y = 200 + i * 110;
+      }
+    }
+    i++;
+  }
+}
+
+/* ---------- canvas state ---------- */
+const canvasEl    = () => document.getElementById('canvas');
+const viewportEl  = () => document.getElementById('viewport');
+const edgesLayer  = () => document.getElementById('edges-layer');
+const nodesLayer  = () => document.getElementById('nodes-layer');
+const overlayLay  = () => document.getElementById('overlay-layer');
+
+function applyView() {
+  const v = state.view;
+  viewportEl().setAttribute('transform', `translate(${v.x} ${v.y}) scale(${v.k})`);
+  document.getElementById('zoom-lvl').textContent = Math.round(v.k * 100) + '%';
+}
+
+function clientToWorld(cx, cy) {
+  const svg = canvasEl();
+  const rect = svg.getBoundingClientRect();
+  const v = state.view;
+  return { x: (cx - rect.left - v.x) / v.k, y: (cy - rect.top - v.y) / v.k };
+}
+
+function fitView() {
+  const all = [
+    ...Object.entries(state.networks).map(([k, v]) => ({ ...v, k: 'network' })),
+    ...Object.entries(state.hosts).map(([k, v]) => ({ ...v, k: 'host' })),
+    ...Object.entries(state.routers).map(([k, v]) => ({ ...v, k: 'router' })),
+  ];
+  if (all.length === 0) {
+    state.view = { x: 0, y: 0, k: 1 };
+    applyView();
+    return;
+  }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  all.forEach(o => {
+    const { w, h } = NODE[o.k];
+    minX = Math.min(minX, o.x - w/2);
+    minY = Math.min(minY, o.y - h/2);
+    maxX = Math.max(maxX, o.x + w/2);
+    maxY = Math.max(maxY, o.y + h/2);
+  });
+  const pad = 80;
+  minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+  const svg = canvasEl();
+  const rect = svg.getBoundingClientRect();
+  const k = Math.min(rect.width / (maxX - minX), rect.height / (maxY - minY), 1.4);
+  state.view = {
+    k,
+    x: (rect.width - (maxX - minX) * k) / 2 - minX * k,
+    y: (rect.height - (maxY - minY) * k) / 2 - minY * k,
+  };
+  applyView();
+}
+
+/* ---------- canvas: render ---------- */
+function renderCanvas() {
+  ensurePositions();
+  const empty =
+    Object.keys(state.networks).length === 0 &&
+    Object.keys(state.hosts).length === 0 &&
+    Object.keys(state.routers).length === 0;
+  document.getElementById('canv-empty').hidden = !empty;
+
+  // clear layers
+  edgesLayer().innerHTML = '';
+  nodesLayer().innerHTML = '';
+  overlayLay().innerHTML = '';
+
+  // edges first (drawn underneath)
+  for (const [hn, h] of Object.entries(state.hosts)) {
+    if (!h.network || !state.networks[h.network]) continue;
+    drawEdge(h, state.networks[h.network], 'host', { kind:'host', name: hn });
+  }
+  for (const [rn, r] of Object.entries(state.routers)) {
+    for (const [ifn, iff] of Object.entries(r.interfaces || {})) {
+      if (!iff.network || !state.networks[iff.network]) continue;
+      drawEdge(r, state.networks[iff.network], 'router',
+        { kind:'router', name: rn }, { ifname: ifn, cost: iff.cost });
+    }
+  }
+
+  // nodes — networks first so they sit "behind" devices
+  for (const [name, n] of Object.entries(state.networks)) drawNode('network', name, n);
+  for (const [name, h] of Object.entries(state.hosts))    drawNode('host',    name, h);
+  for (const [name, r] of Object.entries(state.routers))  drawNode('router',  name, r);
+
+  applyView();
+}
+
+function drawEdge(a, b, kind, sel, info) {
+  // a, b have x,y at center; we clip to each node's rect
+  const aSize = NODE[sel.kind === 'host' ? 'host' : 'router'];
+  const bSize = NODE.network;
+  const [ax, ay] = clipToRect(a.x, a.y, aSize.w, aSize.h, b.x, b.y);
+  const [bx, by] = clipToRect(b.x, b.y, bSize.w, bSize.h, a.x, a.y);
+  const dx = bx - ax, dy = by - ay;
+  // smooth bezier
+  const c1x = ax + dx * 0.55, c1y = ay;
+  const c2x = bx - dx * 0.55, c2y = by;
+  const d = `M ${ax} ${ay} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${bx} ${by}`;
+
+  const isSel = state.selection &&
+    ((state.selection.kind === sel.kind && state.selection.name === sel.name) ||
+     (state.selection.kind === 'network' && state.selection.name === Object.entries(state.networks).find(([n, v]) => v === b)?.[0]));
+  const path = el('path', {
+    class: `edge ${kind}${isSel ? ' selected' : ''}`,
+    d,
+  });
+  edgesLayer().appendChild(path);
+
+  if (info) {
+    // midpoint for label placement
+    const t = 0.5;
+    const mx = bezPoint(ax, c1x, c2x, bx, t);
+    const my = bezPoint(ay, c1y, c2y, by, t);
+    if (info.cost != null && info.cost !== '') {
+      edgesLayer().appendChild(el('text', {
+        class: 'edge-cost',
+        x: mx, y: my - 6,
+        'text-anchor': 'middle',
+      }, `c·${info.cost}`));
+    }
+    if (info.ifname) {
+      // ifname placed near "a" side
+      const tn = 0.18;
+      const ix = bezPoint(ax, c1x, c2x, bx, tn);
+      const iy = bezPoint(ay, c1y, c2y, by, tn);
+      edgesLayer().appendChild(el('text', {
+        class: 'edge-iface',
+        x: ix, y: iy - 5,
+        'text-anchor': 'middle',
+      }, info.ifname));
+    }
+  }
+}
+function bezPoint(p0, p1, p2, p3, t) {
+  const u = 1 - t;
+  return u*u*u*p0 + 3*u*u*t*p1 + 3*u*t*t*p2 + t*t*t*p3;
+}
+function clipToRect(cx, cy, w, h, tx, ty) {
+  const dx = tx - cx, dy = ty - cy;
+  if (dx === 0 && dy === 0) return [cx, cy];
+  const tw = (w / 2) / Math.max(0.0001, Math.abs(dx));
+  const th = (h / 2) / Math.max(0.0001, Math.abs(dy));
+  const t = Math.min(tw, th);
+  return [cx + dx * t, cy + dy * t];
+}
+
+function drawNode(kind, name, obj) {
+  const isSel = state.selection && state.selection.kind === kind && state.selection.name === name;
+  const { w, h } = NODE[kind];
+  const pad = HIT_PAD[kind];
+
+  // group is centered at obj.x, obj.y (the icon/cloud centroid)
+  const g = el('g', {
+    class: `node ${kind}${isSel ? ' selected' : ''}`,
+    transform: `translate(${obj.x} ${obj.y})`,
+    'data-kind': kind,
+    'data-name': name,
+  });
+
+  // hit rect — invisible, covers the icon + label region
+  g.appendChild(el('rect', {
+    class: 'hit',
+    x: -w / 2 - pad.x,
+    y: -h / 2 - pad.top,
+    width: w + pad.x * 2,
+    height: h + pad.top + pad.bottom,
+    rx: 10,
+  }));
+
+  if (kind === 'network') {
+    // cloud silhouette, centered at (0,0)
+    g.appendChild(el('path', {
+      class: 'cloud',
+      d: cloudPath(w, h),
+      transform: `translate(${-w / 2} ${-h / 2})`,
+    }));
+    // LAN name centered in cloud (slightly above geometric center for visual balance)
+    g.appendChild(el('text', {
+      class: 'name',
+      x: 0, y: -4,
+      'text-anchor': 'middle',
+      'dominant-baseline': 'middle',
+      style: 'font-size:15px;',
+    }, name));
+    // CIDR badge below the cloud
+    g.appendChild(el('text', {
+      class: `sub ${obj.cidr ? '' : 'empty'}`,
+      x: 0, y: h / 2 + 18,
+      'text-anchor': 'middle',
+    }, obj.cidr || '— no cidr'));
+  } else {
+    // host / router: just the icon, then name, then sub
+    const icoVB = kind === 'host' ? '0 0 28 30' : '0 0 32 30';
+    const ico = el('svg', {
+      class: 'icon',
+      x: -w / 2, y: -h / 2,
+      width: w, height: h,
+      viewBox: icoVB,
+      'pointer-events': 'none',
+    });
+    ico.innerHTML = `<use href="#ico-${kind}"/>`;
+    g.appendChild(ico);
+
+    // dashed selection ring around the icon
+    g.appendChild(el('rect', {
+      class: 'ring',
+      x: -w / 2 - 6,
+      y: -h / 2 - 6,
+      width: w + 12,
+      height: h + 12,
+      rx: 8,
+    }));
+
+    // name below the icon
+    g.appendChild(el('text', {
+      class: 'name',
+      x: 0, y: h / 2 + 16,
+      'text-anchor': 'middle',
+    }, name));
+
+    // sub below the name
+    let sub;
+    if (kind === 'host') sub = obj.address || '— unset';
+    else {
+      const c = Object.keys(obj.interfaces || {}).length;
+      sub = `${c} iface${c === 1 ? '' : 's'}`;
+    }
+    g.appendChild(el('text', {
+      class: `sub ${kind === 'host' && !obj.address ? 'empty' : ''}`,
+      x: 0, y: h / 2 + 30,
+      'text-anchor': 'middle',
+    }, sub));
+  }
+
+  attachNodeEvents(g, kind, name);
+  nodesLayer().appendChild(g);
+}
+
+/* hand-tuned cloud silhouette — 4 lobes, flat-ish bottom; coords in 200x80 base, scaled to (w,h) */
+function cloudPath(w, h) {
+  const sx = w / 200, sy = h / 80;
+  const seg = (cmd, ...nums) => cmd + ' ' + nums.map((n, i) =>
+    ((i % 2 === 0 ? n * sx : n * sy)).toFixed(2)
+  ).join(' ');
+  return [
+    seg('M', 40, 68),
+    seg('C', 12, 68, 8, 40, 34, 36),
+    seg('C', 28, 14, 64, 8, 76, 28),
+    seg('C', 86, 8, 124, 8, 134, 28),
+    seg('C', 154, 14, 190, 28, 180, 50),
+    seg('C', 204, 50, 204, 72, 178, 70),
+    seg('L', 40, 70),
+    'Z',
+  ].join(' ');
+}
+
+/* ---------- interaction ---------- */
+let drag = null;          // active drag state
+let pan  = null;          // active pan state
+let rclickTimer = null;
+
+function attachNodeEvents(g, kind, name) {
+  g.addEventListener('pointerdown', (e) => {
+    if (e.button === 2) return; // right-click handled separately
+    e.stopPropagation();
+    // capture on the node itself so the synthesized click event stays on the
+    // node — capturing on the canvas redirects click to the SVG, which would
+    // otherwise trigger the "click background to deselect" handler.
+    g.setPointerCapture?.(e.pointerId);
+    const obj = ({network: state.networks, host: state.hosts, router: state.routers})[kind][name];
+    const start = clientToWorld(e.clientX, e.clientY);
+    drag = {
+      pointerId: e.pointerId,
+      kind, name, obj,
+      offX: start.x - obj.x,
+      offY: start.y - obj.y,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      moved: false,
+      hoverNet: null,
+    };
+    g.classList.add('dragging');
+
+    // select immediately, but only update lightweight panes — do NOT rebuild
+    // the canvas DOM here, or the in-progress gesture would be cancelled.
+    state.selection = { kind, name };
+    nodesLayer().querySelectorAll('.node.selected').forEach(n => n.classList.remove('selected'));
+    g.classList.add('selected');
+    renderInspector();
+    renderNav();
+  });
+
+  g.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    state.selection = { kind, name };
+    renderAll();
+    const insp = document.getElementById('inspector');
+    insp.classList.remove('flash');
+    void insp.offsetWidth;
+    insp.classList.add('flash');
+    setTimeout(() => insp.classList.remove('flash'), 600);
+    const f = insp.querySelector('input, select');
+    if (f) f.focus();
+  });
+
+  g.addEventListener('contextmenu', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    state.selection = { kind, name };
+    renderAll();
+    openContextMenu(e.clientX, e.clientY, { kind, name });
+  });
+}
+
+/* canvas-level drag/pan handlers (delegate via the svg) */
+function wireCanvas() {
+  const svg = canvasEl();
+
+  // pointerdown on background → pan, dismiss any ctxmenu
+  svg.addEventListener('pointerdown', (e) => {
+    closeContextMenu();
+    if (e.target.closest('.node')) return;
+    if (e.button === 2) return; // right click handled by contextmenu listener
+    pan = {
+      pointerId: e.pointerId,
+      sx: e.clientX, sy: e.clientY,
+      ox: state.view.x, oy: state.view.y,
+    };
+    svg.classList.add('panning');
+    svg.setPointerCapture?.(e.pointerId);
+  });
+
+  svg.addEventListener('contextmenu', (e) => {
+    if (e.target.closest('.node')) return;  // node menus handled at node level
+    e.preventDefault();
+    const w = clientToWorld(e.clientX, e.clientY);
+    openContextMenu(e.clientX, e.clientY, null, w);
+  });
+
+  // pointermove — drag or pan
+  document.addEventListener('pointermove', (e) => {
+    if (drag) {
+      // ignore tiny jitter so a click isn't mis-classified as a drag
+      if (!drag.moved) {
+        const dxc = e.clientX - drag.startClientX;
+        const dyc = e.clientY - drag.startClientY;
+        if (dxc * dxc + dyc * dyc < 16) return;  // 4px threshold
+        drag.moved = true;
+      }
+      const w = clientToWorld(e.clientX, e.clientY);
+      drag.obj.x = w.x - drag.offX;
+      drag.obj.y = w.y - drag.offY;
+
+      // for host/router: detect drop target (LAN under cursor)
+      let hover = null;
+      if (drag.kind === 'host' || drag.kind === 'router') {
+        for (const [nn, nv] of Object.entries(state.networks)) {
+          const { w: nw, h: nh } = NODE.network;
+          if (Math.abs(w.x - nv.x) < nw/2 + 24 && Math.abs(w.y - nv.y) < nh/2 + 24) {
+            hover = nn; break;
+          }
+        }
+      }
+      if (drag.hoverNet !== hover) {
+        // re-render to flip drop-target class — cheap enough
+        drag.hoverNet = hover;
+        // toggle classes directly to avoid full re-render thrash
+        nodesLayer().querySelectorAll('.node.network').forEach(node => {
+          node.classList.toggle('drop-target', node.getAttribute('data-name') === hover);
+        });
+      }
+      // partial: re-render edges connected to drag.obj
+      reRenderEdges();
+      // and update the dragged node's transform directly — the group is
+      // centered at obj.x/obj.y (its inner contents are placed around 0,0),
+      // so the transform is just translate(obj.x, obj.y), not offset by w/2.
+      const nodeEl = nodesLayer().querySelector(`.node[data-kind="${drag.kind}"][data-name="${cssEscape(drag.name)}"]`);
+      if (nodeEl) {
+        nodeEl.setAttribute('transform', `translate(${drag.obj.x} ${drag.obj.y})`);
+      }
+      // preview link line for host/router → hovered LAN
+      drawDragPreview();
+    }
+    if (pan) {
+      state.view.x = pan.ox + (e.clientX - pan.sx);
+      state.view.y = pan.oy + (e.clientY - pan.sy);
+      applyView();
+    }
+  });
+
+  document.addEventListener('pointerup', (e) => {
+    if (drag) {
+      const node = nodesLayer().querySelector(`.node[data-kind="${drag.kind}"][data-name="${cssEscape(drag.name)}"]`);
+      node?.classList.remove('dragging');
+
+      if (drag.moved) {
+        const target = drag.hoverNet;
+        nodesLayer().querySelectorAll('.node.network.drop-target').forEach(n => n.classList.remove('drop-target'));
+        overlayLay().innerHTML = '';
+
+        // commit attachment
+        if (target) {
+          if (drag.kind === 'host') {
+            if (state.hosts[drag.name].network !== target) {
+              state.hosts[drag.name].network = target;
+              toast(`Pinned host ${drag.name} → ${target}`, 'ok');
+            }
+          } else if (drag.kind === 'router') {
+            const r = state.routers[drag.name];
+            const has = Object.values(r.interfaces || {}).some(iff => iff.network === target);
+            if (!has) {
+              const newIf = uniqueIface(r.interfaces);
+              r.interfaces[newIf] = { network: target, address: '', cost: 10 };
+              toast(`Added ${newIf} on ${drag.name} → ${target}`, 'ok');
+            }
+          }
+        }
+
+        markDirty();
+        renderAll();
+      }
+      drag = null;
+    }
+    if (pan) {
+      canvasEl().classList.remove('panning');
+      pan = null;
+      markDirty();
+    }
+  });
+
+  // wheel zoom
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const w = clientToWorld(e.clientX, e.clientY);
+    const factor = e.deltaY < 0 ? 1.10 : (1 / 1.10);
+    const newK = Math.max(0.25, Math.min(2.5, state.view.k * factor));
+    // keep cursor world position fixed
+    const rect = svg.getBoundingClientRect();
+    state.view.x = (e.clientX - rect.left) - w.x * newK;
+    state.view.y = (e.clientY - rect.top)  - w.y * newK;
+    state.view.k = newK;
+    applyView();
+  }, { passive: false });
+
+  // dismiss menu on background click
+  svg.addEventListener('click', (e) => {
+    if (e.target.closest('.node')) return;
+    state.selection = null;
+    renderAll();
+  });
+}
+
+function cssEscape(s) {
+  return CSS && CSS.escape ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, '');
+}
+
+/* re-render only the edges (drag perf) */
+function reRenderEdges() {
+  edgesLayer().innerHTML = '';
+  for (const [hn, h] of Object.entries(state.hosts)) {
+    if (!h.network || !state.networks[h.network]) continue;
+    drawEdge(h, state.networks[h.network], 'host', { kind:'host', name: hn });
+  }
+  for (const [rn, r] of Object.entries(state.routers)) {
+    for (const [ifn, iff] of Object.entries(r.interfaces || {})) {
+      if (!iff.network || !state.networks[iff.network]) continue;
+      drawEdge(r, state.networks[iff.network], 'router',
+        { kind:'router', name: rn }, { ifname: ifn, cost: iff.cost });
+    }
+  }
+}
+
+function drawDragPreview() {
+  overlayLay().innerHTML = '';
+  if (!drag || !drag.hoverNet) return;
+  if (drag.kind !== 'host' && drag.kind !== 'router') return;
+  const a = drag.obj;
+  const b = state.networks[drag.hoverNet];
+  if (!b) return;
+  const aSize = NODE[drag.kind];
+  const bSize = NODE.network;
+  const [ax, ay] = clipToRect(a.x, a.y, aSize.w, aSize.h, b.x, b.y);
+  const [bx, by] = clipToRect(b.x, b.y, bSize.w, bSize.h, a.x, a.y);
+  const dx = bx - ax;
+  const c1x = ax + dx * 0.55, c1y = ay;
+  const c2x = bx - dx * 0.55, c2y = by;
+  const d = `M ${ax} ${ay} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${bx} ${by}`;
+  overlayLay().appendChild(el('path', { class: 'edge preview', d }));
+}
+
+/* ---------- context menu ---------- */
+let _ctxEl = null;
+function closeContextMenu() {
+  if (_ctxEl) { _ctxEl.remove(); _ctxEl = null; }
+}
+
+function openContextMenu(clientX, clientY, target, world) {
+  closeContextMenu();
+  const m = document.createElement('div');
+  m.className = 'ctx';
+  let html = '';
+
+  if (!target) {
+    // empty canvas
+    html += `
+      <div class="ctx-head">Create at this point</div>
+      <button class="ctx-item" data-act="new-net"><svg class="ico"><use href="#ui-net"/></svg>New LAN<span class="meta">N</span></button>
+      <button class="ctx-item" data-act="new-host"><svg class="ico"><use href="#ui-host"/></svg>New host<span class="meta">H</span></button>
+      <button class="ctx-item" data-act="new-router"><svg class="ico"><use href="#ui-router"/></svg>New router<span class="meta">R</span></button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item" data-act="fit">Fit to view</button>
+      <button class="ctx-item" data-act="sample">Load sample</button>
+    `;
+  } else {
+    const obj = ({network: state.networks, host: state.hosts, router: state.routers})[target.kind][target.name];
+    html += `<div class="ctx-head">${escapeHtml(target.kind)} · ${escapeHtml(target.name)}</div>`;
+    html += `<button class="ctx-item" data-act="edit"><svg class="ico" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 12h2l7-7-2-2-7 7v2zM9 3l2 2"/></svg>Edit<span class="meta">2×</span></button>`;
+    if (target.kind === 'network') {
+      html += `<button class="ctx-item" data-act="add-host-here"><svg class="ico"><use href="#ui-host"/></svg>Add host here</button>`;
+      html += `<button class="ctx-item" data-act="add-router-here"><svg class="ico"><use href="#ui-router"/></svg>Add router here</button>`;
+    }
+    if (target.kind === 'host') {
+      const opts = Object.keys(state.networks).filter(n => n !== obj.network);
+      if (opts.length) {
+        html += `<div class="ctx-sub">
+          <button class="ctx-item" data-act="">Move to LAN…</button>
+          <div class="ctx-panel">
+            ${opts.map(n => `<button class="ctx-item" data-act="move-host" data-net="${escapeHtml(n)}"><svg class="ico"><use href="#ui-net"/></svg>${escapeHtml(n)}</button>`).join('')}
+          </div>
+        </div>`;
+      }
+      if (obj.network) {
+        html += `<button class="ctx-item" data-act="detach-host"><svg class="ico" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 7h8M5 4l-2 3 2 3M9 4l2 3-2 3"/></svg>Detach from LAN</button>`;
+      }
+    }
+    if (target.kind === 'router') {
+      // submenu: connect to LAN
+      const used = new Set(Object.values(obj.interfaces || {}).map(i => i.network));
+      const unused = Object.keys(state.networks).filter(n => !used.has(n));
+      if (unused.length) {
+        html += `<div class="ctx-sub">
+          <button class="ctx-item" data-act="">Connect to LAN…</button>
+          <div class="ctx-panel">
+            ${unused.map(n => `<button class="ctx-item" data-act="connect-router" data-net="${escapeHtml(n)}"><svg class="ico"><use href="#ui-net"/></svg>${escapeHtml(n)}</button>`).join('')}
+          </div>
+        </div>`;
+      }
+    }
+    html += `
+      <div class="ctx-sep"></div>
+      <button class="ctx-item" data-act="duplicate"><svg class="ico" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="4" y="4" width="8" height="8" rx="1"/></svg>Duplicate</button>
+      <button class="ctx-item danger" data-act="delete"><svg class="ico" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 4h8M5 4V2.5h4V4M4.5 4l.5 7h4l.5-7"/></svg>Delete<span class="meta">⌫</span></button>
+    `;
+  }
+
+  m.innerHTML = html;
+  document.body.appendChild(m);
+  _ctxEl = m;
+
+  // position (clamp to viewport)
+  m.style.left = '0px';
+  m.style.top = '0px';
+  const r = m.getBoundingClientRect();
+  let x = clientX, y = clientY;
+  if (x + r.width  > window.innerWidth)  x = window.innerWidth  - r.width  - 6;
+  if (y + r.height > window.innerHeight) y = window.innerHeight - r.height - 6;
+  m.style.left = x + 'px';
+  m.style.top  = y + 'px';
+
+  // wire actions
+  m.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    const act = btn.getAttribute('data-act');
+    if (!act) return; // submenu opener
+    const net = btn.getAttribute('data-net');
+    handleCtxAction(act, target, world, net);
+    closeContextMenu();
+  });
+}
+
+function handleCtxAction(act, target, world, arg) {
+  switch (act) {
+    case 'new-net':    addNew('network', world); break;
+    case 'new-host':   addNew('host', world); break;
+    case 'new-router': addNew('router', world); break;
+    case 'fit':        fitView(); break;
+    case 'sample':     loadSample(); break;
+    case 'edit':
+      state.selection = { kind: target.kind, name: target.name };
+      renderAll();
+      const f = document.getElementById('inspector').querySelector('input, select');
+      if (f) f.focus();
+      break;
+    case 'add-host-here': {
+      const net = state.networks[target.name];
+      const name = uniqueName('h', state.hosts);
+      state.hosts[name] = { network: target.name, address: '', x: net.x - 280, y: net.y };
+      state.selection = { kind:'host', name };
+      markDirty(); renderAll();
+      break;
+    }
+    case 'add-router-here': {
+      const net = state.networks[target.name];
+      const name = uniqueName('r', state.routers);
+      state.routers[name] = {
+        x: net.x + 280, y: net.y,
+        interfaces: { eth0: { network: target.name, address: '', cost: 10 } },
+      };
+      state.selection = { kind:'router', name };
+      markDirty(); renderAll();
+      break;
+    }
+    case 'move-host': {
+      state.hosts[target.name].network = arg;
+      toast(`Moved ${target.name} → ${arg}`, 'ok');
+      markDirty(); renderAll();
+      break;
+    }
+    case 'detach-host': {
+      state.hosts[target.name].network = '';
+      toast(`Detached ${target.name}`, 'ok');
+      markDirty(); renderAll();
+      break;
+    }
+    case 'connect-router': {
+      const r = state.routers[target.name];
+      const newIf = uniqueIface(r.interfaces);
+      r.interfaces[newIf] = { network: arg, address: '', cost: 10 };
+      toast(`Added ${newIf} on ${target.name} → ${arg}`, 'ok');
+      markDirty(); renderAll();
+      break;
+    }
+    case 'duplicate':
+      if (target.kind === 'network') duplicateNetwork(target.name);
+      else if (target.kind === 'host') duplicateHost(target.name);
+      else if (target.kind === 'router') duplicateRouter(target.name);
+      break;
+    case 'delete':
+      state.selection = { kind: target.kind, name: target.name };
+      deleteSelected();
+      break;
+  }
+}
+
+document.addEventListener('click', (e) => {
+  if (_ctxEl && !e.target.closest('.ctx')) closeContextMenu();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && _ctxEl) closeContextMenu();
+});
+
+/* ---------- nav ---------- */
+function renderNav() {
+  const elN = document.getElementById('nav');
+  const sections = [
+    { kind: 'network', title: 'LANs',    items: state.networks, glyph: 'ui-net',
+      meta: (k, v) => v.cidr || '—' },
+    { kind: 'host',    title: 'Hosts',    items: state.hosts,    glyph: 'ui-host',
+      meta: (k, v) => v.address || '—' },
+    { kind: 'router',  title: 'Routers',  items: state.routers,  glyph: 'ui-router',
+      meta: (k, v) => `${Object.keys(v.interfaces || {}).length} ifaces` },
+  ];
+  elN.innerHTML = sections.map(sec => {
+    const keys = Object.keys(sec.items);
+    return `
+      <div class="nav-section">
+        <div class="nav-shead">
+          <div class="left">
+            <span class="ttl">${escapeHtml(sec.title)}</span>
+            <span class="count">${pad2(keys.length)}</span>
+          </div>
+          <button class="add" data-add="${sec.kind}" aria-label="Add ${sec.title}">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v10M3 8h10"/></svg>
+          </button>
+        </div>
+        <div class="nav-list">
+          ${keys.length === 0
+            ? `<div class="nav-empty">No ${escapeHtml(sec.title.toLowerCase())} yet · press <kbd>+</kbd></div>`
+            : keys.map(k => {
+                const sel = state.selection && state.selection.kind === sec.kind && state.selection.name === k;
+                return `
+                  <div class="nav-row ${sel ? 'selected' : ''}" data-pick='${escapeHtml(JSON.stringify({kind: sec.kind, name: k}))}'>
+                    <span class="glyph ${sec.kind}"><svg viewBox="0 0 14 14"><use href="#${sec.glyph}"/></svg></span>
+                    <span class="name">${escapeHtml(k)}</span>
+                    <span class="meta">${escapeHtml(sec.meta(k, sec.items[k]))}</span>
+                  </div>
+                `;
+              }).join('')
+          }
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  elN.querySelectorAll('[data-pick]').forEach(row => {
+    row.addEventListener('click', () => {
+      try {
+        state.selection = JSON.parse(row.getAttribute('data-pick'));
+        renderAll();
+        centerOnSelection();
+      } catch (_) {}
+    });
+  });
+  elN.querySelectorAll('[data-add]').forEach(b => {
+    b.addEventListener('click', e => { e.stopPropagation(); addNew(b.getAttribute('data-add')); });
+  });
+}
+
+function centerOnSelection() {
+  if (!state.selection) return;
+  const { kind, name } = state.selection;
+  const obj = ({network: state.networks, host: state.hosts, router: state.routers})[kind][name];
+  if (!obj) return;
+  const svg = canvasEl();
+  const rect = svg.getBoundingClientRect();
+  state.view.x = rect.width / 2 - obj.x * state.view.k;
+  state.view.y = rect.height / 2 - obj.y * state.view.k;
+  applyView();
+}
+
+/* ---------- inspector (mostly unchanged) ---------- */
+function renderInspector() {
+  const elI = document.getElementById('inspector');
+  if (!state.selection) {
+    elI.innerHTML = `
+      <div class="insp-empty">
+        <div class="icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M9 9h6v6H9z"/>
+            <path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/>
+          </svg>
+        </div>
+        <div class="ttl">Nothing selected</div>
+        <div class="sub">Click any node to select. Double-click to edit, drag onto a LAN to attach.</div>
+      </div>
+    `;
+    return;
+  }
+  const { kind, name } = state.selection;
+  if (kind === 'network') return renderNetworkInsp(name, elI);
+  if (kind === 'host')    return renderHostInsp(name, elI);
+  if (kind === 'router')  return renderRouterInsp(name, elI);
+}
+
+function renderNetworkInsp(name, elI) {
+  const net = state.networks[name];
+  if (!net) { state.selection = null; return renderInspector(); }
+  elI.innerHTML = `
+    <div class="insp-head">
+      <div class="pre"><span class="pill network">LAN</span></div>
+      <div class="name">${escapeHtml(name)}</div>
+    </div>
+    <div class="insp-body">
+      <div class="field">
+        <label>Identifier</label>
+        <input id="f-name" value="${escapeHtml(name)}" spellcheck="false" />
+        <div class="hint">Used as the YAML key.</div>
+      </div>
+      <div class="field">
+        <label>CIDR</label>
+        <input id="f-cidr" value="${escapeHtml(net.cidr || '')}" spellcheck="false" placeholder="192.168.0.0/24" />
+        <div class="hint">Network address with prefix length.</div>
+      </div>
+    </div>
+    <div class="insp-foot">
+      <button class="dup" id="f-dup">Duplicate</button>
+      <button class="del" id="f-del">Delete</button>
+    </div>
+  `;
+  elI.querySelector('#f-name').addEventListener('change', e => renameNetwork(name, e.target.value.trim()));
+  elI.querySelector('#f-cidr').addEventListener('input', e => {
+    state.networks[name].cidr = e.target.value.trim();
+    markDirty(); renderCanvas(); renderNav();
+  });
+  elI.querySelector('#f-del').addEventListener('click', deleteSelected);
+  elI.querySelector('#f-dup').addEventListener('click', () => duplicateNetwork(name));
+}
+
+function renderHostInsp(name, elI) {
+  const host = state.hosts[name];
+  if (!host) { state.selection = null; return renderInspector(); }
+  const opts = Object.keys(state.networks)
+    .map(n => `<option value="${escapeHtml(n)}" ${host.network===n?'selected':''}>${escapeHtml(n)}</option>`).join('');
+  elI.innerHTML = `
+    <div class="insp-head">
+      <div class="pre"><span class="pill host">host</span></div>
+      <div class="name">${escapeHtml(name)}</div>
+    </div>
+    <div class="insp-body">
+      <div class="field">
+        <label>Hostname</label>
+        <input id="f-name" value="${escapeHtml(name)}" spellcheck="false" />
+      </div>
+      <div class="field">
+        <label>Network</label>
+        <select id="f-net">${opts ? '<option value="">— unattached</option>' + opts : '<option value="">(no networks)</option>'}</select>
+        <div class="hint">Pin a host to a LAN by dragging it on the canvas.</div>
+      </div>
+      <div class="field">
+        <label>IP address</label>
+        <input id="f-addr" value="${escapeHtml(host.address || '')}" spellcheck="false" placeholder="192.168.0.10" />
+      </div>
+    </div>
+    <div class="insp-foot">
+      <button class="dup" id="f-dup">Duplicate</button>
+      <button class="del" id="f-del">Delete</button>
+    </div>
+  `;
+  elI.querySelector('#f-name').addEventListener('change', e => renameHost(name, e.target.value.trim()));
+  elI.querySelector('#f-net').addEventListener('change', e => {
+    state.hosts[name].network = e.target.value;
+    markDirty(); renderCanvas(); renderNav();
+  });
+  elI.querySelector('#f-addr').addEventListener('input', e => {
+    state.hosts[name].address = e.target.value.trim();
+    markDirty(); renderCanvas(); renderNav();
+  });
+  elI.querySelector('#f-del').addEventListener('click', deleteSelected);
+  elI.querySelector('#f-dup').addEventListener('click', () => duplicateHost(name));
+}
+
+function renderRouterInsp(name, elI) {
+  const router = state.routers[name];
+  if (!router) { state.selection = null; return renderInspector(); }
+  const ifaces = Object.entries(router.interfaces || {});
+  const optsFor = (sel) => {
+    const opts = Object.keys(state.networks)
+      .map(n => `<option value="${escapeHtml(n)}" ${sel===n?'selected':''}>${escapeHtml(n)}</option>`).join('');
+    return opts ? '<option value="">— none</option>' + opts : '<option value="">(no networks)</option>';
+  };
+  elI.innerHTML = `
+    <div class="insp-head">
+      <div class="pre"><span class="pill router">router</span> <span style="color:var(--text-3);">· ${ifaces.length} ${ifaces.length===1?'interface':'interfaces'}</span></div>
+      <div class="name">${escapeHtml(name)}</div>
+    </div>
+    <div class="insp-body">
+      <div class="field">
+        <label>Identifier</label>
+        <input id="f-name" value="${escapeHtml(name)}" spellcheck="false" />
+      </div>
+      <div class="field">
+        <label>Interfaces</label>
+        <div class="iflist">
+          ${ifaces.map(([ifn, ifc]) => `
+            <div class="iface" data-iface="${escapeHtml(ifn)}">
+              <div class="ihead">
+                <span class="ttl"><span class="pill">${escapeHtml(ifn)}</span></span>
+                <button class="del" data-del-iface="${escapeHtml(ifn)}" title="Remove">
+                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+                </button>
+              </div>
+              <div class="grid full">
+                <div class="pair">
+                  <label>Interface name</label>
+                  <input data-iface-name="${escapeHtml(ifn)}" value="${escapeHtml(ifn)}" spellcheck="false" />
+                </div>
+              </div>
+              <div class="grid">
+                <div class="pair">
+                  <label>Network</label>
+                  <select data-iface-net="${escapeHtml(ifn)}">${optsFor(ifc.network)}</select>
+                </div>
+                <div class="pair">
+                  <label>Cost</label>
+                  <input type="number" min="0" data-iface-cost="${escapeHtml(ifn)}" value="${ifc.cost ?? ''}" />
+                </div>
+              </div>
+              <div class="grid full">
+                <div class="pair">
+                  <label>IP address</label>
+                  <input data-iface-addr="${escapeHtml(ifn)}" value="${escapeHtml(ifc.address || '')}" spellcheck="false" placeholder="10.0.0.1" />
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <button class="add-if" id="add-if" style="margin-top:8px;">+ Add interface</button>
+      </div>
+    </div>
+    <div class="insp-foot">
+      <button class="dup" id="f-dup">Duplicate</button>
+      <button class="del" id="f-del">Delete</button>
+    </div>
+  `;
+  elI.querySelector('#f-name').addEventListener('change', e => renameRouter(name, e.target.value.trim()));
+  elI.querySelector('#add-if').addEventListener('click', () => {
+    const newIf = uniqueIface(state.routers[name].interfaces);
+    state.routers[name].interfaces[newIf] = {
+      network: Object.keys(state.networks)[0] || '',
+      address: '', cost: 0,
+    };
+    markDirty(); renderInspector(); renderCanvas(); renderNav();
+  });
+  elI.querySelectorAll('[data-del-iface]').forEach(b => {
+    b.addEventListener('click', () => {
+      delete state.routers[name].interfaces[b.getAttribute('data-del-iface')];
+      markDirty(); renderInspector(); renderCanvas(); renderNav();
+    });
+  });
+  elI.querySelectorAll('[data-iface-name]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const oldIf = inp.getAttribute('data-iface-name');
+      const newIf = inp.value.trim();
+      if (!newIf || newIf === oldIf) return;
+      if (state.routers[name].interfaces[newIf]) {
+        toast(`Interface "${newIf}" already exists on ${name}`, 'error', 'Rename');
+        inp.value = oldIf; return;
+      }
+      const cur = state.routers[name].interfaces[oldIf];
+      const rebuilt = {};
+      for (const [k, v] of Object.entries(state.routers[name].interfaces)) {
+        rebuilt[k === oldIf ? newIf : k] = (k === oldIf ? cur : v);
+      }
+      state.routers[name].interfaces = rebuilt;
+      markDirty(); renderInspector(); renderCanvas(); renderNav();
+    });
+  });
+  elI.querySelectorAll('[data-iface-net]').forEach(s => {
+    s.addEventListener('change', () => {
+      state.routers[name].interfaces[s.getAttribute('data-iface-net')].network = s.value;
+      markDirty(); renderCanvas(); renderNav();
+    });
+  });
+  elI.querySelectorAll('[data-iface-addr]').forEach(i => {
+    i.addEventListener('input', () => {
+      state.routers[name].interfaces[i.getAttribute('data-iface-addr')].address = i.value.trim();
+      markDirty(); renderCanvas();
+    });
+  });
+  elI.querySelectorAll('[data-iface-cost]').forEach(i => {
+    i.addEventListener('input', () => {
+      const v = parseInt(i.value, 10);
+      state.routers[name].interfaces[i.getAttribute('data-iface-cost')].cost = isNaN(v) ? 0 : v;
+      markDirty(); renderCanvas();
+    });
+  });
+  elI.querySelector('#f-del').addEventListener('click', deleteSelected);
+  elI.querySelector('#f-dup').addEventListener('click', () => duplicateRouter(name));
+}
+
+/* ---------- crud ---------- */
+function renameKey(dict, oldK, newK) {
+  const cur = dict[oldK];
+  const out = {};
+  for (const [k, v] of Object.entries(dict)) out[k === oldK ? newK : k] = (k === oldK ? cur : v);
+  return out;
+}
+function renameNetwork(oldName, newName) {
+  if (!newName || newName === oldName) return;
+  if (state.networks[newName]) { toast(`LAN "${newName}" already exists`, 'error', 'Rename'); renderInspector(); return; }
+  state.networks = renameKey(state.networks, oldName, newName);
+  Object.values(state.hosts).forEach(h => { if (h.network === oldName) h.network = newName; });
+  Object.values(state.routers).forEach(r => Object.values(r.interfaces || {}).forEach(i => { if (i.network === oldName) i.network = newName; }));
+  state.selection = { kind: 'network', name: newName };
+  markDirty(); renderAll();
+}
+function renameHost(oldName, newName) {
+  if (!newName || newName === oldName) return;
+  if (state.hosts[newName]) { toast(`Host "${newName}" already exists`, 'error', 'Rename'); renderInspector(); return; }
+  state.hosts = renameKey(state.hosts, oldName, newName);
+  state.selection = { kind: 'host', name: newName };
+  markDirty(); renderAll();
+}
+function renameRouter(oldName, newName) {
+  if (!newName || newName === oldName) return;
+  if (state.routers[newName]) { toast(`Router "${newName}" already exists`, 'error', 'Rename'); renderInspector(); return; }
+  state.routers = renameKey(state.routers, oldName, newName);
+  state.selection = { kind: 'router', name: newName };
+  markDirty(); renderAll();
+}
+function duplicateNetwork(name) {
+  const newName = uniqueName(name + '_', state.networks);
+  const src = state.networks[name];
+  state.networks[newName] = { ...src, x: src.x + 30, y: src.y + 30 };
+  state.selection = { kind: 'network', name: newName };
+  markDirty(); renderAll();
+}
+function duplicateHost(name) {
+  const newName = uniqueName(name + '_', state.hosts);
+  const src = state.hosts[name];
+  state.hosts[newName] = { ...src, x: src.x + 30, y: src.y + 30 };
+  state.selection = { kind: 'host', name: newName };
+  markDirty(); renderAll();
+}
+function duplicateRouter(name) {
+  const newName = uniqueName(name + '_', state.routers);
+  const src = state.routers[name];
+  state.routers[newName] = JSON.parse(JSON.stringify(src));
+  state.routers[newName].x = src.x + 30; state.routers[newName].y = src.y + 30;
+  state.selection = { kind: 'router', name: newName };
+  markDirty(); renderAll();
+}
+function deleteSelected() {
+  if (!state.selection) return;
+  const { kind, name } = state.selection;
+  if (kind === 'network') {
+    const usedBy = [];
+    Object.entries(state.hosts).forEach(([hn, h]) => { if (h.network === name) usedBy.push(`host ${hn}`); });
+    Object.entries(state.routers).forEach(([rn, r]) => {
+      Object.entries(r.interfaces || {}).forEach(([ifn, iff]) => { if (iff.network === name) usedBy.push(`${rn}/${ifn}`); });
+    });
+    if (usedBy.length && !confirm(`LAN "${name}" is used by:\n  ${usedBy.join('\n  ')}\n\nDelete anyway? Their network field will be cleared.`)) return;
+    Object.values(state.hosts).forEach(h => { if (h.network === name) h.network = ''; });
+    Object.values(state.routers).forEach(r => Object.values(r.interfaces || {}).forEach(i => { if (i.network === name) i.network = ''; }));
+    delete state.networks[name];
+  } else if (kind === 'host') { delete state.hosts[name]; }
+  else if (kind === 'router') { delete state.routers[name]; }
+  state.selection = null;
+  markDirty(); renderAll();
+  toast(`${kind === 'network' ? 'LAN' : kind} "${name}" deleted`, 'ok');
+}
+function addNew(kind, world) {
+  const def = world || worldCenter();
+  if (kind === 'network') {
+    const name = uniqueName('lan', state.networks);
+    state.networks[name] = { cidr: '', x: def.x, y: def.y };
+    state.selection = { kind, name };
+  } else if (kind === 'host') {
+    const name = uniqueName('h', state.hosts);
+    state.hosts[name] = { network: '', address: '', x: def.x, y: def.y };
+    state.selection = { kind, name };
+    if (Object.keys(state.networks).length > 0) {
+      toast(`Created ${name} — drag onto a LAN to attach`, '', 'orphan host');
+    }
+  } else if (kind === 'router') {
+    const name = uniqueName('r', state.routers);
+    state.routers[name] = { x: def.x, y: def.y, interfaces: {} };
+    state.selection = { kind, name };
+    if (Object.keys(state.networks).length > 0) {
+      toast(`Created ${name} — drag onto LANs to add interfaces`, '', 'orphan router');
+    }
+  }
+  markDirty(); renderAll();
+}
+function worldCenter() {
+  const svg = canvasEl();
+  const rect = svg.getBoundingClientRect();
+  return clientToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
+}
+
+/* ---------- yaml ---------- */
+function exportYaml() {
+  const out = {};
+  out[state.asName || 'topology'] = {
+    networks: Object.fromEntries(Object.entries(state.networks).map(([k, v]) => [k, v.cidr || ''])),
+    hosts: Object.fromEntries(Object.entries(state.hosts).map(([k, v]) => [k, {
+      network: v.network || '', address: v.address || '',
+    }])),
+    routers: Object.fromEntries(Object.entries(state.routers).map(([k, v]) => [k, {
+      interfaces: Object.fromEntries(Object.entries(v.interfaces || {}).map(([ifn, iff]) => [ifn, {
+        network: iff.network || '',
+        address: iff.address || '',
+        cost: typeof iff.cost === 'number' ? iff.cost : (parseInt(iff.cost, 10) || 0),
+      }])),
+    }])),
+  };
+  return jsyaml.dump(out, { quotingType: '"', forceQuotes: true, lineWidth: -1, indent: 2 });
+}
+function importYaml(text) {
+  let parsed;
+  try { parsed = jsyaml.load(text); } catch (e) {
+    toast(e.message || 'Failed to parse YAML', 'error', 'Parse error'); return false;
+  }
+  if (!parsed || typeof parsed !== 'object') { toast('YAML root must be a mapping', 'error', 'Parse error'); return false; }
+  const keys = Object.keys(parsed);
+  if (keys.length === 0) { toast('YAML is empty', 'error', 'Parse error'); return false; }
+  const asName = keys[0];
+  const node = parsed[asName] || {};
+  state.asName = asName;
+  state.networks = {}; state.hosts = {}; state.routers = {};
+  if (node.networks && typeof node.networks === 'object') {
+    for (const [n, cidr] of Object.entries(node.networks)) state.networks[n] = { cidr: typeof cidr === 'string' ? cidr : String(cidr || '') };
+  }
+  if (node.hosts && typeof node.hosts === 'object') {
+    for (const [n, v] of Object.entries(node.hosts)) state.hosts[n] = { network: v?.network || '', address: v?.address || '' };
+  }
+  if (node.routers && typeof node.routers === 'object') {
+    for (const [n, v] of Object.entries(node.routers)) {
+      const ifaces = {};
+      if (v && v.interfaces && typeof v.interfaces === 'object') {
+        for (const [ifn, iff] of Object.entries(v.interfaces)) {
+          ifaces[ifn] = {
+            network: iff?.network || '', address: iff?.address || '',
+            cost: typeof iff?.cost === 'number' ? iff.cost : parseInt(iff?.cost, 10) || 0,
+          };
+        }
+      }
+      state.routers[n] = { interfaces: ifaces };
+    }
+  }
+  ensurePositions();
+  state.selection = null;
+  document.getElementById('proj-name').value = state.asName;
+  fitView();
+  persist(); renderAll();
+  toast('Topology imported', 'ok');
+  return true;
+}
+
+/* ---------- modal ---------- */
+function openModal({ title, text, primary, onPrimary, readonly = false }) {
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <div class="ttl">${escapeHtml(title)}</div>
+        <button class="x" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <textarea spellcheck="false" ${readonly ? 'readonly' : ''}>${escapeHtml(text || '')}</textarea>
+      </div>
+      <div class="modal-foot">
+        <button class="btn outline cancel">Cancel</button>
+        <button class="btn primary go">${escapeHtml(primary)}</button>
+      </div>
+    </div>
+  `;
+  const close = () => wrap.remove();
+  wrap.querySelector('.x').addEventListener('click', close);
+  wrap.querySelector('.cancel').addEventListener('click', close);
+  wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+  wrap.querySelector('.go').addEventListener('click', () => {
+    const v = wrap.querySelector('textarea').value;
+    if (onPrimary(v) !== false) close();
+  });
+  document.body.appendChild(wrap);
+  if (!readonly) wrap.querySelector('textarea').focus();
+}
+
+/* ---------- render coordinator ---------- */
+function renderAll() {
+  renderNav();
+  renderCanvas();
+  renderInspector();
+}
+
+/* ---------- wire ---------- */
+function wire() {
+  document.querySelectorAll('[data-theme-btn]').forEach(b => {
+    b.addEventListener('click', () => applyTheme(b.getAttribute('data-theme-btn')));
+  });
+  document.getElementById('btn-sample').addEventListener('click', loadSample);
+  document.getElementById('btn-import').addEventListener('click', () => {
+    openModal({
+      title: 'Import YAML', text: '', primary: 'Parse & load',
+      onPrimary: importYaml,
+    });
+  });
+  document.getElementById('btn-export').addEventListener('click', () => {
+    openModal({
+      title: 'Export YAML', text: exportYaml(),
+      primary: 'Copy to clipboard', readonly: true,
+      onPrimary: (v) => {
+        navigator.clipboard?.writeText(v).then(() => toast('YAML copied to clipboard', 'ok'));
+        return false;
+      },
+    });
+  });
+  document.getElementById('proj-name').addEventListener('change', e => {
+    state.asName = e.target.value.trim() || 'topology';
+    markDirty();
+  });
+
+  document.getElementById('tb-add-net').addEventListener('click',     () => addNew('network'));
+  document.getElementById('tb-add-host').addEventListener('click',    () => addNew('host'));
+  document.getElementById('tb-add-router').addEventListener('click',  () => addNew('router'));
+  document.getElementById('tb-fit').addEventListener('click', fitView);
+
+  document.getElementById('zoom-in').addEventListener('click', () => {
+    const c = worldCenter();
+    const k = Math.min(2.5, state.view.k * 1.15);
+    const rect = canvasEl().getBoundingClientRect();
+    state.view.x = rect.width / 2 - c.x * k;
+    state.view.y = rect.height / 2 - c.y * k;
+    state.view.k = k; applyView();
+  });
+  document.getElementById('zoom-out').addEventListener('click', () => {
+    const c = worldCenter();
+    const k = Math.max(0.25, state.view.k / 1.15);
+    const rect = canvasEl().getBoundingClientRect();
+    state.view.x = rect.width / 2 - c.x * k;
+    state.view.y = rect.height / 2 - c.y * k;
+    state.view.k = k; applyView();
+  });
+
+  document.getElementById('empty-add-net').addEventListener('click', () => addNew('network'));
+  document.getElementById('empty-sample').addEventListener('click', loadSample);
+
+  document.addEventListener('keydown', (e) => {
+    const t = e.target.tagName;
+    if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
+    if (e.key === 'Escape') { state.selection = null; closeContextMenu(); renderAll(); }
+    if (e.key === 'Delete') { if (state.selection) { e.preventDefault(); deleteSelected(); } }
+    const k = e.key.toLowerCase();
+    if (k === 'n') { e.preventDefault(); addNew('network'); }
+    if (k === 'h') { e.preventDefault(); addNew('host'); }
+    if (k === 'r') { e.preventDefault(); addNew('router'); }
+    if (k === 'f') { e.preventDefault(); fitView(); }
+  });
+
+  wireCanvas();
+
+  // close ctx on resize
+  window.addEventListener('resize', closeContextMenu);
+}
+
+/* ---------- init ---------- */
+function init() {
+  initTheme();
+  loadLayout();
+  if (!restore() ||
+    (Object.keys(state.networks).length === 0 &&
+     Object.keys(state.hosts).length === 0 &&
+     Object.keys(state.routers).length === 0)) {
+    state.asName = SAMPLE.asName;
+    state.networks = JSON.parse(JSON.stringify(SAMPLE.networks));
+    state.hosts = JSON.parse(JSON.stringify(SAMPLE.hosts));
+    state.routers = JSON.parse(JSON.stringify(SAMPLE.routers));
+  }
+  document.getElementById('proj-name').value = state.asName;
+  setSave('autosaved');
+  ensurePositions();
+  wire();
+  wireResizers();
+  renderAll();
+  // initial fit (after layout)
+  requestAnimationFrame(() => {
+    if (!state.view || (state.view.k === 1 && state.view.x === 0 && state.view.y === 0)) fitView();
+    else applyView();
+  });
+}
+init();
+</script>
+</body>
+</html>
