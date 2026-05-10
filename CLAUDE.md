@@ -61,7 +61,8 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 - If a behavior is intentionally undocumented (e.g. an internal helper), say nothing — do not write speculative docs.
 
 ### Commits
-- Short, imperative one-liners (see `git log`). No conventional-commit prefixes, no co-author trailers.
+- [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`, etc.
+- One-liner messages, imperative mood, no co-author trailers.
 
 ### After touching code
 - Run tests (red → green → refactor cycle complete, full suite green).
