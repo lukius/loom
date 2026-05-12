@@ -1,3 +1,4 @@
+import asyncio
 import os
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from .events import EventBus
 from .routes import devices as device_routes
 from .routes import sim as sim_routes
 from .routes import topology as topology_routes
+from .routes import ws as ws_routes
 from .state import SimState
 
 
@@ -23,6 +25,14 @@ def create_app() -> FastAPI:
     app.include_router(sim_routes.router)
     app.include_router(topology_routes.router)
     app.include_router(device_routes.router)
+    app.include_router(ws_routes.router)
+
+    @app.on_event("startup")
+    async def _wire_event_bus():
+        app.state.event_bus.attach_loop(asyncio.get_running_loop())
+        from entities.event import EventTracer  # noqa: PLC0415
+
+        EventTracer.subscribe(app.state.event_bus.emit)
 
     web_dir = Path(__file__).parent.parent.parent / "web"
     if web_dir.exists():

@@ -49,3 +49,43 @@ async def test_unsubscribe_removes_queue():
     bus.emit({"kind": "y"})
     await asyncio.sleep(0.05)
     assert q.empty()
+
+
+def test_ws_streams_packet_events(tmp_path, monkeypatch):
+    import textwrap
+
+    from fastapi.testclient import TestClient
+
+    from server.app import create_app
+
+    yaml_text = textwrap.dedent("""
+    as:
+      name: t
+      networks:
+        lan1: "10.0.0.0/24"
+      hosts:
+        h1: {network: lan1, address: "10.0.0.1"}
+        h2: {network: lan1, address: "10.0.0.2"}
+    """)
+    src = tmp_path / "src.yaml"
+    src.write_text(yaml_text)
+    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+
+    from entities.event import EventTracer
+
+    EventTracer._subscribers.clear()
+
+    app = create_app()
+    with TestClient(app) as c:
+        c.post("/topology", json={"yaml": yaml_text})
+        c.post("/sim/start")
+        with c.websocket_connect("/ws/events") as ws:
+            c.post("/devices/h1/command", json={"cmd": "send h2 hello"})
+            kinds = []
+            for _ in range(5):
+                try:
+                    kinds.append(ws.receive_json())
+                except Exception:
+                    break
+            types = [(e.get("kind"), e.get("type")) for e in kinds]
+            assert any(t == ("packet", "user_datagram") for t in types)
