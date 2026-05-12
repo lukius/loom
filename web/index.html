@@ -1026,6 +1026,30 @@ svg.canvas.linking { cursor: crosshair; }
 .insp-foot button.dup:hover { color: var(--accent-text); border-color: var(--accent); background: var(--accent-bg); }
 .insp-foot button.del:hover { color: var(--neg); border-color: var(--neg); background: color-mix(in srgb, var(--neg) 8%, transparent); }
 
+.insp-routes {
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+.insp-h {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-2);
+  margin: 0 0 4px;
+}
+.insp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11px;
+  margin-top: 6px;
+}
+.insp-table th, .insp-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.insp-table th { color: var(--text-2); font-weight: 500; }
+
 /* ============================================================
    modal
    ============================================================ */
@@ -1611,6 +1635,9 @@ const Sim = {
       const el = document.getElementById(id);
       if (el) el.disabled = (this.state === 'running');
     });
+    if (state.selection && (state.selection.kind === 'host' || state.selection.kind === 'router')) {
+      Inspector.refreshRoutes(state.selection.name);
+    }
   },
 
   async onPrimary() {
@@ -1709,6 +1736,34 @@ const PacketAnim = {
       else done();
     };
     requestAnimationFrame(tick);
+  },
+};
+
+/* ---------- Inspector ---------- */
+const Inspector = {
+  async refreshRoutes(deviceName) {
+    const sec = document.getElementById('insp-routes');
+    if (!sec) return;
+    if (Sim.state === 'idle' || !deviceName) { sec.hidden = true; return; }
+    try {
+      const r = await RuntimeClient.deviceRoutes(deviceName);
+      sec.hidden = false;
+      const rows = (r.rules || []).map(x =>
+        `<tr><td>${escapeHtml(x.prefix)}</td><td>${escapeHtml(x.next_hop)}</td><td>${escapeHtml(x.iface)}</td></tr>`
+      ).join('');
+      sec.innerHTML = `<h4 class="insp-h">Routing table — ${escapeHtml(deviceName)}</h4>` +
+        (rows
+          ? `<table class="insp-table"><thead><tr><th>Prefix</th><th>Next hop</th><th>Iface</th></tr></thead><tbody>${rows}</tbody></table>`
+          : '<div class="hint">(empty)</div>');
+    } catch (e) {
+      sec.hidden = true;
+    }
+  },
+
+  onRouteChange(evt) {
+    if (state && state.selection && state.selection.name === evt.device) {
+      this.refreshRoutes(evt.device);
+    }
   },
 };
 
@@ -1901,7 +1956,7 @@ Sim.refreshState().catch(() => setConnectionStatus(false));
 RuntimeClient.connectEvents((evt) => {
   if (evt.kind === 'sim_state') { Sim.state = evt.state; Sim._renderToolbar(); }
   if (evt.kind === 'packet') PacketAnim.play(evt);
-  // routing_table_changed handled in Phase 6 (Inspector)
+  if (evt.kind === 'routing_table_changed') Inspector.onRouteChange(evt);
 });
 
 /* ---------- helpers ---------- */
@@ -2932,6 +2987,7 @@ function renderHostInsp(name, elI) {
         <input id="f-addr" value="${escapeHtml(host.address || '')}" spellcheck="false" placeholder="192.168.0.10" />
       </div>
     </div>
+    <div class="insp-routes" id="insp-routes" hidden></div>
     <div class="insp-foot">
       <button class="dup" id="f-dup">Duplicate</button>
       <button class="del" id="f-del">Delete</button>
@@ -2950,6 +3006,7 @@ function renderHostInsp(name, elI) {
   });
   elI.querySelector('#f-del').addEventListener('click', deleteSelected);
   elI.querySelector('#f-dup').addEventListener('click', () => duplicateHost(name));
+  Inspector.refreshRoutes(name);
 }
 
 function renderRouterInsp(name, elI) {
@@ -3010,6 +3067,7 @@ function renderRouterInsp(name, elI) {
         <button class="add-if" id="add-if" style="margin-top:8px;">+ Add interface</button>
       </div>
     </div>
+    <div class="insp-routes" id="insp-routes" hidden></div>
     <div class="insp-foot">
       <button class="dup" id="f-dup">Duplicate</button>
       <button class="del" id="f-del">Delete</button>
@@ -3078,6 +3136,7 @@ function renderRouterInsp(name, elI) {
   });
   elI.querySelector('#f-del').addEventListener('click', deleteSelected);
   elI.querySelector('#f-dup').addEventListener('click', () => duplicateRouter(name));
+  Inspector.refreshRoutes(name);
 }
 
 /* ---------- crud ---------- */
