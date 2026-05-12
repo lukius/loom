@@ -44,6 +44,9 @@ Inside the REPL, load a topology before any other command:
 # route r1
 # send h1 h2 hello
 # update_cost r1 eth0 25
+# ifconfig h1
+# neighbors r1
+# ping h1 h2 -W 1.5
 ```
 
 Commands run from `src/`, so paths like `samples/...` are relative to the repo root and need `../samples/...`. The `send` payload is a **single whitespace-delimited token** — no quoting, no spaces.
@@ -100,5 +103,7 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 - **Dijkstra uses lazy deletion, not decrease-key.** `NetworkGraph._shortest_paths` pushes a fresh heap entry on every relaxation and skips stale pops via a `visited` set — O((V+E) log V). Don't reintroduce an in-place decrease-key scan.
 
 - **Mixed-language docstrings.** Shell help strings are in Spanish; code identifiers and most comments are in English. Keep new shell help in Spanish to match the user-facing convention; keep code in English.
+
+- **`PauseGate` gates packet propagation and keepalive.** `AS` owns one `PauseGate` (`src/entities/clock.py`). `Interface._pkt_loop` and `Network._pkt_loop` call `gate.wait_or_stop()` after each dequeue; `RoutingProtocol._keepalive_loop` waits on it instead of `time.sleep`. `AS.stop()` triggers the stop event, which wakes any blocked workers. New worker threads must follow the same pattern or they won't pause cleanly.
 
 - **Most fixtures under `test/resources/` are deliberately invalid** (e.g. `invalid_netmask.yaml`, `missing_as.yaml`). Don't "fix" them — they exist to assert the parser rejects them with the right error.
