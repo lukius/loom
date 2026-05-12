@@ -491,6 +491,11 @@ body.col-resizing * { cursor: col-resize !important; }
 .canv-toolbar .tb-btn.network .ico { color: var(--net); }
 .canv-toolbar .tb-btn.host    .ico { color: var(--host); }
 .canv-toolbar .tb-btn.router  .ico { color: var(--rtr); }
+.canv-toolbar .tb-btn.primary { background: var(--text); color: var(--bg); }
+.canv-toolbar .tb-btn.primary:hover { background: var(--accent); color: var(--accent-fg); }
+.canv-toolbar .tb-btn.running { color: var(--pos, #16a34a); animation: pulse 1.5s infinite; }
+.canv-toolbar .tb-btn.paused  { color: var(--warn, #d97706); }
+@keyframes pulse { 50% { opacity: 0.6; } }
 .canv-toolbar .div { width: 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
 
 .canv-zoom {
@@ -1203,6 +1208,9 @@ svg.canvas.linking { cursor: crosshair; }
     <circle cx="7"   cy="8.5" r="0.7" fill="currentColor"/>
     <circle cx="9.5" cy="8.5" r="0.7" fill="currentColor"/>
   </symbol>
+  <symbol id="ui-play" viewBox="0 0 16 16"><polygon points="3,2 13,8 3,14" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="ui-pause" viewBox="0 0 16 16"><rect x="3" y="2" width="3" height="12" fill="currentColor"/><rect x="10" y="2" width="3" height="12" fill="currentColor"/></symbol>
+  <symbol id="ui-reset" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8a5 5 0 1 0 1.5-3.5"/><polyline points="3,2 3,5 6,5"/></symbol>
 </defs>
 </svg>
 
@@ -1294,6 +1302,16 @@ svg.canvas.linking { cursor: crosshair; }
           <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4"/>
         </svg>
         Fit
+      </button>
+      <span class="div"></span>
+      <button class="tb-btn primary" id="tb-play" title="Start simulation (Space)">
+        <svg class="ico"><use href="#ui-play"/></svg> <span class="lbl">Start</span>
+      </button>
+      <button class="tb-btn" id="tb-pause" title="Pause simulation (P)" hidden>
+        <svg class="ico"><use href="#ui-pause"/></svg> <span class="lbl">Pause</span>
+      </button>
+      <button class="tb-btn" id="tb-reset" title="Revert topology to source" disabled>
+        <svg class="ico"><use href="#ui-reset"/></svg> Reset
       </button>
     </div>
 
@@ -1464,6 +1482,86 @@ const RuntimeClient = {
 function setConnectionStatus(connected) {
   // populated in Task 20 (toolbar)
 }
+
+/* ---------- Sim — start/stop/pause/resume state machine ---------- */
+const Sim = {
+  state: 'idle',
+  patch: [],
+
+  async refreshState() {
+    const s = await RuntimeClient.getState();
+    this.state = s.state;
+    this._renderToolbar();
+  },
+
+  _renderToolbar() {
+    const play = document.getElementById('tb-play');
+    const pause = document.getElementById('tb-pause');
+    const reset = document.getElementById('tb-reset');
+    const playLbl = play.querySelector('.lbl');
+
+    if (this.state === 'idle') {
+      playLbl.textContent = 'Start'; play.classList.remove('running', 'paused');
+      pause.hidden = true;
+      reset.disabled = false;
+    } else if (this.state === 'running') {
+      playLbl.textContent = 'Stop'; play.classList.add('running'); play.classList.remove('paused');
+      pause.hidden = false; pause.querySelector('.lbl').textContent = 'Pause';
+      reset.disabled = true;
+    } else if (this.state === 'paused') {
+      playLbl.textContent = 'Stop'; play.classList.add('paused'); play.classList.remove('running');
+      pause.hidden = false; pause.querySelector('.lbl').textContent = 'Resume';
+      reset.disabled = true;
+    }
+  },
+
+  async onPrimary() {
+    if (this.state === 'idle') {
+      const yaml = exportYaml();
+      await RuntimeClient.loadTopology(yaml);
+      await RuntimeClient.start();
+    } else {
+      await RuntimeClient.stop();
+      this.patch = [];
+    }
+    await this.refreshState();
+  },
+
+  async onSecondary() {
+    if (this.state === 'running') await RuntimeClient.pause();
+    else if (this.state === 'paused') {
+      await RuntimeClient.resume(this.patch);
+      this.patch = [];
+    }
+    await this.refreshState();
+  },
+
+  async onReset() {
+    if (this.state !== 'idle') return;
+    await RuntimeClient.resetTopology();
+    const { yaml } = await RuntimeClient.getTopology();
+    importYaml(yaml);
+  },
+};
+
+document.getElementById('tb-play').addEventListener('click', () => Sim.onPrimary());
+document.getElementById('tb-pause').addEventListener('click', () => Sim.onSecondary());
+document.getElementById('tb-reset').addEventListener('click', () => Sim.onReset());
+
+window.addEventListener('keydown', (e) => {
+  if (e.target.matches('input, textarea')) return;
+  if (e.code === 'Space') { e.preventDefault(); Sim.onPrimary(); }
+  if (e.key === 'p' || e.key === 'P') { e.preventDefault(); Sim.onSecondary(); }
+});
+
+// On load: sync toolbar state from backend; failure is silent (offline mode)
+Sim.refreshState().catch(() => setConnectionStatus(false));
+RuntimeClient.connectEvents((evt) => {
+  if (evt.kind === 'sim_state') {
+    Sim.state = evt.state; Sim._renderToolbar();
+  }
+  // packet handler wired in Phase 4
+});
 
 /* ---------- helpers ---------- */
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -2724,8 +2822,8 @@ function worldCenter() {
 
 /* ---------- yaml ---------- */
 function exportYaml() {
-  const out = {};
-  out[state.asName || 'topology'] = {
+  const out = { as: {
+    name: state.asName || 'topology',
     networks: Object.fromEntries(Object.entries(state.networks).map(([k, v]) => [k, v.cidr || ''])),
     hosts: Object.fromEntries(Object.entries(state.hosts).map(([k, v]) => [k, {
       network: v.network || '', address: v.address || '',
@@ -2737,7 +2835,7 @@ function exportYaml() {
         cost: typeof iff.cost === 'number' ? iff.cost : (parseInt(iff.cost, 10) || 0),
       }])),
     }])),
-  };
+  } };
   return jsyaml.dump(out, { quotingType: '"', forceQuotes: true, lineWidth: -1, indent: 2 });
 }
 function importYaml(text) {
@@ -2745,12 +2843,9 @@ function importYaml(text) {
   try { parsed = jsyaml.load(text); } catch (e) {
     toast(e.message || 'Failed to parse YAML', 'error', 'Parse error'); return false;
   }
-  if (!parsed || typeof parsed !== 'object') { toast('YAML root must be a mapping', 'error', 'Parse error'); return false; }
-  const keys = Object.keys(parsed);
-  if (keys.length === 0) { toast('YAML is empty', 'error', 'Parse error'); return false; }
-  const asName = keys[0];
-  const node = parsed[asName] || {};
-  state.asName = asName;
+  if (!parsed || !parsed.as) { toast('YAML root must be "as:"', 'error', 'Parse error'); return false; }
+  const node = parsed.as;
+  state.asName = node.name || 'unnamed_as';
   state.networks = {}; state.hosts = {}; state.routers = {};
   if (node.networks && typeof node.networks === 'object') {
     for (const [n, cidr] of Object.entries(node.networks)) state.networks[n] = { cidr: typeof cidr === 'string' ? cidr : String(cidr || '') };
