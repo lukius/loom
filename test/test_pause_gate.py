@@ -83,3 +83,21 @@ def test_wait_or_stop_timeout_returns_false_when_paused():
     gate.pause()
     running, stopped = gate.wait_or_stop(timeout=0.05)
     assert (running, stopped) == (False, False)
+
+
+def test_as_owns_a_gate():
+    from entities import AS
+    system = AS("demo")
+    gate = system.gate()
+    assert gate.is_running()
+
+
+def test_as_stop_releases_workers():
+    from entities import AS
+    system = AS("demo")
+    gate = system.gate()
+    gate.pause()
+    system.stop()
+    # workers waiting on the gate should now wake with stopped=True
+    running, stopped = gate.wait_or_stop(timeout=0.1)
+    assert (running, stopped) == (False, True)

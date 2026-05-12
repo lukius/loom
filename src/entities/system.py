@@ -1,4 +1,5 @@
 from .base import Entity
+from .clock import PauseGate
 from .exception import HostNotFoundException, RouterNotFoundException, NetworkNotFoundException
 from .host import Host
 from .device import NetworkDevice
@@ -12,6 +13,10 @@ class AS(Entity):
         self._networks = dict()
         self._routers = dict()
         self._hosts = dict()
+        self._gate = PauseGate()
+
+    def gate(self) -> PauseGate:
+        return self._gate
 
     def routers(self):
         return self._routers
@@ -56,6 +61,7 @@ class AS(Entity):
         self._hosts[host.name()] = host
 
     def stop(self):
+        self._gate.stop()
         for network in self._networks.values():
             network.stop()
         for router in self._routers.values():
