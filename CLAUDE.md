@@ -85,7 +85,7 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 
 - **Shell runs from `src/`, everything else from repo root.** The shell entry point uses bare-package imports (`from entities import ...`), so `cd src && python netrouting.py` is required. Pytest and ruff are configured to run from the repo root (`pyproject.toml`). Do not refactor imports to fix the cwd quirk without first updating both the shell entry and `pyproject.toml`'s `pythonpath`.
 
-- **`samples/sample.yaml` uses the key `test_as:` while the parser requires `as:`.** Loading it as-is fails with `missing "as" key`. Either rename the top-level key when demoing, or treat the sample as a schema reference rather than a runnable file.
+- **`samples/sample.yaml` is a valid, runnable topology.** Load it with `# read ../samples/sample.yaml` from the shell (note the `../` since the shell runs from `src/`).
 
 - **Link-state with sequence-numbered flooding.** `RoutingProtocol` (`src/routing/protocol.py`) broadcasts a `RoutingMessage` from every interface every `KEEPALIVE_INTERVAL = 10s` on a daemon thread per router. Receivers re-flood out of every interface *except* the one the message arrived on, deduplicated by `(src_address, seq)`. Recompute paths only when the local `NetworkGraph` actually changes — preserve that guard when editing, otherwise routing tables churn on every keepalive.
 
@@ -97,7 +97,7 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 
 - **`Shell.cmd` decorator → `requires_system`.** Shell commands that require a loaded topology are decorated with `@requires_system` (a module-level function in `src/shell/shell.py`). This avoids the old Python descriptor-protocol issue; `functools.wraps` preserves docstrings so `cmd.Cmd` lists them correctly. Add new commands with `@requires_system`; leave bootstrapping commands like `do_read` undecorated.
 
-- **Dijkstra heap uses linear scan for decrease-key.** `NetworkGraph._shortest_paths` re-heapifies after locating the entry by `data() == neighbor`. Correct but O(V) per relaxation — acceptable for the toy graphs in scope; flag if topology sizes grow.
+- **Dijkstra uses lazy deletion.** `NetworkGraph._shortest_paths` pushes a new heap entry on relaxation and skips stale pops via a `visited` set — O((V+E) log V). No linear scan.
 
 - **Mixed-language docstrings.** Shell help strings are in Spanish; code identifiers and most comments are in English. Keep new shell help in Spanish to match the user-facing convention; keep code in English.
 
