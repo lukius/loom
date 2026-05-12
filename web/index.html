@@ -1506,6 +1506,37 @@ function updatePatchIndicator() {
   }
 }
 
+/* ---------- patch reconciliation ---------- */
+function reconcilePatch(patch) {
+  const out = [];
+  for (const op of patch) {
+    if (op.op === 'add_network') {
+      const net = state.networks[op.name];
+      if (!net) continue;  // dropped before resume
+      out.push({ op: 'add_network', name: op.name, address: net.cidr });
+    } else if (op.op === 'add_host') {
+      const host = state.hosts[op.name];
+      if (!host) continue;
+      const o = { op: 'add_host', name: op.name, network: host.network, address: host.address };
+      if (host.gateway) o.gateway = host.gateway;
+      out.push(o);
+    } else if (op.op === 'add_router') {
+      const router = state.routers[op.name];
+      if (!router) continue;
+      const ifaces = Object.entries(router.interfaces || {}).map(([iname, iff]) => ({
+        name: iname,
+        network: iff.network,
+        address: iff.address,
+        cost: typeof iff.cost === 'number' ? iff.cost : (parseInt(iff.cost, 10) || 1),
+      }));
+      out.push({ op: 'add_router', name: op.name, interfaces: ifaces });
+    } else {
+      out.push(op);  // remove_*, update_cost — pass through
+    }
+  }
+  return out;
+}
+
 /* ---------- Sim — start/stop/pause/resume state machine ---------- */
 const Sim = {
   state: 'idle',
@@ -1558,7 +1589,9 @@ const Sim = {
   async onSecondary() {
     if (this.state === 'running') await RuntimeClient.pause();
     else if (this.state === 'paused') {
-      await RuntimeClient.resume(this.patch);
+      const resolved = reconcilePatch(this.patch);
+      console.log('resuming with patch:', resolved);
+      await RuntimeClient.resume(resolved);
       this.patch = [];
       updatePatchIndicator();
     }
@@ -2745,7 +2778,9 @@ function renderRouterInsp(name, elI) {
       const v = parseInt(i.value, 10);
       const ifn = i.getAttribute('data-iface-cost');
       state.routers[name].interfaces[ifn].cost = isNaN(v) ? 0 : v;
-      recordPatchOp({ op: 'update_cost', router: name, iface: ifn, cost: isNaN(v) ? 0 : v });
+      if (!isNaN(v) && v > 0) {
+        recordPatchOp({ op: 'update_cost', router: name, iface: ifn, cost: v });
+      }
       markDirty(); renderCanvas();
     });
   });
