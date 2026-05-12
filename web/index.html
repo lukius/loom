@@ -1483,6 +1483,29 @@ function setConnectionStatus(connected) {
   // populated in Task 20 (toolbar)
 }
 
+/* ---------- topology lock + patch accumulator ---------- */
+function isTopologyLocked() {
+  return Sim && Sim.state === 'running';
+}
+
+function recordPatchOp(op) {
+  if (Sim && Sim.state === 'paused') {
+    Sim.patch.push(op);
+    updatePatchIndicator();
+  }
+}
+
+function updatePatchIndicator() {
+  const pause = document.getElementById('tb-pause');
+  if (!pause) return;
+  const lbl = pause.querySelector('.lbl');
+  if (Sim.state === 'paused' && Sim.patch.length > 0) {
+    lbl.textContent = `Resume (${Sim.patch.length} edits)`;
+  } else if (Sim.state === 'paused') {
+    lbl.textContent = 'Resume';
+  }
+}
+
 /* ---------- Sim — start/stop/pause/resume state machine ---------- */
 const Sim = {
   state: 'idle',
@@ -1510,9 +1533,14 @@ const Sim = {
       reset.disabled = true;
     } else if (this.state === 'paused') {
       playLbl.textContent = 'Stop'; play.classList.add('paused'); play.classList.remove('running');
-      pause.hidden = false; pause.querySelector('.lbl').textContent = 'Resume';
+      pause.hidden = false; updatePatchIndicator();
       reset.disabled = true;
     }
+    const lockable = ['tb-add-net', 'tb-add-host', 'tb-add-router'];
+    lockable.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = (this.state === 'running');
+    });
   },
 
   async onPrimary() {
@@ -1532,6 +1560,7 @@ const Sim = {
     else if (this.state === 'paused') {
       await RuntimeClient.resume(this.patch);
       this.patch = [];
+      updatePatchIndicator();
     }
     await this.refreshState();
   },
@@ -2044,6 +2073,7 @@ let rclickTimer = null;
 function attachNodeEvents(g, kind, name) {
   g.addEventListener('pointerdown', (e) => {
     if (e.button === 2) return; // right-click handled separately
+    if (isTopologyLocked()) return;
     e.stopPropagation();
     // capture on the node itself so the synthesized click event stays on the
     // node — capturing on the canvas redirects click to the SVG, which would
@@ -2361,6 +2391,7 @@ function openContextMenu(clientX, clientY, target, world) {
 }
 
 function handleCtxAction(act, target, world, arg) {
+  if (isTopologyLocked()) return;
   switch (act) {
     case 'new-net':    addNew('network', world); break;
     case 'new-host':   addNew('host', world); break;
@@ -2712,7 +2743,9 @@ function renderRouterInsp(name, elI) {
   elI.querySelectorAll('[data-iface-cost]').forEach(i => {
     i.addEventListener('input', () => {
       const v = parseInt(i.value, 10);
-      state.routers[name].interfaces[i.getAttribute('data-iface-cost')].cost = isNaN(v) ? 0 : v;
+      const ifn = i.getAttribute('data-iface-cost');
+      state.routers[name].interfaces[ifn].cost = isNaN(v) ? 0 : v;
+      recordPatchOp({ op: 'update_cost', router: name, iface: ifn, cost: isNaN(v) ? 0 : v });
       markDirty(); renderCanvas();
     });
   });
@@ -2773,6 +2806,7 @@ function duplicateRouter(name) {
   markDirty(); renderAll();
 }
 function deleteSelected() {
+  if (isTopologyLocked()) return;
   if (!state.selection) return;
   const { kind, name } = state.selection;
   if (kind === 'network') {
@@ -2785,22 +2819,31 @@ function deleteSelected() {
     Object.values(state.hosts).forEach(h => { if (h.network === name) h.network = ''; });
     Object.values(state.routers).forEach(r => Object.values(r.interfaces || {}).forEach(i => { if (i.network === name) i.network = ''; }));
     delete state.networks[name];
-  } else if (kind === 'host') { delete state.hosts[name]; }
-  else if (kind === 'router') { delete state.routers[name]; }
+    recordPatchOp({ op: 'remove_network', name });
+  } else if (kind === 'host') {
+    delete state.hosts[name];
+    recordPatchOp({ op: 'remove_host', name });
+  } else if (kind === 'router') {
+    delete state.routers[name];
+    recordPatchOp({ op: 'remove_router', name });
+  }
   state.selection = null;
   markDirty(); renderAll();
   toast(`${kind === 'network' ? 'LAN' : kind} "${name}" deleted`, 'ok');
 }
 function addNew(kind, world) {
+  if (isTopologyLocked()) return;
   const def = world || worldCenter();
   if (kind === 'network') {
     const name = uniqueName('lan', state.networks);
     state.networks[name] = { cidr: '', x: def.x, y: def.y };
     state.selection = { kind, name };
+    recordPatchOp({ op: 'add_network', name, address: '' });
   } else if (kind === 'host') {
     const name = uniqueName('h', state.hosts);
     state.hosts[name] = { network: '', address: '', x: def.x, y: def.y };
     state.selection = { kind, name };
+    recordPatchOp({ op: 'add_host', name, network: '', address: '' });
     if (Object.keys(state.networks).length > 0) {
       toast(`Created ${name} — drag onto a LAN to attach`, '', 'orphan host');
     }
@@ -2808,6 +2851,7 @@ function addNew(kind, world) {
     const name = uniqueName('r', state.routers);
     state.routers[name] = { x: def.x, y: def.y, interfaces: {} };
     state.selection = { kind, name };
+    recordPatchOp({ op: 'add_router', name, interfaces: [] });
     if (Object.keys(state.networks).length > 0) {
       toast(`Created ${name} — drag onto LANs to add interfaces`, '', 'orphan router');
     }
