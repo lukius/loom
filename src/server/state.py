@@ -149,7 +149,11 @@ class SimState:
             r = self._as.routers().get(op.get("router"))
             if r is None or op.get("iface") not in r.interfaces():
                 raise InvalidStateTransition("interface_not_found", op.get("iface", ""))
-            if int(op.get("cost", 0)) <= 0:
+            try:
+                cost = int(op.get("cost", 0))
+            except (ValueError, TypeError):
+                raise InvalidStateTransition("invalid_cost", str(op.get("cost", "")))
+            if cost <= 0:
                 raise InvalidStateTransition("invalid_cost", str(op.get("cost", "")))
         else:
             raise InvalidStateTransition("unknown_op", str(kind))

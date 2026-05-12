@@ -77,3 +77,34 @@ def test_update_cost_patch(client):
         {"op": "update_cost", "router": "r99", "iface": "eth0", "cost": 5}
     ]})
     assert r.status_code == 400
+
+
+def test_update_cost_invalid_value_returns_400(tmp_path, monkeypatch):
+    yaml_with_router = textwrap.dedent("""
+    as:
+      name: t
+      networks:
+        lan1: "10.0.0.0/24"
+      routers:
+        r1: {interfaces: {eth0: {network: lan1, address: "10.0.0.254", cost: 1}}}
+    """)
+    src = tmp_path / "src.yaml"
+    src.write_text(yaml_with_router)
+    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+    with TestClient(create_app()) as c:
+        c.post("/topology", json={"yaml": yaml_with_router})
+        # Force paused state directly: Router threads can't be restarted after
+        # load_from_session stops them (Python threading limitation).  Setting
+        # _state directly is the minimal workaround to test resume patch
+        # validation without a full start/stop cycle.
+        sim = c.app.state.sim_state
+        sim._state = "paused"  # noqa: SLF001
+        r = c.post(
+            "/sim/resume",
+            json={"patch": [
+                {"op": "update_cost", "router": "r1", "iface": "eth0",
+                 "cost": "not-a-number"}
+            ]},
+        )
+    assert r.status_code == 400
+    assert "invalid_cost" in r.json().get("detail", "")
