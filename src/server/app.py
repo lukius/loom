@@ -25,8 +25,10 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="netrouting", lifespan=lifespan)
 
+    _repo_root = Path(__file__).parent.parent.parent
+    _default_topology = str(_repo_root / "samples" / "sample.yaml")
     source = Path(
-        os.environ.get("NETROUTING_TOPOLOGY", "samples/sample.yaml")
+        os.environ.get("NETROUTING_TOPOLOGY", _default_topology)
     ).resolve()
     app.state.sim_state = SimState(source)
     app.state.event_bus = EventBus()
