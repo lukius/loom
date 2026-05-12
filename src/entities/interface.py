@@ -9,11 +9,12 @@ from .packet import Datagram, Frame
 
 class Interface(Entity):
 
-    def __init__(self, name, network, address, cost=0):
+    def __init__(self, name, network, address, cost=0, gate=None):
         super().__init__(name)
         self._net = network
         self._address = address
         self._cost = cost
+        self._gate = gate
         self._device = None
 
         self._in_queue = queue.Queue()
@@ -63,6 +64,11 @@ class Interface(Entity):
             if frame is None:
                 self._stopped = True
                 continue
+            if self._gate is not None:
+                running, stopped = self._gate.wait_or_stop()
+                if stopped:
+                    self._stopped = True
+                    continue
             try:
                 if self._device is None:
                     raise Exception('interface not ready')

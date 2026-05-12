@@ -101,3 +101,43 @@ def test_as_stop_releases_workers():
     # workers waiting on the gate should now wake with stopped=True
     running, stopped = gate.wait_or_stop(timeout=0.1)
     assert (running, stopped) == (False, True)
+
+
+def test_paused_interface_does_not_dispatch():
+    import os
+    import tempfile
+    import textwrap
+
+    from parser import Parser
+
+    yaml_text = textwrap.dedent("""
+    as:
+      name: t
+      networks:
+        lan1: "10.0.0.0/24"
+      hosts:
+        h1: {network: lan1, address: "10.0.0.1"}
+        h2: {network: lan1, address: "10.0.0.2"}
+    """)
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_text)
+        path = f.name
+    try:
+        system = Parser(path).parse()
+        system.gate().pause()
+
+        h1 = system.host("h1")
+        h2 = system.host("h2")
+        from entities import UserMessage
+
+        msg = UserMessage("hi")
+        h1.send_message_to(msg, h2.address())
+
+        time.sleep(0.1)
+        # The frame is enqueued but the network's _pkt_loop is gated.
+        # We expect h2 NOT to have received it yet.
+        # Sanity: the network's in_queue should still contain a pending item.
+        assert h2.network()._in_queue.qsize() > 0, "expected packet to be queued, not dispatched"  # noqa: E501
+    finally:
+        system.stop()
+        os.unlink(path)

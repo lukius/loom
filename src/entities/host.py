@@ -7,14 +7,15 @@ from .packet import Datagram, UserMessage
 
 class Host(NetworkDevice):
 
-    def __init__(self, name, net, address, gw_address=None):
+    def __init__(self, name, net, address, gw_address=None, gate=None):
         super().__init__(name)
 
         iface_name = f'iface_{name}'
-        self._interface = Interface(iface_name, net, address)
+        self._interface = Interface(iface_name, net, address, gate=gate)
         self.add_interface(self._interface)
 
         self._gw_address = gw_address
+        self._gate = gate
 
     def network(self):
         return self._interface.network()

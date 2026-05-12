@@ -9,9 +9,10 @@ from .device import NetworkDevice
 
 class Network(Entity):
 
-    def __init__(self, name, address):
+    def __init__(self, name, address, gate=None):
         super().__init__(name)
         self._address = address
+        self._gate = gate
         self._interfaces = dict()
         self._in_queue = queue.Queue()
 
@@ -76,9 +77,22 @@ class Network(Entity):
 
     def _pkt_loop(self):
         while not self._stopped:
-            packet = self._in_queue.get()
+            if self._gate is not None:
+                running, stopped = self._gate.wait_or_stop()
+                if stopped:
+                    self._stopped = True
+                    continue
+            try:
+                packet = self._in_queue.get(timeout=0.05)
+            except queue.Empty:
+                continue
             if packet is None:
                 self._stopped = True
+                continue
+            if self._gate is not None and not self._gate.is_running():
+                # Gate was paused between the check above and the dequeue:
+                # put the packet back so it stays observable in the queue.
+                self._in_queue.put(packet)
                 continue
             try:
                 self._dispatch_packet(packet)

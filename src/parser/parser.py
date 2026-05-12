@@ -46,7 +46,7 @@ class Parser:
         for name, addr in network_dict.items():
             address = self._parse_net_address(name, addr, validator)
 
-            net = Network(name, address)
+            net = Network(name, address, gate=system.gate())
             result = validator.validate_network(net)
             if not result.ok():
                 self._fail(f'{name}: {result.reason()}')
@@ -85,7 +85,7 @@ class Parser:
                 except ValueError:
                     self._fail(f'{name}: {iface_name}: invalid cost')
 
-                iface = Interface(iface_name, net, address, cost)
+                iface = Interface(iface_name, net, address, cost, gate=system.gate())
                 net.add_interface(iface)
                 router.add_interface(iface)
 
@@ -121,7 +121,7 @@ class Parser:
                     self._fail(f'{name}: {result.reason()}')
                 gw_address = Address(addr_str)
 
-            host = Host(name, net, address, gw_address)
+            host = Host(name, net, address, gw_address, gate=system.gate())
 
             result = validator.validate_host(host)
             if not result.ok():
