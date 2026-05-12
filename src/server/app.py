@@ -38,6 +38,5 @@ def create_app() -> FastAPI:
 
     web_dir = Path(__file__).parent.parent.parent / "web"
     if web_dir.exists():
-        app.mount("/web", StaticFiles(directory=str(web_dir), html=True), name="web")
-    # Note: SPA served at /web during dev; final mount-at-root in Task 16.
+        app.mount("/", StaticFiles(directory=str(web_dir), html=True), name="web")
     return app

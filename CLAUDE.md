@@ -18,8 +18,8 @@ netrouting/
 ├── samples/sample.yaml    # Example topology
 ├── web/index.html         # Interactive topology designer SPA
 ├── pyproject.toml         # ruff + pytest config (sets pythonpath = ["src"], testpaths = ["test"])
-├── requirements.txt       # Runtime deps (PyYAML)
-├── requirements-dev.txt   # Dev deps: includes runtime + pytest + ruff
+├── requirements.txt       # Runtime deps (PyYAML, FastAPI, uvicorn)
+├── requirements-dev.txt   # Dev deps: + pytest, pytest-asyncio, ruff, httpx
 └── README.md              # Quick start and project overview
 ```
 
