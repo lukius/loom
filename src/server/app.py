@@ -1,5 +1,6 @@
 import asyncio
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -14,7 +15,15 @@ from .state import SimState
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="netrouting")
+    @asynccontextmanager
+    async def lifespan(app):
+        app.state.event_bus.attach_loop(asyncio.get_running_loop())
+        from entities.event import EventTracer  # noqa: PLC0415
+
+        EventTracer.subscribe(app.state.event_bus.emit)
+        yield
+
+    app = FastAPI(title="netrouting", lifespan=lifespan)
 
     source = Path(
         os.environ.get("NETROUTING_TOPOLOGY", "samples/sample.yaml")
@@ -26,13 +35,6 @@ def create_app() -> FastAPI:
     app.include_router(topology_routes.router)
     app.include_router(device_routes.router)
     app.include_router(ws_routes.router)
-
-    @app.on_event("startup")
-    async def _wire_event_bus():
-        app.state.event_bus.attach_loop(asyncio.get_running_loop())
-        from entities.event import EventTracer  # noqa: PLC0415
-
-        EventTracer.subscribe(app.state.event_bus.emit)
 
     web_dir = Path(__file__).parent.parent.parent / "web"
     if web_dir.exists():
