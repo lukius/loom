@@ -1,4 +1,5 @@
-test_as:
+as:
+  name: test_as
   networks:
     lan1: "200.100.0.0/24"
     lan2: "100.200.0.0/24"

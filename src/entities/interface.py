@@ -1,8 +1,9 @@
 import queue
 import threading
+import traceback
 
-from .base import Entity
 from .address import Address
+from .base import Entity
 from .packet import Datagram, Frame
 
 
@@ -62,7 +63,9 @@ class Interface(Entity):
             if frame is None:
                 self._stopped = True
                 continue
-            if self._device is None:
-                # TODO: interface not ready exception
-                raise Exception('interface not ready')
-            self._device.handle_packet(frame.payload(), self)
+            try:
+                if self._device is None:
+                    raise Exception('interface not ready')
+                self._device.handle_packet(frame.payload(), self)
+            except Exception:
+                traceback.print_exc()

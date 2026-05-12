@@ -1,10 +1,8 @@
-import collections
 from datetime import datetime
-from typing import List
 from threading import Lock
 
 
-class Event(object):
+class Event:
 
     _id_seq = 0
     _id_lock = Lock()
@@ -51,7 +49,7 @@ class MessageEvent(Event):
         return self._on_forwarded(*args, **kwargs)
 
 
-class EventLog(object):
+class EventLog:
 
     def __init__(self):
         self._logs = list()
@@ -72,7 +70,7 @@ class EventLog(object):
             return '\n'.join(self._logs)
 
 
-class EventTracer(object):
+class EventTracer:
 
     _events = dict()
     _lock = Lock()
@@ -107,21 +105,3 @@ class EventTracer(object):
 
         if event is not None:
             return event.on_forwarded(src, dst, datagram)
-
-    @classmethod
-    def dump(cls, event_id):
-        if event_id in cls._events:
-            return cls._events[event_id].dump()
-
-    @classmethod
-    def _message_sent_log(cls, src, dst, msg):
-        return f'message sent: {src} -> {dst}: {msg.payload()}'
-
-    @classmethod
-    def _message_received_log(cls, dst, msg):
-        return f'message received: {dst}: {msg.payload()}'
-
-    @classmethod
-    def _datagram_forwarded_log(cls, src, dst, datagram):
-        return f'datagram forwarded: {src} -> {dst}'
-

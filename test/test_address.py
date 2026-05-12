@@ -1,8 +1,36 @@
 import unittest
+
 from entities import Address, NetworkAddress
 
 
 class AddressTest(unittest.TestCase):
+
+    def test_eq_hash_contract_same_subnet(self):
+        a = NetworkAddress('192.168.1.0/24')
+        b = NetworkAddress('192.168.1.50/24')
+        self.assertEqual(a, b)  # both canonicalize to 192.168.1.0/24
+        self.assertEqual(hash(a), hash(b))
+
+    def test_eq_structural_different_subnets(self):
+        a = NetworkAddress('192.168.1.0/24')
+        b = NetworkAddress('192.168.2.0/24')
+        self.assertNotEqual(a, b)
+
+    def test_host_bits_canonicalized(self):
+        canonical = NetworkAddress('192.168.1.0/24')
+        with_host_bits = NetworkAddress('192.168.1.50/24')
+        self.assertEqual(canonical, with_host_bits)
+        self.assertEqual(hash(canonical), hash(with_host_bits))
+
+    def test_contains_subnet_membership(self):
+        net_addr = NetworkAddress('192.168.1.0/24')
+        self.assertTrue(net_addr.contains(Address('192.168.1.1')))
+        self.assertTrue(net_addr.contains(Address('192.168.1.254')))
+        self.assertFalse(net_addr.contains(Address('192.168.2.1')))
+
+    def test_str_uses_canonical_prefix(self):
+        addr = NetworkAddress('192.168.1.50/24')
+        self.assertEqual(str(addr), '192.168.1.0/24')
 
     def test_basic_address_matching(self):
         net_addr = NetworkAddress('100.100.100.0/24')
@@ -52,3 +80,11 @@ class AddressTest(unittest.TestCase):
 
         net_addr = NetworkAddress('100.100.96.0/21')
         self.assertEqual(net_addr.broadcast(), '100.100.103.255')
+
+    def test_broadcast_address_slash32(self):
+        net_addr = NetworkAddress('1.2.3.4/32')
+        self.assertEqual(net_addr.broadcast(), '1.2.3.4')
+
+    def test_broadcast_address_slash0(self):
+        net_addr = NetworkAddress('0.0.0.0/0')
+        self.assertEqual(net_addr.broadcast(), '255.255.255.255')

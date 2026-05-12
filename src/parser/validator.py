@@ -3,7 +3,7 @@ from collections import defaultdict
 from entities import Network, Router, Host, NetworkDevice
 
 
-class ValidationResult(object):
+class ValidationResult:
 
     def ok(self):
         raise NotImplementedError
@@ -30,7 +30,7 @@ class ValidationSuccess(ValidationResult):
         return True
 
 
-class SystemValidator(object):
+class SystemValidator:
 
     def __init__(self, system):
         self._addr_validator = AddressValidator(system)
@@ -51,7 +51,7 @@ class SystemValidator(object):
         return self._host_validator.validate(host)
 
 
-class Validator(object):
+class Validator:
 
     def __init__(self, system):
         self._system = system

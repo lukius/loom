@@ -1,6 +1,6 @@
 import unittest
 
-from entities import RoutingTable, NetworkAddress, Address, Interface, Network
+from entities import Address, Interface, Network, NetworkAddress, RoutingTable
 
 
 class RoutingTableTest(unittest.TestCase):
@@ -128,3 +128,26 @@ class RoutingTableTest(unittest.TestCase):
         self.assertTrue(result.succeeded())
         self.assertEqual(result.next_hop(), '125.101.12.2')
         self.assertEqual(result.interface().name(), 'eth2')
+
+    def test_add_rule_dedup_with_host_bits(self):
+        table = RoutingTable()
+
+        net = Network('lan1', NetworkAddress('10.0.0.0/24'))
+        iface1 = Interface('eth0', net, Address('10.0.0.1'))
+        iface2 = Interface('eth1', net, Address('10.0.0.2'))
+
+        table.add_rule(
+            prefix=NetworkAddress('10.0.0.0/24'),
+            next_hop=Address('10.0.0.1'),
+            interface=iface1
+        )
+        table.add_rule(
+            prefix=NetworkAddress('10.0.0.50/24'),
+            next_hop=Address('10.0.0.2'),
+            interface=iface2
+        )
+
+        self.assertEqual(len(table.rules()), 1)
+        result = table.match(Address('10.0.0.100'))
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.next_hop(), '10.0.0.2')

@@ -1,16 +1,17 @@
-from typing import List
+import sys
 from threading import Lock
-
-from .device import NetworkDevice
-from .address import NetworkAddress, Address, NullAddress
-from .interface import Interface
-from .packet import Datagram, RoutingMessage
-from .event import EventTracer
+from typing import List
 
 from routing import RoutingProtocol
 
+from .address import Address, NetworkAddress, NullAddress
+from .device import NetworkDevice
+from .event import EventTracer
+from .interface import Interface
+from .packet import Datagram, RoutingMessage
 
-class RoutingRule(object):
+
+class RoutingRule:
 
     _address: NetworkAddress
     _next_hop: Address
@@ -34,7 +35,7 @@ class RoutingRule(object):
         return self._interface
 
 
-class MatchingResult(object):
+class MatchingResult:
 
     def succeeded(self) -> bool:
         raise NotImplementedError
@@ -62,7 +63,7 @@ class MatchingSuccess(MatchingResult):
         return self._interface
 
 
-class RoutingTable(object):
+class RoutingTable:
 
     _rules: List[RoutingRule]
 
@@ -151,6 +152,12 @@ class Router(NetworkDevice):
         return EventTracer.message_received(src=interface.address(), msg=msg)
 
     def _handle_forwarding(self, packet: Datagram):
+        packet.decrement_ttl()
+        if packet.ttl() <= 0:
+            dst = packet.destination()
+            print(f'TTL expired: dropping datagram to {dst}', file=sys.stderr)
+            return None
+
         dest = packet.destination()
         result = self._routing_table.match(dest)
         if not result.succeeded():
@@ -164,4 +171,6 @@ class Router(NetworkDevice):
 
         out_iface.send_to(packet, next_hop)
 
-        return EventTracer.datagram_forwarded(src=out_iface.address(), dst=next_hop, datagram=packet)
+        return EventTracer.datagram_forwarded(
+            src=out_iface.address(), dst=next_hop, datagram=packet
+        )

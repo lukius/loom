@@ -1,9 +1,10 @@
 import queue
 import threading
+import traceback
 
+from .address import Address
 from .base import Entity
 from .device import NetworkDevice
-from .address import Address
 
 
 class Network(Entity):
@@ -79,5 +80,8 @@ class Network(Entity):
             if packet is None:
                 self._stopped = True
                 continue
-            self._dispatch_packet(packet)
+            try:
+                self._dispatch_packet(packet)
+            except Exception:
+                traceback.print_exc()
 

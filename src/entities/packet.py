@@ -3,7 +3,7 @@ import uuid
 from .address import NetworkAddress
 
 
-class Packet(object):
+class Packet:
 
     def __init__(self, src_addr, dst_addr, payload):
         self._src_addr = src_addr
@@ -25,12 +25,23 @@ class Frame(Packet):
     pass
 
 
+_DEFAULT_TTL = 64
+
+
 class Datagram(Packet):
 
-    pass
+    def __init__(self, src_addr, dst_addr, payload, ttl=_DEFAULT_TTL):
+        super().__init__(src_addr, dst_addr, payload)
+        self._ttl = ttl
+
+    def ttl(self):
+        return self._ttl
+
+    def decrement_ttl(self):
+        self._ttl -= 1
 
 
-class Message(object):
+class Message:
 
     def __init__(self):
         self._id = uuid.uuid4()

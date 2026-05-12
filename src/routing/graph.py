@@ -2,7 +2,7 @@ import collections
 import heapq
 
 
-class HeapItem(object):
+class HeapItem:
 
     def __init__(self, weight, data):
         self._weight = weight
@@ -21,7 +21,7 @@ class HeapItem(object):
         return self._weight <= other.weight()
 
 
-class NetworkGraph(object):
+class NetworkGraph:
 
     def __init__(self):
         self._routers = list()
@@ -69,11 +69,10 @@ class NetworkGraph(object):
             raise Exception('missing src in graph')
 
         costs = list()
-        distances = collections.defaultdict(lambda: 0)
-        previous = collections.defaultdict(lambda: 0)
+        distances = {}
+        previous = {}
         for node, weight in self.neighbors(src).items():
-            item = HeapItem(weight, node)
-            heapq.heappush(costs, item)
+            heapq.heappush(costs, HeapItem(weight, node))
             distances[node] = weight
             previous[node] = src
         visited = {src}
@@ -83,30 +82,21 @@ class NetworkGraph(object):
             current_dist = item.weight()
             current = item.data()
 
+            if current in visited:
+                continue
+
+            visited.add(current)
+
             for neighbor, weight in self.neighbors(current).items():
                 if neighbor in visited:
                     continue
 
                 new_neighbor_dist = current_dist + weight
 
-                if neighbor not in distances:
-                    item = HeapItem(new_neighbor_dist, neighbor)
-                    heapq.heappush(costs, item)
+                if neighbor not in distances or new_neighbor_dist < distances[neighbor]:
                     distances[neighbor] = new_neighbor_dist
                     previous[neighbor] = current
-                    continue
-
-                current_neighbor_dist = distances[neighbor]
-                if new_neighbor_dist < current_neighbor_dist:
-                    distances[neighbor] = new_neighbor_dist
-                    previous[neighbor] = current
-                    for i, item in enumerate(costs):
-                        if item.data() == neighbor:
-                            costs[i] = HeapItem(new_neighbor_dist, neighbor)
-                            heapq.heapify(costs)
-                            break
-
-            visited.add(current)
+                    heapq.heappush(costs, HeapItem(new_neighbor_dist, neighbor))
 
         return distances, previous
 

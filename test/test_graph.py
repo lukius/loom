@@ -75,3 +75,27 @@ class GraphTest(unittest.TestCase):
         self.assertEqual(paths.get('e', []), ['a', 'b', 'c', 'e'])
         self.assertEqual(paths.get('f', []), ['a', 'b', 'c', 'e', 'f'])
         self.assertEqual(paths.get('g', []), ['a', 'b', 'c', 'g'])
+
+    def test_shortest_paths_with_repeated_relaxation(self):
+        # Node 'a' is reachable directly from 's' at cost 10, then relaxed to
+        # cost 2 via 's->b->a'. The lazy-deletion approach pushes 'a' onto the
+        # heap twice; the stale high-cost entry must be discarded on pop.
+        graph = NetworkGraph()
+        for node in ['s', 'a', 'b', 't']:
+            graph._add_node(node)
+
+        graph.add_edge('s', 'a', weight=10)
+        graph.add_edge('s', 'b', weight=1)
+        graph.add_edge('b', 'a', weight=1)
+        graph.add_edge('a', 't', weight=1)
+
+        distances, prevs = graph._shortest_paths('s')
+        self.assertEqual(distances['b'], 1)
+        self.assertEqual(distances['a'], 2)
+        self.assertEqual(distances['t'], 3)
+        self.assertEqual(prevs['a'], 'b')
+        self.assertEqual(prevs['t'], 'a')
+
+        paths = graph.shortest_paths('s')
+        self.assertEqual(paths['a'], ['s', 'b', 'a'])
+        self.assertEqual(paths['t'], ['s', 'b', 'a', 't'])

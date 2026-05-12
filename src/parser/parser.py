@@ -6,7 +6,7 @@ from entities import AS, Network, Router, Host, Interface, NetworkAddress, Addre
 from entities import NetworkNotFoundException
 
 
-class Parser(object):
+class Parser:
 
     def __init__(self, filename: any):
         self.filename = filename

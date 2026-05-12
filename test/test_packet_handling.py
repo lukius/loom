@@ -1,6 +1,19 @@
+import io
+import sys
 import unittest
 
-from entities import Network, NetworkAddress, Address, Router, Host, Interface, UserMessage, RoutingMessage, Datagram, EventTracer
+from entities import (
+    Address,
+    Datagram,
+    EventTracer,
+    Host,
+    Interface,
+    Network,
+    NetworkAddress,
+    Router,
+    RoutingMessage,
+    UserMessage,
+)
 
 
 class PacketHandlingTest(unittest.TestCase):
@@ -22,7 +35,9 @@ class PacketHandlingTest(unittest.TestCase):
         self.router.add_interface(self.iface2)
         self.router.add_interface(self.iface3)
 
-        self.host = Host('h1', net1, Address('200.200.10.10'), gw_address=self.iface1.address())
+        self.host = Host(
+            'h1', net1, Address('200.200.10.10'), gw_address=self.iface1.address()
+        )
 
     def test_msg_host_unicast(self):
         datagram = self._user_msg_datagram(
@@ -163,9 +178,72 @@ class PacketHandlingTest(unittest.TestCase):
 
         self.router.handle_packet(datagram, self.iface1)
 
+    def test_datagram_default_ttl(self):
+        datagram = self._user_msg_datagram(
+            'test msg',
+            src=Address('100.100.10.15'),
+            dst=Address('200.200.10.10')
+        )
+        self.assertEqual(datagram.ttl(), 64)
+
+    def test_forwarding_decrements_ttl(self):
+        self.router.routing_table().add_rule(
+            prefix=self.iface2.network().address(),
+            next_hop=self.iface2.address(),
+            interface=self.iface2
+        )
+        datagram = self._user_msg_datagram(
+            'test msg',
+            src=Address('100.100.10.15'),
+            dst=Address('100.100.0.5')
+        )
+        initial_ttl = datagram.ttl()
+        self.router._handle_forwarding(datagram)
+        self.assertEqual(datagram.ttl(), initial_ttl - 1)
+
+    def test_ttl_zero_drops_packet(self):
+        self.router.routing_table().add_rule(
+            prefix=self.iface2.network().address(),
+            next_hop=self.iface2.address(),
+            interface=self.iface2
+        )
+        datagram = self._user_msg_datagram_with_ttl(
+            'test msg',
+            src=Address('100.100.10.15'),
+            dst=Address('100.100.0.5'),
+            ttl=1
+        )
+
+        forwarded = False
+
+        def on_forwarded(*args, **kwargs):
+            nonlocal forwarded
+            forwarded = True
+
+        _ = EventTracer.register_message_event(
+            datagram.payload(),
+            on_sent=lambda *args, **kwargs: None,
+            on_forwarded=on_forwarded,
+            on_received=lambda *args, **kwargs: None
+        )
+
+        captured = io.StringIO()
+        sys.stderr = captured
+        try:
+            self.router._handle_forwarding(datagram)
+        finally:
+            sys.stderr = sys.__stderr__
+
+        self.assertFalse(forwarded)
+        self.assertIn('TTL', captured.getvalue())
+
     def _user_msg_datagram(self, payload, src, dst):
         msg = UserMessage(payload)
         return Datagram(src, dst, msg)
+
+    def _user_msg_datagram_with_ttl(self, payload, src, dst, ttl):
+        msg = UserMessage(payload)
+        return Datagram(src, dst, msg, ttl=ttl)
 
     def _routing_msg_datagram(self, interface, src, dst):
         msg = RoutingMessage(interface, 1)

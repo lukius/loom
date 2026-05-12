@@ -1,11 +1,12 @@
 import collections
 import threading
 import time
+import traceback
 
 from .graph import NetworkGraph
 
 
-class RoutingProtocol(object):
+class RoutingProtocol:
 
     KEEPALIVE_INTERVAL = 10
 
@@ -13,7 +14,7 @@ class RoutingProtocol(object):
         self._router = router
         self._lock = threading.Lock()
 
-        self._seqs_by_address = collections.defaultdict(lambda: 0)
+        self._seqs_by_address = collections.defaultdict(lambda: -1)
         self._seqs = collections.defaultdict(lambda: 0)
 
         self._stopped = False
@@ -30,9 +31,7 @@ class RoutingProtocol(object):
         self._graph.add_router(self._router)
 
     def handle_incoming_message(self, msg, interface):
-        from entities.address import NullAddress
-
-        self.update_state()
+        local_changed = self.update_state()
 
         src_addr = msg.src_address()
         seq = msg.seq()
@@ -42,28 +41,8 @@ class RoutingProtocol(object):
                 self._flood_msg(msg, interface)
                 self._seqs_by_address[src_addr] = seq
 
-                updated = self._update_graph(msg)
-                if updated:
-                    routing_table = self._router.routing_table()
-                    routing_table.clear()
-                    paths = self._graph.shortest_paths(self._router)
-                    for prefix in self._graph.networks():
-                        path = paths.get(prefix, list())
-                        if len(path) < 2:
-                            continue
-                        next_hop_network = path[1]
-                        next_hop_address = NullAddress
-                        if len(path) > 2:
-                            next_hop = path[2]
-                            for _, iface in next_hop.interfaces().items():
-                                if iface.network().address() == next_hop_network:
-                                    next_hop_address = iface.address()
-                                    break
-
-                        for _, iface in self._router.interfaces().items():
-                            if iface.network().address() == next_hop_network:
-                                routing_table.add_rule(prefix, next_hop_address, iface)
-                                break
+                changed = self._update_graph(msg) or local_changed
+                self._recompute_if_dirty(changed)
 
     def update_state(self):
         with self._lock:
@@ -84,10 +63,38 @@ class RoutingProtocol(object):
 
             return self._graph_updated
 
-    def _handle_update(self):
-        from entities import RoutingMessage, Datagram
+    def _recompute_if_dirty(self, changed: bool):
+        from entities.address import NullAddress
 
-        self.update_state()
+        if not changed:
+            return
+
+        routing_table = self._router.routing_table()
+        routing_table.clear()
+        paths = self._graph.shortest_paths(self._router)
+        for prefix in self._graph.networks():
+            path = paths.get(prefix, list())
+            if len(path) < 2:
+                continue
+            next_hop_network = path[1]
+            next_hop_address = NullAddress
+            if len(path) > 2:
+                next_hop = path[2]
+                for _, iface in next_hop.interfaces().items():
+                    if iface.network().address() == next_hop_network:
+                        next_hop_address = iface.address()
+                        break
+
+            for _, iface in self._router.interfaces().items():
+                if iface.network().address() == next_hop_network:
+                    routing_table.add_rule(prefix, next_hop_address, iface)
+                    break
+
+    def _handle_update(self):
+        from entities import Datagram, RoutingMessage
+
+        changed = self.update_state()
+        self._recompute_if_dirty(changed)
 
         for _, interface in self._router.interfaces().items():
             # TODO: same seq
@@ -141,5 +148,8 @@ class RoutingProtocol(object):
 
     def _keepalive_loop(self):
         while not self._stopped:
-            self._handle_update()
+            try:
+                self._handle_update()
+            except Exception:
+                traceback.print_exc()
             time.sleep(self.KEEPALIVE_INTERVAL)

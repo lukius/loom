@@ -1,8 +1,8 @@
-from .device import NetworkDevice
-from .interface import Interface
-from .packet import UserMessage, Datagram
-from .event import EventTracer
 from .address import Address
+from .device import NetworkDevice
+from .event import EventTracer
+from .interface import Interface
+from .packet import Datagram, UserMessage
 
 
 class Host(NetworkDevice):
@@ -31,7 +31,13 @@ class Host(NetworkDevice):
     def send_message_to(self, msg: UserMessage, addr: Address):
         src = self.address()
         datagram = Datagram(src_addr=src, dst_addr=addr, payload=msg)
-        self._interface.send_to(datagram, dst_addr=self._gw_address)
+        if self._interface.network().contains_address(addr):
+            dst_addr = addr
+        else:
+            dst_addr = self._gw_address
+        if dst_addr is None:
+            raise ValueError("no route to host: no gateway configured")
+        self._interface.send_to(datagram, dst_addr=dst_addr)
 
         return EventTracer.message_sent(src=src, dst=addr, msg=msg)
 

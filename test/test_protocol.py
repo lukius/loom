@@ -259,3 +259,54 @@ class ProtocolTest(unittest.TestCase):
         self.assertTrue(result.succeeded())
         self.assertEqual(result.next_hop(), r3_eth0.address())
         self.assertEqual(result.interface().name(), 'eth1')
+
+    def test_local_cost_change_recomputes_routing_table(self):
+        # r1: eth1->net2 (cost 1), eth2->net3 (cost 5).
+        # r2: net2<->net4 (costs 1,1); r3: net3<->net4 (costs 5,1).
+        # Initially net4 cheapest via eth1->r2 (1+1=2 vs 5+1=6).
+        # After eth1 cost rises to 100 the eth2->r3 path wins.
+        net2 = Network('lan2', NetworkAddress('10.0.2.0/24'))
+        net3 = Network('lan3', NetworkAddress('10.0.3.0/24'))
+        net4 = Network('lan4', NetworkAddress('10.0.4.0/24'))
+
+        r1 = Router('r1')
+        r1_eth1 = Interface('eth1', net2, Address('10.0.2.1'), cost=1)
+        r1_eth2 = Interface('eth2', net3, Address('10.0.3.1'), cost=5)
+        r1.add_interface(r1_eth1)
+        r1.add_interface(r1_eth2)
+
+        r2 = Router('r2')
+        r2_eth0 = Interface('eth0', net2, Address('10.0.2.2'), cost=1)
+        r2_eth1 = Interface('eth1', net4, Address('10.0.4.1'), cost=1)
+        r2.add_interface(r2_eth0)
+        r2.add_interface(r2_eth1)
+
+        r3 = Router('r3')
+        r3_eth0 = Interface('eth0', net3, Address('10.0.3.2'), cost=5)
+        r3_eth1 = Interface('eth1', net4, Address('10.0.4.2'), cost=1)
+        r3.add_interface(r3_eth0)
+        r3.add_interface(r3_eth1)
+
+        proto = RoutingProtocol(r1)
+
+        msg_r2 = RoutingMessage(src=r2_eth0, seq=1)
+        msg_r2.add_destination(prefix=net2.address(), cost=r2_eth0.cost())
+        msg_r2.add_destination(prefix=net4.address(), cost=r2_eth1.cost())
+        proto.handle_incoming_message(msg_r2, r1_eth1)
+
+        msg_r3 = RoutingMessage(src=r3_eth0, seq=1)
+        msg_r3.add_destination(prefix=net3.address(), cost=r3_eth0.cost())
+        msg_r3.add_destination(prefix=net4.address(), cost=r3_eth1.cost())
+        proto.handle_incoming_message(msg_r3, r1_eth2)
+
+        result = r1.routing_table().match(Address('10.0.4.100'))
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.interface().name(), 'eth1')
+
+        r1_eth1.set_cost(100)
+
+        proto._handle_update()
+
+        result = r1.routing_table().match(Address('10.0.4.100'))
+        self.assertTrue(result.succeeded())
+        self.assertEqual(result.interface().name(), 'eth2')

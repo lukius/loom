@@ -1,9 +1,23 @@
 import cmd
+import functools
 import sys
 
+from entities import EntityException, UserMessage
 from parser import Parser
-from entities import UserMessage
-from entities import EntityException
+
+
+def requires_system(func):
+    @functools.wraps(func)
+    def cmd_func(self, arg):
+        if self._system is None:
+            print('system not initialized!')
+        else:
+            try:
+                func(self, arg)
+            except EntityException as exc:
+                print(exc.message)
+
+    return cmd_func
 
 
 class Shell(cmd.Cmd):
@@ -15,28 +29,16 @@ class Shell(cmd.Cmd):
         super().__init__()
         self._system = None
 
-    def cmd(func):
-        def cmd_func(self, arg):
-            if self._system is None:
-                print('system not initialized!')
-            else:
-                try:
-                    func(self, arg)
-                except EntityException as exc:
-                    print(exc.message)
-
-        return cmd_func
-    
-    @cmd
+    @requires_system
     def do_route(self, arg):
         'Imprimir la tabla de ruteo del host/router dado'
         device = self._system.device(arg)
         routing_rules = device.routing_table().rules()
         print(f'{"Prefix": <20} {"Next hop": <15} {"Interface": <10}')
         for rule in routing_rules:
-            print(f'{str(rule.prefix()): <20} {str(rule.next_hop()): <15} {rule.interface().name(): <10}')
+            print(f'{str(rule.prefix()): <20} {str(rule.next_hop()): <15} {rule.interface().name(): <10}')  # noqa: E501 — fixed-width table row
 
-    @cmd
+    @requires_system
     def do_send(self, arg):
         'Enviar un datagrama de un host a otro'
         try:
@@ -50,7 +52,7 @@ class Shell(cmd.Cmd):
             msg = UserMessage(msg_str)
             src_host.send_message_to(msg, dst_host.address())
 
-    @cmd
+    @requires_system
     def do_update_cost(self, arg):
         'Actualizar el costo de un enlace'
         try:
@@ -80,7 +82,3 @@ class Shell(cmd.Cmd):
         if self._system is not None:
             self._system.stop()
         sys.exit(0)
-
-    cmd = staticmethod(cmd)
-        
-    

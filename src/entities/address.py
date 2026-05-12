@@ -1,7 +1,7 @@
 from typing import List
 
 
-class BaseAddress(object):
+class BaseAddress:
 
     _octets: List[int]
 
@@ -48,6 +48,18 @@ class NetworkAddress(BaseAddress):
         address, mask = address.split('/')
         super().__init__(address)
         self._mask = int(mask)
+        self._canonicalize()
+
+    def _canonicalize(self):
+        idx, bits = divmod(self._mask, 8)
+        if bits > 0:
+            host_bitmask = (1 << (8 - bits)) - 1
+            self._octets[idx] &= ~host_bitmask & 0xff
+            for i in range(idx + 1, 4):
+                self._octets[i] = 0
+        else:
+            for i in range(idx, 4):
+                self._octets[i] = 0
 
     def mask(self) -> int:
         return self._mask
@@ -55,15 +67,19 @@ class NetworkAddress(BaseAddress):
     def matches(self, address: Address) -> bool:
         return self._matches(address.octets())
 
+    def contains(self, address: Address) -> bool:
+        return self._matches(address.octets())
+
     def broadcast(self) -> Address:
         idx, bits = divmod(self._mask, 8)
         octets = list()
         for i in range(idx):
             octets.append(self._octets[i])
-        bitmask = (1 << (8 - bits)) - 1
-        octets.append(self._octets[idx] | bitmask)
-        for i in range(idx+1, 4):
-            octets.append(0xff)
+        if idx < len(self._octets):
+            bitmask = (1 << (8 - bits)) - 1
+            octets.append(self._octets[idx] | bitmask)
+            for i in range(idx + 1, 4):
+                octets.append(0xff)
         addr_str = '.'.join(map(str, octets))
         return Address(addr_str)
 
@@ -83,7 +99,7 @@ class NetworkAddress(BaseAddress):
         return True
 
     def __str__(self) -> str:
-        return f'{self._address}/{self._mask}'
+        return '.'.join(map(str, self._octets)) + f'/{self._mask}'
 
     def __eq__(self, other) -> bool:
         if isinstance(other, str):
@@ -93,10 +109,10 @@ class NetworkAddress(BaseAddress):
                 return False
         if other.__class__ != self.__class__:
             return False
-        return self._matches(other.octets()) and self._mask == other._mask
+        return self._octets == other._octets and self._mask == other._mask
 
     def __hash__(self) -> int:
-        return hash(self._address) ^ self._mask
+        return hash(tuple(self._octets)) ^ self._mask
 
 
 NullAddress = Address('0.0.0.0')
