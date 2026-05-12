@@ -66,6 +66,88 @@ class Shell(cmd.Cmd):
             router = self._system.router(router_str)
             router.update_interface(iface_str, cost)
 
+    @requires_system
+    def do_ifconfig(self, arg):
+        'Mostrar las interfaces del dispositivo dado. Sintaxis: ifconfig <dispositivo>'
+        name = arg.strip()
+        if not name:
+            print('syntax: ifconfig <device>')
+            return
+        device = self._system.device(name)
+        for iname, iface in device.interfaces().items():
+            print(
+                f'{iname}: addr={iface.address()} '
+                f'net={iface.network().name()} ({iface.network().address()}) '
+                f'cost={iface.cost()}'
+            )
+        from entities import Host
+
+        if isinstance(device, Host) and device.gateway() is not None:
+            print(f'  gateway: {device.gateway()}')
+
+    @requires_system
+    def do_neighbors(self, arg):
+        'Listar los routers vecinos. Sintaxis: neighbors <router>'
+        name = arg.strip()
+        if not name:
+            print('syntax: neighbors <router>')
+            return
+        router = self._system.router(name)
+        graph = router._protocol._graph
+        my_nets = {iface.network().address() for iface in router.interfaces().values()}
+        seen = set()
+        for node in graph._routers:
+            if node == router or node.name() in seen:
+                continue
+            other_nets = {
+                iface.network().address() for iface in node.interfaces().values()
+            }
+            shared = my_nets & other_nets
+            if not shared:
+                continue
+            for net_addr in shared:
+                for iface in node.interfaces().values():
+                    if iface.network().address() == net_addr:
+                        print(
+                            f'  {node.name():<6} via {iface.network().name():<8} '
+                            f'({iface.address()})  cost={iface.cost()}'
+                        )
+            seen.add(node.name())
+        if not seen:
+            print('  no neighbors yet')
+
+    @requires_system
+    def do_ping(self, arg):
+        'Hacer ping entre hosts. Sintaxis: ping <origen> <destino> [-W <segundos>]'
+        parts = arg.split()
+        timeout = 3.0
+        if '-W' in parts:
+            i = parts.index('-W')
+            try:
+                timeout = float(parts[i + 1])
+            except (IndexError, ValueError):
+                print('syntax: ping <src> <dst> [-W <seconds>]')
+                return
+            parts = parts[:i] + parts[i + 2:]
+        if len(parts) != 2:
+            print('syntax: ping <src> <dst> [-W <seconds>]')
+            return
+
+        src_name, dst = parts
+        from entities import Address
+
+        src = self._system.host(src_name)
+        try:
+            dst_host = self._system.host(dst)
+            dst_addr = dst_host.address()
+        except Exception:
+            dst_addr = Address(dst)
+        rtt = src.ping(dst_addr, timeout=timeout)
+        if rtt is None:
+            print(f'ping {src_name} -> {dst}: timeout after {timeout:.2f} s')
+        else:
+            print(f'ping {src_name} -> {dst} ({dst_addr}): time={rtt * 1000:.2f} ms')
+
     def do_read(self, arg):
         'Leer el archivo YAML dado con la descripcion de la red'
         try:
