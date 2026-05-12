@@ -511,6 +511,30 @@ body.col-resizing * { cursor: col-resize !important; }
   display: none;
 }
 
+.term {
+  position: fixed; z-index: 9999;
+  width: 480px; height: 280px;
+  background: #0a0a0a; color: #33ff66;
+  font-family: "JetBrains Mono", "Geist Mono", ui-monospace, monospace;
+  font-size: 13px; line-height: 1.35;
+  border: 1px solid #233; border-radius: 6px;
+  box-shadow: 0 14px 40px rgba(0,0,0,0.5);
+  display: flex; flex-direction: column;
+  resize: both; overflow: hidden;
+}
+.term-header { padding: 4px 8px; background: #111; cursor: move; user-select: none;
+  display: flex; align-items: center; justify-content: space-between; }
+.term-header .title { color: #88e; font-size: 12px; }
+.term-header .close { color: #f88; cursor: pointer; padding: 0 6px; font-size: 14px; }
+.term-out { flex: 1; padding: 6px 8px; overflow-y: auto; white-space: pre-wrap; margin: 0;
+  background: #0a0a0a; color: #aaffaa; }
+.term-line { display: flex; padding: 0 8px 6px; }
+.term-prompt { color: #4a8; margin-right: 6px; white-space: pre; }
+.term-in { flex: 1; background: transparent; color: #aaffaa;
+  border: none; outline: none; font: inherit; caret-color: #33ff66; }
+.term-cursor::after { content: '█'; animation: term-blink 1s steps(2, start) infinite; color: #33ff66; }
+@keyframes term-blink { 50% { opacity: 0; } }
+
 .canv-zoom {
   position: absolute; bottom: 14px; left: 12px;
   z-index: 5;
@@ -1688,6 +1712,114 @@ const PacketAnim = {
   },
 };
 
+/* ---------- Terminals ---------- */
+const Terminals = {
+  _active: new Map(),                   // name -> element
+
+  open(deviceName) {
+    if (this._active.has(deviceName)) {
+      const el = this._active.get(deviceName);
+      el.style.display = 'flex';
+      el.querySelector('.term-in').focus();
+      return;
+    }
+    const tmpl = `
+      <div class="term-header">
+        <div class="title">${escapeHtml(deviceName)}@netrouting</div>
+        <div class="close" title="Close">×</div>
+      </div>
+      <pre class="term-out">netrouting v1.0 — ${escapeHtml(deviceName)}
+type 'help' for commands
+
+</pre>
+      <div class="term-line">
+        <span class="term-prompt">${escapeHtml(deviceName)}@netrouting:~$</span>
+        <input class="term-in" autocomplete="off" spellcheck="false" />
+      </div>`;
+    const w = document.createElement('div');
+    w.className = 'term';
+    w.innerHTML = tmpl;
+    const pos = JSON.parse(localStorage.getItem('term.pos.' + deviceName) || 'null') || { x: 120 + this._active.size * 20, y: 120 + this._active.size * 20 };
+    w.style.left = pos.x + 'px';
+    w.style.top = pos.y + 'px';
+    document.body.appendChild(w);
+    this._active.set(deviceName, w);
+    this._wire(w, deviceName);
+    w.querySelector('.term-in').focus();
+  },
+
+  _wire(w, name) {
+    const out = w.querySelector('.term-out');
+    const inp = w.querySelector('.term-in');
+    const close = w.querySelector('.close');
+    const history = JSON.parse(sessionStorage.getItem('term.hist.' + name) || '[]');
+    let histIdx = history.length;
+
+    close.addEventListener('click', () => {
+      w.remove();
+      this._active.delete(name);
+    });
+
+    // Drag
+    const hdr = w.querySelector('.term-header');
+    let drag = null;
+    hdr.addEventListener('mousedown', (e) => {
+      drag = { x: e.clientX - w.offsetLeft, y: e.clientY - w.offsetTop };
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!drag) return;
+      w.style.left = (e.clientX - drag.x) + 'px';
+      w.style.top = (e.clientY - drag.y) + 'px';
+    });
+    window.addEventListener('mouseup', () => {
+      if (drag) localStorage.setItem('term.pos.' + name, JSON.stringify({ x: w.offsetLeft, y: w.offsetTop }));
+      drag = null;
+    });
+
+    inp.addEventListener('keydown', async (e) => {
+      if (e.key === 'Enter') {
+        const cmd = inp.value;
+        out.textContent += `${name}@netrouting:~$ ${cmd}\n`;
+        inp.value = '';
+        if (cmd.trim() === 'clear') {
+          out.textContent = '';
+        } else if (cmd.trim() === 'help') {
+          out.textContent += 'available: ifconfig, route, send, ping, neighbors, update_cost, clear, help\n';
+        } else if (cmd.trim() !== '') {
+          try {
+            const r = await RuntimeClient.deviceCommand(name, cmd);
+            const txt = r.output || '(no output)';
+            out.textContent += txt + (txt.endsWith('\n') ? '' : '\n');
+          } catch (err) {
+            out.textContent += `[error] ${err.message}\n`;
+          }
+        }
+        out.scrollTop = out.scrollHeight;
+        if (cmd.trim()) {
+          history.push(cmd);
+          histIdx = history.length;
+          sessionStorage.setItem('term.hist.' + name, JSON.stringify(history.slice(-200)));
+        }
+      } else if (e.key === 'ArrowUp') {
+        if (histIdx > 0) {
+          histIdx--;
+          inp.value = history[histIdx] || '';
+        }
+        e.preventDefault();
+      } else if (e.key === 'ArrowDown') {
+        if (histIdx < history.length - 1) {
+          histIdx++;
+          inp.value = history[histIdx] || '';
+        } else {
+          inp.value = '';
+          histIdx = history.length;
+        }
+        e.preventDefault();
+      }
+    });
+  },
+};
+
 function showPacketTooltip(evt, dot) {
   let tt = document.getElementById('packet-tooltip');
   if (!tt) {
@@ -2279,6 +2411,11 @@ function attachNodeEvents(g, kind, name) {
 
   g.addEventListener('dblclick', (e) => {
     e.stopPropagation();
+    if (kind === 'host' || kind === 'router') {
+      e.preventDefault();
+      Terminals.open(name);
+      return;
+    }
     state.selection = { kind, name };
     renderAll();
     const insp = document.getElementById('inspector');
