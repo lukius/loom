@@ -85,7 +85,7 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 
 - **Shell runs from `src/`, everything else from repo root.** The shell entry point uses bare-package imports (`from entities import ...`), so `cd src && python netrouting.py` is required. Pytest and ruff are configured to run from the repo root (`pyproject.toml`). Do not refactor imports to fix the cwd quirk without first updating both the shell entry and `pyproject.toml`'s `pythonpath`.
 
-- **`samples/sample.yaml` uses the key `test_as:` while the parser requires `as:`.** Loading it as-is fails with `missing "as" key`. Either rename the top-level key when demoing, or treat the sample as a schema reference rather than a runnable file.
+- **AS YAML shape: `as:` at the top, `name:` inside.** The parser requires the literal top-level key `as:` and reads the AS name from a nested `name:` field (falling back to `unnamed_entity_N`). `samples/sample.yaml` follows this convention and loads cleanly. Anything that emits topology YAML (the SPA, future tools) must produce the same shape.
 
 - **Link-state with sequence-numbered flooding.** `RoutingProtocol` (`src/routing/protocol.py`) broadcasts a `RoutingMessage` from every interface every `KEEPALIVE_INTERVAL = 10s` on a daemon thread per router. Receivers re-flood out of every interface *except* the one the message arrived on, deduplicated by `(src_address, seq)`. Recompute paths only when the local `NetworkGraph` actually changes — preserve that guard when editing, otherwise routing tables churn on every keepalive.
 
@@ -95,9 +95,9 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 
 - **Longest-prefix match is linear.** `RoutingTable.match` scans all rules and tracks the largest mask. Fine for the simulator's scale; do not introduce a trie unless profiling says so.
 
-- **`Shell.cmd` decorator trick.** In `src/shell/shell.py`, `cmd` is defined as an instance-method decorator, applied to each `do_*`, and then reassigned to `staticmethod(cmd)` at the end of the class body. This is required because `cmd.Cmd` introspects class attributes; without the staticmethod wrap, Python's descriptor protocol would bind `cmd` itself when the REPL lists commands. Add new commands using the same pattern: decorate with `@cmd` for ones that need a loaded system, leave undecorated (like `do_read`) for bootstrapping commands.
+- **`@requires_system` decorator on shell commands.** In `src/shell/shell.py`, the module-level `requires_system` decorator wraps any `do_*` that needs a loaded topology — it short-circuits with `'system not initialized!'` when `self._system is None`. `functools.wraps` preserves docstrings so `cmd.Cmd` still surfaces them in help listings. Add new commands with `@requires_system`; leave bootstrapping commands like `do_read` undecorated.
 
-- **Dijkstra heap uses linear scan for decrease-key.** `NetworkGraph._shortest_paths` re-heapifies after locating the entry by `data() == neighbor`. Correct but O(V) per relaxation — acceptable for the toy graphs in scope; flag if topology sizes grow.
+- **Dijkstra uses lazy deletion, not decrease-key.** `NetworkGraph._shortest_paths` pushes a fresh heap entry on every relaxation and skips stale pops via a `visited` set — O((V+E) log V). Don't reintroduce an in-place decrease-key scan.
 
 - **Mixed-language docstrings.** Shell help strings are in Spanish; code identifiers and most comments are in English. Keep new shell help in Spanish to match the user-facing convention; keep code in English.
 
