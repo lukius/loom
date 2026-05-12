@@ -1,5 +1,8 @@
+import logging
 from datetime import datetime
 from threading import Lock
+
+_logger = logging.getLogger(__name__)
 
 
 class Event:
@@ -74,6 +77,39 @@ class EventTracer:
 
     _events = dict()
     _lock = Lock()
+
+    _subscribers: list = []
+    _sub_lock = Lock()
+
+    @classmethod
+    def subscribe(cls, fn):
+        """Register *fn* as a subscriber; return a callable that unsubscribes it."""
+        with cls._sub_lock:
+            cls._subscribers.append(fn)
+
+        def unsubscribe():
+            with cls._sub_lock:
+                try:
+                    cls._subscribers.remove(fn)
+                except ValueError:
+                    pass
+
+        return unsubscribe
+
+    @classmethod
+    def _broadcast(cls, event: dict) -> None:
+        """Deliver *event* to all current subscribers.
+
+        Exceptions raised by individual subscribers are logged and swallowed
+        so that one bad subscriber cannot prevent others from receiving events.
+        """
+        with cls._sub_lock:
+            snapshot = list(cls._subscribers)
+        for fn in snapshot:
+            try:
+                fn(event)
+            except Exception:
+                _logger.exception("subscriber raised in EventTracer._broadcast")
 
     @classmethod
     def register_message_event(cls, message, on_sent=None, on_received=None, on_forwarded=None):
