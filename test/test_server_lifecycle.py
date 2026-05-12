@@ -93,3 +93,51 @@ def test_stop_then_start_works(source_yaml):
     s.start()  # second cycle
     assert s.state == "running"
     s.stop()
+
+
+def test_topology_endpoint_loads_yaml(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import create_app
+
+    src = tmp_path / "src.yaml"
+    src.write_text(SAMPLE)
+    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+
+    app = create_app()
+    with TestClient(app) as c:
+        r = c.post("/topology", json={"yaml": SAMPLE})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ok"] and body["as_name"] == "t"
+
+
+def test_lifecycle_via_rest(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import create_app
+
+    src = tmp_path / "src.yaml"
+    src.write_text(SAMPLE)
+    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+
+    app = create_app()
+    with TestClient(app) as c:
+        c.post("/topology", json={"yaml": SAMPLE})
+        assert c.post("/sim/start").json()["state"] == "running"
+        assert c.post("/sim/pause").json()["state"] == "paused"
+        assert c.post("/sim/resume").json()["state"] == "running"
+        assert c.post("/sim/stop").json()["state"] == "idle"
+
+
+def test_invalid_yaml_returns_400(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import create_app
+
+    src = tmp_path / "src.yaml"
+    src.write_text("not yaml :::")
+    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+    with TestClient(create_app()) as c:
+        r = c.post("/topology", json={"yaml": "as:\n  rubbish"})
+        assert r.status_code == 400
