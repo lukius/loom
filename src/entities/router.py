@@ -147,7 +147,7 @@ class Router(NetworkDevice):
     def stop(self):
         self._protocol.stop()
 
-    def _handle_message(self, msg, interface):
+    def _handle_message(self, msg, interface, packet):
         if msg.type() == RoutingMessage:
             self._handle_routing_message(msg, interface)
 

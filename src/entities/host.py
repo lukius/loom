@@ -42,7 +42,7 @@ class Host(NetworkDevice):
 
         return EventTracer.message_sent(src=src, dst=addr, msg=msg)
 
-    def _handle_message(self, msg, interface):
+    def _handle_message(self, msg, interface, packet):
         if msg.type() == UserMessage:
             return EventTracer.message_received(src=self.address(), msg=msg)
 
