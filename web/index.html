@@ -1409,6 +1409,62 @@ const SAMPLE = {
   },
 };
 
+/* ---------- RuntimeClient — REST + WS wrapper ---------- */
+const RuntimeClient = {
+  baseURL: '',
+  state: 'idle',
+  asName: null,
+  ws: null,
+  _wsBackoff: 500,
+  _onEvent: null,
+
+  async _json(method, path, body) {
+    const r = await fetch(this.baseURL + path, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || r.statusText);
+    return j;
+  },
+
+  getTopology()          { return this._json('GET',  '/topology'); },
+  loadTopology(yaml)     { return this._json('POST', '/topology', { yaml }); },
+  resetTopology()        { return this._json('POST', '/topology/reset', {}); },
+  start()                { return this._json('POST', '/sim/start', {}); },
+  pause()                { return this._json('POST', '/sim/pause', {}); },
+  resume(patch)          { return this._json('POST', '/sim/resume', { patch: patch || [] }); },
+  stop()                 { return this._json('POST', '/sim/stop', {}); },
+  getState()             { return this._json('GET',  '/sim/state'); },
+  deviceCommand(n, cmd)  { return this._json('POST', `/devices/${encodeURIComponent(n)}/command`, { cmd }); },
+  deviceRoutes(n)        { return this._json('GET',  `/devices/${encodeURIComponent(n)}/routes`); },
+  deviceInterfaces(n)    { return this._json('GET',  `/devices/${encodeURIComponent(n)}/interfaces`); },
+
+  connectEvents(onEvent) {
+    this._onEvent = onEvent;
+    this._openWs();
+  },
+  _openWs() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    this.ws = new WebSocket(`${proto}//${location.host}/ws/events`);
+    this.ws.onmessage = (m) => { try { this._onEvent(JSON.parse(m.data)); } catch (e) {} };
+    this.ws.onopen  = () => { this._wsBackoff = 500; setConnectionStatus(true); };
+    this.ws.onclose = () => {
+      setConnectionStatus(false);
+      setTimeout(() => this._openWs(), this._wsBackoff);
+      this._wsBackoff = Math.min(this._wsBackoff * 2, 8000);
+    };
+  },
+  disconnectEvents() {
+    if (this.ws) { this.ws.onclose = null; this.ws.close(); this.ws = null; }
+  },
+};
+
+function setConnectionStatus(connected) {
+  // populated in Task 20 (toolbar)
+}
+
 /* ---------- helpers ---------- */
 const SVG_NS = 'http://www.w3.org/2000/svg';
 function el(tag, attrs = {}, kids = null) {
