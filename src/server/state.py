@@ -84,13 +84,173 @@ class SimState:
             self._as.gate().pause()
             self._state = "paused"
 
-    def resume(self):
-        """Transition paused -> running."""
+    def resume(self, patch: list[dict] | None = None):
+        """Transition paused -> running, applying an optional topology patch."""
         with self._lock:
             if self._state != "paused":
                 raise InvalidStateTransition(self._state, "running")
+            if patch:
+                self._apply_patch(patch)
             self._as.gate().resume()
             self._state = "running"
+            self._persist()
+
+    # ---- patch helpers ----
+
+    def _apply_patch(self, patch: list[dict]) -> None:
+        """Two-phase: validate all ops, then apply all. Atomic on validation."""
+        for op in patch:
+            self._validate_op(op)
+        for op in patch:
+            self._apply_op(op)
+
+    def _validate_op(self, op: dict) -> None:  # noqa: C901 (complexity OK here)
+        kind = op.get("op")
+        if kind == "add_network":
+            if not all(k in op for k in ("name", "address")):
+                raise InvalidStateTransition("invalid_patch", kind)
+            if op["name"] in self._as.networks():
+                raise InvalidStateTransition("duplicate_name", op["name"])
+        elif kind == "remove_network":
+            if op.get("name") not in self._as.networks():
+                raise InvalidStateTransition("network_not_found", op.get("name", ""))
+            net_name = op["name"]
+            users = [h.name() for h in self._as.hosts().values()
+                     if h.network().name() == net_name]
+            users += [r.name() for r in self._as.routers().values()
+                      if any(i.network().name() == net_name
+                             for i in r.interfaces().values())]
+            if users:
+                raise InvalidStateTransition("network_in_use", ",".join(users))
+        elif kind == "add_host":
+            if not all(k in op for k in ("name", "network", "address")):
+                raise InvalidStateTransition("invalid_patch", kind)
+            if op["network"] not in self._as.networks():
+                raise InvalidStateTransition("network_not_found", op["network"])
+            if op["name"] in self._as.hosts() or op["name"] in self._as.routers():
+                raise InvalidStateTransition("duplicate_name", op["name"])
+        elif kind == "remove_host":
+            if op.get("name") not in self._as.hosts():
+                raise InvalidStateTransition("host_not_found", op.get("name", ""))
+        elif kind == "add_router":
+            if not all(k in op for k in ("name", "interfaces")):
+                raise InvalidStateTransition("invalid_patch", kind)
+            if op["name"] in self._as.hosts() or op["name"] in self._as.routers():
+                raise InvalidStateTransition("duplicate_name", op["name"])
+            for iface in op["interfaces"]:
+                if iface.get("network") not in self._as.networks():
+                    raise InvalidStateTransition(
+                        "network_not_found", iface.get("network", "")
+                    )
+        elif kind == "remove_router":
+            if op.get("name") not in self._as.routers():
+                raise InvalidStateTransition("router_not_found", op.get("name", ""))
+        elif kind == "update_cost":
+            r = self._as.routers().get(op.get("router"))
+            if r is None or op.get("iface") not in r.interfaces():
+                raise InvalidStateTransition("interface_not_found", op.get("iface", ""))
+            if int(op.get("cost", 0)) <= 0:
+                raise InvalidStateTransition("invalid_cost", str(op.get("cost", "")))
+        else:
+            raise InvalidStateTransition("unknown_op", str(kind))
+
+    def _apply_op(self, op: dict) -> None:
+        from entities import (  # noqa: PLC0415
+            Address,
+            Host,
+            Interface,
+            Network,
+            NetworkAddress,
+            Router,
+        )
+
+        kind = op["op"]
+        if kind == "add_network":
+            net = Network(
+                op["name"], NetworkAddress(op["address"]), gate=self._as.gate()
+            )
+            self._as.add_network(net)
+        elif kind == "remove_network":
+            net = self._as.network(op["name"])
+            net.stop()
+            del self._as.networks()[op["name"]]
+        elif kind == "add_host":
+            net = self._as.network(op["network"])
+            gw = Address(op["gateway"]) if op.get("gateway") else None
+            host = Host(
+                op["name"], net, Address(op["address"]),
+                gw_address=gw, gate=self._as.gate(),
+            )
+            net.add_interface(host.interface())
+            self._as.add_host(host)
+        elif kind == "remove_host":
+            host = self._as.host(op["name"])
+            host.interface().stop()
+            del self._as.hosts()[op["name"]]
+        elif kind == "add_router":
+            router = Router(op["name"])
+            for iface_spec in op["interfaces"]:
+                net = self._as.network(iface_spec["network"])
+                iface = Interface(
+                    iface_spec["name"], net,
+                    Address(iface_spec["address"]),
+                    cost=int(iface_spec.get("cost", 1)),
+                    gate=self._as.gate(),
+                )
+                net.add_interface(iface)
+                router.add_interface(iface)
+            self._as.add_router(router)
+            router.start()
+        elif kind == "remove_router":
+            router = self._as.router(op["name"])
+            router.stop()
+            for iface in list(router.interfaces().values()):
+                iface.stop()
+            del self._as.routers()[op["name"]]
+        elif kind == "update_cost":
+            self._as.router(op["router"]).update_interface(op["iface"], int(op["cost"]))
+        else:
+            raise InvalidStateTransition("unknown_op", kind)
+
+    def _persist(self) -> None:
+        from .persistence import atomic_write  # noqa: PLC0415
+
+        atomic_write(self.session_path, self._dump_yaml())
+
+    def _dump_yaml(self) -> str:
+        import yaml  # noqa: PLC0415
+
+        out = {
+            "as": {
+                "name": self._as.name(),
+                "networks": {
+                    n.name(): str(n.address())
+                    for n in self._as.networks().values()
+                },
+                "hosts": {
+                    h.name(): {
+                        "network": h.network().name(),
+                        "address": str(h.address()),
+                        **({"gateway": str(h.gateway())} if h.gateway() else {}),
+                    }
+                    for h in self._as.hosts().values()
+                },
+                "routers": {
+                    r.name(): {
+                        "interfaces": {
+                            i.name(): {
+                                "network": i.network().name(),
+                                "address": str(i.address()),
+                                "cost": i.cost(),
+                            }
+                            for i in r.interfaces().values()
+                        }
+                    }
+                    for r in self._as.routers().values()
+                },
+            }
+        }
+        return yaml.safe_dump(out, sort_keys=False)
 
     def stop(self):
         """Transition any state -> idle. No-op if already idle."""
