@@ -7,7 +7,7 @@ A Python simulator for an IPv4 autonomous system: hosts, routers, networks, and 
 ```
 netrouting/
 ├── src/
-│   ├── netrouting.py      # Entry point — launches the shell
+│   ├── netrouting.py      # Entry point — web UI (default) or 'shell' subcommand
 │   ├── entities/          # AS, Router, Host, Network, Interface, Address, Packet, Event
 │   ├── routing/           # RoutingProtocol (link-state) + NetworkGraph (Dijkstra)
 │   ├── parser/            # YAML topology loader + SystemValidator
@@ -20,7 +20,7 @@ netrouting/
 ├── pyproject.toml         # ruff + pytest config (sets pythonpath = ["src"], testpaths = ["test"])
 ├── requirements.txt       # Runtime deps (PyYAML)
 ├── requirements-dev.txt   # Dev deps: includes runtime + pytest + ruff
-└── README.md              # GitLab template boilerplate, ignore
+└── README.md              # Quick start and project overview
 ```
 
 ## Build & Run
