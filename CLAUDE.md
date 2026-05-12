@@ -26,10 +26,11 @@ netrouting/
 ## Build & Run
 
 - Requires Python 3.11+. Install runtime deps: `pip install -r requirements.txt`. For dev (tests + lint): `pip install -r requirements-dev.txt`.
-- Run shell: `cd src && python netrouting.py` — **must run from `src/`** because modules import bare top-level packages (`from entities import ...`, `from routing import ...`).
-- Run tests: `pytest` from the repo root (configured via `pyproject.toml` — sets `pythonpath = ["src"]` and `testpaths = ["test"]`).
-- Run a single suite: `pytest test/test_address.py` or `pytest test/test_address.py::AddressTest::test_basic_address_matching`.
-- Lint: `ruff check src/ test/`. Format: `ruff format src/ test/` (PEP 8 compliant defaults).
+- **Web UI (default):** `cd src && python netrouting.py` — launches FastAPI on http://127.0.0.1:8000 and serves the SPA from `web/`.
+- **Legacy shell:** `cd src && python netrouting.py shell` — original cmd.Cmd REPL. Same simulator under the hood.
+- Topology source path: env var `NETROUTING_TOPOLOGY` (default `samples/sample.yaml`). The server clones to `<source>.session.yaml` and writes only there.
+- Run tests: `pytest` from the repo root. Single suite: `pytest test/test_address.py`.
+- Lint: `ruff check src/ test/`. Format: `ruff format src/ test/`.
 
 ## Git & Remote
 
