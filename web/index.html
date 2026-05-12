@@ -1430,8 +1430,6 @@ const SAMPLE = {
 /* ---------- RuntimeClient — REST + WS wrapper ---------- */
 const RuntimeClient = {
   baseURL: '',
-  state: 'idle',
-  asName: null,
   ws: null,
   _wsBackoff: 500,
   _onEvent: null,
@@ -1480,7 +1478,7 @@ const RuntimeClient = {
 };
 
 function setConnectionStatus(connected) {
-  // populated in Task 20 (toolbar)
+  // populated in Task 25 (toolbar)
 }
 
 /* ---------- topology lock + patch accumulator ---------- */
@@ -1590,7 +1588,6 @@ const Sim = {
     if (this.state === 'running') await RuntimeClient.pause();
     else if (this.state === 'paused') {
       const resolved = reconcilePatch(this.patch);
-      console.log('resuming with patch:', resolved);
       await RuntimeClient.resume(resolved);
       this.patch = [];
       updatePatchIndicator();
@@ -2615,6 +2612,7 @@ function renderNetworkInsp(name, elI) {
   `;
   elI.querySelector('#f-name').addEventListener('change', e => renameNetwork(name, e.target.value.trim()));
   elI.querySelector('#f-cidr').addEventListener('input', e => {
+    if (isTopologyLocked()) return;
     state.networks[name].cidr = e.target.value.trim();
     markDirty(); renderCanvas(); renderNav();
   });
@@ -2654,10 +2652,12 @@ function renderHostInsp(name, elI) {
   `;
   elI.querySelector('#f-name').addEventListener('change', e => renameHost(name, e.target.value.trim()));
   elI.querySelector('#f-net').addEventListener('change', e => {
+    if (isTopologyLocked()) return;
     state.hosts[name].network = e.target.value;
     markDirty(); renderCanvas(); renderNav();
   });
   elI.querySelector('#f-addr').addEventListener('input', e => {
+    if (isTopologyLocked()) return;
     state.hosts[name].address = e.target.value.trim();
     markDirty(); renderCanvas(); renderNav();
   });
@@ -2730,6 +2730,7 @@ function renderRouterInsp(name, elI) {
   `;
   elI.querySelector('#f-name').addEventListener('change', e => renameRouter(name, e.target.value.trim()));
   elI.querySelector('#add-if').addEventListener('click', () => {
+    if (isTopologyLocked()) return;
     const newIf = uniqueIface(state.routers[name].interfaces);
     state.routers[name].interfaces[newIf] = {
       network: Object.keys(state.networks)[0] || '',
@@ -2739,12 +2740,14 @@ function renderRouterInsp(name, elI) {
   });
   elI.querySelectorAll('[data-del-iface]').forEach(b => {
     b.addEventListener('click', () => {
+      if (isTopologyLocked()) return;
       delete state.routers[name].interfaces[b.getAttribute('data-del-iface')];
       markDirty(); renderInspector(); renderCanvas(); renderNav();
     });
   });
   elI.querySelectorAll('[data-iface-name]').forEach(inp => {
     inp.addEventListener('change', () => {
+      if (isTopologyLocked()) return;
       const oldIf = inp.getAttribute('data-iface-name');
       const newIf = inp.value.trim();
       if (!newIf || newIf === oldIf) return;
@@ -2763,12 +2766,14 @@ function renderRouterInsp(name, elI) {
   });
   elI.querySelectorAll('[data-iface-net]').forEach(s => {
     s.addEventListener('change', () => {
+      if (isTopologyLocked()) return;
       state.routers[name].interfaces[s.getAttribute('data-iface-net')].network = s.value;
       markDirty(); renderCanvas(); renderNav();
     });
   });
   elI.querySelectorAll('[data-iface-addr]').forEach(i => {
     i.addEventListener('input', () => {
+      if (isTopologyLocked()) return;
       state.routers[name].interfaces[i.getAttribute('data-iface-addr')].address = i.value.trim();
       markDirty(); renderCanvas();
     });
@@ -2796,6 +2801,7 @@ function renameKey(dict, oldK, newK) {
   return out;
 }
 function renameNetwork(oldName, newName) {
+  if (isTopologyLocked()) return;
   if (!newName || newName === oldName) return;
   if (state.networks[newName]) { toast(`LAN "${newName}" already exists`, 'error', 'Rename'); renderInspector(); return; }
   state.networks = renameKey(state.networks, oldName, newName);
@@ -2805,6 +2811,7 @@ function renameNetwork(oldName, newName) {
   markDirty(); renderAll();
 }
 function renameHost(oldName, newName) {
+  if (isTopologyLocked()) return;
   if (!newName || newName === oldName) return;
   if (state.hosts[newName]) { toast(`Host "${newName}" already exists`, 'error', 'Rename'); renderInspector(); return; }
   state.hosts = renameKey(state.hosts, oldName, newName);
@@ -2812,6 +2819,7 @@ function renameHost(oldName, newName) {
   markDirty(); renderAll();
 }
 function renameRouter(oldName, newName) {
+  if (isTopologyLocked()) return;
   if (!newName || newName === oldName) return;
   if (state.routers[newName]) { toast(`Router "${newName}" already exists`, 'error', 'Rename'); renderInspector(); return; }
   state.routers = renameKey(state.routers, oldName, newName);
@@ -2819,6 +2827,7 @@ function renameRouter(oldName, newName) {
   markDirty(); renderAll();
 }
 function duplicateNetwork(name) {
+  if (isTopologyLocked() || (Sim && Sim.state === 'paused')) return;
   const newName = uniqueName(name + '_', state.networks);
   const src = state.networks[name];
   state.networks[newName] = { ...src, x: src.x + 30, y: src.y + 30 };
@@ -2826,6 +2835,7 @@ function duplicateNetwork(name) {
   markDirty(); renderAll();
 }
 function duplicateHost(name) {
+  if (isTopologyLocked() || (Sim && Sim.state === 'paused')) return;
   const newName = uniqueName(name + '_', state.hosts);
   const src = state.hosts[name];
   state.hosts[newName] = { ...src, x: src.x + 30, y: src.y + 30 };
@@ -2833,6 +2843,7 @@ function duplicateHost(name) {
   markDirty(); renderAll();
 }
 function duplicateRouter(name) {
+  if (isTopologyLocked() || (Sim && Sim.state === 'paused')) return;
   const newName = uniqueName(name + '_', state.routers);
   const src = state.routers[name];
   state.routers[newName] = JSON.parse(JSON.stringify(src));

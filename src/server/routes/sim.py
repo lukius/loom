@@ -7,6 +7,12 @@ def _state(request: Request):
     return request.app.state.sim_state
 
 
+def _emit_sim_state(request: Request, state: str) -> None:
+    bus = request.app.state.event_bus
+    if bus is not None:
+        bus.emit({"kind": "sim_state", "state": state})
+
+
 @router.post("/start")
 def start(request: Request):
     s = _state(request)
@@ -14,6 +20,7 @@ def start(request: Request):
         s.start()
     except Exception as e:
         raise HTTPException(409, str(e))
+    _emit_sim_state(request, s.state)
     return {"state": s.state}
 
 
@@ -24,6 +31,7 @@ def pause(request: Request):
         s.pause()
     except Exception as e:
         raise HTTPException(409, str(e))
+    _emit_sim_state(request, s.state)
     return {"state": s.state}
 
 
@@ -47,6 +55,7 @@ def resume(request: Request, body: dict | None = Body(default=None)):
             else 400
         )
         raise HTTPException(status, msg)
+    _emit_sim_state(request, s.state)
     return {"state": s.state}
 
 
@@ -54,6 +63,7 @@ def resume(request: Request, body: dict | None = Body(default=None)):
 def stop(request: Request):
     s = _state(request)
     s.stop()
+    _emit_sim_state(request, s.state)
     return {"state": s.state}
 
 

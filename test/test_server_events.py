@@ -51,6 +51,57 @@ async def test_unsubscribe_removes_queue():
     assert q.empty()
 
 
+def test_sim_state_event_emitted_on_transitions(tmp_path, monkeypatch):
+    import textwrap
+
+    from fastapi.testclient import TestClient
+
+    from entities.event import EventTracer
+    from server.app import create_app
+
+    yaml_text = textwrap.dedent("""
+    as:
+      name: t
+      networks:
+        lan1: "10.0.0.0/24"
+      hosts:
+        h1: {network: lan1, address: "10.0.0.1"}
+    """)
+    src = tmp_path / "src.yaml"
+    src.write_text(yaml_text)
+    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+    EventTracer._subscribers.clear()
+
+    app = create_app()
+    with TestClient(app) as c:
+        c.post("/topology", json={"yaml": yaml_text})
+        with c.websocket_connect("/ws/events") as ws:
+            c.post("/sim/start")
+            # collect events until we see sim_state {running}, or timeout
+            states_seen = []
+            for _ in range(10):
+                try:
+                    evt = ws.receive_json()
+                except Exception:
+                    break
+                if evt.get("kind") == "sim_state":
+                    states_seen.append(evt["state"])
+                    if "running" in states_seen:
+                        break
+            assert "running" in states_seen
+            c.post("/sim/pause")
+            for _ in range(5):
+                try:
+                    evt = ws.receive_json()
+                except Exception:
+                    break
+                if evt.get("kind") == "sim_state":
+                    states_seen.append(evt["state"])
+                    if "paused" in states_seen:
+                        break
+            assert "paused" in states_seen
+
+
 def test_ws_streams_packet_events(tmp_path, monkeypatch):
     import textwrap
 
