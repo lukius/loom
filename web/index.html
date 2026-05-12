@@ -1760,6 +1760,8 @@ const Inspector = {
     const sec = document.getElementById('insp-routes');
     if (!sec) return;
     if (Sim.state === 'idle' || !deviceName) { sec.hidden = true; return; }
+    // Hosts don't have a routing table; hide the section.
+    if (state.hosts && state.hosts[deviceName]) { sec.hidden = true; return; }
     try {
       const r = await RuntimeClient.deviceRoutes(deviceName);
       sec.hidden = false;

@@ -11,10 +11,10 @@ Run the backend: `cd src && python netrouting.py`. Open http://127.0.0.1:8000/ i
 5. **In terminal:** type `ifconfig` → output lists the host's interface.
 6. **In terminal:** type `route` → shows gateway summary.
 7. **In terminal:** type `ping h2 -W 1.0` → ping_request (amber) and ping_reply (light amber) dots animate; RTT printed in terminal.
-8. **In terminal:** type `send h2 hello world` → green dot animates h1 → lan1 → h2.
+8. **In terminal:** type `send h2 hello` → green dot animates h1 → lan1 → h2.
 9. **Click ⏸ Pause** → packet animations stop within ~1s, button label becomes ▶ Resume with amber halo. State `paused`.
 10. **In Pause state**, drag a new Host onto the canvas in lan1. Fill its address (e.g. `10.0.0.99`). Pause button label now shows "Resume (1 edits)".
-11. **Click ▶ Resume** → patch is sent, button returns to Pause, state `running`. Routing converges within ~10s; the new host's address shows in the routing tables of routers.
+11. **Click ▶ Resume** → patch is sent, button returns to Pause, state `running`. Routing reconverges within ~10s; the new host is reachable by `ping` from other hosts on the same network.
 12. **Select a router in the canvas** → inspector right pane shows "Routing table — r1" with the current rules.
 13. **Click ■ Stop** → state returns to idle; designer mode is interactive again.
 14. **Click ↺ Reset** → topology re-clones from source; SPA reloads it via `GET /topology`.
@@ -36,7 +36,7 @@ Run the backend: `cd src && python netrouting.py`. Open http://127.0.0.1:8000/ i
 
 With the default 3-router/3-host sample running for ~1 minute:
 - CPU should be low.
-- WS event rate is bounded; the bus drops oldest on overflow (you'd see a "queue_overflow" event if it triggered).
+- WS event rate is bounded; the bus drops oldest events on overflow (visible only via `EventBus.overflow_count` server-side).
 - No memory leaks observed in DevTools.
 
 ## Quick stop
