@@ -55,6 +55,7 @@ class AS(Entity):
         self._networks[network.name()] = network
 
     def add_router(self, router):
+        router._as_gate = self._gate
         self._routers[router.name()] = router
 
     def add_host(self, host):

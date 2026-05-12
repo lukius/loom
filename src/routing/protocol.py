@@ -147,9 +147,22 @@ class RoutingProtocol:
         self._stopped = True
 
     def _keepalive_loop(self):
+        gate = self._router.gate()
         while not self._stopped:
+            if gate is not None:
+                # Interruptible sleep: wakes early only on stop.
+                timed_out, stopped = gate.sleep(self.KEEPALIVE_INTERVAL)
+                if stopped:
+                    break
+                # After the interval, honour any pending pause before ticking.
+                running, stopped = gate.wait_or_stop()
+                if stopped:
+                    break
+                if not running:
+                    continue  # paused; loop again without ticking
+            else:
+                time.sleep(self.KEEPALIVE_INTERVAL)
             try:
                 self._handle_update()
             except Exception:
                 traceback.print_exc()
-            time.sleep(self.KEEPALIVE_INTERVAL)

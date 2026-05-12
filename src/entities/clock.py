@@ -40,3 +40,17 @@ class PauseGate:
         if self._stopped.is_set():
             return (False, True)
         return (woken, False)
+
+    def sleep(self, duration: float) -> tuple[bool, bool]:
+        """Sleep for `duration` seconds, returning early only if stopped.
+
+        Returns (ticked, stopped):
+        - (True,  False): full interval elapsed — safe to tick.
+        - (False, True ): stop was signalled — exit the loop.
+
+        Callers should check the gate for pause *after* `sleep` returns `(True, False)`.
+        """
+        interrupted = self._stopped.wait(timeout=duration)
+        if interrupted:
+            return (False, True)
+        return (True, False)

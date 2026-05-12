@@ -141,3 +141,52 @@ def test_paused_interface_does_not_dispatch():
     finally:
         system.stop()
         os.unlink(path)
+
+
+def test_paused_keepalive_does_not_tick():
+    from entities import AS, Address, Interface, Network, NetworkAddress, Router
+
+    system = AS("t")
+    net = Network("lan1", NetworkAddress("10.0.0.0/24"), gate=system.gate())
+    system.add_network(net)
+    r1 = Router("r1")
+    iface = Interface("eth0", net, Address("10.0.0.1"), cost=1, gate=system.gate())
+    net.add_interface(iface)
+    r1.add_interface(iface)
+    system.add_router(r1)
+
+    # Patch the specific protocol instance: short interval + tick counter.
+    # Instance-level patching avoids contaminating other RoutingProtocol objects
+    # (e.g., those leaked by test_parser tests that never call system.stop()).
+    tick_count = [0]
+    proto = r1._protocol
+    proto.KEEPALIVE_INTERVAL = 0.05  # instance attribute overrides class attribute
+
+    original_handle_update = proto._handle_update
+
+    def counting_handle_update():
+        tick_count[0] += 1
+        original_handle_update()
+
+    proto._handle_update = counting_handle_update
+
+    r1.start()
+
+    # Let a few ticks happen to confirm the loop is running.
+    time.sleep(0.15)
+    assert tick_count[0] >= 1, "expected at least one keepalive tick before pause"
+
+    system.gate().pause()
+    # Wait for any in-flight tick to finish, then record the count.
+    time.sleep(0.1)
+    ticks_at_pause = tick_count[0]
+
+    # Hold the pause for two full intervals; no new ticks should happen.
+    time.sleep(0.15)
+    assert tick_count[0] == ticks_at_pause, (
+        f"keepalive ticked while paused: {tick_count[0] - ticks_at_pause} extra tick(s)"
+    )
+    system.stop()
+    # Join the keepalive thread so it fully exits before the next test,
+    # preventing any lingering interface sends from polluting test mocks.
+    proto._keepalive_thread.join(timeout=1.0)

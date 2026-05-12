@@ -133,6 +133,10 @@ class Router(NetworkDevice):
         super().__init__(name)
         self._routing_table = RoutingTable()
         self._protocol = RoutingProtocol(self)
+        self._as_gate = None  # set by AS.add_router
+
+    def gate(self):
+        return self._as_gate
 
     def routing_table(self):
         return self._routing_table
