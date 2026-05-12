@@ -1717,6 +1717,10 @@ const Terminals = {
   _active: new Map(),                   // name -> element
 
   open(deviceName) {
+    if (Sim && Sim.state === 'idle') {
+      toast('Start the simulation to use device terminals', 'info');
+      return;
+    }
     if (this._active.has(deviceName)) {
       const el = this._active.get(deviceName);
       el.style.display = 'flex';
@@ -1735,6 +1739,7 @@ type 'help' for commands
       <div class="term-line">
         <span class="term-prompt">${escapeHtml(deviceName)}@netrouting:~$</span>
         <input class="term-in" autocomplete="off" spellcheck="false" />
+        <span class="term-cursor"></span>
       </div>`;
     const w = document.createElement('div');
     w.className = 'term';
