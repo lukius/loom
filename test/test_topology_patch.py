@@ -25,7 +25,6 @@ def client(tmp_path, monkeypatch):
         yield c
 
 
-@pytest.mark.xfail(strict=True, reason="devices/{name}/interfaces lands in Task 16")
 def test_add_host_via_patch(client):
     client.post("/sim/start")
     client.post("/sim/pause")

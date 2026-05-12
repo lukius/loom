@@ -1,0 +1,61 @@
+from fastapi import APIRouter, HTTPException, Request
+
+from server.command.dispatch import dispatch
+
+router = APIRouter(prefix="/devices", tags=["devices"])
+
+
+def _device_or_404(request: Request, name: str):
+    """Fetch a device by name, raising 404 if absent or no topology is loaded."""
+    s = request.app.state.sim_state
+    if s.as_obj is None:
+        raise HTTPException(409, "no topology loaded")
+    try:
+        return s.as_obj.device(name)
+    except Exception:
+        raise HTTPException(404, f"unknown device: {name}")
+
+
+@router.post("/{name}/command")
+def command(name: str, body: dict, request: Request):
+    """Dispatch a command to a device and return {ok, output}."""
+    device = _device_or_404(request, name)
+    cmd_line = body.get("cmd", "")
+    as_obj = request.app.state.sim_state.as_obj
+    return dispatch(device, cmd_line, as_obj=as_obj)
+
+
+@router.get("/{name}/interfaces")
+def interfaces(name: str, request: Request):
+    """Return all interfaces of a device."""
+    device = _device_or_404(request, name)
+    out = []
+    for iname, iface in device.interfaces().items():
+        out.append(
+            {
+                "name": iname,
+                "address": str(iface.address()),
+                "network": iface.network().name(),
+                "cost": iface.cost(),
+            }
+        )
+    return {"interfaces": out}
+
+
+@router.get("/{name}/routes")
+def routes(name: str, request: Request):
+    """Return routing table rules for a device (empty list for hosts)."""
+    device = _device_or_404(request, name)
+    table = getattr(device, "routing_table", None)
+    if table is None:
+        return {"rules": []}
+    rules = []
+    for r in table().rules():
+        rules.append(
+            {
+                "prefix": str(r.prefix()),
+                "next_hop": str(r.next_hop()),
+                "iface": r.interface().name(),
+            }
+        )
+    return {"rules": rules}
