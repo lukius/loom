@@ -1,3 +1,4 @@
+import time as _time
 import uuid
 
 from .address import NetworkAddress
@@ -93,3 +94,29 @@ class UserMessage(Message):
 
     def payload(self):
         return self._payload
+
+
+class PingRequest(Message):
+    def __init__(self, seq: int):
+        super().__init__()
+        self._seq = seq
+        self._sent_at = _time.monotonic()
+
+    @property
+    def seq(self) -> int: return self._seq
+
+    @property
+    def sent_at(self) -> float: return self._sent_at
+
+
+class PingReply(Message):
+    def __init__(self, seq: int, request_ts: float):
+        super().__init__()
+        self._seq = seq
+        self._request_ts = request_ts
+
+    @property
+    def seq(self) -> int: return self._seq
+
+    @property
+    def request_ts(self) -> float: return self._request_ts

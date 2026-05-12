@@ -150,6 +150,7 @@ class Router(NetworkDevice):
     def _handle_message(self, msg, interface, packet):
         if msg.type() == RoutingMessage:
             self._handle_routing_message(msg, interface)
+        # PingRequest/PingReply silently dropped
 
     def _handle_routing_message(self, msg: RoutingMessage, interface: Interface):
         self._protocol.handle_incoming_message(msg, interface)

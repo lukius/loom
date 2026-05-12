@@ -1,8 +1,14 @@
+import itertools
+import threading
+import time
+
 from .address import Address
 from .device import NetworkDevice
 from .event import EventTracer
-from .interface import Interface
-from .packet import Datagram, UserMessage
+from .interface import Interface  # noqa: F401
+from .packet import Datagram, PingReply, PingRequest, UserMessage
+
+PING_TIMEOUT_S = 3.0
 
 
 class Host(NetworkDevice):
@@ -16,6 +22,11 @@ class Host(NetworkDevice):
 
         self._gw_address = gw_address
         self._gate = gate
+
+        self._ping_seq = itertools.count()
+        self._ping_lock = threading.Lock()
+        self._pending_pings: dict[tuple, threading.Event] = {}
+        self._ping_results: dict[tuple, float] = {}
 
     def network(self):
         return self._interface.network()
@@ -42,7 +53,51 @@ class Host(NetworkDevice):
 
         return EventTracer.message_sent(src=src, dst=addr, msg=msg)
 
+    def ping(self, dst_addr: Address, timeout: float = PING_TIMEOUT_S):
+        seq = next(self._ping_seq)
+        key = (str(dst_addr), seq)
+        evt = threading.Event()
+        with self._ping_lock:
+            self._pending_pings[key] = evt
+
+        request = PingRequest(seq)
+        datagram = Datagram(src_addr=self.address(), dst_addr=dst_addr, payload=request)
+        if self._interface.network().contains_address(dst_addr):
+            send_dst = dst_addr
+        else:
+            send_dst = self._gw_address or dst_addr
+        self._interface.send_to(datagram, dst_addr=send_dst)
+
+        arrived = evt.wait(timeout=timeout)
+        with self._ping_lock:
+            self._pending_pings.pop(key, None)
+            rtt = self._ping_results.pop(key, None)
+
+        return rtt if arrived else None
+
     def _handle_message(self, msg, interface, packet):
+        if isinstance(msg, PingRequest):
+            originator = packet.source()
+            reply = PingReply(seq=msg.seq, request_ts=msg.sent_at)
+            datagram = Datagram(
+                src_addr=self.address(), dst_addr=originator, payload=reply
+            )
+            if self._interface.network().contains_address(originator):
+                send_dst = originator
+            else:
+                send_dst = self._gw_address or originator
+            self._interface.send_to(datagram, dst_addr=send_dst)
+            return
+        if isinstance(msg, PingReply):
+            originator = packet.source()
+            key = (str(originator), msg.seq)
+            with self._ping_lock:
+                evt = self._pending_pings.get(key)
+                if evt is None:
+                    return
+                self._ping_results[key] = time.monotonic() - msg.request_ts
+                evt.set()
+            return
         if msg.type() == UserMessage:
             return EventTracer.message_received(src=self.address(), msg=msg)
 

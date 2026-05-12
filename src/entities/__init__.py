@@ -5,6 +5,7 @@ from .exception import *
 from .host import *
 from .interface import *
 from .network import *
+from .packet import PingReply, PingRequest  # noqa: F401
 from .router import *
 from .system import *
 
