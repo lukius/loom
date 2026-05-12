@@ -58,3 +58,79 @@ def test_unsubscribe_during_broadcast_is_safe():
     log.clear()
     EventTracer._broadcast({"kind": "e2"})
     assert log == ["k"]
+
+
+def test_egress_broadcast_fires_for_user_datagram():
+    import os
+    import tempfile
+    import textwrap
+    import time
+
+    from entities import UserMessage
+    from entities.event import EventTracer
+    from parser import Parser
+
+    yaml_text = textwrap.dedent("""
+    as:
+      name: t
+      networks:
+        lan1: "10.0.0.0/24"
+      hosts:
+        h1: {network: lan1, address: "10.0.0.1"}
+        h2: {network: lan1, address: "10.0.0.2"}
+    """)
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_text)
+        path = f.name
+    try:
+        events = []
+        EventTracer._subscribers = []
+        EventTracer.subscribe(events.append)
+
+        system = Parser(path).parse()
+        h1, h2 = system.host("h1"), system.host("h2")
+        h1.send_message_to(UserMessage("hi"), h2.address())
+        time.sleep(0.2)
+        kinds = [(e.get("kind"), e.get("type")) for e in events]
+        assert ("packet", "user_datagram") in kinds
+        system.stop()
+    finally:
+        os.unlink(path)
+
+
+def test_routing_table_changed_event_fires():
+    import os
+    import tempfile
+    import textwrap
+
+    from entities.event import EventTracer
+    from parser import Parser
+
+    yaml_text = textwrap.dedent("""
+    as:
+      name: t
+      networks:
+        lan1: "10.0.0.0/24"
+        lan2: "10.0.1.0/24"
+      routers:
+        r1: {interfaces: {eth0: {network: lan1, address: "10.0.0.1", cost: 5},
+                          eth1: {network: lan2, address: "10.0.1.1", cost: 5}}}
+    """)
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_text)
+        path = f.name
+    try:
+        events = []
+        EventTracer._subscribers = []
+        EventTracer.subscribe(events.append)
+
+        system = Parser(path).parse()
+        # First keepalive within ~KEEPALIVE_INTERVAL; for a test, manually update.
+        system.router("r1").update_interface("eth0", 99)
+        # nudge protocol to recompute by faking a keepalive call:
+        system.router("r1")._protocol._handle_update()
+        kinds = [e.get("kind") for e in events]
+        assert "routing_table_changed" in kinds
+        system.stop()
+    finally:
+        os.unlink(path)

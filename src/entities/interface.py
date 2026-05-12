@@ -6,6 +6,17 @@ from .address import Address
 from .base import Entity
 from .packet import Datagram, Frame
 
+_PACKET_KIND = {
+    "RoutingMessage": "routing_flood",
+    "UserMessage": "user_datagram",
+    "PingRequest": "ping_request",
+    "PingReply": "ping_reply",
+}
+
+
+def _classify(payload) -> str:
+    return _PACKET_KIND.get(type(payload).__name__, "unknown")
+
 
 class Interface(Entity):
 
@@ -46,8 +57,23 @@ class Interface(Entity):
         self._pkt_thread.join()
 
     def send_to(self, datagram: Datagram, dst_addr: Address):
+        from .event import EventTracer
+
         frame = Frame(src_addr=self._address, dst_addr=dst_addr, payload=datagram)
         self._out_queue.put(frame)
+        EventTracer._broadcast(
+            {
+                "kind": "packet",
+                "type": _classify(datagram.payload()),
+                "src": {
+                    "device": self._device.name() if self._device else None,
+                    "iface": self._name,
+                    "address": str(self._address),
+                },
+                "dst": {"address": str(dst_addr)},
+                "network": self._net.name(),
+            }
+        )
 
     def receive(self, datagram):
         self._in_queue.put(datagram)

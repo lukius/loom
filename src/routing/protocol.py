@@ -90,6 +90,23 @@ class RoutingProtocol:
                     routing_table.add_rule(prefix, next_hop_address, iface)
                     break
 
+        from entities.event import EventTracer
+
+        EventTracer._broadcast(
+            {
+                "kind": "routing_table_changed",
+                "device": self._router.name(),
+                "rules": [
+                    {
+                        "prefix": str(r.prefix()),
+                        "next_hop": str(r.next_hop()),
+                        "iface": r.interface().name(),
+                    }
+                    for r in routing_table.rules()
+                ],
+            }
+        )
+
     def _handle_update(self):
         from entities import Datagram, RoutingMessage
 
