@@ -13,10 +13,10 @@ netrouting/
 │   ├── parser/            # YAML topology loader + SystemValidator
 │   └── shell/             # `cmd.Cmd`-based REPL (read/route/send/update_cost/exit)
 ├── test/
-│   ├── test_*.py          # Suites: address, entities, forwarding, graph, packet_handling, parser, protocol, routing_table
+│   ├── test_*.py          # Suites: address, entities, event_subscribers, forwarding, graph, packet_handling, parser, pause_gate, ping, protocol, routing_table, shell_commands, thread_resilience
 │   └── resources/         # YAML fixtures — most are intentionally invalid (parser/validator negative tests)
 ├── samples/sample.yaml    # Example topology
-├── web/                   # Empty — placeholder for future UI
+├── web/index.html         # Interactive topology designer SPA
 ├── pyproject.toml         # ruff + pytest config (sets pythonpath = ["src"], testpaths = ["test"])
 ├── requirements.txt       # Runtime deps (PyYAML)
 ├── requirements-dev.txt   # Dev deps: includes runtime + pytest + ruff

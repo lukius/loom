@@ -69,3 +69,8 @@ def test_ping_happy(shell):
 def test_ping_unreachable(shell):
     out = _capture(shell, shell.do_ping, "h1 192.168.99.99 -W 0.3")
     assert "timeout" in out.lower() or "unreachable" in out.lower()
+
+
+def test_ping_invalid_destination(shell):
+    out = _capture(shell, shell.do_ping, "h1 not-a-host-or-ip -W 0.1")
+    assert "invalid destination" in out.lower()

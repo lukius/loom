@@ -1,8 +1,12 @@
 from .base import Entity
 from .clock import PauseGate
-from .exception import HostNotFoundException, RouterNotFoundException, NetworkNotFoundException
-from .host import Host
 from .device import NetworkDevice
+from .exception import (
+    HostNotFoundException,
+    NetworkNotFoundException,
+    RouterNotFoundException,
+)
+from .host import Host
 from .router import Router
 
 

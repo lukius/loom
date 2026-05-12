@@ -141,7 +141,11 @@ class Shell(cmd.Cmd):
             dst_host = self._system.host(dst)
             dst_addr = dst_host.address()
         except Exception:
-            dst_addr = Address(dst)
+            try:
+                dst_addr = Address(dst)
+            except Exception:
+                print(f'ping: invalid destination: {dst}')
+                return
         rtt = src.ping(dst_addr, timeout=timeout)
         if rtt is None:
             print(f'ping {src_name} -> {dst}: timeout after {timeout:.2f} s')
