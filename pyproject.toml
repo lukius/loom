@@ -7,3 +7,4 @@ select = ["E", "F", "W", "I"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["test"]
+asyncio_mode = "auto"
