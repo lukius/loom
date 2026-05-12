@@ -190,3 +190,22 @@ def test_paused_keepalive_does_not_tick():
     # Join the keepalive thread so it fully exits before the next test,
     # preventing any lingering interface sends from polluting test mocks.
     proto._keepalive_thread.join(timeout=1.0)
+
+
+def test_router_protocol_restartable_after_stop():
+    """Regression: RoutingProtocol.start() must be callable after stop()."""
+    from entities import AS, Address, Interface, Network, NetworkAddress, Router
+    system = AS("t")
+    net = Network("lan1", NetworkAddress("10.0.0.0/24"), gate=system.gate())
+    system.add_network(net)
+    r1 = Router("r1")
+    iface = Interface("eth0", net, Address("10.0.0.1"), cost=1, gate=system.gate())
+    net.add_interface(iface)
+    r1.add_interface(iface)
+    system.add_router(r1)
+
+    r1.start()
+    r1.stop()
+    r1.start()  # would have raised RuntimeError before the fix
+
+    system.stop()

@@ -24,6 +24,12 @@ class RoutingProtocol:
         self._graph_updated = True
 
     def start(self):
+        if self._keepalive_thread is not None and self._keepalive_thread.is_alive():
+            return                                    # idempotent on running
+        self._stopped = False
+        self._keepalive_thread = threading.Thread(
+            target=self._keepalive_loop, daemon=True
+        )
         self._keepalive_thread.start()
 
     def _init_graph(self):

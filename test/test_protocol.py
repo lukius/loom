@@ -11,6 +11,9 @@ class MockThread(object):
     def start(self, *args, **kwargs):
         pass
 
+    def is_alive(self):
+        return False
+
 
 class ProtocolTest(unittest.TestCase):
 
