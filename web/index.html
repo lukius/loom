@@ -497,6 +497,19 @@ body.col-resizing * { cursor: col-resize !important; }
 .canv-toolbar .tb-btn.paused  { color: var(--warn, #d97706); }
 @keyframes pulse { 50% { opacity: 0.6; } }
 .canv-toolbar .div { width: 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
+.canv-toolbar .tb-btn.chatter-muted { opacity: 0.5; }
+.packet-tt {
+  position: fixed;
+  z-index: 9999;
+  background: rgba(20, 20, 20, 0.95);
+  color: #eee;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  pointer-events: none;
+  display: none;
+}
 
 .canv-zoom {
   position: absolute; bottom: 14px; left: 12px;
@@ -1313,6 +1326,9 @@ svg.canvas.linking { cursor: crosshair; }
       <button class="tb-btn" id="tb-reset" title="Revert topology to source" disabled>
         <svg class="ico"><use href="#ui-reset"/></svg> Reset
       </button>
+      <button class="tb-btn" id="tb-chatter" title="Toggle routing flood animation">
+        <span class="lbl">Chatter</span>
+      </button>
     </div>
 
     <!-- zoom -->
@@ -1337,6 +1353,7 @@ svg.canvas.linking { cursor: crosshair; }
     <svg class="canvas" id="canvas" xmlns="http://www.w3.org/2000/svg">
       <g id="viewport">
         <g id="edges-layer"></g>
+        <g id="packet-layer"></g>
         <g id="nodes-layer"></g>
         <g id="overlay-layer"></g>
       </g>
@@ -1603,9 +1620,138 @@ const Sim = {
   },
 };
 
+/* ---------- PacketAnim ---------- */
+const PacketAnim = {
+  DURATION_MS: 600,
+  COLORS: {
+    routing_flood:  { fill: '#94a3b8', opacity: 0.5 },
+    user_datagram:  { fill: '#22c55e', opacity: 1.0 },
+    ping_request:   { fill: '#f59e0b', opacity: 1.0 },
+    ping_reply:     { fill: '#fbbf24', opacity: 1.0 },
+  },
+  _lastChatter: new Map(),
+  muted: false,
+
+  play(evt) {
+    if (evt.type === 'routing_flood' && (this.muted || !this._chatterAllowed(evt))) return;
+
+    const srcNode = lookupDeviceNode(evt.src && evt.src.device);
+    const netNode = lookupNetworkNode(evt.network);
+    if (!srcNode || !netNode) return;
+
+    const layer = document.getElementById('packet-layer');
+    if (!layer) return;
+
+    const color = this.COLORS[evt.type] || { fill: '#777', opacity: 1.0 };
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    dot.setAttribute('r', 5);
+    dot.setAttribute('fill', color.fill);
+    dot.setAttribute('opacity', color.opacity);
+    dot.style.pointerEvents = 'all';
+    dot.dataset.evt = JSON.stringify(evt);
+    layer.appendChild(dot);
+
+    // Tooltip on hover
+    dot.addEventListener('mouseenter', () => showPacketTooltip(evt, dot));
+    dot.addEventListener('mouseleave', hidePacketTooltip);
+
+    // Two-segment animation
+    const dstNode = lookupAddressNode(evt.dst && evt.dst.address) || lookupDeviceNode(evt.dst && evt.dst.device);
+    this._tween(dot, srcNode, netNode, this.DURATION_MS / 2, () => {
+      if (!dstNode) { layer.removeChild(dot); return; }
+      this._tween(dot, netNode, dstNode, this.DURATION_MS / 2, () => layer.removeChild(dot));
+    });
+  },
+
+  _chatterAllowed(evt) {
+    const key = `${evt.src && evt.src.device}:${evt.network}`;
+    const now = performance.now();
+    const last = this._lastChatter.get(key) || 0;
+    if (now - last < 200) return false;
+    this._lastChatter.set(key, now);
+    return true;
+  },
+
+  _tween(dot, fromNode, toNode, durationMs, done) {
+    const fp = getNodeCenter(fromNode);
+    const tp = getNodeCenter(toNode);
+    if (!fp || !tp) { done(); return; }
+    const startedAt = performance.now();
+    const tick = () => {
+      const t = Math.min(1, (performance.now() - startedAt) / durationMs);
+      dot.setAttribute('cx', fp.x + (tp.x - fp.x) * t);
+      dot.setAttribute('cy', fp.y + (tp.y - fp.y) * t);
+      if (t < 1) requestAnimationFrame(tick);
+      else done();
+    };
+    requestAnimationFrame(tick);
+  },
+};
+
+function showPacketTooltip(evt, dot) {
+  let tt = document.getElementById('packet-tooltip');
+  if (!tt) {
+    tt = document.createElement('div');
+    tt.id = 'packet-tooltip';
+    tt.className = 'packet-tt';
+    document.body.appendChild(tt);
+  }
+  const payload = evt.payload ? ` "${evt.payload}"` : '';
+  const src = (evt.src && evt.src.address) || '?';
+  const dst = (evt.dst && evt.dst.address) || '?';
+  tt.textContent = `${evt.type}: ${src} → ${dst}${payload}`;
+  tt.style.display = 'block';
+  const bbox = dot.getBoundingClientRect();
+  tt.style.left = (bbox.right + 8) + 'px';
+  tt.style.top = (bbox.top - 4) + 'px';
+}
+
+function hidePacketTooltip() {
+  const tt = document.getElementById('packet-tooltip');
+  if (tt) tt.style.display = 'none';
+}
+
+function lookupDeviceNode(name) {
+  if (!name) return null;
+  return document.querySelector(`#nodes-layer g[data-name="${cssEscape(name)}"][data-kind="host"], #nodes-layer g[data-name="${cssEscape(name)}"][data-kind="router"]`);
+}
+
+function lookupNetworkNode(name) {
+  if (!name) return null;
+  return document.querySelector(`#nodes-layer g[data-name="${cssEscape(name)}"][data-kind="network"]`);
+}
+
+function lookupAddressNode(address) {
+  if (!address) return null;
+  // Find host whose address matches
+  for (const [hn, h] of Object.entries(state.hosts || {})) {
+    if (h.address === address) return lookupDeviceNode(hn);
+  }
+  // Find router whose interface address matches
+  for (const [rn, r] of Object.entries(state.routers || {})) {
+    for (const iname of Object.keys(r.interfaces || {})) {
+      if (r.interfaces[iname].address === address) return lookupDeviceNode(rn);
+    }
+  }
+  return null;
+}
+
+function getNodeCenter(g) {
+  if (!g) return null;
+  // Each node's <g> has transform="translate(x, y)"; the centroid is at (0,0) in local space.
+  const t = g.getAttribute('transform') || '';
+  const m = t.match(/translate\(([-\d.]+)[,\s]\s*([-\d.]+)\)/);
+  if (!m) return null;
+  return { x: parseFloat(m[1]), y: parseFloat(m[2]) };
+}
+
 document.getElementById('tb-play').addEventListener('click', () => Sim.onPrimary());
 document.getElementById('tb-pause').addEventListener('click', () => Sim.onSecondary());
 document.getElementById('tb-reset').addEventListener('click', () => Sim.onReset());
+document.getElementById('tb-chatter').addEventListener('click', () => {
+  PacketAnim.muted = !PacketAnim.muted;
+  document.getElementById('tb-chatter').classList.toggle('chatter-muted', PacketAnim.muted);
+});
 
 window.addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea')) return;
@@ -1616,10 +1762,9 @@ window.addEventListener('keydown', (e) => {
 // On load: sync toolbar state from backend; failure is silent (offline mode)
 Sim.refreshState().catch(() => setConnectionStatus(false));
 RuntimeClient.connectEvents((evt) => {
-  if (evt.kind === 'sim_state') {
-    Sim.state = evt.state; Sim._renderToolbar();
-  }
-  // packet handler wired in Phase 4
+  if (evt.kind === 'sim_state') { Sim.state = evt.state; Sim._renderToolbar(); }
+  if (evt.kind === 'packet') PacketAnim.play(evt);
+  // routing_table_changed handled in Phase 6 (Inspector)
 });
 
 /* ---------- helpers ---------- */
