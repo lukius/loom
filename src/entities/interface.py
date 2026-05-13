@@ -61,15 +61,20 @@ class Interface(Entity):
 
         frame = Frame(src_addr=self._address, dst_addr=dst_addr, payload=datagram)
         self._out_queue.put(frame)
-        # `payload_id` lets the UI group hops of the same logical packet so it can
-        # animate them sequentially rather than all at once.
+        # `payload_id` identifies a single Message (one direction of a flow);
+        # `flow` identifies an end-to-end conversation between two endpoints
+        # (e.g. a ping request and its reply share the same flow). The UI
+        # uses `flow` to animate hops sequentially across both directions.
         payload = datagram.payload()
         payload_id = str(payload.id()) if hasattr(payload, "id") else None
+        endpoints = sorted([str(datagram.source()), str(datagram.destination())])
+        flow = f"{endpoints[0]}<->{endpoints[1]}"
         EventTracer._broadcast(
             {
                 "kind": "packet",
                 "type": _classify(payload),
                 "payload_id": payload_id,
+                "flow": flow,
                 "src": {
                     "device": self._device.name() if self._device else None,
                     "iface": self._name,

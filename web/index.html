@@ -1818,36 +1818,38 @@ const PacketAnim = {
     ping_request:   { fill: '#f59e0b', opacity: 1.0 },
     ping_reply:     { fill: '#fbbf24', opacity: 1.0 },
   },
-  // Types whose hops should be animated sequentially (request → R1 → R2 → dst),
-  // grouped by payload_id. Chatter stays parallel so the user still sees the swarm.
+  // Types whose hops should be animated sequentially. Grouped by `flow` (the
+  // unordered pair of endpoint addresses) so a ping_request and its ping_reply,
+  // which share the same flow, animate one after the other instead of overlapping.
+  // Chatter stays parallel so the user still sees the swarm.
   _SEQUENTIAL: new Set(['user_datagram', 'ping_request', 'ping_reply']),
   _lastChatter: new Map(),
-  _queues: new Map(),               // payload_id -> { pending: [evt, ...] }
+  _queues: new Map(),               // flow -> { pending: [evt, ...] }
   muted: false,
 
   play(evt) {
     if (evt.type === 'routing_flood' && (this.muted || !this._chatterAllowed(evt))) return;
 
-    if (evt.payload_id && this._SEQUENTIAL.has(evt.type)) {
-      const q = this._queues.get(evt.payload_id);
+    if (evt.flow && this._SEQUENTIAL.has(evt.type)) {
+      const q = this._queues.get(evt.flow);
       if (q) { q.pending.push(evt); return; }
-      this._queues.set(evt.payload_id, { pending: [] });
-      this._render(evt, () => this._onSegmentDone(evt.payload_id));
+      this._queues.set(evt.flow, { pending: [] });
+      this._render(evt, () => this._onSegmentDone(evt.flow));
       return;
     }
 
     this._render(evt, null);
   },
 
-  _onSegmentDone(payloadId) {
-    const q = this._queues.get(payloadId);
+  _onSegmentDone(flow) {
+    const q = this._queues.get(flow);
     if (!q) return;
     if (q.pending.length === 0) {
-      this._queues.delete(payloadId);
+      this._queues.delete(flow);
       return;
     }
     const next = q.pending.shift();
-    this._render(next, () => this._onSegmentDone(payloadId));
+    this._render(next, () => this._onSegmentDone(flow));
   },
 
   _render(evt, onDone) {
