@@ -79,3 +79,19 @@ def test_ping_off_lan_no_gateway(shell):
 def test_ping_invalid_destination(shell):
     out = _capture(shell, shell.do_ping, "h1 not-a-host-or-ip -W 0.1")
     assert "invalid destination" in out.lower()
+
+
+def test_set_gateway_happy(shell):
+    out = _capture(shell, shell.do_set_gateway, "h1 10.0.0.254")
+    assert "10.0.0.254" in out
+    assert shell._system.host("h1").gateway() is not None
+
+
+def test_set_gateway_off_network(shell):
+    out = _capture(shell, shell.do_set_gateway, "h1 192.168.99.1")
+    assert "not in host network" in out.lower()
+
+
+def test_set_gateway_router_rejects(shell):
+    out = _capture(shell, shell.do_set_gateway, "r1 10.0.0.254")
+    assert "not a host" in out.lower()

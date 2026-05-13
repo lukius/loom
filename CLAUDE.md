@@ -45,6 +45,7 @@ Inside the REPL, load a topology before any other command:
 # route r1
 # send h1 h2 hello
 # update_cost r1 eth0 25
+# set_gateway h1 200.100.0.1
 # ifconfig h1
 # neighbors r1
 # ping h1 h2 -W 1.5

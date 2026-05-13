@@ -40,6 +40,11 @@ class Host(NetworkDevice):
     def gateway(self):
         return self._gw_address
 
+    def set_gateway(self, addr: Address) -> None:
+        if not self._interface.network().contains_address(addr):
+            raise ValueError(f"gateway {addr} not in host network")
+        self._gw_address = addr
+
     def send_message_to(self, msg: UserMessage, addr: Address):
         src = self.address()
         datagram = Datagram(src_addr=src, dst_addr=addr, payload=msg)

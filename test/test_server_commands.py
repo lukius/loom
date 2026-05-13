@@ -130,6 +130,42 @@ def test_refresh_interval_requires_started_sim(tmp_path, monkeypatch):
         assert r.status_code == 409
 
 
+def test_set_gateway_updates_host(client):
+    r = client.post("/devices/h1/command", json={"cmd": "set_gateway 10.0.0.254"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"]
+    assert "10.0.0.254" in body["output"]
+    # confirm route now shows the new gateway
+    r2 = client.post("/devices/h1/command", json={"cmd": "route"})
+    assert "10.0.0.254" in r2.json()["output"]
+
+
+def test_set_gateway_rejects_off_network(client):
+    r = client.post("/devices/h1/command", json={"cmd": "set_gateway 192.168.99.1"})
+    body = r.json()
+    assert not body["ok"]
+    assert "not in host network" in body["output"]
+
+
+def test_set_gateway_rejects_invalid_address(client):
+    r = client.post("/devices/h1/command", json={"cmd": "set_gateway not-an-ip"})
+    body = r.json()
+    # cmd handlers return ok=True with a "syntax: ..." or "...: invalid ..." body;
+    # the actual signal is whether the gateway was set.
+    assert "invalid address" in body["output"]
+    r2 = client.post("/devices/h1/command", json={"cmd": "route"})
+    assert "not-an-ip" not in r2.json()["output"]
+
+
+def test_set_gateway_on_router_unknown_command(client):
+    # set_gateway is host-only — router should not recognize it
+    r = client.post("/devices/r1/command", json={"cmd": "set_gateway 10.0.0.1"})
+    body = r.json()
+    assert not body["ok"]
+    assert "unknown command" in body["output"]
+
+
 def test_router_rejects_host_only_commands(client):
     for cmd in ("send h1 hi", "ping h1"):
         r = client.post("/devices/r1/command", json={"cmd": cmd})

@@ -8,12 +8,15 @@ as:
     h1:
         network: "lan1"
         address: "200.100.0.10"
+        gateway: "200.100.0.1"
     h2:
         network: "lan2"
         address: "100.200.0.20"
+        gateway: "100.200.0.2"
     h3:
         network: "lan3"
-        address: "150.10.10.30"                  
+        address: "150.10.10.30"
+        gateway: "150.10.10.1"
   routers:
     r1:
         interfaces:

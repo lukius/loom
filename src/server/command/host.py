@@ -63,6 +63,21 @@ def cmd_route(host, args, as_obj=None):
     return f"gateway: {host.gateway() or '(none)'}"
 
 
+def cmd_set_gateway(host, args, as_obj=None):
+    """Set the host's default gateway: set_gateway <ip>."""
+    if len(args) != 1:
+        return "syntax: set_gateway <ip>"
+    try:
+        addr = Address(args[0])
+    except Exception:
+        return f"set_gateway: invalid address: {args[0]}"
+    host.set_gateway(addr)
+    return f"gateway set to {addr}"
+
+
 def cmd_help(host, args, as_obj=None):
     """List available host commands."""
-    return "available: ifconfig, send <dst> <msg>, ping <dst> [-W t], route, help"
+    return (
+        "available: ifconfig, send <dst> <msg>, ping <dst> [-W t], "
+        "route, set_gateway <ip>, help"
+    )

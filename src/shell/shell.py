@@ -53,6 +53,32 @@ class Shell(cmd.Cmd):
             src_host.send_message_to(msg, dst_host.address())
 
     @requires_system
+    def do_set_gateway(self, arg):
+        'Configurar gateway de un host. Sintaxis: set_gateway <host> <ip>'
+        parts = arg.split()
+        if len(parts) != 2:
+            print('syntax: set_gateway <host> <ip>')
+            return
+        name, ip = parts
+        from entities import Address, Host
+
+        device = self._system.device(name)
+        if not isinstance(device, Host):
+            print(f'set_gateway: {name} is not a host')
+            return
+        try:
+            addr = Address(ip)
+        except Exception:
+            print(f'set_gateway: invalid address: {ip}')
+            return
+        try:
+            device.set_gateway(addr)
+        except ValueError as e:
+            print(f'set_gateway: {e}')
+            return
+        print(f'{name}: gateway set to {addr}')
+
+    @requires_system
     def do_update_cost(self, arg):
         'Actualizar el costo de un enlace'
         try:
