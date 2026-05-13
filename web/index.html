@@ -517,17 +517,36 @@ body.col-resizing * { cursor: col-resize !important; }
   background: #0a0a0a; color: #33ff66;
   font-family: "JetBrains Mono", "Geist Mono", ui-monospace, monospace;
   font-size: 13px; line-height: 1.35;
-  border: 1px solid #233; border-radius: 6px;
+  border: 1px solid #2a2a2a; border-radius: 8px;
   box-shadow: 0 14px 40px rgba(0,0,0,0.5);
   display: flex; flex-direction: column;
   resize: both; overflow: hidden;
 }
-.term-header { padding: 4px 8px; background: #111; cursor: move; user-select: none;
-  display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.term-header .title { color: #88e; font-size: 12px; flex: 1; }
-.term-header .close { color: #f88; cursor: pointer; padding: 0 6px; font-size: 14px; }
+.term-header {
+  padding: 6px 10px;
+  background: linear-gradient(#3a3a3a, #2c2c2c);
+  border-bottom: 1px solid #1f1f1f;
+  cursor: move; user-select: none;
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px;
+}
+.term-header .traffic { display: flex; gap: 6px; align-items: center; }
+.term-header .light {
+  width: 12px; height: 12px; border-radius: 50%;
+  display: inline-block; border: 1px solid rgba(0,0,0,0.35);
+  box-shadow: inset 0 -1px 1px rgba(0,0,0,0.25), inset 0 1px 1px rgba(255,255,255,0.25);
+}
+.term-header .light.close   { background: #ff5f57; cursor: pointer; }
+.term-header .light.close::after {
+  content: '×'; display: block; text-align: center; line-height: 10px;
+  font-size: 11px; color: rgba(0,0,0,0.55); opacity: 0;
+}
+.term-header .light.close:hover::after { opacity: 1; }
+.term-header .light.min { background: #febc2e; cursor: default; }
+.term-header .light.max { background: #28c840; cursor: default; }
+.term-header .title { color: #d0d0d8; font-size: 12px; text-align: center; letter-spacing: 0.02em; }
 .term-header .paused-chip { color: #fbbf24; font-size: 11px; font-weight: 600;
-  padding: 1px 6px; border: 1px solid #fbbf24; border-radius: 3px; opacity: 0.85; }
+  padding: 1px 6px; border: 1px solid #fbbf24; border-radius: 3px; opacity: 0.85;
+  justify-self: end; }
 .term-in:disabled { opacity: 0.55; cursor: not-allowed; }
 .term-out { flex: 1; padding: 6px 8px; overflow-y: auto; white-space: pre-wrap; margin: 0;
   background: #0a0a0a; color: #aaffaa; }
@@ -1815,9 +1834,13 @@ const Terminals = {
     }
     const tmpl = `
       <div class="term-header">
+        <div class="traffic">
+          <span class="light close" title="Close"></span>
+          <span class="light min" title=""></span>
+          <span class="light max" title=""></span>
+        </div>
         <div class="title">${escapeHtml(deviceName)}@netrouting</div>
         <div class="paused-chip" hidden>(paused)</div>
-        <div class="close" title="Close">×</div>
       </div>
       <pre class="term-out">netrouting v1.0 — ${escapeHtml(deviceName)}
 type 'help' for commands
@@ -1856,13 +1879,21 @@ type 'help' for commands
   _wire(w, name) {
     const out = w.querySelector('.term-out');
     const inp = w.querySelector('.term-in');
-    const close = w.querySelector('.close');
+    const close = w.querySelector('.light.close');
     const history = JSON.parse(sessionStorage.getItem('term.hist.' + name) || '[]');
     let histIdx = history.length;
 
-    close.addEventListener('click', () => {
+    const closeTerm = () => {
       w.remove();
       this._active.delete(name);
+    };
+    close.addEventListener('click', closeTerm);
+
+    // Click anywhere on the term window refocuses the input — recovers from accidental blur.
+    w.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.light.close')) return;
+      if (e.target === inp) return;
+      if (!inp.disabled) setTimeout(() => inp.focus(), 0);
     });
 
     // Drag
@@ -1882,6 +1913,18 @@ type 'help' for commands
     });
 
     inp.addEventListener('keydown', async (e) => {
+      if (e.ctrlKey && (e.key === 'd' || e.key === 'D')) {
+        if (inp.value === '') {
+          e.preventDefault();
+          closeTerm();
+          return;
+        }
+      }
+      if (e.ctrlKey && (e.key === 'l' || e.key === 'L')) {
+        e.preventDefault();
+        out.textContent = '';
+        return;
+      }
       if (e.key === 'Enter') {
         const cmd = inp.value;
         out.textContent += `${name}@netrouting:~$ ${cmd}\n`;
