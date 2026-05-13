@@ -33,9 +33,14 @@ class RoutingProtocol:
         self._keepalive_interval = float(seconds)
 
     def start(self):
+        # Always clear the stop flag first. If a previous stop() set it while
+        # the keepalive thread was sleeping, the thread would otherwise exit
+        # on its next wake — silently halting all subsequent ticks. The
+        # SimState load/start cycle (Parser starts → load_from_session stops
+        # → /sim/start starts) hits this path every time.
+        self._stopped = False
         if self._keepalive_thread is not None and self._keepalive_thread.is_alive():
             return                                    # idempotent on running
-        self._stopped = False
         self._keepalive_thread = threading.Thread(
             target=self._keepalive_loop, daemon=True
         )

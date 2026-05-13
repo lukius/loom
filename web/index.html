@@ -1211,12 +1211,14 @@ svg.canvas.linking { cursor: crosshair; }
 .toast.ok .icon { background: color-mix(in srgb, var(--pos) 15%, transparent); color: var(--pos); }
 .toast.error .icon { background: color-mix(in srgb, var(--neg) 15%, transparent); color: var(--neg); }
 .toast.info {
+  /* keep the opaque base bg; --accent-bg in dark mode is rgba(...,0.10)
+     which would let the canvas bleed through. Tint via a left accent stripe instead. */
   border-color: var(--accent-border);
-  background: var(--accent-bg);
+  border-left: 3px solid var(--accent);
   color: var(--accent-text);
 }
 .toast.info .icon {
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg));
   color: var(--accent-text);
 }
 .toast.info .body .lab { color: var(--accent-text); }
@@ -1816,18 +1818,45 @@ const PacketAnim = {
     ping_request:   { fill: '#f59e0b', opacity: 1.0 },
     ping_reply:     { fill: '#fbbf24', opacity: 1.0 },
   },
+  // Types whose hops should be animated sequentially (request → R1 → R2 → dst),
+  // grouped by payload_id. Chatter stays parallel so the user still sees the swarm.
+  _SEQUENTIAL: new Set(['user_datagram', 'ping_request', 'ping_reply']),
   _lastChatter: new Map(),
+  _queues: new Map(),               // payload_id -> { pending: [evt, ...] }
   muted: false,
 
   play(evt) {
     if (evt.type === 'routing_flood' && (this.muted || !this._chatterAllowed(evt))) return;
 
+    if (evt.payload_id && this._SEQUENTIAL.has(evt.type)) {
+      const q = this._queues.get(evt.payload_id);
+      if (q) { q.pending.push(evt); return; }
+      this._queues.set(evt.payload_id, { pending: [] });
+      this._render(evt, () => this._onSegmentDone(evt.payload_id));
+      return;
+    }
+
+    this._render(evt, null);
+  },
+
+  _onSegmentDone(payloadId) {
+    const q = this._queues.get(payloadId);
+    if (!q) return;
+    if (q.pending.length === 0) {
+      this._queues.delete(payloadId);
+      return;
+    }
+    const next = q.pending.shift();
+    this._render(next, () => this._onSegmentDone(payloadId));
+  },
+
+  _render(evt, onDone) {
     const srcNode = lookupDeviceNode(evt.src && evt.src.device);
     const netNode = lookupNetworkNode(evt.network);
-    if (!srcNode || !netNode) return;
+    if (!srcNode || !netNode) { if (onDone) onDone(); return; }
 
     const layer = document.getElementById('packet-layer');
-    if (!layer) return;
+    if (!layer) { if (onDone) onDone(); return; }
 
     const color = this.COLORS[evt.type] || { fill: '#777', opacity: 1.0 };
     const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -1840,15 +1869,17 @@ const PacketAnim = {
     dot.dataset.evt = JSON.stringify(evt);
     layer.appendChild(dot);
 
-    // Tooltip on hover
     dot.addEventListener('mouseenter', () => showPacketTooltip(evt, dot));
     dot.addEventListener('mouseleave', hidePacketTooltip);
 
-    // Two-segment animation
     const dstNode = lookupAddressNode(evt.dst && evt.dst.address) || lookupDeviceNode(evt.dst && evt.dst.device);
+    const finish = () => {
+      if (dot.parentNode) layer.removeChild(dot);
+      if (onDone) onDone();
+    };
     this._tween(dot, srcNode, netNode, this.DURATION_MS / 2, () => {
-      if (!dstNode) { layer.removeChild(dot); return; }
-      this._tween(dot, netNode, dstNode, this.DURATION_MS / 2, () => layer.removeChild(dot));
+      if (!dstNode) { finish(); return; }
+      this._tween(dot, netNode, dstNode, this.DURATION_MS / 2, finish);
     });
   },
 

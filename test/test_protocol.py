@@ -113,6 +113,53 @@ def test_routers_with_shared_iface_names_all_receive_lsas():
         os.unlink(path)
 
 
+def test_stop_then_start_resumes_periodic_ticks():
+    """Regression: SimState load/start hits start()->stop()->start(). The second
+    start must reset _stopped or the alive-but-sleeping thread exits on next wake.
+
+    Count ticks per router instead of events: more deterministic.
+    """
+    from routing.protocol import RoutingProtocol
+
+    original = RoutingProtocol.KEEPALIVE_INTERVAL
+    RoutingProtocol.KEEPALIVE_INTERVAL = 0.4
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+            f.write(SAMPLE_TOPOLOGY)
+            path = f.name
+        # Wrap _safe_tick to count ticks per router instance.
+        tick_counts = {}
+        original_tick = RoutingProtocol._safe_tick
+
+        def counting_tick(self):
+            name = self._router.name()
+            tick_counts[name] = tick_counts.get(name, 0) + 1
+            original_tick(self)
+
+        RoutingProtocol._safe_tick = counting_tick
+        try:
+            system = Parser(path).parse()
+            for r in system.routers().values():
+                r.stop()
+            tick_counts.clear()  # ignore the parser-time initial tick
+            for r in system.routers().values():
+                r.start()
+            try:
+                time.sleep(2.0)  # expect ~5 ticks per router at 0.4s interval
+                for name in system.routers():
+                    count = tick_counts.get(name, 0)
+                    assert count >= 3, (
+                        f"{name} ticked only {count} times after restart"
+                    )
+            finally:
+                system.stop()
+                os.unlink(path)
+        finally:
+            RoutingProtocol._safe_tick = original_tick
+    finally:
+        RoutingProtocol.KEEPALIVE_INTERVAL = original
+
+
 def test_initial_broadcast_propagates_before_keepalive_interval():
     # Every router must learn the full topology before the 10s keepalive elapses.
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:

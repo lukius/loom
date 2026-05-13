@@ -61,10 +61,15 @@ class Interface(Entity):
 
         frame = Frame(src_addr=self._address, dst_addr=dst_addr, payload=datagram)
         self._out_queue.put(frame)
+        # `payload_id` lets the UI group hops of the same logical packet so it can
+        # animate them sequentially rather than all at once.
+        payload = datagram.payload()
+        payload_id = str(payload.id()) if hasattr(payload, "id") else None
         EventTracer._broadcast(
             {
                 "kind": "packet",
-                "type": _classify(datagram.payload()),
+                "type": _classify(payload),
+                "payload_id": payload_id,
                 "src": {
                     "device": self._device.name() if self._device else None,
                     "iface": self._name,
