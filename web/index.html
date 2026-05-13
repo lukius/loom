@@ -55,10 +55,10 @@
   --host-border:  #a7f3d0;
   --host-text:    #047857;
 
-  --rtr:          #c026d3;
-  --rtr-bg:       #fdf4ff;
-  --rtr-border:   #f0abfc;
-  --rtr-text:     #a21caf;
+  --rtr:          #0891b2;
+  --rtr-bg:       #ecfeff;
+  --rtr-border:   #a5f3fc;
+  --rtr-text:     #0e7490;
 
   --pos:          #16a34a;
   --warn:         #d97706;
@@ -107,10 +107,10 @@
   --host-border:  rgba(52,211,153,.30);
   --host-text:    #6ee7b7;
 
-  --rtr:          #d946ef;
-  --rtr-bg:       rgba(217,70,239,.10);
-  --rtr-border:   rgba(217,70,239,.30);
-  --rtr-text:     #f0abfc;
+  --rtr:          #22d3ee;
+  --rtr-bg:       rgba(34,211,238,.10);
+  --rtr-border:   rgba(34,211,238,.30);
+  --rtr-text:     #67e8f9;
 
   --pos:          #4ade80;
   --warn:         #fbbf24;
@@ -3210,6 +3210,11 @@ function renderHostInsp(name, elI) {
         <label>IP address</label>
         <input id="f-addr" value="${escapeHtml(host.address || '')}" spellcheck="false" placeholder="192.168.0.10" />
       </div>
+      <div class="field">
+        <label>Default gateway</label>
+        <input id="f-gw" value="${escapeHtml(host.gateway || '')}" spellcheck="false" placeholder="(none)" />
+        <div class="hint">Must be an IP within the host's network.</div>
+      </div>
     </div>
     <div class="insp-routes" id="insp-routes" hidden></div>
     <div class="insp-foot">
@@ -3227,6 +3232,32 @@ function renderHostInsp(name, elI) {
     if (isTopologyLocked()) return;
     state.hosts[name].address = e.target.value.trim();
     markDirty(); renderCanvas(); renderNav();
+  });
+  elI.querySelector('#f-gw').addEventListener('change', async (e) => {
+    const v = e.target.value.trim();
+    // While the sim is running, push the new gateway live so routes update immediately.
+    if (Sim.state === 'running' || Sim.state === 'paused') {
+      if (!v) {
+        toast('Clearing the gateway requires stopping the simulation', 'info', 'Gateway');
+        e.target.value = state.hosts[name].gateway || '';
+        return;
+      }
+      try {
+        const r = await RuntimeClient.deviceCommand(name, `set_gateway ${v}`);
+        if (!r.ok) {
+          toast(r.output, 'error', 'Gateway');
+          e.target.value = state.hosts[name].gateway || '';
+          return;
+        }
+      } catch (err) {
+        toast(err.message || String(err), 'error', 'Gateway');
+        e.target.value = state.hosts[name].gateway || '';
+        return;
+      }
+    }
+    if (v) state.hosts[name].gateway = v;
+    else delete state.hosts[name].gateway;
+    markDirty();
   });
   elI.querySelector('#f-del').addEventListener('click', deleteSelected);
   elI.querySelector('#f-dup').addEventListener('click', () => duplicateHost(name));
@@ -3490,9 +3521,11 @@ function exportYaml() {
   const out = { as: {
     name: state.asName || 'topology',
     networks: Object.fromEntries(Object.entries(state.networks).map(([k, v]) => [k, v.cidr || ''])),
-    hosts: Object.fromEntries(Object.entries(state.hosts).map(([k, v]) => [k, {
-      network: v.network || '', address: v.address || '',
-    }])),
+    hosts: Object.fromEntries(Object.entries(state.hosts).map(([k, v]) => {
+      const h = { network: v.network || '', address: v.address || '' };
+      if (v.gateway) h.gateway = v.gateway;
+      return [k, h];
+    })),
     routers: Object.fromEntries(Object.entries(state.routers).map(([k, v]) => [k, {
       interfaces: Object.fromEntries(Object.entries(v.interfaces || {}).map(([ifn, iff]) => [ifn, {
         network: iff.network || '',
@@ -3516,7 +3549,11 @@ function importYaml(text) {
     for (const [n, cidr] of Object.entries(node.networks)) state.networks[n] = { cidr: typeof cidr === 'string' ? cidr : String(cidr || '') };
   }
   if (node.hosts && typeof node.hosts === 'object') {
-    for (const [n, v] of Object.entries(node.hosts)) state.hosts[n] = { network: v?.network || '', address: v?.address || '' };
+    for (const [n, v] of Object.entries(node.hosts)) {
+      const h = { network: v?.network || '', address: v?.address || '' };
+      if (v?.gateway) h.gateway = v.gateway;
+      state.hosts[n] = h;
+    }
   }
   if (node.routers && typeof node.routers === 'object') {
     for (const [n, v] of Object.entries(node.routers)) {
