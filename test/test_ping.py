@@ -4,6 +4,8 @@ import textwrap
 import threading
 import time
 
+import pytest
+
 from parser import Parser
 
 
@@ -44,7 +46,8 @@ def test_ping_unreachable_returns_none():
         from entities import Address
 
         h1 = system.host("h1")
-        bogus = Address("192.168.99.99")
+        # In-LAN address that no one answers (h1=10.0.0.1, h2=10.0.0.2).
+        bogus = Address("10.0.0.99")
         t0 = time.monotonic()
         rtt = h1.ping(bogus, timeout=0.3)
         elapsed = time.monotonic() - t0
@@ -73,6 +76,36 @@ def test_concurrent_pings_independent():
         for t in threads:
             t.join(timeout=2.0)
         assert all(r is not None for r in results)
+    finally:
+        system.stop()
+        os.unlink(path)
+
+
+TWO_LANS_NO_GATEWAY = textwrap.dedent("""
+as:
+  name: t
+  networks:
+    lan1: "10.0.0.0/24"
+    lan2: "10.0.1.0/24"
+  hosts:
+    h1: {network: lan1, address: "10.0.0.1"}
+    h2: {network: lan2, address: "10.0.1.1"}
+  routers:
+    r1:
+      interfaces:
+        eth0: {network: lan1, address: "10.0.0.254", cost: 1}
+        eth1: {network: lan2, address: "10.0.1.254", cost: 1}
+""")
+
+
+def test_ping_off_lan_with_no_gateway_raises():
+    path = _make_topology(TWO_LANS_NO_GATEWAY)
+    system = Parser(path).parse()
+    try:
+        h1 = system.host("h1")
+        h2 = system.host("h2")
+        with pytest.raises(ValueError, match="no gateway"):
+            h1.ping(h2.address(), timeout=0.2)
     finally:
         system.stop()
         os.unlink(path)

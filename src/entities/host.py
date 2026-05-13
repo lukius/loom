@@ -64,8 +64,12 @@ class Host(NetworkDevice):
         datagram = Datagram(src_addr=self.address(), dst_addr=dst_addr, payload=request)
         if self._interface.network().contains_address(dst_addr):
             send_dst = dst_addr
+        elif self._gw_address is None:
+            with self._ping_lock:
+                self._pending_pings.pop(key, None)
+            raise ValueError("no route to host: no gateway configured")
         else:
-            send_dst = self._gw_address or dst_addr
+            send_dst = self._gw_address
         self._interface.send_to(datagram, dst_addr=send_dst)
 
         arrived = evt.wait(timeout=timeout)

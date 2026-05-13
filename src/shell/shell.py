@@ -146,7 +146,11 @@ class Shell(cmd.Cmd):
             except Exception:
                 print(f'ping: invalid destination: {dst}')
                 return
-        rtt = src.ping(dst_addr, timeout=timeout)
+        try:
+            rtt = src.ping(dst_addr, timeout=timeout)
+        except ValueError as e:
+            print(f'ping {src_name} -> {dst}: {e}')
+            return
         if rtt is None:
             print(f'ping {src_name} -> {dst}: timeout after {timeout:.2f} s')
         else:

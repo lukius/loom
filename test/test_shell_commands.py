@@ -67,8 +67,13 @@ def test_ping_happy(shell):
 
 
 def test_ping_unreachable(shell):
-    out = _capture(shell, shell.do_ping, "h1 192.168.99.99 -W 0.3")
+    out = _capture(shell, shell.do_ping, "h1 10.0.0.99 -W 0.3")
     assert "timeout" in out.lower() or "unreachable" in out.lower()
+
+
+def test_ping_off_lan_no_gateway(shell):
+    out = _capture(shell, shell.do_ping, "h1 192.168.99.99 -W 0.3")
+    assert "no gateway" in out.lower()
 
 
 def test_ping_invalid_destination(shell):
