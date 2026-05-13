@@ -1749,9 +1749,9 @@ const Sim = {
 
 /* ---------- PacketAnim ---------- */
 const PacketAnim = {
-  DURATION_MS: 600,
+  DURATION_MS: 1800,
   COLORS: {
-    routing_flood:  { fill: '#94a3b8', opacity: 0.5 },
+    routing_flood:  { fill: '#94a3b8', opacity: 0.6 },
     user_datagram:  { fill: '#22c55e', opacity: 1.0 },
     ping_request:   { fill: '#f59e0b', opacity: 1.0 },
     ping_reply:     { fill: '#fbbf24', opacity: 1.0 },
@@ -1771,9 +1771,11 @@ const PacketAnim = {
 
     const color = this.COLORS[evt.type] || { fill: '#777', opacity: 1.0 };
     const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    dot.setAttribute('r', 5);
+    dot.setAttribute('r', 8);
     dot.setAttribute('fill', color.fill);
     dot.setAttribute('opacity', color.opacity);
+    dot.setAttribute('stroke', 'rgba(0,0,0,0.35)');
+    dot.setAttribute('stroke-width', '1');
     dot.style.pointerEvents = 'all';
     dot.dataset.evt = JSON.stringify(evt);
     layer.appendChild(dot);
