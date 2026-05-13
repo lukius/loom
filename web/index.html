@@ -523,9 +523,12 @@ body.col-resizing * { cursor: col-resize !important; }
   resize: both; overflow: hidden;
 }
 .term-header { padding: 4px 8px; background: #111; cursor: move; user-select: none;
-  display: flex; align-items: center; justify-content: space-between; }
-.term-header .title { color: #88e; font-size: 12px; }
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.term-header .title { color: #88e; font-size: 12px; flex: 1; }
 .term-header .close { color: #f88; cursor: pointer; padding: 0 6px; font-size: 14px; }
+.term-header .paused-chip { color: #fbbf24; font-size: 11px; font-weight: 600;
+  padding: 1px 6px; border: 1px solid #fbbf24; border-radius: 3px; opacity: 0.85; }
+.term-in:disabled { opacity: 0.55; cursor: not-allowed; }
 .term-out { flex: 1; padding: 6px 8px; overflow-y: auto; white-space: pre-wrap; margin: 0;
   background: #0a0a0a; color: #aaffaa; }
 .term-line { display: flex; padding: 0 8px 6px; }
@@ -795,6 +798,10 @@ svg.canvas.linking { cursor: crosshair; }
 .ctx .ctx-item:hover { background: var(--bg-3); }
 .ctx .ctx-item.danger { color: var(--neg); }
 .ctx .ctx-item.danger:hover { background: color-mix(in srgb, var(--neg) 8%, transparent); }
+.ctx .ctx-item:disabled,
+.ctx .ctx-item[aria-disabled="true"] { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+.ctx-sub.disabled > .ctx-item { opacity: 0.4; cursor: not-allowed; }
+.ctx-sub.disabled:hover > .ctx-panel { display: none; }
 .ctx .ctx-item .ico { width: 14px; height: 14px; color: var(--text-3); flex: none; }
 .ctx .ctx-item:hover .ico { color: var(--text); }
 .ctx .ctx-item.danger:hover .ico { color: var(--neg); }
@@ -1631,6 +1638,7 @@ const Sim = {
     const pause = document.getElementById('tb-pause');
     const reset = document.getElementById('tb-reset');
     const playLbl = play.querySelector('.lbl');
+    const pauseIcon = pause.querySelector('.ico use');
 
     if (this.state === 'idle') {
       playLbl.textContent = 'Start'; play.classList.remove('running', 'paused');
@@ -1639,10 +1647,14 @@ const Sim = {
     } else if (this.state === 'running') {
       playLbl.textContent = 'Stop'; play.classList.add('running'); play.classList.remove('paused');
       pause.hidden = false; pause.querySelector('.lbl').textContent = 'Pause';
+      pause.setAttribute('title', 'Pause simulation (P)');
+      if (pauseIcon) pauseIcon.setAttribute('href', '#ui-pause');
       reset.disabled = true;
     } else if (this.state === 'paused') {
       playLbl.textContent = 'Stop'; play.classList.add('paused'); play.classList.remove('running');
       pause.hidden = false; updatePatchIndicator();
+      pause.setAttribute('title', 'Resume simulation (P)');
+      if (pauseIcon) pauseIcon.setAttribute('href', '#ui-play');
       reset.disabled = true;
     }
     const lockable = ['tb-add-net', 'tb-add-host', 'tb-add-router'];
@@ -1653,6 +1665,7 @@ const Sim = {
     if (state.selection && (state.selection.kind === 'host' || state.selection.kind === 'router')) {
       Inspector.refreshRoutes(state.selection.name);
     }
+    Terminals._applySimState(this.state);
   },
 
   async onPrimary() {
@@ -1796,12 +1809,14 @@ const Terminals = {
     if (this._active.has(deviceName)) {
       const el = this._active.get(deviceName);
       el.style.display = 'flex';
+      this._applySimState(Sim.state);
       el.querySelector('.term-in').focus();
       return;
     }
     const tmpl = `
       <div class="term-header">
         <div class="title">${escapeHtml(deviceName)}@netrouting</div>
+        <div class="paused-chip" hidden>(paused)</div>
         <div class="close" title="Close">×</div>
       </div>
       <pre class="term-out">netrouting v1.0 — ${escapeHtml(deviceName)}
@@ -1822,7 +1837,20 @@ type 'help' for commands
     document.body.appendChild(w);
     this._active.set(deviceName, w);
     this._wire(w, deviceName);
+    this._applySimState(Sim.state);
     w.querySelector('.term-in').focus();
+  },
+
+  _applySimState(simState) {
+    const paused = simState === 'paused';
+    for (const w of this._active.values()) {
+      const input = w.querySelector('.term-in');
+      const chip = w.querySelector('.paused-chip');
+      const cursor = w.querySelector('.term-cursor');
+      if (input) input.disabled = paused;
+      if (chip) chip.hidden = !paused;
+      if (cursor) cursor.style.display = paused ? 'none' : '';
+    }
   },
 
   _wire(w, name) {
@@ -2458,8 +2486,18 @@ let rclickTimer = null;
 function attachNodeEvents(g, kind, name) {
   g.addEventListener('pointerdown', (e) => {
     if (e.button === 2) return; // right-click handled separately
-    if (isTopologyLocked()) return;
     e.stopPropagation();
+
+    // Selection works in any sim state — users need to inspect nodes while running.
+    state.selection = { kind, name };
+    nodesLayer().querySelectorAll('.node.selected').forEach(n => n.classList.remove('selected'));
+    g.classList.add('selected');
+    renderInspector();
+    renderNav();
+
+    // Drag is gated: only when topology is editable (idle or paused).
+    if (isTopologyLocked()) return;
+
     // capture on the node itself so the synthesized click event stays on the
     // node — capturing on the canvas redirects click to the SVG, which would
     // otherwise trigger the "click background to deselect" handler.
@@ -2477,14 +2515,6 @@ function attachNodeEvents(g, kind, name) {
       hoverNet: null,
     };
     g.classList.add('dragging');
-
-    // select immediately, but only update lightweight panes — do NOT rebuild
-    // the canvas DOM here, or the in-progress gesture would be cancelled.
-    state.selection = { kind, name };
-    nodesLayer().querySelectorAll('.node.selected').forEach(n => n.classList.remove('selected'));
-    g.classList.add('selected');
-    renderInspector();
-    renderNav();
   });
 
   g.addEventListener('dblclick', (e) => {
@@ -2700,38 +2730,40 @@ function openContextMenu(clientX, clientY, target, world) {
   const m = document.createElement('div');
   m.className = 'ctx';
   let html = '';
+  const locked = isTopologyLocked();
+  const mut = (a) => `data-act="${a}" ${locked ? 'disabled aria-disabled="true"' : ''}`;
 
   if (!target) {
     // empty canvas
     html += `
       <div class="ctx-head">Create at this point</div>
-      <button class="ctx-item" data-act="new-net"><svg class="ico"><use href="#ui-net"/></svg>New LAN<span class="meta">N</span></button>
-      <button class="ctx-item" data-act="new-host"><svg class="ico"><use href="#ui-host"/></svg>New host<span class="meta">H</span></button>
-      <button class="ctx-item" data-act="new-router"><svg class="ico"><use href="#ui-router"/></svg>New router<span class="meta">R</span></button>
+      <button class="ctx-item" ${mut('new-net')}><svg class="ico"><use href="#ui-net"/></svg>New LAN<span class="meta">N</span></button>
+      <button class="ctx-item" ${mut('new-host')}><svg class="ico"><use href="#ui-host"/></svg>New host<span class="meta">H</span></button>
+      <button class="ctx-item" ${mut('new-router')}><svg class="ico"><use href="#ui-router"/></svg>New router<span class="meta">R</span></button>
       <div class="ctx-sep"></div>
       <button class="ctx-item" data-act="fit">Fit to view</button>
-      <button class="ctx-item" data-act="sample">Load sample</button>
+      <button class="ctx-item" ${mut('sample')}>Load sample</button>
     `;
   } else {
     const obj = ({network: state.networks, host: state.hosts, router: state.routers})[target.kind][target.name];
     html += `<div class="ctx-head">${escapeHtml(target.kind)} · ${escapeHtml(target.name)}</div>`;
-    html += `<button class="ctx-item" data-act="edit"><svg class="ico" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 12h2l7-7-2-2-7 7v2zM9 3l2 2"/></svg>Edit<span class="meta">2×</span></button>`;
+    html += `<button class="ctx-item" ${mut('edit')}><svg class="ico" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 12h2l7-7-2-2-7 7v2zM9 3l2 2"/></svg>Edit<span class="meta">2×</span></button>`;
     if (target.kind === 'network') {
-      html += `<button class="ctx-item" data-act="add-host-here"><svg class="ico"><use href="#ui-host"/></svg>Add host here</button>`;
-      html += `<button class="ctx-item" data-act="add-router-here"><svg class="ico"><use href="#ui-router"/></svg>Add router here</button>`;
+      html += `<button class="ctx-item" ${mut('add-host-here')}><svg class="ico"><use href="#ui-host"/></svg>Add host here</button>`;
+      html += `<button class="ctx-item" ${mut('add-router-here')}><svg class="ico"><use href="#ui-router"/></svg>Add router here</button>`;
     }
     if (target.kind === 'host') {
       const opts = Object.keys(state.networks).filter(n => n !== obj.network);
       if (opts.length) {
-        html += `<div class="ctx-sub">
-          <button class="ctx-item" data-act="">Move to LAN…</button>
+        html += `<div class="ctx-sub${locked ? ' disabled' : ''}">
+          <button class="ctx-item" data-act="" ${locked ? 'disabled aria-disabled="true"' : ''}>Move to LAN…</button>
           <div class="ctx-panel">
-            ${opts.map(n => `<button class="ctx-item" data-act="move-host" data-net="${escapeHtml(n)}"><svg class="ico"><use href="#ui-net"/></svg>${escapeHtml(n)}</button>`).join('')}
+            ${opts.map(n => `<button class="ctx-item" ${mut('move-host')} data-net="${escapeHtml(n)}"><svg class="ico"><use href="#ui-net"/></svg>${escapeHtml(n)}</button>`).join('')}
           </div>
         </div>`;
       }
       if (obj.network) {
-        html += `<button class="ctx-item" data-act="detach-host"><svg class="ico" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 7h8M5 4l-2 3 2 3M9 4l2 3-2 3"/></svg>Detach from LAN</button>`;
+        html += `<button class="ctx-item" ${mut('detach-host')}><svg class="ico" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 7h8M5 4l-2 3 2 3M9 4l2 3-2 3"/></svg>Detach from LAN</button>`;
       }
     }
     if (target.kind === 'router') {
@@ -2739,18 +2771,18 @@ function openContextMenu(clientX, clientY, target, world) {
       const used = new Set(Object.values(obj.interfaces || {}).map(i => i.network));
       const unused = Object.keys(state.networks).filter(n => !used.has(n));
       if (unused.length) {
-        html += `<div class="ctx-sub">
-          <button class="ctx-item" data-act="">Connect to LAN…</button>
+        html += `<div class="ctx-sub${locked ? ' disabled' : ''}">
+          <button class="ctx-item" data-act="" ${locked ? 'disabled aria-disabled="true"' : ''}>Connect to LAN…</button>
           <div class="ctx-panel">
-            ${unused.map(n => `<button class="ctx-item" data-act="connect-router" data-net="${escapeHtml(n)}"><svg class="ico"><use href="#ui-net"/></svg>${escapeHtml(n)}</button>`).join('')}
+            ${unused.map(n => `<button class="ctx-item" ${mut('connect-router')} data-net="${escapeHtml(n)}"><svg class="ico"><use href="#ui-net"/></svg>${escapeHtml(n)}</button>`).join('')}
           </div>
         </div>`;
       }
     }
     html += `
       <div class="ctx-sep"></div>
-      <button class="ctx-item" data-act="duplicate"><svg class="ico" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="4" y="4" width="8" height="8" rx="1"/></svg>Duplicate</button>
-      <button class="ctx-item danger" data-act="delete"><svg class="ico" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 4h8M5 4V2.5h4V4M4.5 4l.5 7h4l.5-7"/></svg>Delete<span class="meta">⌫</span></button>
+      <button class="ctx-item" ${mut('duplicate')}><svg class="ico" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="4" y="4" width="8" height="8" rx="1"/></svg>Duplicate</button>
+      <button class="ctx-item danger" ${mut('delete')}><svg class="ico" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 4h8M5 4V2.5h4V4M4.5 4l.5 7h4l.5-7"/></svg>Delete<span class="meta">⌫</span></button>
     `;
   }
 
