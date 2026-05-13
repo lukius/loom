@@ -156,16 +156,21 @@ def test_packet_event_carries_flow_and_payload_id(tmp_path, monkeypatch):
     requests = [p for p in packets if p["type"] == "ping_request"]
     replies = [p for p in packets if p["type"] == "ping_reply"]
     assert requests and replies, f"saw types: {[p['type'] for p in packets]}"
-    # Every hop must carry a non-empty flow.
+    # Every hop must carry flow, payload_id, payload_src/dst.
     for p in packets:
-        assert p.get("flow"), f"missing flow in {p}"
-        assert p.get("payload_id"), f"missing payload_id in {p}"
+        for f in ("flow", "payload_id", "payload_src", "payload_dst"):
+            assert p.get(f), f"missing {f} in {p}"
     # Request and reply share the same flow (unordered endpoint pair).
     assert requests[0]["flow"] == replies[0]["flow"]
     # But carry different payload_ids (different Message instances).
     assert requests[0]["payload_id"] != replies[0]["payload_id"]
     # The flow is the sorted pair "10.0.0.1<->10.0.1.1".
     assert requests[0]["flow"] == "10.0.0.1<->10.0.1.1"
+    # Request: src=h1, dst=h2. Reply: src=h2, dst=h1. Endpoints are flipped.
+    assert requests[0]["payload_src"] == "10.0.0.1"
+    assert requests[0]["payload_dst"] == "10.0.1.1"
+    assert replies[0]["payload_src"] == "10.0.1.1"
+    assert replies[0]["payload_dst"] == "10.0.0.1"
 
 
 def test_ws_streams_packet_events(tmp_path, monkeypatch):

@@ -67,13 +67,17 @@ class Interface(Entity):
         # uses `flow` to animate hops sequentially across both directions.
         payload = datagram.payload()
         payload_id = str(payload.id()) if hasattr(payload, "id") else None
-        endpoints = sorted([str(datagram.source()), str(datagram.destination())])
+        payload_src = str(datagram.source())
+        payload_dst = str(datagram.destination())
+        endpoints = sorted([payload_src, payload_dst])
         flow = f"{endpoints[0]}<->{endpoints[1]}"
         EventTracer._broadcast(
             {
                 "kind": "packet",
                 "type": _classify(payload),
                 "payload_id": payload_id,
+                "payload_src": payload_src,
+                "payload_dst": payload_dst,
                 "flow": flow,
                 "src": {
                     "device": self._device.name() if self._device else None,

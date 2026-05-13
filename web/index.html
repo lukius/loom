@@ -529,6 +529,11 @@ body.col-resizing * { cursor: col-resize !important; }
   pointer-events: none;
   display: none;
 }
+.packet-tt .hop {
+  color: #aab;
+  font-size: 10px;
+  margin-top: 2px;
+}
 
 .term {
   position: fixed; z-index: 9999;
@@ -2107,10 +2112,15 @@ function showPacketTooltip(evt, dot) {
     tt.className = 'packet-tt';
     document.body.appendChild(tt);
   }
-  const payload = evt.payload ? ` "${evt.payload}"` : '';
-  const src = (evt.src && evt.src.address) || '?';
-  const dst = (evt.dst && evt.dst.address) || '?';
-  tt.textContent = `${evt.type}: ${src} → ${dst}${payload}`;
+  const hopSrc = (evt.src && evt.src.address) || '?';
+  const hopDst = (evt.dst && evt.dst.address) || '?';
+  const origSrc = evt.payload_src || hopSrc;
+  const origDst = evt.payload_dst || hopDst;
+  const sameAsHop = origSrc === hopSrc && origDst === hopDst;
+  const headline = `${evt.type}: ${origSrc} → ${origDst}`;
+  tt.innerHTML = sameAsHop
+    ? escapeHtml(headline)
+    : `${escapeHtml(headline)}<div class="hop">hop: ${escapeHtml(hopSrc)} → ${escapeHtml(hopDst)}</div>`;
   tt.style.display = 'block';
   const bbox = dot.getBoundingClientRect();
   tt.style.left = (bbox.right + 8) + 'px';
