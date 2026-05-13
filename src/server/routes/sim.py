@@ -71,3 +71,22 @@ def stop(request: Request):
 def get_state(request: Request):
     s = _state(request)
     return {"state": s.state, "as_name": s.as_obj.name() if s.as_obj else None}
+
+
+REFRESH_MIN = 1
+REFRESH_MAX = 300
+
+
+@router.post("/refresh_interval")
+def set_refresh_interval(request: Request, body: dict = Body(...)):
+    seconds = body.get("seconds") if isinstance(body, dict) else None
+    if not isinstance(seconds, (int, float)) or isinstance(seconds, bool):
+        raise HTTPException(400, "seconds must be a number")
+    if seconds < REFRESH_MIN or seconds > REFRESH_MAX:
+        raise HTTPException(400, f"seconds must be in [{REFRESH_MIN}, {REFRESH_MAX}]")
+    s = _state(request)
+    if s.as_obj is None:
+        raise HTTPException(409, "simulation not started")
+    for r in s.as_obj.routers().values():
+        r._protocol.set_keepalive_interval(seconds)
+    return {"seconds": seconds}

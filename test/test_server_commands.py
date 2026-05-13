@@ -103,6 +103,33 @@ def test_host_rejects_router_only_commands(client):
         assert "unknown command" in body["output"]
 
 
+def test_refresh_interval_endpoint_updates_all_routers(client):
+    r = client.post("/sim/refresh_interval", json={"seconds": 3})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["seconds"] == 3
+    # confirm via server state
+    state = client.app.state.sim_state
+    for router in state.as_obj.routers().values():
+        assert router._protocol.keepalive_interval() == 3
+
+
+def test_refresh_interval_rejects_invalid_values(client):
+    for bad in (0, -5, 301, "abc", None):
+        r = client.post("/sim/refresh_interval", json={"seconds": bad})
+        assert r.status_code == 400, f"{bad!r} should be 400, got {r.status_code}"
+
+
+def test_refresh_interval_requires_started_sim(tmp_path, monkeypatch):
+    src = tmp_path / "src.yaml"
+    src.write_text(SAMPLE)
+    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+    with TestClient(create_app()) as c:
+        # never started
+        r = c.post("/sim/refresh_interval", json={"seconds": 5})
+        assert r.status_code == 409
+
+
 def test_router_rejects_host_only_commands(client):
     for cmd in ("send h1 hi", "ping h1"):
         r = client.post("/devices/r1/command", json={"cmd": cmd})

@@ -498,6 +498,25 @@ body.col-resizing * { cursor: col-resize !important; }
 @keyframes pulse { 50% { opacity: 0.6; } }
 .canv-toolbar .div { width: 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
 .canv-toolbar .tb-btn.chatter-muted { opacity: 0.5; }
+.canv-toolbar .tb-refresh {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-2);
+  padding: 0 4px;
+}
+.canv-toolbar .tb-refresh .lbl { color: var(--text-3); font-size: 11px; }
+.canv-toolbar .tb-refresh input {
+  width: 56px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  text-align: right;
+}
+.canv-toolbar .tb-refresh input:disabled { opacity: 0.55; cursor: not-allowed; }
+.canv-toolbar .tb-refresh input:focus { outline: none; border-color: var(--accent); }
+.canv-toolbar .tb-refresh .unit { color: var(--text-3); font-size: 11px; }
 .packet-tt {
   position: fixed;
   z-index: 9999;
@@ -1436,6 +1455,12 @@ svg.canvas.linking { cursor: crosshair; }
       <button class="tb-btn" id="tb-reset" title="Revert topology to source" disabled>
         <svg class="ico"><use href="#ui-reset"/></svg> Reset
       </button>
+      <span class="div"></span>
+      <label class="tb-refresh" title="Routing keepalive interval (1–300s)">
+        <span class="lbl">Refresh</span>
+        <input id="tb-refresh" type="number" min="1" max="300" step="1" value="10" disabled />
+        <span class="unit">s</span>
+      </label>
       <button class="tb-btn" id="tb-chatter" title="Show/hide routing-protocol packets in the canvas">
         <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
           <circle cx="4" cy="8" r="1.5" fill="currentColor"/>
@@ -1585,6 +1610,7 @@ const RuntimeClient = {
   resume(patch)          { return this._json('POST', '/sim/resume', { patch: patch || [] }); },
   stop()                 { return this._json('POST', '/sim/stop', {}); },
   getState()             { return this._json('GET',  '/sim/state'); },
+  setRefreshInterval(s)  { return this._json('POST', '/sim/refresh_interval', { seconds: s }); },
   deviceCommand(n, cmd)  { return this._json('POST', `/devices/${encodeURIComponent(n)}/command`, { cmd }); },
   deviceRoutes(n)        { return this._json('GET',  `/devices/${encodeURIComponent(n)}/routes`); },
   deviceInterfaces(n)    { return this._json('GET',  `/devices/${encodeURIComponent(n)}/interfaces`); },
@@ -1715,6 +1741,8 @@ const Sim = {
       const el = document.getElementById(id);
       if (el) el.disabled = (this.state === 'running');
     });
+    const refresh = document.getElementById('tb-refresh');
+    if (refresh) refresh.disabled = (this.state === 'idle');
     if (state.selection && (state.selection.kind === 'host' || state.selection.kind === 'router')) {
       Inspector.refreshRoutes(state.selection.name);
     }
@@ -2069,6 +2097,28 @@ document.getElementById('tb-chatter').addEventListener('click', () => {
   PacketAnim.muted = !PacketAnim.muted;
   document.getElementById('tb-chatter').classList.toggle('chatter-muted', PacketAnim.muted);
 });
+
+(() => {
+  const inp = document.getElementById('tb-refresh');
+  if (!inp) return;
+  let lastGood = parseInt(inp.value, 10) || 10;
+  inp.addEventListener('change', async () => {
+    const v = parseInt(inp.value, 10);
+    if (!Number.isFinite(v) || v < 1 || v > 300) {
+      toast(`Refresh interval must be 1–300s`, 'error', 'Refresh');
+      inp.value = lastGood;
+      return;
+    }
+    try {
+      await RuntimeClient.setRefreshInterval(v);
+      lastGood = v;
+      toast(`Refresh interval set to ${v}s`, 'info', 'Refresh');
+    } catch (err) {
+      toast(`Failed: ${err.message}`, 'error', 'Refresh');
+      inp.value = lastGood;
+    }
+  });
+})();
 
 window.addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea')) return;

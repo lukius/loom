@@ -1,7 +1,6 @@
 import threading
 import time
 import unittest
-from unittest.mock import patch
 
 from entities import (
     Address,
@@ -146,17 +145,17 @@ class RoutingProtocolThreadResilienceTest(unittest.TestCase):
 
         protocol._handle_update = patched_handle_update
 
-        with patch.object(type(protocol), "KEEPALIVE_INTERVAL", 0):
-            protocol._keepalive_thread = threading.Thread(
-                target=protocol._keepalive_loop, daemon=True
-            )
-            protocol._keepalive_thread.start()
+        protocol._keepalive_interval = 0
+        protocol._keepalive_thread = threading.Thread(
+            target=protocol._keepalive_loop, daemon=True
+        )
+        protocol._keepalive_thread.start()
 
-            self.assertTrue(
-                completed.wait(timeout=2.0),
-                "keepalive thread died after exception",
-            )
-            self.assertGreaterEqual(call_count, 2)
+        self.assertTrue(
+            completed.wait(timeout=2.0),
+            "keepalive thread died after exception",
+        )
+        self.assertGreaterEqual(call_count, 2)
 
 
 def _make_frame(src, dst):

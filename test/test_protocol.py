@@ -32,6 +32,38 @@ as:
 """)
 
 
+def test_set_keepalive_interval_updates_protocol():
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(SAMPLE_TOPOLOGY)
+        path = f.name
+    system = Parser(path).parse()
+    try:
+        r1 = system.routers()["r1"]
+        assert r1._protocol.keepalive_interval() == 10
+        r1._protocol.set_keepalive_interval(3)
+        assert r1._protocol.keepalive_interval() == 3
+    finally:
+        system.stop()
+        os.unlink(path)
+
+
+def test_set_keepalive_interval_rejects_non_positive():
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(SAMPLE_TOPOLOGY)
+        path = f.name
+    system = Parser(path).parse()
+    try:
+        r1 = system.routers()["r1"]
+        import pytest as _pt
+        with _pt.raises(ValueError):
+            r1._protocol.set_keepalive_interval(0)
+        with _pt.raises(ValueError):
+            r1._protocol.set_keepalive_interval(-1)
+    finally:
+        system.stop()
+        os.unlink(path)
+
+
 def test_initial_broadcast_propagates_before_keepalive_interval():
     """Every router must learn the full topology well before the 10s keepalive elapses."""
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:

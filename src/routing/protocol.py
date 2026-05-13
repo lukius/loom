@@ -18,10 +18,19 @@ class RoutingProtocol:
         self._seqs = collections.defaultdict(lambda: 0)
 
         self._stopped = False
+        self._keepalive_interval = self.KEEPALIVE_INTERVAL
         self._keepalive_thread = threading.Thread(target=self._keepalive_loop, daemon=True)
 
         self._init_graph()
         self._graph_updated = True
+
+    def keepalive_interval(self):
+        return self._keepalive_interval
+
+    def set_keepalive_interval(self, seconds):
+        if not isinstance(seconds, (int, float)) or seconds <= 0:
+            raise ValueError(f"keepalive interval must be positive (got {seconds!r})")
+        self._keepalive_interval = float(seconds)
 
     def start(self):
         if self._keepalive_thread is not None and self._keepalive_thread.is_alive():
@@ -182,7 +191,7 @@ class RoutingProtocol:
             self._safe_tick()
         while not self._stopped:
             if gate is not None:
-                timed_out, stopped = gate.sleep(self.KEEPALIVE_INTERVAL)
+                timed_out, stopped = gate.sleep(self._keepalive_interval)
                 if stopped:
                     break
                 running, stopped = gate.wait_or_stop()
@@ -191,7 +200,7 @@ class RoutingProtocol:
                 if not running:
                     continue  # paused; loop again without ticking
             else:
-                time.sleep(self.KEEPALIVE_INTERVAL)
+                time.sleep(self._keepalive_interval)
             self._safe_tick()
 
     def _safe_tick(self):
