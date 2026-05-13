@@ -1896,9 +1896,15 @@ const PacketAnim = {
     const fp = getNodeCenter(fromNode);
     const tp = getNodeCenter(toNode);
     if (!fp || !tp) { done(); return; }
-    const startedAt = performance.now();
+    // Track elapsed manually so the animation freezes while Sim is paused —
+    // lets users hover/inspect packets mid-flight.
+    let elapsed = 0;
+    let lastT = performance.now();
     const tick = () => {
-      const t = Math.min(1, (performance.now() - startedAt) / durationMs);
+      const now = performance.now();
+      if (Sim.state !== 'paused') elapsed += (now - lastT);
+      lastT = now;
+      const t = Math.min(1, elapsed / durationMs);
       dot.setAttribute('cx', fp.x + (tp.x - fp.x) * t);
       dot.setAttribute('cy', fp.y + (tp.y - fp.y) * t);
       if (t < 1) requestAnimationFrame(tick);
