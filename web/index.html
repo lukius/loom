@@ -967,8 +967,27 @@ svg.canvas.linking { cursor: crosshair; }
   background: var(--bg);
   display: flex; flex-direction: column; gap: 8px;
 }
+.iface > summary { list-style: none; cursor: pointer; user-select: none; }
+.iface > summary::-webkit-details-marker { display: none; }
+.iface > summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 10px;
+  color: var(--text-3);
+  transition: transform .15s;
+  width: 8px;
+}
+.iface[open] > summary::before { content: '▾'; }
 .iface .ihead {
   display: flex; align-items: center; justify-content: space-between;
+}
+.iface .iface-summary {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  color: var(--text-3);
+  margin-left: 4px;
+  font-weight: 400;
 }
 .iface .ihead .ttl {
   display: inline-flex; align-items: center; gap: 6px;
@@ -3125,13 +3144,16 @@ function renderRouterInsp(name, elI) {
         <label>Interfaces</label>
         <div class="iflist">
           ${ifaces.map(([ifn, ifc]) => `
-            <div class="iface" data-iface="${escapeHtml(ifn)}">
-              <div class="ihead">
-                <span class="ttl"><span class="pill">${escapeHtml(ifn)}</span></span>
+            <details class="iface" data-iface="${escapeHtml(ifn)}">
+              <summary class="ihead">
+                <span class="ttl">
+                  <span class="pill">${escapeHtml(ifn)}</span>
+                  <span class="iface-summary">${escapeHtml(ifc.network || '—')} · ${escapeHtml(ifc.address || 'no ip')} · cost=${escapeHtml(String(ifc.cost ?? '—'))}</span>
+                </span>
                 <button class="del" data-del-iface="${escapeHtml(ifn)}" title="Remove">
                   <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l6 6M9 3l-6 6"/></svg>
                 </button>
-              </div>
+              </summary>
               <div class="grid full">
                 <div class="pair">
                   <label>Interface name</label>
@@ -3154,7 +3176,7 @@ function renderRouterInsp(name, elI) {
                   <input data-iface-addr="${escapeHtml(ifn)}" value="${escapeHtml(ifc.address || '')}" spellcheck="false" placeholder="10.0.0.1" />
                 </div>
               </div>
-            </div>
+            </details>
           `).join('')}
         </div>
         <button class="add-if" id="add-if" style="margin-top:8px;">+ Add interface</button>
@@ -3177,7 +3199,9 @@ function renderRouterInsp(name, elI) {
     markDirty(); renderInspector(); renderCanvas(); renderNav();
   });
   elI.querySelectorAll('[data-del-iface]').forEach(b => {
-    b.addEventListener('click', () => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
       if (isTopologyLocked()) return;
       delete state.routers[name].interfaces[b.getAttribute('data-del-iface')];
       markDirty(); renderInspector(); renderCanvas(); renderNav();
