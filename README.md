@@ -11,6 +11,8 @@ cd src && python netrouting.py
 
 Then open http://127.0.0.1:8000/ in a browser to use the SPA. Drag/drop networks, hosts, and routers onto the canvas, click Start, and watch packets flow.
 
+Toolbar offers Start/Pause, a Refresh field that tunes the routing keepalive (1–300s, applied to every router live), and a Chatter toggle that shows or hides routing-protocol packets. Double-click a host or router to open a terminal — `Ctrl+L` clears, `Ctrl+D` closes when the prompt is empty.
+
 ## Topology source
 
 The simulator reads its topology from `samples/sample.yaml` by default. Set `NETROUTING_TOPOLOGY` to point at a different file. Mutations during simulation land in `<source>.session.yaml`; the source is never modified.

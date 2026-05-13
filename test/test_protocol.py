@@ -65,7 +65,7 @@ def test_set_keepalive_interval_rejects_non_positive():
 
 
 def test_initial_broadcast_propagates_before_keepalive_interval():
-    """Every router must learn the full topology well before the 10s keepalive elapses."""
+    # Every router must learn the full topology before the 10s keepalive elapses.
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(SAMPLE_TOPOLOGY)
         path = f.name
@@ -73,13 +73,17 @@ def test_initial_broadcast_propagates_before_keepalive_interval():
     try:
         time.sleep(1.0)  # well under KEEPALIVE_INTERVAL=10
         routers = system.routers()
-        prefixes = {iface.network().address()
-                    for r in routers.values()
-                    for iface in r.interfaces().values()}
+        prefixes = {
+            iface.network().address()
+            for r in routers.values()
+            for iface in r.interfaces().values()
+        }
         for name, r in routers.items():
             graph_prefixes = set(r._protocol._graph.networks())
             missing = prefixes - graph_prefixes
-            assert not missing, f"{name} missing prefixes {missing}; saw {graph_prefixes}"
+            assert not missing, (
+                f"{name} missing prefixes {missing}; saw {graph_prefixes}"
+            )
             graph_routers = set(r._protocol._graph._routers)
             assert routers["r1"] in graph_routers, f"{name} graph missing r1"
             assert routers["r2"] in graph_routers, f"{name} graph missing r2"

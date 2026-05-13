@@ -180,7 +180,7 @@ class RoutingProtocol:
 
     def _keepalive_loop(self):
         gate = self._router.gate()
-        # Initial tick so neighbors learn about us at t≈0 instead of after the first interval.
+        # Initial tick so neighbors learn about us at t~0 instead of after one interval.
         if gate is not None:
             running, stopped = gate.wait_or_stop()
             if stopped:
