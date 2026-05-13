@@ -64,6 +64,55 @@ def test_set_keepalive_interval_rejects_non_positive():
         os.unlink(path)
 
 
+SAMPLE_THREE_ROUTERS_SHARED_NAMES = textwrap.dedent("""
+as:
+  name: t
+  networks:
+    lan1: "10.0.1.0/24"
+    lan2: "10.0.2.0/24"
+    lan3: "10.0.3.0/24"
+  hosts:
+    h1: {network: lan1, address: "10.0.1.10"}
+  routers:
+    r1:
+      interfaces:
+        eth0: {network: lan1, address: "10.0.1.1", cost: 1}
+        eth1: {network: lan2, address: "10.0.2.1", cost: 1}
+    r2:
+      interfaces:
+        eth0: {network: lan1, address: "10.0.1.2", cost: 1}
+        eth1: {network: lan2, address: "10.0.2.2", cost: 1}
+        eth2: {network: lan3, address: "10.0.3.1", cost: 1}
+    r3:
+      interfaces:
+        eth0: {network: lan2, address: "10.0.2.3", cost: 1}
+        eth1: {network: lan3, address: "10.0.3.2", cost: 1}
+""")
+
+
+def test_routers_with_shared_iface_names_all_receive_lsas():
+    """Regression: when two routers share an interface name (eth0/eth1), each
+    one must still receive LSAs. Previously Network keyed interfaces by name,
+    so later-added routers clobbered earlier ones on the same network."""
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(SAMPLE_THREE_ROUTERS_SHARED_NAMES)
+        path = f.name
+    system = Parser(path).parse()
+    try:
+        time.sleep(1.5)
+        routers = system.routers()
+        # every router's graph should know about every other router
+        for name, r in routers.items():
+            graph_routers = {x.name() for x in r._protocol._graph._routers}
+            for other in routers:
+                assert other in graph_routers, (
+                    f"{name}'s graph missing {other}; has {graph_routers}"
+                )
+    finally:
+        system.stop()
+        os.unlink(path)
+
+
 def test_initial_broadcast_propagates_before_keepalive_interval():
     # Every router must learn the full topology before the 10s keepalive elapses.
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:

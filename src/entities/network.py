@@ -13,6 +13,9 @@ class Network(Entity):
         super().__init__(name)
         self._address = address
         self._gate = gate
+        # Keyed by interface IP address (unique per network), not by iface.name().
+        # Interface names are only unique per-device — e.g. r1.eth0 and r2.eth0
+        # both sit on the same LAN — so keying by name would clobber siblings.
         self._interfaces = dict()
         self._in_queue = queue.Queue()
 
@@ -27,19 +30,18 @@ class Network(Entity):
         return self._address.broadcast()
 
     def add_interface(self, interface):
-        self._interfaces[interface.name()] = interface
+        self._interfaces[interface.address()] = interface
         interface._set_out_queue(self._in_queue)
 
     def devices(self) -> dict:
         return {
             interface.device().name(): interface.device()
-            for _, interface in self._interfaces.items()
+            for interface in self._interfaces.values()
         }
 
     def has_device(self, device: NetworkDevice) -> bool:
-        for _, iface in device.interfaces().items():
-            net_iface = self._interfaces.get(iface.name())
-            if net_iface is not None and net_iface.device() == device:
+        for iface in self._interfaces.values():
+            if iface.device() == device:
                 return True
         return False
 
@@ -47,7 +49,7 @@ class Network(Entity):
         return self._address.matches(address)
 
     def stop(self):
-        for _, iface in self._interfaces.items():
+        for iface in self._interfaces.values():
             iface.stop()
         self._in_queue.put(None)
 
@@ -66,14 +68,14 @@ class Network(Entity):
         dst_interface.receive(packet)
 
     def _dispatch_broadcast(self, packet):
-        for _, dst_iface in self._interfaces.items():
+        for dst_iface in self._interfaces.values():
             dst_iface.receive(packet)
 
     def _interface_with_address(self, address):
-        for _, iface in self._interfaces.items():
-            if iface.address() == address:
-                return iface
-        raise Exception(f'{address} not in {self._name}')
+        iface = self._interfaces.get(address)
+        if iface is None:
+            raise Exception(f'{address} not in {self._name}')
+        return iface
 
     def _pkt_loop(self):
         while not self._stopped:

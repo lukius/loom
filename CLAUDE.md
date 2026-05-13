@@ -93,6 +93,8 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 
 - **Link-state with sequence-numbered flooding.** `RoutingProtocol` (`src/routing/protocol.py`) broadcasts a `RoutingMessage` from every interface every `_keepalive_interval` (defaults to `KEEPALIVE_INTERVAL = 10s`, editable per-instance via `set_keepalive_interval`) on a daemon thread per router. The loop ticks **once at start** before the first sleep, so neighbors converge at t~0 instead of after one full interval. Receivers re-flood out of every interface *except* the one the message arrived on, deduplicated by `(src_address, seq)`. Recompute paths only when the local `NetworkGraph` actually changes — preserve that guard when editing, otherwise routing tables churn on every keepalive.
 
+- **`Network._interfaces` is keyed by interface IP address, not by `iface.name()`.** Interface names are only unique within a single device (every router happens to call its first interface `eth0`), so keying by name would clobber siblings on the same LAN. The parser/validator enforces IP-address uniqueness within each network, which is what makes the address a safe key. Anything new that joins interfaces to networks must follow this rule.
+
 - **`NullAddress` next-hop = directly connected.** In `RoutingTable`, a rule whose `next_hop` is `NullAddress` means "destination network is on this interface; deliver to the packet's final destination directly." `Router._handle_forwarding` substitutes `packet.destination()` when it sees `NullAddress`. New code that builds rules must follow the same convention.
 
 - **Hosts cannot forward.** `Host._handle_forwarding` raises. Multi-homed hosts are not modeled; a host has exactly one interface and (optionally) one gateway.
