@@ -1191,6 +1191,16 @@ svg.canvas.linking { cursor: crosshair; }
 }
 .toast.ok .icon { background: color-mix(in srgb, var(--pos) 15%, transparent); color: var(--pos); }
 .toast.error .icon { background: color-mix(in srgb, var(--neg) 15%, transparent); color: var(--neg); }
+.toast.info {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+.toast.info .icon {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent-text);
+}
+.toast.info .body .lab { color: var(--accent-text); }
 .toast .body .lab {
   font-size: 10px;
   color: var(--text-3);
