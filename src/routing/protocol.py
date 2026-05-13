@@ -171,13 +171,20 @@ class RoutingProtocol:
 
     def _keepalive_loop(self):
         gate = self._router.gate()
+        # Initial tick so neighbors learn about us at t≈0 instead of after the first interval.
+        if gate is not None:
+            running, stopped = gate.wait_or_stop()
+            if stopped:
+                return
+            if running:
+                self._safe_tick()
+        else:
+            self._safe_tick()
         while not self._stopped:
             if gate is not None:
-                # Interruptible sleep: wakes early only on stop.
                 timed_out, stopped = gate.sleep(self.KEEPALIVE_INTERVAL)
                 if stopped:
                     break
-                # After the interval, honour any pending pause before ticking.
                 running, stopped = gate.wait_or_stop()
                 if stopped:
                     break
@@ -185,7 +192,10 @@ class RoutingProtocol:
                     continue  # paused; loop again without ticking
             else:
                 time.sleep(self.KEEPALIVE_INTERVAL)
-            try:
-                self._handle_update()
-            except Exception:
-                traceback.print_exc()
+            self._safe_tick()
+
+    def _safe_tick(self):
+        try:
+            self._handle_update()
+        except Exception:
+            traceback.print_exc()

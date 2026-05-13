@@ -1,9 +1,59 @@
-import unittest
+import os
+import tempfile
+import textwrap
 import threading
 import queue
+import time
+import unittest
 
 from parser import Parser
 from entities import Interface, RoutingProtocol, Router, Network, NetworkAddress, Address, NullAddress, RoutingMessage
+
+
+SAMPLE_TOPOLOGY = textwrap.dedent("""
+as:
+  name: t
+  networks:
+    lan1: "10.0.1.0/24"
+    lan2: "10.0.2.0/24"
+    lan3: "10.0.3.0/24"
+  hosts:
+    h1: {network: lan1, address: "10.0.1.10"}
+    h3: {network: lan3, address: "10.0.3.10"}
+  routers:
+    r1:
+      interfaces:
+        eth0: {network: lan1, address: "10.0.1.1", cost: 1}
+        eth1: {network: lan2, address: "10.0.2.1", cost: 1}
+    r2:
+      interfaces:
+        eth0: {network: lan2, address: "10.0.2.2", cost: 1}
+        eth1: {network: lan3, address: "10.0.3.1", cost: 1}
+""")
+
+
+def test_initial_broadcast_propagates_before_keepalive_interval():
+    """Every router must learn the full topology well before the 10s keepalive elapses."""
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(SAMPLE_TOPOLOGY)
+        path = f.name
+    system = Parser(path).parse()
+    try:
+        time.sleep(1.0)  # well under KEEPALIVE_INTERVAL=10
+        routers = system.routers()
+        prefixes = {iface.network().address()
+                    for r in routers.values()
+                    for iface in r.interfaces().values()}
+        for name, r in routers.items():
+            graph_prefixes = set(r._protocol._graph.networks())
+            missing = prefixes - graph_prefixes
+            assert not missing, f"{name} missing prefixes {missing}; saw {graph_prefixes}"
+            graph_routers = set(r._protocol._graph._routers)
+            assert routers["r1"] in graph_routers, f"{name} graph missing r1"
+            assert routers["r2"] in graph_routers, f"{name} graph missing r2"
+    finally:
+        system.stop()
+        os.unlink(path)
 
 
 class MockThread(object):
