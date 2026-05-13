@@ -1628,7 +1628,15 @@ const RuntimeClient = {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     this.ws = new WebSocket(`${proto}//${location.host}/ws/events`);
     this.ws.onmessage = (m) => { try { this._onEvent(JSON.parse(m.data)); } catch (e) {} };
-    this.ws.onopen  = () => { this._wsBackoff = 500; setConnectionStatus(true); };
+    this.ws.onopen  = () => {
+      this._wsBackoff = 500;
+      setConnectionStatus(true);
+      // The server may have restarted while the socket was down — its sim state
+      // can diverge from the SPA's cached state. Re-sync so the toolbar is honest.
+      if (typeof Sim !== 'undefined' && Sim.refreshState) {
+        Sim.refreshState().catch(() => {});
+      }
+    };
     this.ws.onclose = () => {
       setConnectionStatus(false);
       setTimeout(() => this._openWs(), this._wsBackoff);
@@ -1755,33 +1763,47 @@ const Sim = {
   },
 
   async onPrimary() {
-    if (this.state === 'idle') {
-      const yaml = exportYaml();
-      await RuntimeClient.loadTopology(yaml);
-      await RuntimeClient.start();
-    } else {
-      await RuntimeClient.stop();
-      this.patch = [];
+    try {
+      if (this.state === 'idle') {
+        const yaml = exportYaml();
+        await RuntimeClient.loadTopology(yaml);
+        await RuntimeClient.start();
+      } else {
+        await RuntimeClient.stop();
+        this.patch = [];
+      }
+    } catch (err) {
+      toast(err.message || String(err), 'error', this.state === 'idle' ? 'Start' : 'Stop');
+    } finally {
+      await this.refreshState().catch(() => {});
     }
-    await this.refreshState();
   },
 
   async onSecondary() {
-    if (this.state === 'running') await RuntimeClient.pause();
-    else if (this.state === 'paused') {
-      const resolved = reconcilePatch(this.patch);
-      await RuntimeClient.resume(resolved);
-      this.patch = [];
-      updatePatchIndicator();
+    try {
+      if (this.state === 'running') await RuntimeClient.pause();
+      else if (this.state === 'paused') {
+        const resolved = reconcilePatch(this.patch);
+        await RuntimeClient.resume(resolved);
+        this.patch = [];
+        updatePatchIndicator();
+      }
+    } catch (err) {
+      toast(err.message || String(err), 'error', this.state === 'paused' ? 'Resume' : 'Pause');
+    } finally {
+      await this.refreshState().catch(() => {});
     }
-    await this.refreshState();
   },
 
   async onReset() {
     if (this.state !== 'idle') return;
-    await RuntimeClient.resetTopology();
-    const { yaml } = await RuntimeClient.getTopology();
-    importYaml(yaml);
+    try {
+      await RuntimeClient.resetTopology();
+      const { yaml } = await RuntimeClient.getTopology();
+      importYaml(yaml);
+    } catch (err) {
+      toast(err.message || String(err), 'error', 'Reset');
+    }
   },
 };
 
