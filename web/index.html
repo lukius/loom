@@ -1457,9 +1457,14 @@ svg.canvas.linking { cursor: crosshair; }
       </button>
       <span class="div"></span>
       <label class="tb-refresh" title="Routing keepalive interval (1–300s)">
-        <span class="lbl">Refresh</span>
+        <span class="lbl">Keepalive</span>
         <input id="tb-refresh" type="number" min="1" max="300" step="1" value="10" disabled />
         <span class="unit">s</span>
+      </label>
+      <label class="tb-refresh" title="Packet animation duration per hop (200–5000ms)">
+        <span class="lbl">Packets</span>
+        <input id="tb-speed" type="number" min="200" max="5000" step="100" value="1800" />
+        <span class="unit">ms</span>
       </label>
       <button class="tb-btn" id="tb-chatter" title="Show/hide routing-protocol packets in the canvas">
         <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
@@ -2105,18 +2110,36 @@ document.getElementById('tb-chatter').addEventListener('click', () => {
   inp.addEventListener('change', async () => {
     const v = parseInt(inp.value, 10);
     if (!Number.isFinite(v) || v < 1 || v > 300) {
-      toast(`Refresh interval must be 1–300s`, 'error', 'Refresh');
+      toast(`Keepalive must be 1–300s`, 'error', 'Keepalive');
       inp.value = lastGood;
       return;
     }
     try {
       await RuntimeClient.setRefreshInterval(v);
       lastGood = v;
-      toast(`Refresh interval set to ${v}s`, 'info', 'Refresh');
+      toast(`Keepalive set to ${v}s`, 'info', 'Keepalive');
     } catch (err) {
-      toast(`Failed: ${err.message}`, 'error', 'Refresh');
+      toast(`Failed: ${err.message}`, 'error', 'Keepalive');
       inp.value = lastGood;
     }
+  });
+})();
+
+(() => {
+  const inp = document.getElementById('tb-speed');
+  if (!inp) return;
+  // Initialize from the current PacketAnim duration so the input matches the live value.
+  inp.value = PacketAnim.DURATION_MS;
+  let lastGood = PacketAnim.DURATION_MS;
+  inp.addEventListener('change', () => {
+    const v = parseInt(inp.value, 10);
+    if (!Number.isFinite(v) || v < 200 || v > 5000) {
+      toast('Packet duration must be 200–5000ms', 'error', 'Packets');
+      inp.value = lastGood;
+      return;
+    }
+    PacketAnim.DURATION_MS = v;
+    lastGood = v;
   });
 })();
 
