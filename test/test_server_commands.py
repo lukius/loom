@@ -73,3 +73,39 @@ def test_command_route(client):
     r = client.post("/devices/r1/command", json={"cmd": "route"})
     assert r.status_code == 200
     assert r.json()["ok"]
+
+
+def test_help_host_lists_host_commands_only(client):
+    r = client.post("/devices/h1/command", json={"cmd": "help"})
+    assert r.status_code == 200
+    out = r.json()["output"]
+    for keep in ("ifconfig", "send", "ping", "route", "help"):
+        assert keep in out, f"missing {keep!r} in host help: {out!r}"
+    for forbidden in ("neighbors", "update_cost"):
+        assert forbidden not in out, f"router-only {forbidden!r} leaked into host help"
+
+
+def test_help_router_lists_router_commands_only(client):
+    r = client.post("/devices/r1/command", json={"cmd": "help"})
+    assert r.status_code == 200
+    out = r.json()["output"]
+    for keep in ("ifconfig", "route", "update_cost", "neighbors", "help"):
+        assert keep in out, f"missing {keep!r} in router help: {out!r}"
+    for forbidden in ("send", "ping"):
+        assert forbidden not in out, f"host-only {forbidden!r} leaked into router help"
+
+
+def test_host_rejects_router_only_commands(client):
+    for cmd in ("neighbors", "update_cost eth0 5"):
+        r = client.post("/devices/h1/command", json={"cmd": cmd})
+        body = r.json()
+        assert not body["ok"]
+        assert "unknown command" in body["output"]
+
+
+def test_router_rejects_host_only_commands(client):
+    for cmd in ("send h1 hi", "ping h1"):
+        r = client.post("/devices/r1/command", json={"cmd": cmd})
+        body = r.json()
+        assert not body["ok"]
+        assert "unknown command" in body["output"]

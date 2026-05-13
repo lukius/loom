@@ -1860,13 +1860,14 @@ type 'help' for commands
         inp.value = '';
         if (cmd.trim() === 'clear') {
           out.textContent = '';
-        } else if (cmd.trim() === 'help') {
-          out.textContent += 'available: ifconfig, route, send, ping, neighbors, update_cost, clear, help\n';
         } else if (cmd.trim() !== '') {
           try {
             const r = await RuntimeClient.deviceCommand(name, cmd);
             const txt = r.output || '(no output)';
             out.textContent += txt + (txt.endsWith('\n') ? '' : '\n');
+            if (cmd.trim() === 'help') {
+              out.textContent += 'terminal: clear, Ctrl+L (clear), Ctrl+D (close)\n';
+            }
           } catch (err) {
             out.textContent += `[error] ${err.message}\n`;
           }
