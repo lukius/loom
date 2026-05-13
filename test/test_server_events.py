@@ -102,6 +102,72 @@ def test_sim_state_event_emitted_on_transitions(tmp_path, monkeypatch):
             assert "paused" in states_seen
 
 
+def test_packet_event_carries_flow_and_payload_id(tmp_path, monkeypatch):
+    """The UI uses `flow` (unordered endpoint pair) to queue request + reply
+    of a single conversation on the same animation track."""
+    import textwrap
+
+    from fastapi.testclient import TestClient
+
+    yaml_text = textwrap.dedent("""
+    as:
+      name: t
+      networks:
+        lan1: "10.0.0.0/24"
+        lan2: "10.0.1.0/24"
+      hosts:
+        h1: {network: lan1, address: "10.0.0.1", gateway: "10.0.0.254"}
+        h2: {network: lan2, address: "10.0.1.1", gateway: "10.0.1.254"}
+      routers:
+        r1:
+          interfaces:
+            eth0: {network: lan1, address: "10.0.0.254", cost: 1}
+            eth1: {network: lan2, address: "10.0.1.254", cost: 1}
+    """)
+    src = tmp_path / "src.yaml"
+    src.write_text(yaml_text)
+    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+
+    from entities.event import EventTracer
+    from server.app import create_app
+
+    EventTracer._subscribers.clear()
+    app = create_app()
+    with TestClient(app) as c:
+        c.post("/topology", json={"yaml": yaml_text})
+        c.post("/sim/start")
+        import time as _t
+        _t.sleep(0.4)  # let routing converge
+        with c.websocket_connect("/ws/events") as ws:
+            c.post("/devices/h1/command", json={"cmd": "ping h2 -W 1.0"})
+            packets = []
+            for _ in range(80):
+                try:
+                    evt = ws.receive_json()
+                except Exception:
+                    break
+                if evt.get("kind") == "packet" and evt.get("type") in (
+                    "ping_request", "ping_reply",
+                ):
+                    packets.append(evt)
+                if any(p["type"] == "ping_reply" for p in packets):
+                    break
+
+    requests = [p for p in packets if p["type"] == "ping_request"]
+    replies = [p for p in packets if p["type"] == "ping_reply"]
+    assert requests and replies, f"saw types: {[p['type'] for p in packets]}"
+    # Every hop must carry a non-empty flow.
+    for p in packets:
+        assert p.get("flow"), f"missing flow in {p}"
+        assert p.get("payload_id"), f"missing payload_id in {p}"
+    # Request and reply share the same flow (unordered endpoint pair).
+    assert requests[0]["flow"] == replies[0]["flow"]
+    # But carry different payload_ids (different Message instances).
+    assert requests[0]["payload_id"] != replies[0]["payload_id"]
+    # The flow is the sorted pair "10.0.0.1<->10.0.1.1".
+    assert requests[0]["flow"] == "10.0.0.1<->10.0.1.1"
+
+
 def test_ws_streams_packet_events(tmp_path, monkeypatch):
     import textwrap
 
