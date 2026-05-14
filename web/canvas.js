@@ -651,12 +651,23 @@ export function drawDragPreview() {
 }
 
 /* ---------- bus listeners ---------- */
-// renderCanvas already calls applyView() internally, so it handles redraws on
-// topology + selection changes. For pan/zoom we only need the view transform
-// updated — applyView() is the lightweight path. No separate hook is wired for
-// sim:status-changed because drag-gating already runs via isTopologyLocked()
-// in attachNodeEvents.
+// renderCanvas rebuilds the entire SVG. Wiring it to state:selection-changed
+// was a refactor bug: pointerdown synchronously dispatches that event, and a
+// full rebuild detaches the <g> the handler is still operating on. The next
+// line — `g.setPointerCapture(...)` — then throws InvalidStateError on a
+// disconnected element (W3C Pointer Events §7), aborting the handler before
+// `drag` is initialised. Same mechanism breaks dblclick synthesis: the second
+// click lands on a different DOM node from the first. Selection changes only
+// need a class toggle, not a rebuild.
+function renderSelection() {
+  nodesLayer().querySelectorAll('.node.selected').forEach(n => n.classList.remove('selected'));
+  const sel = state.selection;
+  if (!sel) return;
+  const node = nodesLayer().querySelector(`.node[data-kind="${sel.kind}"][data-name="${cssEscape(sel.name)}"]`);
+  if (node) node.classList.add('selected');
+}
+
 bus.addEventListener('state:topology-changed', renderCanvas);
-bus.addEventListener('state:selection-changed', renderCanvas);
+bus.addEventListener('state:selection-changed', renderSelection);
 bus.addEventListener('view:changed', applyView);
 bus.addEventListener('state:topology-loaded', fitView);

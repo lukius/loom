@@ -183,14 +183,12 @@ test.describe('netrouting SPA - smoke', () => {
     await page.locator('#tb-play').click();
     await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
 
-    // Playwright's high-level dblclick() does not fire a `dblclick` event on
-    // SVG <g> nodes in our setup (likely because hit-test resolves to the
-    // inner <rect class="hit">). Synthesise the DOM event directly — this is
-    // exactly what the SPA listens for in canvas.js, so the test still
-    // exercises real production code paths.
-    await page.locator('#nodes-layer g.node.host[data-name="h1"]').evaluate((g) => {
-      g.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-    });
+    // Real double-click via Playwright. If renderCanvas runs synchronously inside
+    // the first pointerdown handler, the <g> element gets detached between clicks
+    // and the browser cannot synthesize dblclick — this test fails when that bug
+    // is present (was a regression in the ES module split, fixed by routing
+    // state:selection-changed to a lightweight class-only handler).
+    await page.locator('#nodes-layer g.node.host[data-name="h1"]').dblclick();
 
     const term = page.locator('div.term').first();
     await expect(term).toBeVisible({ timeout: 3000 });
@@ -202,16 +200,39 @@ test.describe('netrouting SPA - smoke', () => {
     await expect(page.locator('div.term')).toHaveCount(0);
   });
 
+  test('drag-and-drop moves a host on the canvas', async ({ page }) => {
+    // Drag is only enabled when the topology is editable (idle/paused).
+    const host = page.locator('#nodes-layer g.node.host[data-name="h1"]');
+    await expect(host).toBeVisible();
+    const initialTransform = await host.getAttribute('transform');
+    expect(initialTransform).toMatch(/translate\(/);
+
+    const box = await host.boundingBox();
+    const startX = box.x + box.width / 2;
+    const startY = box.y + box.height / 2;
+
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    // Multiple small steps to clear the 4px drag threshold and trigger pointermove.
+    await page.mouse.move(startX + 20, startY + 10, { steps: 5 });
+    await page.mouse.move(startX + 80, startY + 40, { steps: 10 });
+    await page.mouse.up();
+
+    // After pointerup, state:topology-changed fires and renderCanvas rebuilds
+    // the node at its new position. The transform must reflect the drag.
+    await expect(async () => {
+      const newTransform = await host.getAttribute('transform');
+      expect(newTransform).not.toBe(initialTransform);
+    }).toPass({ timeout: 3000 });
+  });
+
   test('sending from a host terminal animates packets on the canvas', async ({ page }) => {
     // Start the sim and let routing converge for a moment.
     await page.locator('#tb-play').click();
     await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
     await page.waitForTimeout(1500);
 
-    // See the dblclick test above for why we dispatch the event manually.
-    await page.locator('#nodes-layer g.node.host[data-name="h1"]').evaluate((g) => {
-      g.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-    });
+    await page.locator('#nodes-layer g.node.host[data-name="h1"]').dblclick();
     const term = page.locator('div.term').first();
     await expect(term).toBeVisible({ timeout: 3000 });
 
