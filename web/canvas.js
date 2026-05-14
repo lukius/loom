@@ -659,3 +659,4 @@ export function drawDragPreview() {
 bus.addEventListener('state:topology-changed', renderCanvas);
 bus.addEventListener('state:selection-changed', renderCanvas);
 bus.addEventListener('view:changed', applyView);
+bus.addEventListener('state:topology-loaded', fitView);

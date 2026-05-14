@@ -109,6 +109,7 @@ export function loadSample() {
   if (projName) projName.value = state.asName;
   persist();
   bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+  bus.dispatchEvent(new CustomEvent('state:topology-loaded'));
   toast('Sample topology loaded', 'ok');
 }
 

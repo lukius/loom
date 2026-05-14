@@ -198,6 +198,20 @@ describe('loadSample', () => {
     expect(fired).toBe(1);
   });
 
+  it('dispatches state:topology-loaded on loadSample (separate from -changed)', () => {
+    let topologyChangedFired = 0;
+    let topologyLoadedFired = 0;
+    const a = () => topologyChangedFired++;
+    const b = () => topologyLoadedFired++;
+    bus.addEventListener('state:topology-changed', a);
+    bus.addEventListener('state:topology-loaded', b);
+    loadSample();
+    bus.removeEventListener('state:topology-changed', a);
+    bus.removeEventListener('state:topology-loaded', b);
+    expect(topologyChangedFired).toBe(1);
+    expect(topologyLoadedFired).toBe(1);
+  });
+
   it('does not throw without fitView/renderAll in scope', () => {
     // Sanity test: loadSample must not depend on inline-module helpers.
     // No globals are provisioned in beforeEach — calling loadSample directly
