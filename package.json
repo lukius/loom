@@ -1,0 +1,17 @@
+{
+  "name": "netrouting-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0",
+    "happy-dom": "^18.0.0"
+  },
+  "vitest": {
+    "environment": "happy-dom",
+    "include": ["web/**/*.test.js"]
+  }
+}

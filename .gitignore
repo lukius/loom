@@ -3,3 +3,4 @@
 *.pyo
 .claude/settings.local.json
 *.session.yaml
+node_modules/
