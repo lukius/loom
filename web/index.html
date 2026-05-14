@@ -274,7 +274,7 @@
 
 <div class="toast-wrap" id="toasts"></div>
 
-<script>
+<script type="module">
 /* ===========================================================
    netrouting — interactive topology canvas
    =========================================================== */
@@ -2497,7 +2497,11 @@ function init() {
     else applyView();
   });
 }
-init();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
 </script>
 </body>
 </html>
