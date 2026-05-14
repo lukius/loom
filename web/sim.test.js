@@ -26,7 +26,8 @@ beforeEach(() => {
   state.hosts = {};
   state.routers = {};
   state.selection = null;
-  // Toolbar + banner DOM that _renderToolbar and other helpers touch
+  // Toolbar + banner DOM that _renderToolbar and other helpers touch.
+  // #toasts is the parent for error toasts emitted by onPrimary/onSecondary/onReset.
   document.body.innerHTML = `
     <button id="tb-play"><span class="ico"><use></use></span><span class="lbl"></span></button>
     <button id="tb-pause" hidden><span class="ico"><use></use></span><span class="lbl"></span></button>
@@ -35,6 +36,7 @@ beforeEach(() => {
     <button id="tb-add-host"></button>
     <button id="tb-add-router"></button>
     <button id="tb-refresh"></button>
+    <div id="toasts"></div>
   `;
   // Stub RuntimeClient transport so refreshState() never hits the network.
   RuntimeClient._json = vi.fn(async (method, path) => {
@@ -424,5 +426,240 @@ describe('RuntimeClient REST helpers', () => {
     RuntimeClient._json = vi.fn(async () => ({}));
     await RuntimeClient.deviceCommand('h 1', 'ping');
     expect(RuntimeClient._json).toHaveBeenCalledWith('POST', '/devices/h%201/command', { cmd: 'ping' });
+  });
+});
+
+// ---------- Sim.onPrimary ----------
+describe('Sim.onPrimary', () => {
+  it('idle → dispatches sim:yaml-export-requested and calls loadTopology + start with the listener-supplied yaml', async () => {
+    Sim.state = 'idle';
+    const captured = [];
+    const handler = (e) => {
+      captured.push(e);
+      // Listener fills in the yaml that onPrimary reads back from event.detail.
+      e.detail.yaml = 'fake-yaml';
+    };
+    bus.addEventListener('sim:yaml-export-requested', handler);
+    listenerCleanups.push(() => bus.removeEventListener('sim:yaml-export-requested', handler));
+
+    RuntimeClient._json = vi.fn(async (method, path) => {
+      if (path === '/sim/state') return { state: 'running' };
+      return {};
+    });
+
+    await Sim.onPrimary();
+
+    expect(captured.length).toBe(1);
+    expect(RuntimeClient._json).toHaveBeenCalledWith('POST', '/topology', { yaml: 'fake-yaml' });
+    expect(RuntimeClient._json).toHaveBeenCalledWith('POST', '/sim/start', {});
+  });
+
+  it('running → calls stop and clears Sim.patch', async () => {
+    Sim.state = 'running';
+    Sim.patch = [{ op: 'add_network', name: 'lan1' }];
+    RuntimeClient._json = vi.fn(async (method, path) => {
+      if (path === '/sim/state') return { state: 'idle' };
+      return {};
+    });
+
+    await Sim.onPrimary();
+
+    expect(RuntimeClient._json).toHaveBeenCalledWith('POST', '/sim/stop', {});
+    expect(Sim.patch).toEqual([]);
+  });
+
+  it('paused → calls stop and clears Sim.patch (non-idle branch)', async () => {
+    Sim.state = 'paused';
+    Sim.patch = [{ op: 'remove_host', name: 'h1' }, { op: 'add_router', name: 'r2' }];
+    RuntimeClient._json = vi.fn(async (method, path) => {
+      if (path === '/sim/state') return { state: 'idle' };
+      return {};
+    });
+
+    await Sim.onPrimary();
+
+    expect(RuntimeClient._json).toHaveBeenCalledWith('POST', '/sim/stop', {});
+    expect(Sim.patch).toEqual([]);
+  });
+
+  it('surfaces server error via toast with the "Start" label when failing in the idle branch', async () => {
+    Sim.state = 'idle';
+    const handler = (e) => { e.detail.yaml = ''; };
+    bus.addEventListener('sim:yaml-export-requested', handler);
+    listenerCleanups.push(() => bus.removeEventListener('sim:yaml-export-requested', handler));
+
+    RuntimeClient._json = vi.fn(async (method, path) => {
+      if (path === '/sim/state') return { state: 'idle' };
+      throw new Error('boom');
+    });
+
+    await Sim.onPrimary();  // must not throw
+
+    const toastEl = document.querySelector('.toast.error');
+    expect(toastEl).not.toBeNull();
+    expect(toastEl.textContent).toContain('boom');
+    expect(toastEl.textContent).toContain('Start');
+  });
+
+  it('surfaces server error via toast with the "Stop" label and preserves Sim.patch on stop failure', async () => {
+    Sim.state = 'running';
+    Sim.patch = [{ op: 'add_host', name: 'h9' }];
+    RuntimeClient._json = vi.fn(async (method, path) => {
+      if (path === '/sim/stop') throw new Error('stop failed');
+      if (path === '/sim/state') return { state: 'running' };
+      return {};
+    });
+
+    await Sim.onPrimary();
+
+    const toastEl = document.querySelector('.toast.error');
+    expect(toastEl).not.toBeNull();
+    expect(toastEl.textContent).toContain('stop failed');
+    expect(toastEl.textContent).toContain('Stop');
+    // Patch must NOT be cleared when stop() throws — the clear sits after the await.
+    expect(Sim.patch).toEqual([{ op: 'add_host', name: 'h9' }]);
+  });
+});
+
+// ---------- Sim.onSecondary ----------
+describe('Sim.onSecondary', () => {
+  it('running → calls pause', async () => {
+    Sim.state = 'running';
+    RuntimeClient._json = vi.fn(async (method, path) => {
+      if (path === '/sim/state') return { state: 'paused' };
+      return {};
+    });
+
+    await Sim.onSecondary();
+
+    expect(RuntimeClient._json).toHaveBeenCalledWith('POST', '/sim/pause', {});
+  });
+
+  it('paused → calls resume with the reconciled patch and clears Sim.patch', async () => {
+    Sim.state = 'paused';
+    state.networks.lan1 = { cidr: '10.0.0.0/24' };
+    Sim.patch = [{ op: 'add_network', name: 'lan1' }];
+    RuntimeClient._json = vi.fn(async (method, path) => {
+      if (path === '/sim/state') return { state: 'running' };
+      return {};
+    });
+
+    await Sim.onSecondary();
+
+    expect(RuntimeClient._json).toHaveBeenCalledWith('POST', '/sim/resume', {
+      patch: [{ op: 'add_network', name: 'lan1', address: '10.0.0.0/24' }],
+    });
+    expect(Sim.patch).toEqual([]);
+  });
+
+  it('idle → no RuntimeClient state-changing call (only refreshState in finally)', async () => {
+    Sim.state = 'idle';
+    RuntimeClient._json = vi.fn(async (method, path) => {
+      if (path === '/sim/state') return { state: 'idle' };
+      return {};
+    });
+
+    await Sim.onSecondary();
+
+    const paths = RuntimeClient._json.mock.calls.map(c => c[1]);
+    expect(paths).not.toContain('/sim/pause');
+    expect(paths).not.toContain('/sim/resume');
+  });
+
+  it('surfaces resume error via toast with the "Resume" label and preserves Sim.patch', async () => {
+    Sim.state = 'paused';
+    Sim.patch = [{ op: 'remove_router', name: 'r1' }];
+    RuntimeClient._json = vi.fn(async (method, path) => {
+      if (path === '/sim/resume') throw new Error('resume failed');
+      if (path === '/sim/state') return { state: 'paused' };
+      return {};
+    });
+
+    await Sim.onSecondary();
+
+    const toastEl = document.querySelector('.toast.error');
+    expect(toastEl).not.toBeNull();
+    expect(toastEl.textContent).toContain('resume failed');
+    expect(toastEl.textContent).toContain('Resume');
+    expect(Sim.patch).toEqual([{ op: 'remove_router', name: 'r1' }]);
+  });
+});
+
+// ---------- Sim.onReset ----------
+describe('Sim.onReset', () => {
+  it('idle → calls resetTopology, then getTopology, then dispatches sim:topology-import-requested with the fetched yaml', async () => {
+    Sim.state = 'idle';
+    const cap = captureEvents('sim:topology-import-requested');
+    listenerCleanups.push(cap.stop);
+
+    RuntimeClient._json = vi.fn(async (method, path) => {
+      if (method === 'POST' && path === '/topology/reset') return {};
+      if (method === 'GET' && path === '/topology') return { yaml: 'reset-yaml' };
+      if (path === '/sim/state') return { state: 'idle' };
+      return {};
+    });
+
+    await Sim.onReset();
+
+    expect(RuntimeClient._json).toHaveBeenCalledWith('POST', '/topology/reset', {});
+    expect(RuntimeClient._json).toHaveBeenCalledWith('GET', '/topology');
+    expect(cap.events).toEqual([{ yaml: 'reset-yaml' }]);
+  });
+
+  it('running → no-op (guarded by Sim.state !== "idle")', async () => {
+    Sim.state = 'running';
+    const cap = captureEvents('sim:topology-import-requested');
+    listenerCleanups.push(cap.stop);
+
+    await Sim.onReset();
+
+    const paths = RuntimeClient._json.mock.calls.map(c => c[1]);
+    expect(paths).not.toContain('/topology/reset');
+    expect(cap.events).toEqual([]);
+  });
+
+  it('paused → no-op (guarded by Sim.state !== "idle")', async () => {
+    Sim.state = 'paused';
+    const cap = captureEvents('sim:topology-import-requested');
+    listenerCleanups.push(cap.stop);
+
+    await Sim.onReset();
+
+    const paths = RuntimeClient._json.mock.calls.map(c => c[1]);
+    expect(paths).not.toContain('/topology/reset');
+    expect(cap.events).toEqual([]);
+  });
+
+  it('surfaces server error via toast with the "Reset" label and does NOT dispatch the import event', async () => {
+    Sim.state = 'idle';
+    const cap = captureEvents('sim:topology-import-requested');
+    listenerCleanups.push(cap.stop);
+
+    RuntimeClient._json = vi.fn(async (method, path) => {
+      if (path === '/topology/reset') throw new Error('reset failed');
+      if (path === '/sim/state') return { state: 'idle' };
+      return {};
+    });
+
+    await Sim.onReset();
+
+    const toastEl = document.querySelector('.toast.error');
+    expect(toastEl).not.toBeNull();
+    expect(toastEl.textContent).toContain('reset failed');
+    expect(toastEl.textContent).toContain('Reset');
+    expect(cap.events).toEqual([]);
+  });
+});
+
+// ---------- _renderToolbar contract ----------
+describe('_renderToolbar no longer touches Inspector/Terminals', () => {
+  it('does not depend on Inspector or Terminals being defined', () => {
+    // Recent behavior change: cross-module side effects flow through `bus`,
+    // so _renderToolbar must not poke Inspector.refreshRoutes or
+    // Terminals._applySimState directly. Assert it survives without either global.
+    delete globalThis.Inspector;
+    delete globalThis.Terminals;
+    Sim.state = 'running';
+    expect(() => Sim._renderToolbar()).not.toThrow();
   });
 });
