@@ -16,7 +16,18 @@ netrouting/
 │   ├── test_*.py          # Suites: address, entities, event_subscribers, forwarding, graph, packet_handling, parser, pause_gate, ping, protocol, routing_table, shell_commands, thread_resilience
 │   └── resources/         # YAML fixtures — most are intentionally invalid (parser/validator negative tests)
 ├── samples/sample.yaml    # Example topology
-├── web/index.html         # Interactive topology designer SPA
+├── web/
+│   ├── index.html         # SPA shell (~280 lines: HTML + <script type="module" src="app.js">)
+│   ├── styles.css         # Extracted CSS
+│   ├── app.js             # Entrypoint: imports, wire(), init(), DOMContentLoaded
+│   ├── state.js           # State object, persist/restore, sample, bus (EventTarget)
+│   ├── utils.js           # DOM/string helpers (el, escapeHtml, toast, …)
+│   ├── sim.js             # Sim state machine + RuntimeClient + WS event router
+│   ├── canvas.js          # SVG rendering, drag/pan, theme, layout
+│   ├── inspector.js       # Nav, right-pane panels, rename/duplicate/delete ops, context menu
+│   ├── terminals.js       # Per-node terminal popups
+│   ├── packets.js         # PacketAnim + tooltips
+│   └── *.test.js          # vitest tests co-located (utils, state, sim)
 ├── pyproject.toml         # ruff + pytest config (sets pythonpath = ["src"], testpaths = ["test"])
 ├── requirements.txt       # Runtime deps (PyYAML, FastAPI, uvicorn)
 ├── requirements-dev.txt   # Dev deps: + pytest, pytest-asyncio, ruff, httpx
@@ -30,6 +41,7 @@ netrouting/
 - **Legacy shell:** `cd src && python netrouting.py shell` — original cmd.Cmd REPL. Same simulator under the hood.
 - Topology source path: env var `NETROUTING_TOPOLOGY` (default `samples/sample.yaml`). The server clones to `<source>.session.yaml` and writes only there.
 - Run tests: `pytest` from the repo root. Single suite: `pytest test/test_address.py`.
+- JS tests: `npm install` (first time only), then `npm test` from the repo root. Uses vitest + happy-dom.
 - Lint: `ruff check src/ test/`. Format: `ruff format src/ test/`.
 
 ## Git & Remote
@@ -109,5 +121,7 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 - **Mixed-language docstrings.** Shell help strings are in Spanish; code identifiers and most comments are in English. Keep new shell help in Spanish to match the user-facing convention; keep code in English.
 
 - **`PauseGate` gates packet propagation and keepalive.** `AS` owns one `PauseGate` (`src/entities/clock.py`). `Interface._pkt_loop` and `Network._pkt_loop` call `gate.wait_or_stop()` after each dequeue; `RoutingProtocol._keepalive_loop` waits on it instead of `time.sleep`. `AS.stop()` triggers the stop event, which wakes any blocked workers. New worker threads must follow the same pattern or they won't pause cleanly.
+
+- **Web SPA uses native ES modules + an EventTarget bus.** `web/state.js` exports a singleton `bus = new EventTarget()`. Cross-component coordination (re-render after mutation, react to sim status changes) flows through bus events: `state:topology-changed`, `state:topology-loaded`, `state:selection-changed`, `sim:status-changed`, `sim:packet`, `sim:routing-table-changed`, `view:changed`. Synchronous queries and DOM helpers (`canvas.lookupDeviceNode`, `utils.el`, etc.) are direct imports. The rule: state mutations + cross-component re-renders → bus; sync queries + DOM helpers → direct import. Don't reintroduce module-to-module direct render calls.
 
 - **Most fixtures under `test/resources/` are deliberately invalid** (e.g. `invalid_netmask.yaml`, `missing_as.yaml`). Don't "fix" them — they exist to assert the parser rejects them with the right error.

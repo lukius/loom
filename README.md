@@ -27,3 +27,7 @@ The simulator reads its topology from `samples/sample.yaml` by default. Set `NET
 - Dev deps: `pip install -r requirements-dev.txt`.
 - Run tests: `pytest`.
 - Lint: `ruff check src/ test/`.
+
+### JS tests
+
+After `pip install`, also install JS dev deps once: `npm install`. Then `npm test` to run the vitest suite for `web/utils.js`, `web/state.js`, and `web/sim.js`.
