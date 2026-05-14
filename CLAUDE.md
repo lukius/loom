@@ -28,6 +28,8 @@ netrouting/
 │   ├── terminals.js       # Per-node terminal popups
 │   ├── packets.js         # PacketAnim + tooltips
 │   └── *.test.js          # vitest tests co-located (utils, state, sim)
+├── e2e/                   # Playwright smoke suite (real Chromium + spawned FastAPI)
+├── playwright.config.js   # E2E config: chromium-only, webServer on NETROUTING_PORT=8766
 ├── pyproject.toml         # ruff + pytest config (sets pythonpath = ["src"], testpaths = ["test"])
 ├── requirements.txt       # Runtime deps (PyYAML, FastAPI, uvicorn)
 ├── requirements-dev.txt   # Dev deps: + pytest, pytest-asyncio, ruff, httpx
@@ -40,8 +42,10 @@ netrouting/
 - **Web UI (default):** `cd src && python netrouting.py` — launches FastAPI on http://127.0.0.1:8000 and serves the SPA from `web/`.
 - **Legacy shell:** `cd src && python netrouting.py shell` — original cmd.Cmd REPL. Same simulator under the hood.
 - Topology source path: env var `NETROUTING_TOPOLOGY` (default `samples/sample.yaml`). The server clones to `<source>.session.yaml` and writes only there.
+- HTTP port: env var `NETROUTING_PORT` (default `8000`). The Playwright suite uses `8766` to avoid colliding with a dev server.
 - Run tests: `pytest` from the repo root. Single suite: `pytest test/test_address.py`.
 - JS tests: `npm install` (first time only), then `npm test` from the repo root. Uses vitest + happy-dom.
+- E2E tests: `npm run test:e2e` runs Playwright against a real Chromium and a spawned FastAPI server. Requires a system Chromium browser (the suite does not download one).
 - Lint: `ruff check src/ test/`. Format: `ruff format src/ test/`.
 
 ## Git & Remote

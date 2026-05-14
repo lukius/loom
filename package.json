@@ -4,10 +4,12 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
-    "vitest": "^3.0.0",
-    "happy-dom": "^18.0.0"
+    "@playwright/test": "1.59",
+    "happy-dom": "^18.0.0",
+    "vitest": "^3.0.0"
   }
 }

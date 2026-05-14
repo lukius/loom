@@ -17,6 +17,8 @@ Toolbar offers Start/Pause, a Refresh field that tunes the routing keepalive (1â
 
 The simulator reads its topology from `samples/sample.yaml` by default. Set `NETROUTING_TOPOLOGY` to point at a different file. Mutations during simulation land in `<source>.session.yaml`; the source is never modified.
 
+The web server binds `127.0.0.1:8000` by default. Set `NETROUTING_PORT` to override (e.g. for the e2e suite).
+
 ## Legacy CLI shell
 
 `cd src && python netrouting.py shell` launches the original cmd.Cmd REPL. Commands: `read`, `route`, `send`, `update_cost`, `ifconfig`, `neighbors`, `ping`, `exit`.
@@ -31,3 +33,7 @@ The simulator reads its topology from `samples/sample.yaml` by default. Set `NET
 ### JS tests
 
 After `pip install`, also install JS dev deps once: `npm install`. Then `npm test` to run the vitest suite for `web/utils.js`, `web/state.js`, and `web/sim.js`.
+
+### End-to-end
+
+`npm run test:e2e` runs a Playwright/Chromium smoke suite from `e2e/` against a real FastAPI server (spawned by Playwright on port 8766 via `NETROUTING_PORT`). Requires `@playwright/test` (installed via `npm install`) and a system Chromium browser; see `playwright.config.js`.
