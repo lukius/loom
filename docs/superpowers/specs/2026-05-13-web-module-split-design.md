@@ -108,30 +108,39 @@ package.json          name "netrouting-web", devDependencies: vitest + happy-dom
 ## Dependency graph
 
 ```
-              utils  ←── (every module)
-              state  ←── (every module)
-                ↑
-                │ bus events
-                │
-  ┌──────┬──────┼──────┬──────┬──────┐
-  sim  canvas  inspector  terminals  packets
-                                       │
-                                       ↓ sync geometry queries
-                                     canvas
-                    ↑
-                    │ sync geometry queries
-                    │
-                inspector
-                    ↑
-                  app.js (imports all; wires DOM)
+Layer 1 (leaves):   utils.js, state.js
+                          ↑  (everyone imports state + utils)
+                          │
+Layer 2:            sim.js, canvas.js, inspector.js, terminals.js, packets.js
+                          │  Cross-component synchronous imports:
+                          │    packets    → canvas   (lookupDeviceNode, getNodeCenter)
+                          │    inspector  → canvas   (applyView, getNodeCenter)
+                          │    canvas     → sim      (isTopologyLocked)
+                          │  All other cross-component coordination flows through `bus`.
+                          │
+Layer 3:            app.js  (imports all of layers 1+2; wires DOMContentLoaded)
 ```
 
-DAG. Three direct cross-domain imports:
+DAG. Cross-domain synchronous imports:
 - `app → all` (entry wiring).
 - `packets → canvas` (`lookupDeviceNode`, `getNodeCenter` for animation coordinates).
 - `inspector → canvas` (`applyView`, `getNodeCenter` for `centerOnSelection`).
+- `canvas → sim` (`isTopologyLocked` to gate drag handlers).
 
 All other cross-component coordination goes through `bus`.
+
+### `index.html` script loading order
+
+```
+<head>
+  ...
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+```
+
+The `js-yaml` UMD bundle is kept as a classic script (it exposes the `jsyaml` global; no ESM build is consumed). Browsers defer `type="module"` scripts until after the document parses, so the classic script is guaranteed to execute first and `jsyaml` is available to `app.js` and its imports.
 
 ## Bus event taxonomy
 
@@ -176,7 +185,7 @@ Rule: state mutation + cross-component re-render → `bus`. Synchronous queries 
 
 - `vitest` (chosen for native ESM, no transform) + `happy-dom` (faster, lighter than jsdom; sufficient for `localStorage` + simple DOM operations).
 - `package.json` at repo root with:
-  - `"devDependencies": { "vitest": "...", "happy-dom": "..." }`
+  - `"devDependencies": { "vitest": "<pinned>", "happy-dom": "<pinned>" }` — both pinned to the latest stable when `npm install` is run during implementation.
   - `"scripts": { "test": "vitest run", "test:watch": "vitest" }`
   - `"vitest": { "environment": "happy-dom" }` (inline config; no separate file).
 - `.gitignore` adds `node_modules/`.
