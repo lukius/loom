@@ -149,7 +149,7 @@ The `js-yaml` UMD bundle is kept as a classic script (it exposes the `jsyaml` gl
 | `state:topology-changed` | none | inspector (add/rename/delete/duplicate), sim (`reconcilePatch`) | canvas (`renderCanvas`), inspector (`renderNav` + `renderInspector`) |
 | `state:selection-changed` | none | canvas (node click), inspector (nav click, clear) | canvas (highlight), inspector (`renderInspector`) |
 | `sim:status-changed` | `{ status: 'idle' \| 'running' \| 'paused' }` | sim | inspector (lock/unlock fields), canvas (lock/unlock drag, gray context menu), terminals (gate opens), packets (freeze/clear on non-running) |
-| `sim:packet` | `{ flow, src, dst, hop, payload }` | sim | packets (`PacketAnim.enqueue`) |
+| `sim:packet` | raw WS packet event (forwarded verbatim) | sim | packets (`PacketAnim.enqueue`) |
 | `sim:routing-table-changed` | `{ router }` | sim | inspector (refresh routing-table section if selected) |
 | `view:changed` | none | canvas (pan/zoom) | canvas (`applyView`, `reRenderEdges`) |
 

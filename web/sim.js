@@ -54,7 +54,7 @@ export const RuntimeClient = {
       setConnectionStatus(true);
       // The server may have restarted while the socket was down — its sim state
       // can diverge from the SPA's cached state. Re-sync so the toolbar is honest.
-      if (typeof Sim !== 'undefined' && Sim.refreshState) {
+      if (Sim.refreshState) {
         Sim.refreshState().catch(() => {});
       }
     };

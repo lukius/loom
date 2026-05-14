@@ -3,37 +3,29 @@
 // Entrypoint: imports, bus-bridge listeners, exportYaml/importYaml, modal helper,
 // wire (DOM event handlers), init (boot), DOMContentLoaded guard.
 
-import { el, escapeHtml, uniqueName, uniqueIface, pad2, cssEscape, toast } from './utils.js';
+import { escapeHtml, toast } from './utils.js';
 import {
-  state, bus,
-  STORAGE_KEY, THEME_KEY, LAYOUT_KEY, LAYOUT_DEF, LAYOUT_LIMITS, SAMPLE, NODE, HIT_PAD,
+  state, bus, SAMPLE,
   persist, restore, loadSample, markDirty, setSave,
 } from './state.js';
 import {
   Sim, RuntimeClient,
-  setConnectionStatus, isTopologyLocked, recordPatchOp, updatePatchIndicator, reconcilePatch,
+  setConnectionStatus,
   _onEvent,
 } from './sim.js';
 import {
-  canvasEl, viewportEl, edgesLayer, nodesLayer, overlayLay,
-  applyView, clientToWorld, fitView,
-  renderCanvas, reRenderEdges, drawDragPreview, ensurePositions,
-  attachNodeEvents, wireCanvas,
+  canvasEl,
+  applyView, fitView,
+  ensurePositions, wireCanvas,
   initTheme, applyTheme,
-  loadLayout, persistLayout, wireResizers,
-  lookupDeviceNode, lookupNetworkNode, lookupAddressNode, getNodeCenter,
+  loadLayout, wireResizers,
 } from './canvas.js';
 import {
-  Inspector,
-  renderInspector, renderNav,
-  centerOnSelection,
-  renameNetwork, renameHost, renameRouter,
-  duplicateNetwork, duplicateHost, duplicateRouter,
   deleteSelected, addNew, worldCenter,
-  openContextMenu, closeContextMenu, handleCtxAction,
+  closeContextMenu,
 } from './inspector.js';
-import { Terminals } from './terminals.js';
-import { PacketAnim, showPacketTooltip, hidePacketTooltip } from './packets.js';
+import './terminals.js';
+import { PacketAnim } from './packets.js';
 
 // Temporary bus wiring: bridges to module-local yaml exporter/importer. canvas.js,
 // inspector.js, terminals.js, and packets.js own their own listeners.

@@ -6,7 +6,7 @@ import { state, bus, markDirty, loadSample } from './state.js';
 import { escapeHtml, uniqueName, uniqueIface, pad2, toast } from './utils.js';
 import {
   canvasEl, applyView, clientToWorld, fitView,
-  renderCanvas, lookupDeviceNode, lookupNetworkNode, getNodeCenter,
+  renderCanvas,
 } from './canvas.js';
 import { Sim, RuntimeClient, isTopologyLocked, recordPatchOp } from './sim.js';
 
