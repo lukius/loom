@@ -282,6 +282,13 @@ import {
   persist, restore, loadSample, markDirty, setSave,
 } from './state.js';
 
+// Temporary bus wiring: until canvas.js/inspector.js extract their own listeners (Task 7+),
+// these inline functions re-render when state changes.
+bus.addEventListener('state:topology-changed', () => {
+  renderAll();
+  fitView();
+});
+
 /* ===========================================================
    netrouting — interactive topology canvas
    =========================================================== */

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   state, bus,
   STORAGE_KEY, THEME_KEY, LAYOUT_KEY, LAYOUT_DEF, LAYOUT_LIMITS, SAMPLE,
@@ -15,10 +15,9 @@ function resetState() {
   Object.assign(state, JSON.parse(JSON.stringify(STATE_DEFAULTS)));
 }
 
-// `loadSample` (lifted verbatim from the inline module) references free
-// identifiers — `fitView`, `renderAll`, `toast` — and a `#proj-name` DOM
-// element that live elsewhere in `index.html`. Provide harmless stubs so
-// tests can exercise loadSample without diverging from the lifted body.
+// `loadSample` now relies on the bus (`state:topology-changed`) and on the
+// imported `toast` helper from `utils.js`; the `#proj-name` lookup is
+// null-safe. Tests provision only the DOM elements those side effects need.
 beforeEach(() => {
   localStorage.clear();
   resetState();
@@ -26,15 +25,6 @@ beforeEach(() => {
     '<div id="save-state"><span class="dot"></span> idle</div>' +
     '<input id="proj-name" />' +
     '<div id="toasts"></div>';
-  globalThis.fitView = vi.fn();
-  globalThis.renderAll = vi.fn();
-  globalThis.toast = vi.fn();
-});
-
-afterEach(() => {
-  delete globalThis.fitView;
-  delete globalThis.renderAll;
-  delete globalThis.toast;
 });
 
 describe('state object', () => {
@@ -197,6 +187,28 @@ describe('loadSample', () => {
     loadSample();
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
     expect(raw.asName).toBe(SAMPLE.asName);
+  });
+
+  it('dispatches state:topology-changed on loadSample', () => {
+    let fired = 0;
+    const handler = () => fired++;
+    bus.addEventListener('state:topology-changed', handler);
+    loadSample();
+    bus.removeEventListener('state:topology-changed', handler);
+    expect(fired).toBe(1);
+  });
+
+  it('does not throw without fitView/renderAll in scope', () => {
+    // Sanity test: loadSample must not depend on inline-module helpers.
+    // No globals are provisioned in beforeEach — calling loadSample directly
+    // exercises the module-level path that the page hits in the browser.
+    expect(() => loadSample()).not.toThrow();
+  });
+
+  it('inserts a toast element on success', () => {
+    loadSample();
+    const toastEl = document.querySelector('.toast');
+    expect(toastEl).not.toBeNull();
   });
 });
 

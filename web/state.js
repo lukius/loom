@@ -1,6 +1,8 @@
 /* ===========================================================
    netrouting — state, persistence, sample topology, and bus
    =========================================================== */
+import { toast } from './utils.js';
+
 export const STORAGE_KEY = 'netrouting.topology.v4';
 export const THEME_KEY = 'netrouting.theme';
 
@@ -103,10 +105,10 @@ export function loadSample() {
   state.routers = JSON.parse(JSON.stringify(SAMPLE.routers));
   state.selection = null;
   state.view = { x: 0, y: 0, k: 1 };
-  fitView();
-  document.getElementById('proj-name').value = state.asName;
-  renderAll();
+  const projName = document.getElementById('proj-name');
+  if (projName) projName.value = state.asName;
   persist();
+  bus.dispatchEvent(new CustomEvent('state:topology-changed'));
   toast('Sample topology loaded', 'ok');
 }
 
