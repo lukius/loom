@@ -54,6 +54,11 @@ test.describe('netrouting SPA - smoke', () => {
     const css = responses.find((x) => x.url.endsWith('/styles.css'));
     expect(css).toBeTruthy();
     expect(css.status).toBe(200);
+
+    // favicon.svg must be reachable too.
+    const fav = await page.request.get('/favicon.svg');
+    expect(fav.status()).toBe(200);
+    expect((await fav.text())).toContain('<svg');
   });
 
   test('renders sample topology with 3 hosts, 3 routers, 3 networks', async ({ page }) => {
