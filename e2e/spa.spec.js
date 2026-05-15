@@ -266,4 +266,65 @@ test.describe('netrouting SPA - smoke', () => {
     const h = Number(await rail.getAttribute('height'));
     expect(w).toBeGreaterThan(h);
   });
+
+  test('every LAN has two endcap handles (left/right) wired for resize', async ({ page }) => {
+    const lan = page.locator('#nodes-layer g.node.network').first();
+    await expect(lan.locator('.endcap[data-handle="true"]')).toHaveCount(2);
+    await expect(lan.locator('.endcap[data-handle="true"][data-end="left"]')).toHaveCount(1);
+    await expect(lan.locator('.endcap[data-handle="true"][data-end="right"]')).toHaveCount(1);
+  });
+
+  test('clicking a LAN adds the .selected class', async ({ page }) => {
+    const lan = page.locator('#nodes-layer g.node.network').first();
+    await lan.click();
+    await expect(lan).toHaveClass(/selected/);
+  });
+
+  test('dragging the right handle widens the rail and the new width persists', async ({ page }) => {
+    const lan = page.locator('#nodes-layer g.node.network').first();
+    await lan.click();
+    const rail = lan.locator('.rail');
+    const widthBefore = Number(await rail.getAttribute('width'));
+
+    const handle = lan.locator('.endcap[data-handle="true"][data-end="right"]');
+    const hb = await handle.boundingBox();
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(hb.x + 60, hb.y + hb.height / 2, { steps: 10 });
+    await page.mouse.up();
+
+    const widthAfter = Number(await rail.getAttribute('width'));
+    expect(widthAfter).toBeGreaterThan(widthBefore);
+
+    // markDirty() debounces persistence by 200ms; wait it out then verify the
+    // new `w` is written into localStorage (the beforeEach addInitScript wipes
+    // storage on every page load, so a full reload can't be used to check
+    // persistence — read the slot directly instead).
+    await page.waitForTimeout(300);
+    const persistedW = await page.evaluate(() => {
+      const raw = localStorage.getItem('netrouting.topology.v4');
+      if (!raw) return null;
+      const s = JSON.parse(raw);
+      const firstKey = Object.keys(s.networks)[0];
+      return s.networks[firstKey].w;
+    });
+    expect(persistedW).toBeCloseTo(widthAfter, 0);
+  });
+
+  test('dragging the left handle also widens (symmetric resize)', async ({ page }) => {
+    const lan = page.locator('#nodes-layer g.node.network').first();
+    await lan.click();
+    const rail = lan.locator('.rail');
+    const widthBefore = Number(await rail.getAttribute('width'));
+
+    const handle = lan.locator('.endcap[data-handle="true"][data-end="left"]');
+    const hb = await handle.boundingBox();
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(hb.x - 60, hb.y + hb.height / 2, { steps: 10 });
+    await page.mouse.up();
+
+    const widthAfter = Number(await rail.getAttribute('width'));
+    expect(widthAfter).toBeGreaterThan(widthBefore);
+  });
 });

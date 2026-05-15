@@ -467,21 +467,23 @@ function drawNetworkRail(g, name, obj, pad, isSel) {
     rx: thk / 2,
   }));
 
-  // endcaps (also serve as resize handles when LAN is selected)
-  const capMain = isSel ? RAIL_HANDLE_LEN : RAIL_ENDCAP_LEN;
-  const capCross = isSel ? 5 : 3;
+  // endcaps — also act as resize handles. data-handle is always present so the
+  // SVG doesn't need a re-render on selection (which would break pointer-down);
+  // the resize handler gates on the parent .selected class instead.
+  const capMain = RAIL_ENDCAP_LEN;
+  const capCross = 3;
   for (const sign of [-1, 1]) {
     const capAttrs = vertical
       ? { x: -capMain / 2, y: sign * len / 2 - capCross / 2, width: capMain, height: capCross }
       : { x: sign * len / 2 - capCross / 2, y: -capMain / 2, width: capCross, height: capMain };
-    const extra = isSel
-      ? {
-          'data-handle': 'true',
-          'data-axis': vertical ? 'v' : 'h',
-          'data-end': sign === -1 ? (vertical ? 'top' : 'left') : (vertical ? 'bottom' : 'right'),
-        }
-      : {};
-    g.appendChild(el('rect', { class: 'endcap', rx: 1, ...capAttrs, ...extra }));
+    g.appendChild(el('rect', {
+      class: 'endcap',
+      rx: 1,
+      ...capAttrs,
+      'data-handle': 'true',
+      'data-axis': vertical ? 'v' : 'h',
+      'data-end': sign === -1 ? (vertical ? 'top' : 'left') : (vertical ? 'bottom' : 'right'),
+    }));
   }
 
   // tap ticks — one per attached device
@@ -516,6 +518,38 @@ function drawNetworkRail(g, name, obj, pad, isSel) {
   g.appendChild(buildRailLabel(name, obj, baselineY));
 }
 
+// Drag a rail endcap to resize the LAN. Grows symmetrically from the center,
+// so the LAN stays anchored on its (x, y) coordinate.
+function startRailResize(e, name, handle) {
+  const net = state.networks[name];
+  if (!net) return;
+  const vertical = (net.orientation ?? 'h') === 'v';
+  const end = handle.getAttribute('data-end'); // left/right/top/bottom
+  const dirOut = (end === 'right' || end === 'bottom') ? 1 : -1;
+  const startW = net.w ?? RAIL_DEFAULT_WIDTH;
+  const startMain = vertical ? e.clientY : e.clientX;
+  // Re-derive the world-space scale once: the SVG viewBox is 1:1 with the
+  // view scale `state.view.k`, so 1 client px = 1/k world px.
+  const k = state.view.k || 1;
+
+  const onMove = (ev) => {
+    const cur = vertical ? ev.clientY : ev.clientX;
+    const deltaWorld = ((cur - startMain) / k) * dirOut;
+    // factor 2: the rail grows symmetrically from its center
+    const newW = clamp(startW + 2 * deltaWorld, RAIL_MIN_WIDTH, RAIL_MAX_WIDTH);
+    net.w = newW;
+    renderCanvas();
+  };
+  const onUp = () => {
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    markDirty();
+    bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+  };
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp);
+}
+
 /* hand-tuned cloud silhouette — 4 lobes, flat-ish bottom; coords in 200x80 base, scaled to (w,h) */
 export function cloudPath(w, h) {
   const sx = w / 200, sy = h / 80;
@@ -542,6 +576,17 @@ let rclickTimer = null;
 export function attachNodeEvents(g, kind, name) {
   g.addEventListener('pointerdown', (e) => {
     if (e.button === 2) return; // right-click handled separately
+
+    // Resize-net: pointerdown on a handle endcap of an already-selected LAN.
+    // Gating on .selected (not on a re-render) is what lets us keep the
+    // "no canvas rebuild on selection-change" invariant intact.
+    const handle = e.target.closest('rect.endcap[data-handle="true"]');
+    if (handle && kind === 'network' && g.classList.contains('selected') && !isTopologyLocked()) {
+      e.stopPropagation();
+      startRailResize(e, name, handle);
+      return;
+    }
+
     e.stopPropagation();
 
     // Selection works in any sim state — users need to inspect nodes while running.
