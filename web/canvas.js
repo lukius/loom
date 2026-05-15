@@ -923,9 +923,16 @@ export function drawDragPreview() {
 function renderSelection() {
   nodesLayer().querySelectorAll('.node.selected').forEach(n => n.classList.remove('selected'));
   const sel = state.selection;
-  if (!sel) return;
-  const node = nodesLayer().querySelector(`.node[data-kind="${sel.kind}"][data-name="${cssEscape(sel.name)}"]`);
-  if (node) node.classList.add('selected');
+  if (sel) {
+    const node = nodesLayer().querySelector(`.node[data-kind="${sel.kind}"][data-name="${cssEscape(sel.name)}"]`);
+    if (node) node.classList.add('selected');
+  }
+  // Edges carry their own `.selected` class derived from state.selection, so
+  // they must be rebuilt when selection changes — otherwise they stay tinted
+  // until the next drag or topology mutation. Safe inside a node's pointerdown
+  // handler: only the edges layer is rebuilt, the node <g> the handler
+  // captured stays attached.
+  reRenderEdges();
 }
 
 bus.addEventListener('state:topology-changed', renderCanvas);

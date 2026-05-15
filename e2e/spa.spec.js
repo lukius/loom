@@ -460,6 +460,18 @@ test.describe('loom SPA - smoke', () => {
     await expect(routerSubs).toHaveCount(subCountBefore);
   });
 
+  test('clicking empty canvas after selecting a device clears the edge highlight', async ({ page }) => {
+    // Selecting a router attaches `.selected` to every edge connected to it.
+    const router = page.locator('#nodes-layer g.node.router[data-name="r1"]');
+    await router.click();
+    await expect(page.locator('#edges-layer .edge.selected').first()).toBeVisible();
+
+    // Click on empty canvas — selection should clear AND edges should drop the highlight.
+    await page.locator('svg#canvas').click({ position: { x: 5, y: 200 }, force: true });
+    await expect(router).not.toHaveClass(/selected/);
+    await expect(page.locator('#edges-layer .edge.selected')).toHaveCount(0);
+  });
+
   test('display toggle state persists in localStorage', async ({ page }) => {
     await page.locator('#tb-toggle-costs').click();
     await page.waitForTimeout(300); // markDirty debounce
