@@ -787,6 +787,34 @@ svg.canvas.linking { cursor: crosshair; }
 /* tap-tick brightens when its device is hovered */
 .canvas .node.network .tick.matched-hover { fill: var(--accent); }
 
+/* rotate button — revealed on LAN hover or when LAN is selected */
+.canvas .node.network .rotate-btn {
+  opacity: 0;
+  transition: opacity .12s;
+  pointer-events: all;
+  cursor: pointer;
+}
+.canvas .node.network:hover .rotate-btn,
+.canvas .node.network.selected .rotate-btn { opacity: 1; }
+.canvas .node.network .rotate-btn .bg {
+  fill: var(--bg);
+  stroke: var(--border);
+  stroke-width: 1;
+  transition: fill .12s, stroke .12s;
+}
+.canvas .node.network .rotate-btn .ico {
+  stroke: var(--text-2);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke .12s;
+}
+.canvas .node.network .rotate-btn:hover .bg {
+  fill: var(--accent-bg);
+  stroke: var(--accent-border);
+}
+.canvas .node.network .rotate-btn:hover .ico { stroke: var(--accent); }
+
 /* empty overlay */
 .canv-empty {
   position: absolute; inset: 0;
@@ -1113,6 +1141,21 @@ svg.canvas.linking { cursor: crosshair; }
 }
 .insp-foot button.dup:hover { color: var(--accent-text); border-color: var(--accent); background: var(--accent-bg); }
 .insp-foot button.del:hover { color: var(--neg); border-color: var(--neg); background: color-mix(in srgb, var(--neg) 8%, transparent); }
+
+/* secondary inline button used inside a .field (e.g. LAN rotate) */
+.field .btn-sec {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all .12s;
+  text-align: left;
+}
+.field .btn-sec:hover { color: var(--accent-text); border-color: var(--accent); background: var(--accent-bg); }
 
 .insp-routes {
   padding: 14px 20px;

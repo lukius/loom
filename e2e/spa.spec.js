@@ -311,6 +311,78 @@ test.describe('netrouting SPA - smoke', () => {
     expect(persistedW).toBeCloseTo(widthAfter, 0);
   });
 
+  test('hover-revealed rotate button toggles LAN orientation horizontal -> vertical', async ({ page }) => {
+    const lan = page.locator('#nodes-layer g.node.network').first();
+    const rail = lan.locator('.rail');
+    const wBefore = Number(await rail.getAttribute('width'));
+    const hBefore = Number(await rail.getAttribute('height'));
+    expect(wBefore).toBeGreaterThan(hBefore); // starts horizontal
+
+    await lan.hover();
+    const btn = lan.locator('[data-rotate-btn="true"]');
+    await btn.click();
+
+    const wAfter = Number(await rail.getAttribute('width'));
+    const hAfter = Number(await rail.getAttribute('height'));
+    // Rail dimensions swapped — now vertical.
+    expect(hAfter).toBeGreaterThan(wAfter);
+    expect(wAfter).toBe(hBefore);
+    expect(hAfter).toBe(wBefore);
+  });
+
+  test('rotate button is idempotent — two clicks restore horizontal', async ({ page }) => {
+    const lan = page.locator('#nodes-layer g.node.network').first();
+    const rail = lan.locator('.rail');
+    const wBefore = Number(await rail.getAttribute('width'));
+    const hBefore = Number(await rail.getAttribute('height'));
+
+    await lan.hover();
+    const btn = lan.locator('[data-rotate-btn="true"]');
+    await btn.click();
+    // After the topology re-render the locator still points at the new btn.
+    await lan.hover();
+    await btn.click();
+
+    const wAfter = Number(await rail.getAttribute('width'));
+    const hAfter = Number(await rail.getAttribute('height'));
+    expect(wAfter).toBe(wBefore);
+    expect(hAfter).toBe(hBefore);
+  });
+
+  test('inspector Rotate button also toggles orientation', async ({ page }) => {
+    const lan = page.locator('#nodes-layer g.node.network').first();
+    await lan.click();
+    const rail = lan.locator('.rail');
+    const wBefore = Number(await rail.getAttribute('width'));
+    const hBefore = Number(await rail.getAttribute('height'));
+
+    await page.locator('#f-rotate').click();
+    const wAfter = Number(await rail.getAttribute('width'));
+    const hAfter = Number(await rail.getAttribute('height'));
+    expect(wAfter).toBe(hBefore);
+    expect(hAfter).toBe(wBefore);
+  });
+
+  test('vertical rail accepts resize via the bottom handle (axis-aware drag)', async ({ page }) => {
+    const lan = page.locator('#nodes-layer g.node.network').first();
+    await lan.hover();
+    await lan.locator('[data-rotate-btn="true"]').click();
+    await lan.click(); // select to enable resize gate
+
+    const rail = lan.locator('.rail');
+    const heightBefore = Number(await rail.getAttribute('height'));
+
+    const handle = lan.locator('.endcap[data-handle="true"][data-end="bottom"]');
+    const hb = await handle.boundingBox();
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + 60, { steps: 10 });
+    await page.mouse.up();
+
+    const heightAfter = Number(await rail.getAttribute('height'));
+    expect(heightAfter).toBeGreaterThan(heightBefore);
+  });
+
   test('dragging the left handle also widens (symmetric resize)', async ({ page }) => {
     const lan = page.locator('#nodes-layer g.node.network').first();
     await lan.click();

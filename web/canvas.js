@@ -516,6 +516,41 @@ function drawNetworkRail(g, name, obj, pad, isSel) {
   // label below the rail's bottom-most point (works for both orientations)
   const baselineY = (vertical ? len / 2 : thk / 2) + RAIL_LABEL_GAP;
   g.appendChild(buildRailLabel(name, obj, baselineY));
+
+  // rotate button — CSS-revealed on hover / when LAN is selected
+  g.appendChild(buildRotateButton(obj, vertical, len, thk));
+}
+
+function buildRotateButton(obj, vertical, len, thk) {
+  // Sit at the far end of the main axis, just outside the cross-axis edge.
+  const pos = vertical
+    ? { x: thk / 2 + 18, y: -len / 2 + 9 }   // right of top end
+    : { x: len / 2 - 9,  y: -thk / 2 - 18 }; // above right end
+  const btn = el('g', {
+    class: 'rotate-btn',
+    transform: `translate(${pos.x} ${pos.y})`,
+    'data-rotate-btn': 'true',
+  });
+  btn.appendChild(el('circle', { r: 9, cx: 0, cy: 0, class: 'bg' }));
+  // small curved-arrow rotate glyph, ~12px viewBox centered on (0,0)
+  btn.appendChild(el('path', {
+    class: 'ico',
+    d: 'M 4 -2 A 4 4 0 1 1 -4 -2 L -5.5 -3 M -4 -2 L -2.5 -2',
+    fill: 'none',
+  }));
+  btn.appendChild(el('title', {},
+    (obj.orientation ?? 'h') === 'v' ? 'Rotate to horizontal' : 'Rotate to vertical'));
+  return btn;
+}
+
+// Flip a LAN between horizontal and vertical orientation. Shared by the
+// hover rotate button (canvas) and the inspector "Rotate" button.
+export function toggleNetworkOrientation(name) {
+  const net = state.networks[name];
+  if (!net) return;
+  net.orientation = (net.orientation ?? 'h') === 'h' ? 'v' : 'h';
+  markDirty();
+  bus.dispatchEvent(new CustomEvent('state:topology-changed'));
 }
 
 // Drag a rail endcap to resize the LAN. Grows symmetrically from the center,
@@ -576,6 +611,15 @@ let rclickTimer = null;
 export function attachNodeEvents(g, kind, name) {
   g.addEventListener('pointerdown', (e) => {
     if (e.button === 2) return; // right-click handled separately
+
+    // Rotate button — has its own handler, never bubbles. Always available
+    // when visible (hover / selected) and not locked.
+    const rot = e.target.closest('[data-rotate-btn="true"]');
+    if (rot && kind === 'network' && !isTopologyLocked()) {
+      e.stopPropagation();
+      toggleNetworkOrientation(name);
+      return;
+    }
 
     // Resize-net: pointerdown on a handle endcap of an already-selected LAN.
     // Gating on .selected (not on a re-render) is what lets us keep the

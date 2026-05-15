@@ -6,7 +6,7 @@ import { state, bus, markDirty, loadSample } from './state.js';
 import { escapeHtml, uniqueName, uniqueIface, pad2, toast } from './utils.js';
 import {
   canvasEl, applyView, clientToWorld, fitView,
-  renderCanvas,
+  renderCanvas, toggleNetworkOrientation,
 } from './canvas.js';
 import { Sim, RuntimeClient, isTopologyLocked, recordPatchOp } from './sim.js';
 
@@ -310,6 +310,11 @@ export function renderNetworkInsp(name, elI) {
         <input id="f-cidr" value="${escapeHtml(net.cidr || '')}" spellcheck="false" placeholder="192.168.0.0/24" />
         <div class="hint">Network address with prefix length.</div>
       </div>
+      <div class="field">
+        <label>Orientation</label>
+        <button id="f-rotate" class="btn-sec" type="button">Rotate to ${(net.orientation ?? 'h') === 'v' ? 'horizontal' : 'vertical'}</button>
+        <div class="hint">Flip the rail between horizontal and vertical.</div>
+      </div>
     </div>
     <div class="insp-foot">
       <button class="dup" id="f-dup">Duplicate</button>
@@ -321,6 +326,10 @@ export function renderNetworkInsp(name, elI) {
     if (isTopologyLocked()) return;
     state.networks[name].cidr = e.target.value.trim();
     markDirty(); renderCanvas(); renderNav();
+  });
+  elI.querySelector('#f-rotate').addEventListener('click', () => {
+    if (isTopologyLocked()) return;
+    toggleNetworkOrientation(name);
   });
   elI.querySelector('#f-del').addEventListener('click', deleteSelected);
   elI.querySelector('#f-dup').addEventListener('click', () => duplicateNetwork(name));
