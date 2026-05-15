@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="netrouting">
   <title>netrouting</title>
   <!-- routed path: a packet bezier-curves through two hops and arrives at the destination arrowhead -->
-  <path d="M 6 6 C 12 6, 10 16, 16 16 S 21 26, 25 26"
-        fill="none" stroke="#0369a1" stroke-width="3"
+  <path d="M 6 8 C 12 8, 10 16, 16 16 S 20 24, 24 24"
+        fill="none" stroke="#0369a1" stroke-width="4"
         stroke-linecap="round" stroke-linejoin="round"/>
   <!-- node markers (start + middle hop) -->
-  <circle cx="6"  cy="6"  r="3" fill="#0369a1"/>
-  <circle cx="16" cy="16" r="3" fill="#0369a1"/>
+  <circle cx="6"  cy="8"  r="4" fill="#0369a1"/>
+  <circle cx="16" cy="16" r="4" fill="#0369a1"/>
   <!-- destination arrowhead in accent amber -->
-  <path d="M 23 22 L 30 26 L 23 30 Z" fill="#ea580c"/>
+  <path d="M 21 18 L 30 24 L 21 30 Z" fill="#ea580c"/>
 </svg>
