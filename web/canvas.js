@@ -5,6 +5,9 @@ import {
   LAYOUT_KEY, LAYOUT_DEF, LAYOUT_LIMITS,
   THEME_KEY,
   markDirty,
+  RAIL_DEFAULT_WIDTH, RAIL_MIN_WIDTH, RAIL_MAX_WIDTH,
+  RAIL_THICKNESS, RAIL_ENDCAP_LEN, RAIL_HANDLE_LEN,
+  RAIL_TICK_INSET, RAIL_TICK_LEN, RAIL_LABEL_GAP,
 } from './state.js';
 import { el, escapeHtml, cssEscape, uniqueIface, toast } from './utils.js';
 import { isTopologyLocked } from './sim.js';
@@ -299,6 +302,30 @@ export function clipToRect(cx, cy, w, h, tx, ty) {
   const t = Math.min(tw, th);
   return [cx + dx * t, cy + dy * t];
 }
+
+// Compute where an edge from `device` should terminate on `rail`.
+// Horizontal rail: clamp tap-x to the rail span (minus inset); tap-y = top/bottom edge.
+// Vertical rail:   clamp tap-y to the rail span (minus inset); tap-x = left/right edge.
+export function tapPointOnRail(device, rail) {
+  const w = rail.w ?? RAIL_DEFAULT_WIDTH;
+  const h = RAIL_THICKNESS;
+  const inset = RAIL_TICK_INSET;
+  const vertical = (rail.orientation ?? 'h') === 'v';
+  if (vertical) {
+    const minY = rail.y - w / 2 + inset;
+    const maxY = rail.y + w / 2 - inset;
+    const tapY = Math.max(minY, Math.min(maxY, device.y));
+    const tapX = device.x < rail.x ? rail.x - h / 2 : rail.x + h / 2;
+    return [tapX, tapY];
+  }
+  const minX = rail.x - w / 2 + inset;
+  const maxX = rail.x + w / 2 - inset;
+  const tapX = Math.max(minX, Math.min(maxX, device.x));
+  const tapY = device.y < rail.y ? rail.y - h / 2 : rail.y + h / 2;
+  return [tapX, tapY];
+}
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 export function drawNode(kind, name, obj) {
   const isSel = state.selection && state.selection.kind === kind && state.selection.name === name;
