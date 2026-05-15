@@ -4,7 +4,7 @@
 // the canvas. Reads Sim.state to freeze in-flight tweens while paused.
 import { bus } from './state.js';
 import { escapeHtml } from './utils.js';
-import { lookupDeviceNode, lookupAddressNode, lookupNetworkNode, getNodeCenter } from './canvas.js';
+import { lookupDeviceNode, lookupAddressNode, lookupNetworkNode, getNodeCenter, railTapPoint } from './canvas.js';
 import { Sim } from './sim.js';
 
 /* ---------- PacketAnim ---------- */
@@ -77,10 +77,44 @@ export const PacketAnim = {
       if (dot.parentNode) layer.removeChild(dot);
       if (onDone) onDone();
     };
-    this._tween(dot, srcNode, netNode, this.DURATION_MS / 2, () => {
-      if (!dstNode) { finish(); return; }
-      this._tween(dot, netNode, dstNode, this.DURATION_MS / 2, finish);
-    });
+
+    // Visual path through the rail — mirrors what drawEdge renders so the
+    // packet hugs the visible wire instead of cutting through the air:
+    //   src device  →[bezier]→  src tap on rail  →[line]→  dst tap  →[bezier]→  dst device
+    const srcCenter = getNodeCenter(srcNode);
+    const dstCenter = dstNode ? getNodeCenter(dstNode) : null;
+    const srcTap = railTapPoint(evt.src && evt.src.device, evt.network) || getNodeCenter(netNode);
+    const dstTap = (evt.dst && evt.dst.device)
+      ? (railTapPoint(evt.dst.device, evt.network) || getNodeCenter(netNode))
+      : null;
+
+    const segs = [];
+    if (srcCenter && srcTap) segs.push({ kind: 'bez', ...this._bezBetween(srcCenter, srcTap) });
+    if (srcTap && dstTap)    segs.push({ kind: 'line', from: srcTap, to: dstTap });
+    if (dstTap && dstCenter) segs.push({ kind: 'bez', ...this._bezBetween(dstTap, dstCenter) });
+    if (segs.length === 0) { finish(); return; }
+
+    const segDur = this.DURATION_MS / segs.length;
+    let i = 0;
+    const stepNext = () => {
+      if (i >= segs.length) { finish(); return; }
+      const s = segs[i];
+      const onSegDone = () => { i++; stepNext(); };
+      if (s.kind === 'bez') this._tweenBezier(dot, s.p0, s.c1, s.c2, s.p3, segDur, onSegDone);
+      else                  this._tweenPoints(dot, s.from, s.to, segDur, onSegDone);
+    };
+    stepNext();
+  },
+
+  // Cubic bezier with horizontal tangents at both ends — same shape used by
+  // drawEdge in canvas.js, so packet trajectory matches the visible wire.
+  _bezBetween(p0, p3) {
+    const dx = p3.x - p0.x;
+    return {
+      p0, p3,
+      c1: { x: p0.x + dx * 0.55, y: p0.y },
+      c2: { x: p3.x - dx * 0.55, y: p3.y },
+    };
   },
 
   _chatterAllowed(evt) {
@@ -96,8 +130,11 @@ export const PacketAnim = {
     const fp = getNodeCenter(fromNode);
     const tp = getNodeCenter(toNode);
     if (!fp || !tp) { done(); return; }
-    // Track elapsed manually so the animation freezes while Sim is paused —
-    // lets users hover/inspect packets mid-flight.
+    this._tweenPoints(dot, fp, tp, durationMs, done);
+  },
+
+  // Straight-line tween between two world-space points. Freezes while paused.
+  _tweenPoints(dot, fp, tp, durationMs, done) {
     let elapsed = 0;
     let lastT = performance.now();
     const tick = () => {
@@ -107,6 +144,26 @@ export const PacketAnim = {
       const t = Math.min(1, elapsed / durationMs);
       dot.setAttribute('cx', fp.x + (tp.x - fp.x) * t);
       dot.setAttribute('cy', fp.y + (tp.y - fp.y) * t);
+      if (t < 1) requestAnimationFrame(tick);
+      else done();
+    };
+    requestAnimationFrame(tick);
+  },
+
+  // Cubic bezier tween — samples B(t) for each frame so the packet rides the
+  // same curve drawEdge renders. Freezes while paused (same pattern as above).
+  _tweenBezier(dot, p0, c1, c2, p3, durationMs, done) {
+    let elapsed = 0;
+    let lastT = performance.now();
+    const tick = () => {
+      const now = performance.now();
+      if (Sim.state !== 'paused') elapsed += (now - lastT);
+      lastT = now;
+      const t = Math.min(1, elapsed / durationMs);
+      const u = 1 - t;
+      const a = u*u*u, b = 3*u*u*t, c = 3*u*t*t, d = t*t*t;
+      dot.setAttribute('cx', a*p0.x + b*c1.x + c*c2.x + d*p3.x);
+      dot.setAttribute('cy', a*p0.y + b*c1.y + c*c2.y + d*p3.y);
       if (t < 1) requestAnimationFrame(tick);
       else done();
     };

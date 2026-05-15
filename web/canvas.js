@@ -37,6 +37,18 @@ export function lookupAddressNode(address) {
   return null;
 }
 
+// Where a device's edge meets a LAN's rail — in world coordinates.
+// Used by packet animation so packets travel along the visible wire instead
+// of cutting straight through the LAN's centroid.
+export function railTapPoint(deviceName, networkName) {
+  const net = state.networks[networkName];
+  if (!net) return null;
+  const dev = state.hosts[deviceName] || state.routers[deviceName];
+  if (!dev || dev.x == null || dev.y == null) return null;
+  const [x, y] = tapPointOnRail({ x: dev.x, y: dev.y }, net);
+  return { x, y };
+}
+
 export function getNodeCenter(g) {
   if (!g) return null;
   // Each node's <g> has transform="translate(x, y)"; the centroid is at (0,0) in local space.
