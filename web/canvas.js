@@ -585,23 +585,6 @@ function startRailResize(e, name, handle) {
   document.addEventListener('pointerup', onUp);
 }
 
-/* hand-tuned cloud silhouette — 4 lobes, flat-ish bottom; coords in 200x80 base, scaled to (w,h) */
-export function cloudPath(w, h) {
-  const sx = w / 200, sy = h / 80;
-  const seg = (cmd, ...nums) => cmd + ' ' + nums.map((n, i) =>
-    ((i % 2 === 0 ? n * sx : n * sy)).toFixed(2)
-  ).join(' ');
-  return [
-    seg('M', 40, 68),
-    seg('C', 12, 68, 8, 40, 34, 36),
-    seg('C', 28, 14, 64, 8, 76, 28),
-    seg('C', 86, 8, 124, 8, 134, 28),
-    seg('C', 154, 14, 190, 28, 180, 50),
-    seg('C', 204, 50, 204, 72, 178, 70),
-    seg('L', 40, 70),
-    'Z',
-  ].join(' ');
-}
 
 /* ---------- interaction ---------- */
 let drag = null;          // active drag state
