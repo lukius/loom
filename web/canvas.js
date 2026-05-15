@@ -190,7 +190,9 @@ export function fitView() {
   }
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   all.forEach(o => {
-    const { w, h } = NODE[o.k];
+    const size = o.k === 'network' ? railRenderSize(o) : NODE[o.k];
+    const w = size.width ?? size.w;
+    const h = size.height ?? size.h;
     minX = Math.min(minX, o.x - w/2);
     minY = Math.min(minY, o.y - h/2);
     maxX = Math.max(maxX, o.x + w/2);
@@ -245,11 +247,11 @@ export function renderCanvas() {
 }
 
 export function drawEdge(a, b, kind, sel, info) {
-  // a, b have x,y at center; we clip to each node's rect
+  // a is the device (host/router) and b is the LAN. Clip the device end to
+  // its rect; the LAN end taps onto the rail at the closest valid point.
   const aSize = NODE[sel.kind === 'host' ? 'host' : 'router'];
-  const bSize = NODE.network;
   const [ax, ay] = clipToRect(a.x, a.y, aSize.w, aSize.h, b.x, b.y);
-  const [bx, by] = clipToRect(b.x, b.y, bSize.w, bSize.h, a.x, a.y);
+  const [bx, by] = tapPointOnRail(a, b);
   const dx = bx - ax, dy = by - ay;
   // smooth bezier
   const c1x = ax + dx * 0.55, c1y = ay;
@@ -329,10 +331,9 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 export function drawNode(kind, name, obj) {
   const isSel = state.selection && state.selection.kind === kind && state.selection.name === name;
-  const { w, h } = NODE[kind];
   const pad = HIT_PAD[kind];
 
-  // group is centered at obj.x, obj.y (the icon/cloud centroid)
+  // group is centered at obj.x, obj.y
   const g = el('g', {
     class: `node ${kind}${isSel ? ' selected' : ''}`,
     transform: `translate(${obj.x} ${obj.y})`,
@@ -340,38 +341,19 @@ export function drawNode(kind, name, obj) {
     'data-name': name,
   });
 
-  // hit rect — invisible, covers the icon + label region
-  g.appendChild(el('rect', {
-    class: 'hit',
-    x: -w / 2 - pad.x,
-    y: -h / 2 - pad.top,
-    width: w + pad.x * 2,
-    height: h + pad.top + pad.bottom,
-    rx: 10,
-  }));
-
   if (kind === 'network') {
-    // cloud silhouette, centered at (0,0)
-    g.appendChild(el('path', {
-      class: 'cloud',
-      d: cloudPath(w, h),
-      transform: `translate(${-w / 2} ${-h / 2})`,
-    }));
-    // LAN name centered in cloud (slightly above geometric center for visual balance)
-    g.appendChild(el('text', {
-      class: 'name',
-      x: 0, y: -4,
-      'text-anchor': 'middle',
-      'dominant-baseline': 'middle',
-      style: 'font-size:15px;',
-    }, name));
-    // CIDR badge below the cloud
-    g.appendChild(el('text', {
-      class: `sub ${obj.cidr ? '' : 'empty'}`,
-      x: 0, y: h / 2 + 18,
-      'text-anchor': 'middle',
-    }, obj.cidr || '— no cidr'));
+    drawNetworkRail(g, name, obj, pad, isSel);
   } else {
+    const { w, h } = NODE[kind];
+    // hit rect — invisible, covers the icon + label region
+    g.appendChild(el('rect', {
+      class: 'hit',
+      x: -w / 2 - pad.x,
+      y: -h / 2 - pad.top,
+      width: w + pad.x * 2,
+      height: h + pad.top + pad.bottom,
+      rx: 10,
+    }));
     // host / router: just the icon, then name, then sub
     const icoVB = kind === 'host' ? '0 0 28 30' : '0 0 32 30';
     const ico = el('svg', {
@@ -417,6 +399,121 @@ export function drawNode(kind, name, obj) {
 
   attachNodeEvents(g, kind, name);
   nodesLayer().appendChild(g);
+}
+
+/* ---------- LAN rail rendering ---------- */
+
+// Collect every host/router that's attached to this LAN.
+function collectAttachedDevices(netName) {
+  const out = [];
+  for (const [hn, h] of Object.entries(state.hosts)) {
+    if (h.network === netName) out.push({ kind: 'host', name: hn, x: h.x, y: h.y });
+  }
+  for (const [rn, r] of Object.entries(state.routers)) {
+    const hasIface = Object.values(r.interfaces || {}).some(i => i.network === netName);
+    if (hasIface) out.push({ kind: 'router', name: rn, x: r.x, y: r.y });
+  }
+  return out;
+}
+
+// Build the "name · cidr" label below the rail's main-axis bottom end.
+function buildRailLabel(name, obj, baselineY) {
+  const text = el('text', {
+    class: 'rail-label',
+    x: 0, y: baselineY,
+    'text-anchor': 'middle',
+  });
+  text.appendChild(el('tspan', { class: 'name' }, name));
+  text.appendChild(el('tspan', { class: 'sep' }, ' · '));
+  if (obj.cidr) {
+    text.appendChild(el('tspan', { class: 'cidr' }, obj.cidr));
+  } else {
+    text.appendChild(el('tspan', { class: 'cidr empty' }, '— no cidr'));
+  }
+  return text;
+}
+
+// Return the actual rendered (width, height) of a LAN rail given its state.
+// The "main" axis carries length `w`; the "cross" axis carries thickness.
+export function railRenderSize(obj) {
+  const railLen = obj.w ?? RAIL_DEFAULT_WIDTH;
+  const railThk = RAIL_THICKNESS;
+  const vertical = (obj.orientation ?? 'h') === 'v';
+  return vertical
+    ? { width: railThk, height: railLen, vertical: true, len: railLen, thk: railThk }
+    : { width: railLen, height: railThk, vertical: false, len: railLen, thk: railThk };
+}
+
+function drawNetworkRail(g, name, obj, pad, isSel) {
+  const { width: renderW, height: renderH, vertical, len, thk } = railRenderSize(obj);
+
+  // hit rect — wraps rail bounding box + label area below
+  g.appendChild(el('rect', {
+    class: 'hit',
+    x: -renderW / 2 - pad.x,
+    y: -renderH / 2 - pad.top,
+    width: renderW + pad.x * 2,
+    height: renderH + pad.top + pad.bottom,
+    rx: 10,
+  }));
+
+  // rail bar
+  g.appendChild(el('rect', {
+    class: 'rail',
+    x: vertical ? -thk / 2 : -len / 2,
+    y: vertical ? -len / 2 : -thk / 2,
+    width: vertical ? thk : len,
+    height: vertical ? len : thk,
+    rx: thk / 2,
+  }));
+
+  // endcaps (also serve as resize handles when LAN is selected)
+  const capMain = isSel ? RAIL_HANDLE_LEN : RAIL_ENDCAP_LEN;
+  const capCross = isSel ? 5 : 3;
+  for (const sign of [-1, 1]) {
+    const capAttrs = vertical
+      ? { x: -capMain / 2, y: sign * len / 2 - capCross / 2, width: capMain, height: capCross }
+      : { x: sign * len / 2 - capCross / 2, y: -capMain / 2, width: capCross, height: capMain };
+    const extra = isSel
+      ? {
+          'data-handle': 'true',
+          'data-axis': vertical ? 'v' : 'h',
+          'data-end': sign === -1 ? (vertical ? 'top' : 'left') : (vertical ? 'bottom' : 'right'),
+        }
+      : {};
+    g.appendChild(el('rect', { class: 'endcap', rx: 1, ...capAttrs, ...extra }));
+  }
+
+  // tap ticks — one per attached device
+  const devices = collectAttachedDevices(name);
+  for (const dev of devices) {
+    const relMain = (vertical ? dev.y : dev.x) - (vertical ? obj.y : obj.x);
+    const tapMain = clamp(relMain, -len / 2 + RAIL_TICK_INSET, len / 2 - RAIL_TICK_INSET);
+    const onNegSide = (vertical ? dev.x : dev.y) < (vertical ? obj.x : obj.y);
+    // tick lives inside the rail, perpendicular to the main axis
+    const tickAttrs = vertical
+      ? {
+          x: onNegSide ? -thk / 2 : thk / 2 - RAIL_TICK_LEN,
+          y: tapMain - 1,
+          width: RAIL_TICK_LEN, height: 2,
+        }
+      : {
+          x: tapMain - 1,
+          y: onNegSide ? -thk / 2 : thk / 2 - RAIL_TICK_LEN,
+          width: 2, height: RAIL_TICK_LEN,
+        };
+    g.appendChild(el('rect', {
+      class: 'tick',
+      'data-device-kind': dev.kind,
+      'data-device-name': dev.name,
+      rx: 1,
+      ...tickAttrs,
+    }));
+  }
+
+  // label below the rail's bottom-most point (works for both orientations)
+  const baselineY = (vertical ? len / 2 : thk / 2) + RAIL_LABEL_GAP;
+  g.appendChild(buildRailLabel(name, obj, baselineY));
 }
 
 /* hand-tuned cloud silhouette — 4 lobes, flat-ish bottom; coords in 200x80 base, scaled to (w,h) */
@@ -548,7 +645,7 @@ export function wireCanvas() {
       let hover = null;
       if (drag.kind === 'host' || drag.kind === 'router') {
         for (const [nn, nv] of Object.entries(state.networks)) {
-          const { w: nw, h: nh } = NODE.network;
+          const { width: nw, height: nh } = railRenderSize(nv);
           if (Math.abs(w.x - nv.x) < nw/2 + 24 && Math.abs(w.y - nv.y) < nh/2 + 24) {
             hover = nn; break;
           }
@@ -667,9 +764,8 @@ export function drawDragPreview() {
   const b = state.networks[drag.hoverNet];
   if (!b) return;
   const aSize = NODE[drag.kind];
-  const bSize = NODE.network;
   const [ax, ay] = clipToRect(a.x, a.y, aSize.w, aSize.h, b.x, b.y);
-  const [bx, by] = clipToRect(b.x, b.y, bSize.w, bSize.h, a.x, a.y);
+  const [bx, by] = tapPointOnRail(a, b);
   const dx = bx - ax;
   const c1x = ax + dx * 0.55, c1y = ay;
   const c2x = bx - dx * 0.55, c2y = by;

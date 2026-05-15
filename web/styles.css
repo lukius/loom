@@ -728,32 +728,64 @@ svg.canvas.linking { cursor: crosshair; }
 }
 .canvas .node.selected .ring { opacity: .85; }
 
-/* LAN: cloud silhouette */
-.canvas .node.network .cloud {
-  fill: var(--net-bg);
-  stroke: var(--net-border);
-  stroke-width: 1.4;
-  transition: stroke .12s, fill .12s, stroke-width .12s, filter .15s;
+/* LAN: bus rail (replaces the cloud silhouette) */
+.canvas .node.network .rail {
+  fill: var(--net);
+  transition: fill .12s, filter .15s, stroke .12s, stroke-width .12s;
 }
-.canvas .node.network:hover .cloud {
-  stroke: var(--net);
+.canvas .node.network .endcap {
+  fill: var(--net);
+  transition: fill .12s;
+}
+.canvas .node.network .tick {
+  fill: var(--net-text);
+  transition: fill .12s;
+}
+.canvas .node.network:hover .rail,
+.canvas .node.network:hover .endcap {
+  fill: color-mix(in srgb, var(--net) 88%, white);
   filter: drop-shadow(0 4px 10px rgba(0,0,0,.06));
 }
-.canvas .node.network.selected .cloud {
-  stroke: var(--net);
-  stroke-width: 2;
-}
-.canvas .node.network .name { fill: var(--net-text); font-weight: 600; }
-.canvas .node.network.selected .name { fill: var(--accent); }
 
-/* drop highlight on LAN cloud */
-.canvas .node.network.drop-target .cloud {
+/* inline "name · cidr" label below the rail */
+.canvas .node.network .rail-label { font-size: 15px; }
+.canvas .node.network .rail-label .name { fill: var(--net-text); font-weight: 600; }
+.canvas .node.network .rail-label .sep { fill: var(--text-3); }
+.canvas .node.network .rail-label .cidr { fill: var(--text-2); font-size: 13px; }
+.canvas .node.network .rail-label .cidr.empty { fill: var(--text-3); font-style: italic; }
+.canvas .node.network.selected .rail-label .name { fill: var(--accent); }
+
+/* selected — outer halo (paint-order trick keeps the inner fill solid) */
+.canvas .node.network.selected .rail {
+  paint-order: stroke fill;
   stroke: var(--accent);
-  stroke-width: 2.4;
-  fill: var(--accent-bg-2);
-  filter: drop-shadow(0 0 16px var(--accent-glow));
+  stroke-width: 2;
+  stroke-opacity: 0.65;
 }
-.canvas .node.network.drop-target .name { fill: var(--accent); }
+/* selected — endcaps upgrade into resize handles */
+.canvas .node.network.selected .endcap {
+  fill: var(--accent);
+  stroke: var(--accent-border);
+  stroke-width: 1;
+}
+.canvas .node.network.selected .endcap[data-handle="true"][data-axis="h"] { cursor: ew-resize; }
+.canvas .node.network.selected .endcap[data-handle="true"][data-axis="v"] { cursor: ns-resize; }
+
+/* drop-target — rail glows accent and pulses */
+.canvas .node.network.drop-target .rail {
+  fill: var(--accent);
+  filter: drop-shadow(0 0 16px var(--accent-glow));
+  animation: rail-pulse 1s ease-in-out infinite alternate;
+}
+.canvas .node.network.drop-target .endcap { fill: var(--accent); }
+.canvas .node.network.drop-target .rail-label .name { fill: var(--accent); }
+@keyframes rail-pulse {
+  from { filter: drop-shadow(0 0 8px var(--accent-glow)); }
+  to   { filter: drop-shadow(0 0 18px var(--accent-glow)); }
+}
+
+/* tap-tick brightens when its device is hovered */
+.canvas .node.network .tick.matched-hover { fill: var(--accent); }
 
 /* empty overlay */
 .canv-empty {

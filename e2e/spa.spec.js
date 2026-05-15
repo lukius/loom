@@ -249,4 +249,21 @@ test.describe('netrouting SPA - smoke', () => {
       { timeout: 5000 },
     );
   });
+
+  test('LAN nodes render as a bus rail with endcaps, ticks, and inline label', async ({ page }) => {
+    // SAMPLE: 3 networks, with attachments lan1=3, lan2=4, lan3=3 → 10 ticks total.
+    await expect(page.locator('#nodes-layer g.node.network .rail')).toHaveCount(3);
+    await expect(page.locator('#nodes-layer g.node.network .endcap')).toHaveCount(6);
+    await expect(page.locator('#nodes-layer g.node.network .tick')).toHaveCount(10);
+
+    const label0 = page.locator('#nodes-layer g.node.network').first().locator('.rail-label');
+    await expect(label0).toContainText('·');
+  });
+
+  test('default LAN rail renders horizontally (width > height)', async ({ page }) => {
+    const rail = page.locator('#nodes-layer g.node.network').first().locator('.rail');
+    const w = Number(await rail.getAttribute('width'));
+    const h = Number(await rail.getAttribute('height'));
+    expect(w).toBeGreaterThan(h);
+  });
 });
