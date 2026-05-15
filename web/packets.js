@@ -4,7 +4,10 @@
 // the canvas. Reads Sim.state to freeze in-flight tweens while paused.
 import { bus } from './state.js';
 import { escapeHtml } from './utils.js';
-import { lookupDeviceNode, lookupAddressNode, lookupNetworkNode, getNodeCenter, railTapPoint } from './canvas.js';
+import {
+  lookupDeviceNode, lookupAddressNode, lookupNetworkNode,
+  getNodeCenter, railTapPoint, deviceNameForEndpoint,
+} from './canvas.js';
 import { Sim } from './sim.js';
 
 /* ---------- PacketAnim ---------- */
@@ -83,9 +86,12 @@ export const PacketAnim = {
     //   src device  →[bezier]→  src tap on rail  →[line]→  dst tap  →[bezier]→  dst device
     const srcCenter = getNodeCenter(srcNode);
     const dstCenter = dstNode ? getNodeCenter(dstNode) : null;
+    // Simulator emits `dst.address` (no `dst.device`), so we resolve the
+    // address back to a device name to compute the rail tap point.
+    const dstName = deviceNameForEndpoint(evt.dst);
     const srcTap = railTapPoint(evt.src && evt.src.device, evt.network) || getNodeCenter(netNode);
-    const dstTap = (evt.dst && evt.dst.device)
-      ? (railTapPoint(evt.dst.device, evt.network) || getNodeCenter(netNode))
+    const dstTap = dstName
+      ? (railTapPoint(dstName, evt.network) || getNodeCenter(netNode))
       : null;
 
     const segs = [];

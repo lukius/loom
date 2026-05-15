@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { tapPointOnRail, railTapPoint } from './canvas.js';
+import { tapPointOnRail, railTapPoint, deviceNameForEndpoint } from './canvas.js';
 import {
   state,
   RAIL_DEFAULT_WIDTH, RAIL_THICKNESS, RAIL_TICK_INSET,
@@ -162,5 +162,44 @@ describe('railTapPoint — resolves device+network names to world-space tap', ()
     state.networks.lan4 = { x: 0, y: 0, cidr: '10.0.4.0/24' };
     state.hosts.h4 = { network: 'lan4' };
     expect(railTapPoint('h4', 'lan4')).toBeNull();
+  });
+});
+
+describe('deviceNameForEndpoint — resolves packet endpoints to device names', () => {
+  beforeEach(() => {
+    state.hosts = {};
+    state.routers = {};
+    state.networks = {};
+  });
+
+  it('prefers an explicit device field when present', () => {
+    state.hosts.h1 = { address: '10.0.0.1', x: 0, y: 0, network: 'lan' };
+    expect(deviceNameForEndpoint({ device: 'h1', address: '10.0.0.1' })).toBe('h1');
+  });
+
+  it('looks up a host by its address when device is missing', () => {
+    state.hosts.h2 = { address: '10.0.0.2', x: 0, y: 0, network: 'lan' };
+    expect(deviceNameForEndpoint({ address: '10.0.0.2' })).toBe('h2');
+  });
+
+  it('looks up a router by interface address when device is missing', () => {
+    state.routers.r1 = {
+      x: 0, y: 0,
+      interfaces: { eth0: { network: 'lan', address: '10.0.0.254', cost: 10 } },
+    };
+    expect(deviceNameForEndpoint({ address: '10.0.0.254' })).toBe('r1');
+  });
+
+  it('returns null on an unknown address', () => {
+    expect(deviceNameForEndpoint({ address: '99.99.99.99' })).toBeNull();
+  });
+
+  it('returns null on a falsy endpoint', () => {
+    expect(deviceNameForEndpoint(null)).toBeNull();
+    expect(deviceNameForEndpoint(undefined)).toBeNull();
+  });
+
+  it('returns null when neither device nor address is provided', () => {
+    expect(deviceNameForEndpoint({})).toBeNull();
   });
 });

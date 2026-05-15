@@ -49,6 +49,25 @@ export function railTapPoint(deviceName, networkName) {
   return { x, y };
 }
 
+// Resolve a packet endpoint (which may carry only `address`, only `device`,
+// or both — the simulator emits address-only for dst hops) into the owning
+// device's name. Used by packet animation to find the per-hop next-hop tap.
+export function deviceNameForEndpoint(endpoint) {
+  if (!endpoint) return null;
+  if (endpoint.device) return endpoint.device;
+  const address = endpoint.address;
+  if (!address) return null;
+  for (const [hn, h] of Object.entries(state.hosts || {})) {
+    if (h.address === address) return hn;
+  }
+  for (const [rn, r] of Object.entries(state.routers || {})) {
+    for (const ifn of Object.keys(r.interfaces || {})) {
+      if (r.interfaces[ifn].address === address) return rn;
+    }
+  }
+  return null;
+}
+
 export function getNodeCenter(g) {
   if (!g) return null;
   // Each node's <g> has transform="translate(x, y)"; the centroid is at (0,0) in local space.
