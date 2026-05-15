@@ -102,6 +102,7 @@ document.getElementById('tb-toggle-ifaces').addEventListener('click', () => {
 
 window.addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea')) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.code === 'Space') { e.preventDefault(); Sim.onPrimary(); }
   if (e.key === 'p' || e.key === 'P') { e.preventDefault(); Sim.onSecondary(); }
 });
@@ -267,6 +268,9 @@ function wire() {
     if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
     if (e.key === 'Escape') { state.selection = null; closeContextMenu(); renderAll(); }
     if (e.key === 'Delete') { if (state.selection) { e.preventDefault(); deleteSelected(); } }
+    // Single-letter shortcuts must not fire while a modifier is held — otherwise
+    // Ctrl+R ("add router") swallows Chrome's reload, Cmd+H clashes with hide, etc.
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key.toLowerCase();
     if (k === 'n') { e.preventDefault(); addNew('network'); }
     if (k === 'h') { e.preventDefault(); addNew('host'); }
