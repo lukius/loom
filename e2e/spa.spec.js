@@ -383,6 +383,46 @@ test.describe('netrouting SPA - smoke', () => {
     expect(heightAfter).toBeGreaterThan(heightBefore);
   });
 
+  test('dragging a host over a LAN lights up its rail with drop-target class', async ({ page }) => {
+    // h1 currently lives on lan1. Drag it toward lan2 (one of the OTHER LANs).
+    const host = page.locator('#nodes-layer g.node.host[data-name="h1"]');
+    // Pick a target LAN that isn't h1's current LAN to make the drop meaningful.
+    const target = page.locator('#nodes-layer g.node.network[data-name="lan2"]');
+    const hb = await host.boundingBox();
+    const tb = await target.boundingBox();
+
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2, { steps: 12 });
+    // Still holding the mouse — drop-target class should be live now.
+    await expect(target).toHaveClass(/drop-target/, { timeout: 2000 });
+    await page.mouse.up();
+    // After release, class is cleared.
+    await expect(target).not.toHaveClass(/drop-target/);
+  });
+
+  test('hovering a host brightens its matching tick on the LAN rail', async ({ page }) => {
+    // h1 attaches to lan1, producing exactly one tick with data-device-name="h1".
+    const host = page.locator('#nodes-layer g.node.host[data-name="h1"]');
+    const tick = page.locator('#nodes-layer g.node.network .tick[data-device-name="h1"]');
+    await expect(tick).toHaveCount(1);
+    await host.hover();
+    await expect(tick).toHaveClass(/matched-hover/, { timeout: 1000 });
+    // Move pointer away — class clears.
+    await page.locator('body').hover({ position: { x: 5, y: 5 } });
+    await expect(tick).not.toHaveClass(/matched-hover/);
+  });
+
+  test('hovering a router brightens every tick on every LAN it attaches to', async ({ page }) => {
+    // r1 attaches to lan1 and lan2 — should brighten 2 ticks.
+    const router = page.locator('#nodes-layer g.node.router[data-name="r1"]');
+    const ticks = page.locator('#nodes-layer g.node.network .tick[data-device-name="r1"]');
+    await expect(ticks).toHaveCount(2);
+    await router.hover();
+    await expect(ticks.first()).toHaveClass(/matched-hover/, { timeout: 1000 });
+    await expect(ticks.nth(1)).toHaveClass(/matched-hover/);
+  });
+
   test('dragging the left handle also widens (symmetric resize)', async ({ page }) => {
     const lan = page.locator('#nodes-layer g.node.network').first();
     await lan.click();

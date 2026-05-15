@@ -807,6 +807,24 @@ export function wireCanvas() {
     }
   });
 
+  // Tap-tick hover affordance — when a host/router is hovered, brighten its
+  // matching ticks on every LAN. Listener lives on the layer (not the nodes)
+  // so we wire it once here, not per-node on each render.
+  nodesLayer().addEventListener('mouseover', (e) => {
+    const node = e.target.closest('g.node[data-kind="host"], g.node[data-kind="router"]');
+    if (!node) return;
+    const dn = node.getAttribute('data-name');
+    const dk = node.getAttribute('data-kind');
+    nodesLayer().querySelectorAll(
+      `g.node.network .tick[data-device-kind="${dk}"][data-device-name="${cssEscape(dn)}"]`,
+    ).forEach(t => t.classList.add('matched-hover'));
+  });
+  nodesLayer().addEventListener('mouseout', (e) => {
+    const node = e.target.closest('g.node[data-kind="host"], g.node[data-kind="router"]');
+    if (!node) return;
+    nodesLayer().querySelectorAll('.tick.matched-hover').forEach(t => t.classList.remove('matched-hover'));
+  });
+
   // wheel zoom
   svg.addEventListener('wheel', (e) => {
     e.preventDefault();
