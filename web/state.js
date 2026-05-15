@@ -23,14 +23,29 @@ export const state = {
    imports. */
 export const bus = new EventTarget();
 
-/* node sizes — w/h represent the icon (or cloud) bounding box centered at obj.x/obj.y;
-   labels render below this box and are included in a wider hit area at draw time */
+/* Rail (LAN bus) geometry — used by canvas.js when rendering networks.
+   The rail's main-axis carries length `w` (stored per-network, optional, default RAIL_DEFAULT_WIDTH).
+   The rail's cross-axis carries thickness `h` (constant RAIL_THICKNESS). */
+export const RAIL_DEFAULT_WIDTH = 180;
+export const RAIL_MIN_WIDTH = 100;
+export const RAIL_MAX_WIDTH = 800;
+export const RAIL_THICKNESS = 10;
+export const RAIL_ENDCAP_LEN = 14;
+export const RAIL_HANDLE_LEN = 18;
+export const RAIL_TICK_INSET = 12;
+export const RAIL_TICK_LEN = 4;
+export const RAIL_LABEL_GAP = 18;
+
+/* node sizes — w/h represent the icon (or rail) bounding box centered at obj.x/obj.y;
+   labels render below this box and are included in a wider hit area at draw time.
+   For network: width is the rail's main-axis size, height is the thickness.
+   drawNode resolves the orientation-aware real (width, height) per network at render time. */
 export const NODE = {
-  network: { w: 220, h: 84 },   // cloud silhouette
+  network: { w: RAIL_DEFAULT_WIDTH, h: RAIL_THICKNESS },
   host:    { w: 56,  h: 60 },   // workstation icon
   router:  { w: 64,  h: 64 },   // router cube
 };
-export const HIT_PAD = { network: { x: 12, top: 10, bottom: 32 }, host: { x: 18, top: 6, bottom: 36 }, router: { x: 18, top: 6, bottom: 38 } };
+export const HIT_PAD = { network: { x: 12, top: 12, bottom: 32 }, host: { x: 18, top: 6, bottom: 36 }, router: { x: 18, top: 6, bottom: 38 } };
 
 export const SAMPLE = {
   asName: 'test_as',

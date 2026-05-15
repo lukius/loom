@@ -59,6 +59,20 @@ describe('persist / restore', () => {
     expect(state.networks.lan1).toEqual({ cidr: '10.0.0.0/24', x: 1, y: 2 });
   });
 
+  it('round-trips optional network fields w and orientation', () => {
+    state.networks.lan1 = {
+      cidr: '10.0.0.0/24', x: 1, y: 2,
+      w: 240, orientation: 'v',
+    };
+    persist();
+    resetState();
+    expect(restore()).toBe(true);
+    expect(state.networks.lan1).toEqual({
+      cidr: '10.0.0.0/24', x: 1, y: 2,
+      w: 240, orientation: 'v',
+    });
+  });
+
   it('persists to the STORAGE_KEY localStorage slot', () => {
     persist();
     expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
