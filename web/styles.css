@@ -483,10 +483,36 @@ body.col-resizing * { cursor: col-resize !important; }
 .canv-toolbar .tb-btn.network .ico { color: var(--net); }
 .canv-toolbar .tb-btn.host    .ico { color: var(--host); }
 .canv-toolbar .tb-btn.router  .ico { color: var(--rtr); }
-.canv-toolbar .tb-btn.primary { background: var(--text); color: var(--bg); }
-.canv-toolbar .tb-btn.primary:hover { background: var(--accent); color: var(--accent-fg); }
-.canv-toolbar .tb-btn.running { color: var(--pos, #16a34a); animation: pulse 1.5s infinite; }
-.canv-toolbar .tb-btn.paused  { color: var(--warn, #d97706); }
+/* Start/Stop button — idle = brand accent, then shifts to status color while
+   the sim runs/pauses so the button itself reflects state. */
+.canv-toolbar .tb-btn.primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: transparent;
+}
+.canv-toolbar .tb-btn.primary:hover {
+  background: color-mix(in srgb, var(--accent) 86%, black);
+}
+.canv-toolbar .tb-btn.primary.running {
+  background: var(--pos);
+  color: #ffffff;
+  animation: pulse 1.5s infinite;
+}
+.canv-toolbar .tb-btn.primary.running:hover {
+  background: color-mix(in srgb, var(--pos) 86%, black);
+}
+.canv-toolbar .tb-btn.primary.paused {
+  background: var(--warn);
+  color: #ffffff;
+  animation: none;
+}
+.canv-toolbar .tb-btn.primary.paused:hover {
+  background: color-mix(in srgb, var(--warn) 86%, black);
+}
+/* fallback for non-primary buttons that pick up these states (defensive — the
+   sim currently only applies running/paused to the primary play button). */
+.canv-toolbar .tb-btn.running:not(.primary) { color: var(--pos); animation: pulse 1.5s infinite; }
+.canv-toolbar .tb-btn.paused:not(.primary)  { color: var(--warn); }
 @keyframes pulse { 50% { opacity: 0.6; } }
 .canv-toolbar .div { width: 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
 .canv-toolbar .tb-btn.chatter-muted { opacity: 0.5; }
