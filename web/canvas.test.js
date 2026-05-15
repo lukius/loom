@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { tapPointOnRail } from './canvas.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { tapPointOnRail, railTapPoint } from './canvas.js';
 import {
+  state,
   RAIL_DEFAULT_WIDTH, RAIL_THICKNESS, RAIL_TICK_INSET,
 } from './state.js';
 
@@ -107,5 +108,59 @@ describe('tapPointOnRail — vertical rail', () => {
     const [xB] = tapPointOnRail({ x: 51, y: 0 }, r);
     expect(xA).toBe(50 - H / 2);
     expect(xB).toBe(50 + H / 2);
+  });
+});
+
+describe('railTapPoint — resolves device+network names to world-space tap', () => {
+  beforeEach(() => {
+    // Snapshot reset — these tests mutate state.hosts/routers/networks.
+    state.hosts = {};
+    state.routers = {};
+    state.networks = {};
+  });
+
+  it('returns the same coordinates as tapPointOnRail for a host', () => {
+    state.networks.lan1 = { x: 100, y: 0, cidr: '10.0.0.0/24' };
+    state.hosts.h1 = { network: 'lan1', x: 0, y: -50, address: '10.0.0.1' };
+    const tap = railTapPoint('h1', 'lan1');
+    const [x, y] = tapPointOnRail({ x: 0, y: -50 }, state.networks.lan1);
+    expect(tap).toEqual({ x, y });
+  });
+
+  it('resolves routers by name as well as hosts', () => {
+    state.networks.lan2 = { x: 200, y: 200, cidr: '10.0.1.0/24' };
+    state.routers.r1 = {
+      x: 50, y: 50,
+      interfaces: { eth0: { network: 'lan2', address: '10.0.1.1', cost: 10 } },
+    };
+    expect(railTapPoint('r1', 'lan2')).not.toBeNull();
+  });
+
+  it('honours per-LAN width and orientation', () => {
+    state.networks.lan_v = {
+      x: 0, y: 0, cidr: '10.0.2.0/24',
+      w: 300, orientation: 'v',
+    };
+    state.hosts.h2 = { network: 'lan_v', x: 200, y: 0, address: '10.0.2.1' };
+    const tap = railTapPoint('h2', 'lan_v');
+    // Vertical rail: cross axis is x, so tap.x = +h/2 (device is to the right).
+    expect(tap.x).toBe(RAIL_THICKNESS / 2);
+    expect(tap.y).toBe(0);
+  });
+
+  it('returns null when the network is unknown', () => {
+    state.hosts.h3 = { network: 'ghost', x: 10, y: 10, address: '1.1.1.1' };
+    expect(railTapPoint('h3', 'ghost')).toBeNull();
+  });
+
+  it('returns null when the device is unknown', () => {
+    state.networks.lan3 = { x: 0, y: 0, cidr: '10.0.3.0/24' };
+    expect(railTapPoint('phantom', 'lan3')).toBeNull();
+  });
+
+  it('returns null when the device has no coordinates', () => {
+    state.networks.lan4 = { x: 0, y: 0, cidr: '10.0.4.0/24' };
+    state.hosts.h4 = { network: 'lan4' };
+    expect(railTapPoint('h4', 'lan4')).toBeNull();
   });
 });

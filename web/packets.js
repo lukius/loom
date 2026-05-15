@@ -94,14 +94,23 @@ export const PacketAnim = {
     if (dstTap && dstCenter) segs.push({ kind: 'bez', ...this._bezBetween(dstTap, dstCenter) });
     if (segs.length === 0) { finish(); return; }
 
-    const segDur = this.DURATION_MS / segs.length;
+    // Weight each segment's duration by its approximate length so the packet
+    // travels at a single constant velocity through the whole path — no jarring
+    // speed-up or stall at the rail junctions.
+    const lens = segs.map(s => this._segLength(s));
+    const total = lens.reduce((a, b) => a + b, 0);
+    const durs = total > 0
+      ? lens.map(l => (l / total) * this.DURATION_MS)
+      : segs.map(() => this.DURATION_MS / segs.length);
+
     let i = 0;
     const stepNext = () => {
       if (i >= segs.length) { finish(); return; }
       const s = segs[i];
+      const d = durs[i];
       const onSegDone = () => { i++; stepNext(); };
-      if (s.kind === 'bez') this._tweenBezier(dot, s.p0, s.c1, s.c2, s.p3, segDur, onSegDone);
-      else                  this._tweenPoints(dot, s.from, s.to, segDur, onSegDone);
+      if (s.kind === 'bez') this._tweenBezier(dot, s.p0, s.c1, s.c2, s.p3, d, onSegDone);
+      else                  this._tweenPoints(dot, s.from, s.to, d, onSegDone);
     };
     stepNext();
   },
@@ -115,6 +124,26 @@ export const PacketAnim = {
       c1: { x: p0.x + dx * 0.55, y: p0.y },
       c2: { x: p3.x - dx * 0.55, y: p3.y },
     };
+  },
+
+  // Approximate segment arc length. For lines: exact. For beziers: sum a
+  // handful of chord lengths between sampled points — accurate enough to
+  // keep packet velocity perceptually constant.
+  _segLength(s) {
+    if (s.kind === 'line') return Math.hypot(s.to.x - s.from.x, s.to.y - s.from.y);
+    // bezier: sample 8 points along the curve and sum distances
+    const N = 8;
+    let prevX = s.p0.x, prevY = s.p0.y, len = 0;
+    for (let k = 1; k <= N; k++) {
+      const t = k / N;
+      const u = 1 - t;
+      const a = u*u*u, b = 3*u*u*t, c = 3*u*t*t, d = t*t*t;
+      const x = a*s.p0.x + b*s.c1.x + c*s.c2.x + d*s.p3.x;
+      const y = a*s.p0.y + b*s.c1.y + c*s.c2.y + d*s.p3.y;
+      len += Math.hypot(x - prevX, y - prevY);
+      prevX = x; prevY = y;
+    }
+    return len;
   },
 
   _chatterAllowed(evt) {
