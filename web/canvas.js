@@ -299,18 +299,20 @@ export function drawEdge(a, b, kind, sel, info) {
   edgesLayer().appendChild(path);
 
   if (info) {
+    const showCosts = state.display?.showCosts ?? true;
+    const showIfaces = state.display?.showIfaces ?? true;
     // midpoint for label placement
     const t = 0.5;
     const mx = bezPoint(ax, c1x, c2x, bx, t);
     const my = bezPoint(ay, c1y, c2y, by, t);
-    if (info.cost != null && info.cost !== '') {
+    if (showCosts && info.cost != null && info.cost !== '') {
       edgesLayer().appendChild(el('text', {
         class: 'edge-cost',
         x: mx, y: my - 6,
         'text-anchor': 'middle',
       }, `c·${info.cost}`));
     }
-    if (info.ifname) {
+    if (showIfaces && info.ifname) {
       // ifname placed near "a" side
       const tn = 0.18;
       const ix = bezPoint(ax, c1x, c2x, bx, tn);
@@ -414,18 +416,22 @@ export function drawNode(kind, name, obj) {
       'text-anchor': 'middle',
     }, name));
 
-    // sub below the name
-    let sub;
-    if (kind === 'host') sub = obj.address || '— unset';
-    else {
+    // sub below the name — host = address (always shown), router = "N ifaces"
+    // (gated by the showIfaces display toggle).
+    let sub = null;
+    if (kind === 'host') {
+      sub = obj.address || '— unset';
+    } else if (state.display?.showIfaces ?? true) {
       const c = Object.keys(obj.interfaces || {}).length;
       sub = `${c} iface${c === 1 ? '' : 's'}`;
     }
-    g.appendChild(el('text', {
-      class: `sub ${kind === 'host' && !obj.address ? 'empty' : ''}`,
-      x: 0, y: h / 2 + 30,
-      'text-anchor': 'middle',
-    }, sub));
+    if (sub !== null) {
+      g.appendChild(el('text', {
+        class: `sub ${kind === 'host' && !obj.address ? 'empty' : ''}`,
+        x: 0, y: h / 2 + 30,
+        'text-anchor': 'middle',
+      }, sub));
+    }
   }
 
   attachNodeEvents(g, kind, name);

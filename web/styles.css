@@ -516,6 +516,7 @@ body.col-resizing * { cursor: col-resize !important; }
 @keyframes pulse { 50% { opacity: 0.6; } }
 .canv-toolbar .div { width: 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
 .canv-toolbar .tb-btn.chatter-muted { opacity: 0.5; }
+.canv-toolbar .tb-btn.toggle-off { opacity: 0.5; }
 .canv-toolbar .tb-refresh {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 12px; color: var(--text-2);

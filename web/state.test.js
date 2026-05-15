@@ -59,6 +59,28 @@ describe('persist / restore', () => {
     expect(state.networks.lan1).toEqual({ cidr: '10.0.0.0/24', x: 1, y: 2 });
   });
 
+  it('round-trips the display toggles (showCosts/showIfaces)', () => {
+    state.display.showCosts = false;
+    state.display.showIfaces = true;
+    persist();
+    resetState();
+    expect(restore()).toBe(true);
+    expect(state.display.showCosts).toBe(false);
+    expect(state.display.showIfaces).toBe(true);
+  });
+
+  it('falls back to display defaults when an old session lacks the field', () => {
+    state.asName = 'legacy';
+    persist();
+    // simulate a pre-display session by stripping the field from storage
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    delete raw.display;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(raw));
+    resetState();
+    expect(restore()).toBe(true);
+    expect(state.display).toEqual({ showCosts: true, showIfaces: true });
+  });
+
   it('round-trips optional network fields w and orientation', () => {
     state.networks.lan1 = {
       cidr: '10.0.0.0/24', x: 1, y: 2,

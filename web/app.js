@@ -44,6 +44,22 @@ document.getElementById('tb-chatter').addEventListener('click', () => {
   document.getElementById('tb-chatter').classList.toggle('chatter-muted', PacketAnim.muted);
 });
 
+function syncToggleBtn(id, on) {
+  document.getElementById(id).classList.toggle('toggle-off', !on);
+}
+document.getElementById('tb-toggle-costs').addEventListener('click', () => {
+  state.display.showCosts = !state.display.showCosts;
+  syncToggleBtn('tb-toggle-costs', state.display.showCosts);
+  markDirty();
+  bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+});
+document.getElementById('tb-toggle-ifaces').addEventListener('click', () => {
+  state.display.showIfaces = !state.display.showIfaces;
+  syncToggleBtn('tb-toggle-ifaces', state.display.showIfaces);
+  markDirty();
+  bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+});
+
 (() => {
   const inp = document.getElementById('tb-refresh');
   if (!inp) return;
@@ -279,6 +295,9 @@ function init() {
   ensurePositions();
   wire();
   wireResizers();
+  // reflect restored display toggles on the toolbar buttons
+  syncToggleBtn('tb-toggle-costs',  state.display.showCosts);
+  syncToggleBtn('tb-toggle-ifaces', state.display.showIfaces);
   renderAll();
   // initial fit (after layout)
   requestAnimationFrame(() => {

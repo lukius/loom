@@ -413,6 +413,58 @@ test.describe('netrouting SPA - smoke', () => {
     await expect(tick).not.toHaveClass(/matched-hover/);
   });
 
+  test('toggle Costs button hides every link-cost label on the canvas', async ({ page }) => {
+    // Sample topology has edge costs on every router interface — at least 7 cost labels.
+    const costs = page.locator('#edges-layer .edge-cost');
+    await expect(costs.first()).toBeVisible();
+    const before = await costs.count();
+    expect(before).toBeGreaterThan(0);
+
+    await page.locator('#tb-toggle-costs').click();
+    await expect(page.locator('#tb-toggle-costs')).toHaveClass(/toggle-off/);
+    await expect(costs).toHaveCount(0);
+
+    // Click again to restore.
+    await page.locator('#tb-toggle-costs').click();
+    await expect(page.locator('#tb-toggle-costs')).not.toHaveClass(/toggle-off/);
+    await expect(costs).toHaveCount(before);
+  });
+
+  test('toggle Ifaces button hides edge ifnames and the router "N ifaces" sub-label', async ({ page }) => {
+    const ifaces = page.locator('#edges-layer .edge-iface');
+    const routerSubs = page.locator('#nodes-layer g.node.router .sub');
+    await expect(ifaces.first()).toBeVisible();
+    await expect(routerSubs.first()).toBeVisible();
+    const ifaceCountBefore = await ifaces.count();
+    const subCountBefore = await routerSubs.count();
+    expect(ifaceCountBefore).toBeGreaterThan(0);
+    expect(subCountBefore).toBeGreaterThan(0);
+
+    await page.locator('#tb-toggle-ifaces').click();
+    await expect(page.locator('#tb-toggle-ifaces')).toHaveClass(/toggle-off/);
+    await expect(ifaces).toHaveCount(0);
+    await expect(routerSubs).toHaveCount(0);
+
+    // Host address sub-labels are not affected — they stay on.
+    const hostSub = page.locator('#nodes-layer g.node.host[data-name="h1"] .sub');
+    await expect(hostSub).toBeVisible();
+
+    // Click again to restore.
+    await page.locator('#tb-toggle-ifaces').click();
+    await expect(ifaces).toHaveCount(ifaceCountBefore);
+    await expect(routerSubs).toHaveCount(subCountBefore);
+  });
+
+  test('display toggle state persists in localStorage', async ({ page }) => {
+    await page.locator('#tb-toggle-costs').click();
+    await page.waitForTimeout(300); // markDirty debounce
+    const persisted = await page.evaluate(() => {
+      const raw = localStorage.getItem('netrouting.topology.v4');
+      return raw ? JSON.parse(raw).display : null;
+    });
+    expect(persisted).toEqual({ showCosts: false, showIfaces: true });
+  });
+
   test('hovering a router brightens every tick on every LAN it attaches to', async ({ page }) => {
     // r1 attaches to lan1 and lan2 — should brighten 2 ticks.
     const router = page.locator('#nodes-layer g.node.router[data-name="r1"]');

@@ -16,7 +16,12 @@ export const state = {
   routers: {},
   selection: null,        // { kind, name }
   view: { x: 0, y: 0, k: 1 }, // pan x,y and zoom factor
+  /* visibility toggles for on-canvas annotations (persisted) */
+  display: { showCosts: true, showIfaces: true },
 };
+
+/* Defaults used when restoring a legacy session that didn't persist `display`. */
+export const DISPLAY_DEFAULTS = { showCosts: true, showIfaces: true };
 
 /* Cross-component event bus. State mutations + cross-component re-renders
    should flow through `bus`; synchronous queries and DOM helpers stay direct
@@ -96,6 +101,7 @@ export function persist() {
       hosts: state.hosts,
       routers: state.routers,
       view: state.view,
+      display: state.display,
     }));
     setSave('autosaved');
   } catch (_) {}
@@ -110,6 +116,7 @@ export function restore() {
     state.hosts = d.hosts || {};
     state.routers = d.routers || {};
     if (d.view) state.view = d.view;
+    state.display = { ...DISPLAY_DEFAULTS, ...(d.display || {}) };
     return true;
   } catch (_) { return false; }
 }
@@ -120,6 +127,7 @@ export function loadSample() {
   state.routers = JSON.parse(JSON.stringify(SAMPLE.routers));
   state.selection = null;
   state.view = { x: 0, y: 0, k: 1 };
+  state.display = { ...DISPLAY_DEFAULTS };
   const projName = document.getElementById('proj-name');
   if (projName) projName.value = state.asName;
   persist();
