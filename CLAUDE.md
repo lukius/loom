@@ -1,13 +1,13 @@
-# netrouting
+# loom
 
 A Python simulator for an IPv4 autonomous system: hosts, routers, networks, and a link-state routing protocol over a YAML-described topology, driven from an interactive shell.
 
 ## Project Structure
 
 ```
-netrouting/
+loom/
 ├── src/
-│   ├── netrouting.py      # Entry point — web UI (default) or 'shell' subcommand
+│   ├── loom.py            # Entry point — web UI (default) or 'shell' subcommand
 │   ├── entities/          # AS, Router, Host, Network, Interface, Address, Packet, Event
 │   ├── routing/           # RoutingProtocol (link-state) + NetworkGraph (Dijkstra)
 │   ├── parser/            # YAML topology loader + SystemValidator
@@ -29,7 +29,7 @@ netrouting/
 │   ├── packets.js         # PacketAnim + tooltips
 │   └── *.test.js          # vitest tests co-located (utils, state, sim)
 ├── e2e/                   # Playwright smoke suite (real Chromium + spawned FastAPI)
-├── playwright.config.js   # E2E config: chromium-only, webServer on NETROUTING_PORT=8766
+├── playwright.config.js   # E2E config: chromium-only, webServer on LOOM_PORT=8766
 ├── pyproject.toml         # ruff + pytest config (sets pythonpath = ["src"], testpaths = ["test"])
 ├── requirements.txt       # Runtime deps (PyYAML, FastAPI, uvicorn)
 ├── requirements-dev.txt   # Dev deps: + pytest, pytest-asyncio, ruff, httpx
@@ -39,10 +39,10 @@ netrouting/
 ## Build & Run
 
 - Requires Python 3.11+. Install runtime deps: `pip install -r requirements.txt`. For dev (tests + lint): `pip install -r requirements-dev.txt`.
-- **Web UI (default):** `cd src && python netrouting.py` — launches FastAPI on http://127.0.0.1:8000 and serves the SPA from `web/`.
-- **Legacy shell:** `cd src && python netrouting.py shell` — original cmd.Cmd REPL. Same simulator under the hood.
-- Topology source path: env var `NETROUTING_TOPOLOGY` (default `samples/sample.yaml`). The server clones to `<source>.session.yaml` and writes only there.
-- HTTP port: env var `NETROUTING_PORT` (default `8000`). The Playwright suite uses `8766` to avoid colliding with a dev server.
+- **Web UI (default):** `cd src && python loom.py` — launches FastAPI on http://127.0.0.1:8000 and serves the SPA from `web/`.
+- **Legacy shell:** `cd src && python loom.py shell` — original cmd.Cmd REPL. Same simulator under the hood.
+- Topology source path: env var `LOOM_TOPOLOGY` (default `samples/sample.yaml`). The server clones to `<source>.session.yaml` and writes only there.
+- HTTP port: env var `LOOM_PORT` (default `8000`). The Playwright suite uses `8766` to avoid colliding with a dev server.
 - Run tests: `pytest` from the repo root. Single suite: `pytest test/test_address.py`.
 - JS tests: `npm install` (first time only), then `npm test` from the repo root. Uses vitest + happy-dom.
 - E2E tests: `npm run test:e2e` runs Playwright against a real Chromium and a spawned FastAPI server. Requires a system Chromium browser (the suite does not download one).
@@ -104,7 +104,7 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 
 ## Key Design Decisions & Traps
 
-- **Shell runs from `src/`, everything else from repo root.** The shell entry point uses bare-package imports (`from entities import ...`), so `cd src && python netrouting.py` is required. Pytest and ruff are configured to run from the repo root (`pyproject.toml`). Do not refactor imports to fix the cwd quirk without first updating both the shell entry and `pyproject.toml`'s `pythonpath`.
+- **Shell runs from `src/`, everything else from repo root.** The shell entry point uses bare-package imports (`from entities import ...`), so `cd src && python loom.py` is required. Pytest and ruff are configured to run from the repo root (`pyproject.toml`). Do not refactor imports to fix the cwd quirk without first updating both the shell entry and `pyproject.toml`'s `pythonpath`.
 
 - **AS YAML shape: `as:` at the top, `name:` inside.** The parser requires the literal top-level key `as:` and reads the AS name from a nested `name:` field (falling back to `unnamed_entity_N`). `samples/sample.yaml` follows this convention and loads cleanly. Anything that emits topology YAML (the SPA, future tools) must produce the same shape.
 

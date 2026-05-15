@@ -29,15 +29,15 @@ export const Terminals = {
           <span class="light min" title=""></span>
           <span class="light max" title=""></span>
         </div>
-        <div class="title">${escapeHtml(deviceName)}@netrouting</div>
+        <div class="title">${escapeHtml(deviceName)}@loom</div>
         <div class="paused-chip" hidden>(paused)</div>
       </div>
-      <pre class="term-out">netrouting v1.0 — ${escapeHtml(deviceName)}
+      <pre class="term-out">loom v1.0 — ${escapeHtml(deviceName)}
 type 'help' for commands
 
 </pre>
       <div class="term-line">
-        <span class="term-prompt">${escapeHtml(deviceName)}@netrouting:~$</span>
+        <span class="term-prompt">${escapeHtml(deviceName)}@loom:~$</span>
         <input class="term-in" autocomplete="off" spellcheck="false" />
         <span class="term-cursor"></span>
       </div>`;
@@ -117,7 +117,7 @@ type 'help' for commands
       }
       if (e.key === 'Enter') {
         const cmd = inp.value;
-        out.textContent += `${name}@netrouting:~$ ${cmd}\n`;
+        out.textContent += `${name}@loom:~$ ${cmd}\n`;
         inp.value = '';
         if (cmd.trim() === 'clear') {
           out.textContent = '';

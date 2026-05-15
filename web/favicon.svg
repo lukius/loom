@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="netrouting">
-  <title>netrouting</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="loom">
+  <title>loom</title>
   <!-- antennas (sky blue, the structure color) -->
   <line x1="10" y1="5" x2="10" y2="13" stroke="#0369a1" stroke-width="3" stroke-linecap="round"/>
   <line x1="22" y1="5" x2="22" y2="13" stroke="#0369a1" stroke-width="3" stroke-linecap="round"/>

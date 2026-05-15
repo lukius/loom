@@ -33,7 +33,7 @@ bus.addEventListener('sim:yaml-export-requested', (e) => { e.detail.yaml = expor
 bus.addEventListener('sim:topology-import-requested', (e) => { importYaml(e.detail.yaml); });
 
 /* ===========================================================
-   netrouting — interactive topology canvas
+   loom — interactive topology canvas
    =========================================================== */
 
 document.getElementById('tb-play').addEventListener('click', () => Sim.onPrimary());

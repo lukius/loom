@@ -9,7 +9,7 @@ def main(argv=None):
         Shell().cmdloop()
     else:
         from server import run
-        port = int(os.environ.get('NETROUTING_PORT', '8000'))
+        port = int(os.environ.get('LOOM_PORT', '8000'))
         run(port=port)
 
 

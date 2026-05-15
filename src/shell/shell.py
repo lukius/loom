@@ -22,7 +22,7 @@ def requires_system(func):
 
 class Shell(cmd.Cmd):
 
-    intro = 'netrouting shell v1.0'
+    intro = 'loom shell v1.0'
     prompt = '# '
 
     def __init__(self):

@@ -1,10 +1,10 @@
 /* ===========================================================
-   netrouting — state, persistence, sample topology, and bus
+   loom — state, persistence, sample topology, and bus
    =========================================================== */
 import { toast } from './utils.js';
 
-export const STORAGE_KEY = 'netrouting.topology.v4';
-export const THEME_KEY = 'netrouting.theme';
+export const STORAGE_KEY = 'loom.topology.v4';
+export const THEME_KEY = 'loom.theme';
 
 export const state = {
   asName: 'test_as',
@@ -82,7 +82,7 @@ export const SAMPLE = {
 };
 
 /* ---------- layout (resizable panes) ---------- */
-export const LAYOUT_KEY = 'netrouting.layout';
+export const LAYOUT_KEY = 'loom.layout';
 export const LAYOUT_DEF = { navW: 264, inspW: 332 };
 export const LAYOUT_LIMITS = {
   navW:  { min: 200, max: 520 },

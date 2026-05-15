@@ -23,12 +23,12 @@ def create_app() -> FastAPI:
         EventTracer.subscribe(app.state.event_bus.emit)
         yield
 
-    app = FastAPI(title="netrouting", lifespan=lifespan)
+    app = FastAPI(title="loom", lifespan=lifespan)
 
     _repo_root = Path(__file__).parent.parent.parent
     _default_topology = str(_repo_root / "samples" / "sample.yaml")
     source = Path(
-        os.environ.get("NETROUTING_TOPOLOGY", _default_topology)
+        os.environ.get("LOOM_TOPOLOGY", _default_topology)
     ).resolve()
     app.state.sim_state = SimState(source)
     app.state.event_bus = EventBus()

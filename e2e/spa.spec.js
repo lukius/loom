@@ -1,11 +1,11 @@
 // e2e/spa.spec.js
-// Smoke + golden-path checks for the netrouting SPA. Runs against a real
+// Smoke + golden-path checks for the loom SPA. Runs against a real
 // FastAPI server (booted by Playwright's webServer block) and a real
 // Chromium. Each test starts from a clean storage state so the SPA falls
 // back to the bundled SAMPLE topology (3 hosts, 3 routers, 3 networks).
 import { test, expect } from '@playwright/test';
 
-test.describe('netrouting SPA - smoke', () => {
+test.describe('loom SPA - smoke', () => {
   test.beforeEach(async ({ page, context, request }) => {
     // The FastAPI server is shared across tests (one webServer per suite),
     // so the sim's run-state persists. Force it back to idle before every
@@ -197,7 +197,7 @@ test.describe('netrouting SPA - smoke', () => {
 
     const term = page.locator('div.term').first();
     await expect(term).toBeVisible({ timeout: 3000 });
-    await expect(term.locator('.title')).toHaveText('h1@netrouting');
+    await expect(term.locator('.title')).toHaveText('h1@loom');
     await expect(term.locator('input.term-in')).toBeVisible();
 
     // Close via the macOS-style traffic light close button.
@@ -307,7 +307,7 @@ test.describe('netrouting SPA - smoke', () => {
     // persistence — read the slot directly instead).
     await page.waitForTimeout(300);
     const persistedW = await page.evaluate(() => {
-      const raw = localStorage.getItem('netrouting.topology.v4');
+      const raw = localStorage.getItem('loom.topology.v4');
       if (!raw) return null;
       const s = JSON.parse(raw);
       const firstKey = Object.keys(s.networks)[0];
@@ -464,7 +464,7 @@ test.describe('netrouting SPA - smoke', () => {
     await page.locator('#tb-toggle-costs').click();
     await page.waitForTimeout(300); // markDirty debounce
     const persisted = await page.evaluate(() => {
-      const raw = localStorage.getItem('netrouting.topology.v4');
+      const raw = localStorage.getItem('loom.topology.v4');
       return raw ? JSON.parse(raw).display : null;
     });
     expect(persisted).toEqual({ showCosts: false, showIfaces: true });

@@ -22,7 +22,7 @@ as:
 def client(tmp_path, monkeypatch):
     src = tmp_path / "src.yaml"
     src.write_text(SAMPLE)
-    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
     with TestClient(create_app()) as c:
         c.post("/topology", json={"yaml": SAMPLE})
         c.post("/sim/start")
@@ -123,7 +123,7 @@ def test_refresh_interval_rejects_invalid_values(client):
 def test_refresh_interval_requires_started_sim(tmp_path, monkeypatch):
     src = tmp_path / "src.yaml"
     src.write_text(SAMPLE)
-    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
     with TestClient(create_app()) as c:
         # never started
         r = c.post("/sim/refresh_interval", json={"seconds": 5})

@@ -1,5 +1,5 @@
 /* ===========================================================
-   netrouting — simulation state machine + WS event router
+   loom — simulation state machine + WS event router
 
    Owns the `Sim` state machine (idle/running/paused), the REST + WebSocket
    wrapper (`RuntimeClient`), the topology lock + patch accumulator, and the

@@ -232,13 +232,17 @@ body.col-resizing * { cursor: col-resize !important; }
 .brand .mark {
   width: 26px; height: 26px;
   border-radius: 6px;
+  /* Brand green — derived from --pos (the same "running" green as the Start
+     button), but darkened so the mark sits calm against the chrome. */
   background:
-    linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, #000) 100%);
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--pos) 80%, #000) 0%,
+      color-mix(in srgb, var(--pos) 55%, #000) 100%);
   display: inline-flex; align-items: center; justify-content: center;
   position: relative;
   flex: none;
 }
-.brand .mark svg { color: var(--accent-fg); }
+.brand .mark svg { color: #ffffff; }
 .brand .name {
   font-size: 14px;
   font-weight: 600;
