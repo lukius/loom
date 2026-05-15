@@ -269,9 +269,9 @@ test.describe('netrouting SPA - smoke', () => {
 
   test('every LAN has two endcap handles (left/right) wired for resize', async ({ page }) => {
     const lan = page.locator('#nodes-layer g.node.network').first();
-    await expect(lan.locator('.endcap[data-handle="true"]')).toHaveCount(2);
-    await expect(lan.locator('.endcap[data-handle="true"][data-end="left"]')).toHaveCount(1);
-    await expect(lan.locator('.endcap[data-handle="true"][data-end="right"]')).toHaveCount(1);
+    await expect(lan.locator('[data-handle="true"]')).toHaveCount(2);
+    await expect(lan.locator('[data-handle="true"][data-end="left"]')).toHaveCount(1);
+    await expect(lan.locator('[data-handle="true"][data-end="right"]')).toHaveCount(1);
   });
 
   test('clicking a LAN adds the .selected class', async ({ page }) => {
@@ -286,7 +286,7 @@ test.describe('netrouting SPA - smoke', () => {
     const rail = lan.locator('.rail');
     const widthBefore = Number(await rail.getAttribute('width'));
 
-    const handle = lan.locator('.endcap[data-handle="true"][data-end="right"]');
+    const handle = lan.locator('[data-handle="true"][data-end="right"]');
     const hb = await handle.boundingBox();
     await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
     await page.mouse.down();
@@ -372,7 +372,7 @@ test.describe('netrouting SPA - smoke', () => {
     const rail = lan.locator('.rail');
     const heightBefore = Number(await rail.getAttribute('height'));
 
-    const handle = lan.locator('.endcap[data-handle="true"][data-end="bottom"]');
+    const handle = lan.locator('[data-handle="true"][data-end="bottom"]');
     const hb = await handle.boundingBox();
     await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
     await page.mouse.down();
@@ -429,7 +429,7 @@ test.describe('netrouting SPA - smoke', () => {
     const rail = lan.locator('.rail');
     const widthBefore = Number(await rail.getAttribute('width'));
 
-    const handle = lan.locator('.endcap[data-handle="true"][data-end="left"]');
+    const handle = lan.locator('[data-handle="true"][data-end="left"]');
     const hb = await handle.boundingBox();
     await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
     await page.mouse.down();

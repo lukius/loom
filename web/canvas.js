@@ -470,20 +470,31 @@ function drawNetworkRail(g, name, obj, pad, isSel) {
   // endcaps — also act as resize handles. data-handle is always present so the
   // SVG doesn't need a re-render on selection (which would break pointer-down);
   // the resize handler gates on the parent .selected class instead.
+  // Each endcap is wrapped in a <g> with a wide invisible hit-rect so the
+  // 3px visible bar isn't the only grab target.
   const capMain = RAIL_ENDCAP_LEN;
   const capCross = 3;
+  const hitMain = 18;   // generous click area along the cross axis
+  const hitCross = 22;  // and a long stripe along the main axis end
   for (const sign of [-1, 1]) {
+    const end = sign === -1 ? (vertical ? 'top' : 'left') : (vertical ? 'bottom' : 'right');
+    const wrap = el('g', {
+      class: 'endcap-wrap',
+      'data-handle': 'true',
+      'data-axis': vertical ? 'v' : 'h',
+      'data-end': end,
+    });
+    // invisible click target — generous on both axes, centered on the endcap
+    const hitAttrs = vertical
+      ? { x: -hitMain / 2, y: sign * len / 2 - hitCross / 2, width: hitMain, height: hitCross }
+      : { x: sign * len / 2 - hitCross / 2, y: -hitMain / 2, width: hitCross, height: hitMain };
+    wrap.appendChild(el('rect', { class: 'endcap-hit', ...hitAttrs }));
+    // visible endcap
     const capAttrs = vertical
       ? { x: -capMain / 2, y: sign * len / 2 - capCross / 2, width: capMain, height: capCross }
       : { x: sign * len / 2 - capCross / 2, y: -capMain / 2, width: capCross, height: capMain };
-    g.appendChild(el('rect', {
-      class: 'endcap',
-      rx: 1,
-      ...capAttrs,
-      'data-handle': 'true',
-      'data-axis': vertical ? 'v' : 'h',
-      'data-end': sign === -1 ? (vertical ? 'top' : 'left') : (vertical ? 'bottom' : 'right'),
-    }));
+    wrap.appendChild(el('rect', { class: 'endcap', rx: 1, ...capAttrs }));
+    g.appendChild(wrap);
   }
 
   // tap ticks — one per attached device
@@ -607,7 +618,7 @@ export function attachNodeEvents(g, kind, name) {
     // Resize-net: pointerdown on a handle endcap of an already-selected LAN.
     // Gating on .selected (not on a re-render) is what lets us keep the
     // "no canvas rebuild on selection-change" invariant intact.
-    const handle = e.target.closest('rect.endcap[data-handle="true"]');
+    const handle = e.target.closest('[data-handle="true"]');
     if (handle && kind === 'network' && g.classList.contains('selected') && !isTopologyLocked()) {
       e.stopPropagation();
       startRailResize(e, name, handle);

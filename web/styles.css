@@ -762,14 +762,27 @@ svg.canvas.linking { cursor: crosshair; }
   stroke-width: 2;
   stroke-opacity: 0.65;
 }
-/* selected — endcaps upgrade into resize handles */
+/* invisible click area around each endcap — large grab target without bulking
+   up the visible bar. Only "alive" once the LAN is selected. */
+.canvas .node.network .endcap-hit {
+  fill: transparent;
+  pointer-events: none;
+}
+.canvas .node.network.selected .endcap-hit { pointer-events: all; }
+.canvas .node.network.selected .endcap-wrap[data-axis="h"] { cursor: ew-resize; }
+.canvas .node.network.selected .endcap-wrap[data-axis="v"] { cursor: ns-resize; }
+
+/* selected — endcaps upgrade visually into resize handles */
 .canvas .node.network.selected .endcap {
   fill: var(--accent);
   stroke: var(--accent-border);
-  stroke-width: 1;
+  stroke-width: 2;
+  paint-order: stroke fill;
 }
-.canvas .node.network.selected .endcap[data-handle="true"][data-axis="h"] { cursor: ew-resize; }
-.canvas .node.network.selected .endcap[data-handle="true"][data-axis="v"] { cursor: ns-resize; }
+.canvas .node.network.selected .endcap-wrap:hover .endcap {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
 
 /* drop-target — rail glows accent and pulses */
 .canvas .node.network.drop-target .rail {
