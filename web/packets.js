@@ -10,6 +10,17 @@ import {
 } from './canvas.js';
 import { Sim } from './sim.js';
 
+// Packet glyph dimensions — wider than tall so the rectangle reads as a
+// "datagram" gliding along the wire (textbook convention).
+const PACKET_W = 18;
+const PACKET_H = 12;
+
+// Position a packet rect so its center is at world (cx, cy).
+function setPacketCenter(rect, cx, cy) {
+  rect.setAttribute('x', cx - PACKET_W / 2);
+  rect.setAttribute('y', cy - PACKET_H / 2);
+}
+
 /* ---------- PacketAnim ---------- */
 export const PacketAnim = {
   DURATION_MS: 1800,
@@ -62,8 +73,14 @@ export const PacketAnim = {
     if (!layer) { if (onDone) onDone(); return; }
 
     const color = this.COLORS[evt.type] || { fill: '#777', opacity: 1.0 };
-    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    dot.setAttribute('r', 8);
+    // Packets render as small rounded rectangles — the typical "datagram"
+    // glyph used in networking literature. The packet is centered via cx/cy
+    // proxy attributes (data-cx/cy) so the tween helpers can keep using a
+    // simple point-tracking API; we translate into x/y at write time.
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    dot.setAttribute('width', PACKET_W);
+    dot.setAttribute('height', PACKET_H);
+    dot.setAttribute('rx', 2);
     dot.setAttribute('fill', color.fill);
     dot.setAttribute('opacity', color.opacity);
     dot.setAttribute('stroke', 'rgba(0,0,0,0.35)');
@@ -177,8 +194,7 @@ export const PacketAnim = {
       if (Sim.state !== 'paused') elapsed += (now - lastT);
       lastT = now;
       const t = Math.min(1, elapsed / durationMs);
-      dot.setAttribute('cx', fp.x + (tp.x - fp.x) * t);
-      dot.setAttribute('cy', fp.y + (tp.y - fp.y) * t);
+      setPacketCenter(dot, fp.x + (tp.x - fp.x) * t, fp.y + (tp.y - fp.y) * t);
       if (t < 1) requestAnimationFrame(tick);
       else done();
     };
@@ -197,8 +213,11 @@ export const PacketAnim = {
       const t = Math.min(1, elapsed / durationMs);
       const u = 1 - t;
       const a = u*u*u, b = 3*u*u*t, c = 3*u*t*t, d = t*t*t;
-      dot.setAttribute('cx', a*p0.x + b*c1.x + c*c2.x + d*p3.x);
-      dot.setAttribute('cy', a*p0.y + b*c1.y + c*c2.y + d*p3.y);
+      setPacketCenter(
+        dot,
+        a*p0.x + b*c1.x + c*c2.x + d*p3.x,
+        a*p0.y + b*c1.y + c*c2.y + d*p3.y,
+      );
       if (t < 1) requestAnimationFrame(tick);
       else done();
     };

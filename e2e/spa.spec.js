@@ -241,11 +241,11 @@ test.describe('netrouting SPA - smoke', () => {
     await input.fill('send h2 hello');
     await input.press('Enter');
 
-    // Packet circles are appended to #packet-layer with r=8 (see packets.js).
+    // Packet rectangles are appended to #packet-layer (see packets.js).
     // Wait for at least one to appear; do not assert an exact count because
     // routing chatter is animated too and timings vary.
     await page.waitForFunction(
-      () => document.querySelectorAll('#packet-layer circle').length > 0,
+      () => document.querySelectorAll('#packet-layer rect').length > 0,
       { timeout: 5000 },
     );
   });
