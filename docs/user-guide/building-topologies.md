@@ -150,7 +150,7 @@ update_cost eth0 25
 ```
 
 That bypasses the inspector path and updates the router directly. Use
-either — both invoke the same `NetworkDevice.update_interface`.
+either — both invoke the same backend cost-update operation.
 
 ### Delete
 

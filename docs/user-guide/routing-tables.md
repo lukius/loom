@@ -116,8 +116,8 @@ update_cost eth0 100
 ```
 
 Or from the router's inspector panel (the Interfaces list has inline
-**Cost** editors). Either path invokes the same
-`NetworkDevice.update_interface(name, cost)`.
+**Cost** editors). Either path invokes the same backend cost-update
+operation.
 
 The change propagates on the next keepalive flood. Within one
 keepalive interval per hop, every router has the new graph and has
