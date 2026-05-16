@@ -18,6 +18,8 @@ class _FabricBase(Entity):
         super().__init__(name)
         self._gate = gate
         # Keyed by interface IP address (unique per fabric), not by iface.name().
+        # Interface names are only unique per-device — e.g. r1.eth0 and r2.eth0
+        # both sit on the same LAN — so keying by name would clobber siblings.
         self._interfaces = dict()
         self._in_queue = queue.Queue()
 
