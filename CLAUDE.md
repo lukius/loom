@@ -1,6 +1,6 @@
 # loom
 
-A Python simulator for an IPv4 autonomous system: hosts, routers, networks, and a link-state routing protocol over a YAML-described topology, driven from an interactive shell.
+A Python simulator for an IPv4 autonomous system: hosts, routers, networks, and a link-state routing protocol over a YAML-described topology, driven by an interactive web UI (with a legacy `cmd.Cmd` shell still available).
 
 ## Project Structure
 
@@ -29,10 +29,18 @@ loom/
 │   ├── packets.js         # PacketAnim + tooltips
 │   └── *.test.js          # vitest tests co-located (utils, state, sim)
 ├── e2e/                   # Playwright smoke suite (real Chromium + spawned FastAPI)
+├── docs/
+│   ├── architecture/      # Technical reference (overview, entities, packets, routing-protocol, concurrency, parser, server-api, web-spa)
+│   ├── user-guide/        # User manual (getting-started, web-ui, building-topologies, running-simulations, routing-tables, terminals, yaml-format, shell-cli)
+│   ├── images/            # Screenshots used by user-guide
+│   └── superpowers/       # Historical specs/plans (pre-existing)
 ├── playwright.config.js   # E2E config: chromium-only, webServer on LOOM_PORT=8766
 ├── pyproject.toml         # ruff + pytest config (sets pythonpath = ["src"], testpaths = ["test"])
 ├── requirements.txt       # Runtime deps (PyYAML, FastAPI, uvicorn)
 ├── requirements-dev.txt   # Dev deps: + pytest, pytest-asyncio, ruff, httpx
+├── CONTRIBUTING.md        # Canonical dev guide (full TDD workflow, MR process, conventions)
+├── CHANGELOG.md           # Keep-a-Changelog format
+├── LICENSE                # MIT
 └── README.md              # Quick start and project overview
 ```
 
@@ -79,9 +87,10 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 - Run `pytest` after every change.
 
 ### Documentation — keep in sync with code
-- After a code change, check whether `README.md`, this `CLAUDE.md`, or any docstrings on the changed surface are now stale. If so, update them in the same commit — do not leave docs for "later".
+- After a code change, check whether `README.md`, this `CLAUDE.md`, the relevant page under `docs/architecture/` or `docs/user-guide/`, or any docstrings on the changed surface are now stale. If so, update them in the same commit — do not leave docs for "later".
 - Update **only when needed**: a small internal refactor with no observable behavior change typically requires no doc edits. Behavioral, interface, layout, or workflow changes usually do.
-- Surfaces that must stay accurate when touched: entry points and how to run them, shell command set + syntax, YAML schema, routing protocol wire format, project layout, dependencies.
+- Surfaces that must stay accurate when touched: entry points and how to run them, shell + per-device command set + syntax, YAML schema, routing protocol wire format, project layout, dependencies, HTTP/WS API.
+- `CONTRIBUTING.md` is the canonical dev guide; this file (`CLAUDE.md`) is the cheat sheet of non-obvious traps. Don't duplicate content — link from one to the other.
 - If a behavior is intentionally undocumented (e.g. an internal helper), say nothing — do not write speculative docs.
 
 ### Linting & style
@@ -96,7 +105,7 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 ### After touching code
 - Run tests (red → green → refactor cycle complete, full suite green).
 - Run `ruff check src/ test/` and resolve any new findings.
-- If the change affects behavior, interfaces, layout, build/run, or workflows, update `README.md`, this `CLAUDE.md`, and any affected docstrings in the same commit. Pure-internal refactors with no observable change usually need no doc edits.
+- If the change affects behavior, interfaces, layout, build/run, or workflows, update `README.md`, this `CLAUDE.md`, the affected pages under `docs/`, and any affected docstrings in the same commit. Pure-internal refactors with no observable change usually need no doc edits.
 
 ### About this file
 - **Keep it under 200 lines.** If it grows past that, prune.
