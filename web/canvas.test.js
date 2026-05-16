@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, renderCanvas, lookupLinkMidpoint } from './canvas.js';
+import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, renderCanvas, lookupLinkMidpoint, lookupDeviceNode } from './canvas.js';
 import {
   state, bus,
   RAIL_DEFAULT_WIDTH, RAIL_THICKNESS, RAIL_TICK_INSET,
@@ -372,6 +372,43 @@ describe('p2p link rendering', () => {
     // Only one endpoint; canvas should skip gracefully
     renderCanvas();
     expect(document.querySelectorAll('.edge.p2p').length).toBe(0);
+  });
+
+  it('mouseenter on p2p edge path adds p2p-hovered to both endpoint device groups', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    const edge = document.querySelector('.edge.p2p');
+    edge.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
+    expect(lookupDeviceNode('r1').classList.contains('p2p-hovered')).toBe(true);
+    expect(lookupDeviceNode('r2').classList.contains('p2p-hovered')).toBe(true);
+    // mouseleave removes the class
+    edge.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }));
+    expect(lookupDeviceNode('r1').classList.contains('p2p-hovered')).toBe(false);
+    expect(lookupDeviceNode('r2').classList.contains('p2p-hovered')).toBe(false);
+  });
+
+  it('mouseenter on midpoint label also adds p2p-hovered to endpoint device groups', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    const midG = document.querySelector('g[data-kind="link"]');
+    midG.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
+    expect(lookupDeviceNode('r1').classList.contains('p2p-hovered')).toBe(true);
+    expect(lookupDeviceNode('r2').classList.contains('p2p-hovered')).toBe(true);
+    midG.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }));
+    expect(lookupDeviceNode('r1').classList.contains('p2p-hovered')).toBe(false);
+    expect(lookupDeviceNode('r2').classList.contains('p2p-hovered')).toBe(false);
   });
 
   it('lookupLinkMidpoint returns the midpoint group element', () => {

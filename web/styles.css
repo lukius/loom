@@ -723,6 +723,17 @@ svg.canvas.linking { cursor: crosshair; }
   opacity: 1;
 }
 
+/* endpoint devices highlighted when the p2p edge or midpoint label is hovered */
+.canvas .node.host.p2p-hovered .icon,
+.canvas .node.router.p2p-hovered .icon {
+  filter: drop-shadow(0 0 8px var(--rtr));
+}
+.canvas .node.host.p2p-hovered .ring,
+.canvas .node.router.p2p-hovered .ring {
+  stroke: var(--rtr);
+  opacity: .65;
+}
+
 /* p2p midpoint label — floating name·cidr chip on the edge */
 .canvas .link-label {
   cursor: grab;

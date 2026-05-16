@@ -414,6 +414,28 @@ export function drawLinkEdge(linkName, linkObj) {
     state.selection = { kind: 'link', name: linkName };
     bus.dispatchEvent(new CustomEvent('state:selection-changed'));
   });
+
+  // hover: add p2p-hovered class to both endpoint device groups (deferred lookup
+  // so the nodes layer is guaranteed to exist even though edges are drawn first)
+  const addP2pHover = () => {
+    const g1 = lookupDeviceNode(ep1.device);
+    const g2 = lookupDeviceNode(ep2.device);
+    g1?.classList.add('p2p-hovered');
+    g2?.classList.add('p2p-hovered');
+    path.classList.add('p2p-hovered');
+    lookupLinkMidpoint(linkName)?.classList.add('p2p-hovered');
+  };
+  const removeP2pHover = () => {
+    const g1 = lookupDeviceNode(ep1.device);
+    const g2 = lookupDeviceNode(ep2.device);
+    g1?.classList.remove('p2p-hovered');
+    g2?.classList.remove('p2p-hovered');
+    path.classList.remove('p2p-hovered');
+    lookupLinkMidpoint(linkName)?.classList.remove('p2p-hovered');
+  };
+  path.addEventListener('mouseenter', addP2pHover);
+  path.addEventListener('mouseleave', removeP2pHover);
+
   edgesLayer().appendChild(path);
 
   // Per-endpoint iface/cost tags
@@ -509,9 +531,14 @@ export function drawLinkEdge(linkName, linkObj) {
     if (e.button !== 0) return;
     e.stopPropagation();
     if (isTopologyLocked()) return;
-    midG.setPointerCapture?.(e.pointerId);
+    // Dispatch selection first — this triggers reRenderEdges() which clears
+    // edgesLayer and re-creates the midG element. setPointerCapture must be
+    // called AFTER re-render so it targets the fresh (attached) element;
+    // calling it on a detached node silently drops the capture.
     state.selection = { kind: 'link', name: linkName };
     bus.dispatchEvent(new CustomEvent('state:selection-changed'));
+    // Re-query for the fresh midG after the re-render, then capture on it.
+    lookupLinkMidpoint(linkName)?.setPointerCapture?.(e.pointerId);
     const start = clientToWorld(e.clientX, e.clientY);
     drag = {
       pointerId: e.pointerId,
@@ -525,8 +552,11 @@ export function drawLinkEdge(linkName, linkObj) {
       moved: false,
       hoverNet: null,
     };
-    midG.setAttribute('cursor', 'grabbing');
   });
+
+  // hover: mirror p2p-hovered onto endpoint device groups (same as edge path above)
+  midG.addEventListener('mouseenter', addP2pHover);
+  midG.addEventListener('mouseleave', removeP2pHover);
 
   edgesLayer().appendChild(midG);
 }
@@ -955,12 +985,10 @@ export function wireCanvas() {
       drag.obj.y = w.y - drag.offY;
 
       if (drag.kind === 'link') {
-        // p2p midpoint drag: just update the label transform directly
-        const midEl = edgesLayer().querySelector(
-          `g[data-kind="link"][data-name="${cssEscape(drag.name)}"]`
-        );
-        if (midEl) midEl.setAttribute('transform', `translate(${drag.obj.x} ${drag.obj.y})`);
-        // also re-draw edges to update bezier
+        // p2p midpoint drag: reRenderEdges() clears and fully rebuilds edgesLayer
+        // (including the midpoint group), so a direct setAttribute here would be
+        // immediately discarded. Unlike node drag — where nodes live in a separate
+        // layer that reRenderEdges does NOT touch — there is nothing to pre-update.
         reRenderEdges();
       } else {
         // for host/router: detect drop target (LAN under cursor)
