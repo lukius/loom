@@ -31,3 +31,13 @@ class InvalidInterfaceException(EntityException):
         super().__init__(message)
 
 
+class TooManyEndpointsException(EntityException):
+    """Raised when a third interface is added to a Link (max two endpoints)."""
+
+    def __init__(self, link_name, iface):
+        message = (
+            f'{link_name}: cannot add interface {iface.name()}'
+            ' — link already has two endpoints'
+        )
+        super().__init__(message)
+

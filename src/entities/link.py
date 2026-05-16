@@ -1,0 +1,73 @@
+from ._fabric import _FabricBase
+from .address import Address, NetworkAddress
+from .device import NetworkDevice
+from .exception import TooManyEndpointsException
+
+
+class Link(_FabricBase):
+    """Point-to-point link: a fabric with exactly two endpoints.
+
+    Unlike a multi-access Network, a Link has no broadcast domain. Any
+    frame entering one end is delivered to the other endpoint (the one
+    whose address does not match frame.source()). Capped at two
+    interfaces — add_interface raises after the second.
+    """
+
+    MAX_ENDPOINTS = 2
+
+    def __init__(self, name, address: NetworkAddress, gate=None):
+        mask = address.mask()
+        if mask not in (30, 31):
+            raise ValueError(f"Link requires /30 or /31 CIDR, got /{mask}")
+        super().__init__(name=name, gate=gate)
+        self._address = address
+
+    def address(self) -> NetworkAddress:
+        return self._address
+
+    def broadcast_address(self) -> Address:
+        return self._address.broadcast()
+
+    def contains_address(self, address: Address) -> bool:
+        return self._address.matches(address)
+
+    def devices(self) -> dict:
+        return {
+            interface.device().name(): interface.device()
+            for interface in self._interfaces.values()
+        }
+
+    def has_device(self, device: NetworkDevice) -> bool:
+        for iface in self._interfaces.values():
+            if iface.device() == device:
+                return True
+        return False
+
+    def add_interface(self, interface):
+        if len(self._interfaces) >= self.MAX_ENDPOINTS:
+            raise TooManyEndpointsException(self._name, interface)
+        super().add_interface(interface)
+
+    def peer_of(self, interface):
+        """Return the other endpoint Interface, or None if it hasn't joined yet."""
+        for iface in self._interfaces.values():
+            if iface is not interface:
+                return iface
+        return None
+
+    def _dispatch_packet(self, frame):
+        """Deliver frame to the endpoint whose address does not match frame.source().
+
+        Drops the frame silently if the peer has not yet been attached (i.e.
+        only one endpoint is registered), guarding against construction races.
+        """
+        src = frame.source()
+        target = None
+        for iface in self._interfaces.values():
+            if iface.address() != src:
+                target = iface
+                break
+        if target is None:
+            # No peer attached yet — drop silently.
+            return
+        target.receive(frame)
