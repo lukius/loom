@@ -77,12 +77,14 @@ class LinkCidrEnforcementTest(unittest.TestCase):
         return link
 
     def test_slash24_raises(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as ctx:
             Link("p", NetworkAddress("10.0.0.0/24"))
+        self.assertIn("/24", str(ctx.exception))
 
     def test_slash29_raises(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as ctx:
             Link("p", NetworkAddress("10.0.0.0/29"))
+        self.assertIn("/29", str(ctx.exception))
 
     def test_slash30_ok(self):
         link = self._try_create("10.0.0.0/30")
@@ -119,8 +121,11 @@ class LinkAddInterfaceCapTest(unittest.TestCase):
     def test_third_raises_too_many_endpoints(self):
         self.link.add_interface(self.iface_a)
         self.link.add_interface(self.iface_b)
-        with self.assertRaises(TooManyEndpointsException):
+        with self.assertRaises(TooManyEndpointsException) as ctx:
             self.link.add_interface(self.iface_c)
+        msg = str(ctx.exception)
+        self.assertIn("p2p1", msg)
+        self.assertIn("eth2", msg)
 
 
 class LinkPeerOfTest(unittest.TestCase):
