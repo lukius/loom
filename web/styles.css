@@ -438,6 +438,7 @@ body.col-resizing * { cursor: col-resize !important; }
 .nav-row .glyph.network { color: var(--net); }
 .nav-row .glyph.host    { color: var(--host); }
 .nav-row .glyph.router  { color: var(--rtr); }
+.nav-row .glyph.link    { color: var(--rtr); }
 .nav-row .name {
   font-size: 13px;
   font-weight: 500;
@@ -1102,6 +1103,8 @@ svg.canvas.linking { cursor: crosshair; }
 .insp-head .pre .pill.network { color: var(--net-text); border-color: var(--net-border); background: var(--net-bg); }
 .insp-head .pre .pill.host    { color: var(--host-text); border-color: var(--host-border); background: var(--host-bg); }
 .insp-head .pre .pill.router  { color: var(--rtr-text); border-color: var(--rtr-border); background: var(--rtr-bg); }
+/* p2p link pill — reuses the router/p2p purple palette (same as the canvas edge color) */
+.insp-head .pre .pill.link    { color: var(--rtr-text); border-color: var(--rtr-border); background: var(--rtr-bg); }
 .insp-head .name {
   font-size: 22px;
   font-weight: 600;

@@ -6,7 +6,7 @@ import { state, bus, markDirty, loadSample } from './state.js';
 import { escapeHtml, uniqueName, uniqueIface, pad2, toast } from './utils.js';
 import {
   canvasEl, applyView, clientToWorld, fitView,
-  renderCanvas, toggleNetworkOrientation,
+  renderCanvas, toggleNetworkOrientation, collectLinkEndpoints,
 } from './canvas.js';
 import { Sim, RuntimeClient, isTopologyLocked, recordPatchOp } from './sim.js';
 
@@ -66,7 +66,6 @@ export function openContextMenu(clientX, clientY, target, world) {
       <button class="ctx-item" ${mut('sample')}>Load sample</button>
     `;
   } else {
-    const obj = ({network: state.networks, host: state.hosts, router: state.routers})[target.kind][target.name];
     html += `<div class="ctx-head">${escapeHtml(target.kind)} · ${escapeHtml(target.name)}</div>`;
     html += `<button class="ctx-item" ${mut('edit')}><svg class="ico" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 12h2l7-7-2-2-7 7v2zM9 3l2 2"/></svg>Edit<span class="meta">2×</span></button>`;
     if (target.kind === 'network') {
@@ -74,7 +73,8 @@ export function openContextMenu(clientX, clientY, target, world) {
       html += `<button class="ctx-item" ${mut('add-router-here')}><svg class="ico"><use href="#ui-router"/></svg>Add router here</button>`;
     }
     if (target.kind === 'host') {
-      const opts = Object.keys(state.networks).filter(n => n !== obj.network);
+      const obj = state.hosts[target.name];
+      const opts = Object.keys(state.networks).filter(n => n !== (obj && obj.network));
       if (opts.length) {
         html += `<div class="ctx-sub${locked ? ' disabled' : ''}">
           <button class="ctx-item" data-act="" ${locked ? 'disabled aria-disabled="true"' : ''}>Move to LAN…</button>
@@ -83,13 +83,14 @@ export function openContextMenu(clientX, clientY, target, world) {
           </div>
         </div>`;
       }
-      if (obj.network) {
+      if (obj && obj.network) {
         html += `<button class="ctx-item" ${mut('detach-host')}><svg class="ico" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 7h8M5 4l-2 3 2 3M9 4l2 3-2 3"/></svg>Detach from LAN</button>`;
       }
     }
     if (target.kind === 'router') {
+      const obj = state.routers[target.name];
       // submenu: connect to LAN
-      const used = new Set(Object.values(obj.interfaces || {}).map(i => i.network));
+      const used = new Set(Object.values((obj && obj.interfaces) || {}).map(i => i.network));
       const unused = Object.keys(state.networks).filter(n => !used.has(n));
       if (unused.length) {
         html += `<div class="ctx-sub${locked ? ' disabled' : ''}">
@@ -100,6 +101,7 @@ export function openContextMenu(clientX, clientY, target, world) {
         </div>`;
       }
     }
+    // p2p link context menu — no "Add endpoint" (schema requires exactly 2)
     html += `
       <div class="ctx-sep"></div>
       <button class="ctx-item" ${mut('duplicate')}><svg class="ico" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="4" y="4" width="8" height="8" rx="1"/></svg>Duplicate</button>
@@ -190,6 +192,7 @@ export function handleCtxAction(act, target, world, arg) {
       if (target.kind === 'network') duplicateNetwork(target.name);
       else if (target.kind === 'host') duplicateHost(target.name);
       else if (target.kind === 'router') duplicateRouter(target.name);
+      else if (target.kind === 'link') duplicateLink(target.name);
       break;
     case 'delete':
       state.selection = { kind: target.kind, name: target.name };
@@ -203,6 +206,8 @@ export function renderNav() {
   const elN = document.getElementById('nav');
   const sections = [
     { kind: 'network', title: 'LANs',    items: state.networks, glyph: 'ui-net',
+      meta: (k, v) => v.cidr || '—' },
+    { kind: 'link',    title: 'Links',   items: state.links,    glyph: 'ui-link',
       meta: (k, v) => v.cidr || '—' },
     { kind: 'host',    title: 'Hosts',    items: state.hosts,    glyph: 'ui-host',
       meta: (k, v) => v.address || '—' },
@@ -258,7 +263,7 @@ export function renderNav() {
 export function centerOnSelection() {
   if (!state.selection) return;
   const { kind, name } = state.selection;
-  const obj = ({network: state.networks, host: state.hosts, router: state.routers})[kind][name];
+  const obj = ({network: state.networks, host: state.hosts, router: state.routers, link: state.links})[kind]?.[name];
   if (!obj) return;
   const svg = canvasEl();
   const rect = svg.getBoundingClientRect();
@@ -287,6 +292,7 @@ export function renderInspector() {
   }
   const { kind, name } = state.selection;
   if (kind === 'network') return renderNetworkInsp(name, elI);
+  if (kind === 'link')    return renderLinkInsp(name, elI);
   if (kind === 'host')    return renderHostInsp(name, elI);
   if (kind === 'router')  return renderRouterInsp(name, elI);
 }
@@ -335,11 +341,63 @@ export function renderNetworkInsp(name, elI) {
   elI.querySelector('#f-dup').addEventListener('click', () => duplicateNetwork(name));
 }
 
+export function renderLinkInsp(name, elI) {
+  const link = state.links[name];
+  if (!link) { state.selection = null; return renderInspector(); }
+  const endpoints = collectLinkEndpoints(name);
+  const epHtml = endpoints.length === 0
+    ? '<div class="hint">— no endpoints attached</div>'
+    : endpoints.map(ep => {
+        if (ep.deviceKind === 'host') {
+          const h = state.hosts[ep.device] || {};
+          return `<div class="ep-row"><span class="pill">${escapeHtml(ep.device)}</span> <span class="meta">${escapeHtml(h.address || '—')}</span></div>`;
+        }
+        return `<div class="ep-row"><span class="pill">${escapeHtml(ep.device)}</span> · <span class="meta">${escapeHtml(ep.iface || '—')}</span> · <span class="meta">${escapeHtml((state.routers[ep.device]?.interfaces?.[ep.iface])?.address || '—')}</span></div>`;
+      }).join('');
+  elI.innerHTML = `
+    <div class="insp-head">
+      <div class="pre"><span class="pill link">link</span></div>
+      <div class="name">${escapeHtml(name)}</div>
+    </div>
+    <div class="insp-body">
+      <div class="field">
+        <label>Identifier</label>
+        <input id="f-name" value="${escapeHtml(name)}" spellcheck="false" />
+        <div class="hint">Used as the YAML key.</div>
+      </div>
+      <div class="field">
+        <label>CIDR</label>
+        <input id="f-cidr" value="${escapeHtml(link.cidr || '')}" readonly spellcheck="false" />
+        <div class="hint">Immutable — recreate to change width.</div>
+      </div>
+      <div class="field">
+        <label>Endpoints</label>
+        <div class="ep-list">${epHtml}</div>
+      </div>
+    </div>
+    <div class="insp-foot">
+      <button class="dup" id="f-dup">Duplicate</button>
+      <button class="del" id="f-del">Delete</button>
+    </div>
+  `;
+  elI.querySelector('#f-name').addEventListener('change', e => renameLink(name, e.target.value.trim()));
+  elI.querySelector('#f-del').addEventListener('click', deleteSelected);
+  elI.querySelector('#f-dup').addEventListener('click', () => duplicateLink(name));
+}
+
 export function renderHostInsp(name, elI) {
   const host = state.hosts[name];
   if (!host) { state.selection = null; return renderInspector(); }
-  const opts = Object.keys(state.networks)
-    .map(n => `<option value="${escapeHtml(n)}" ${host.network===n?'selected':''}>${escapeHtml(n)}</option>`).join('');
+  // Determine current fabric type: link or network (default to network for legacy entries)
+  const fabricType = host.link !== undefined ? 'link' : 'network';
+  const netOpts = Object.keys(state.networks)
+    .map(n => `<option value="${escapeHtml(n)}" ${fabricType==='network'&&host.network===n?'selected':''}>${escapeHtml(n)}</option>`).join('');
+  const linkOpts = Object.keys(state.links)
+    .map(l => `<option value="${escapeHtml(l)}" ${fabricType==='link'&&host.link===l?'selected':''}>${escapeHtml(l)}</option>`).join('');
+  const fabricNameOpts = fabricType === 'link'
+    ? (linkOpts ? '<option value="">— unattached</option>' + linkOpts : '<option value="">(no links)</option>')
+    : (netOpts  ? '<option value="">— unattached</option>' + netOpts  : '<option value="">(no networks)</option>');
+  const gwHidden = fabricType === 'link';
   elI.innerHTML = `
     <div class="insp-head">
       <div class="pre"><span class="pill host">host</span></div>
@@ -351,15 +409,22 @@ export function renderHostInsp(name, elI) {
         <input id="f-name" value="${escapeHtml(name)}" spellcheck="false" />
       </div>
       <div class="field">
-        <label>Network</label>
-        <select id="f-net">${opts ? '<option value="">— unattached</option>' + opts : '<option value="">(no networks)</option>'}</select>
-        <div class="hint">Pin a host to a LAN by dragging it on the canvas.</div>
+        <label>Fabric type</label>
+        <select id="f-fabric-type">
+          <option value="network" ${fabricType==='network'?'selected':''}>Network</option>
+          <option value="link"    ${fabricType==='link'   ?'selected':''}>Link</option>
+        </select>
+      </div>
+      <div class="field">
+        <label id="f-fabric-label">${fabricType === 'link' ? 'Link' : 'Network'}</label>
+        <select id="f-fabric-name">${fabricNameOpts}</select>
+        <div class="hint">${fabricType === 'link' ? 'Point-to-point link.' : 'Pin a host to a LAN by dragging it on the canvas.'}</div>
       </div>
       <div class="field">
         <label>IP address</label>
         <input id="f-addr" value="${escapeHtml(host.address || '')}" spellcheck="false" placeholder="192.168.0.10" />
       </div>
-      <div class="field">
+      <div class="field" id="f-gw-field"${gwHidden ? ' hidden' : ''}>
         <label>Default gateway</label>
         <input id="f-gw" value="${escapeHtml(host.gateway || '')}" spellcheck="false" placeholder="(none)" />
         <div class="hint">Must be an IP within the host's network.</div>
@@ -372,9 +437,33 @@ export function renderHostInsp(name, elI) {
     </div>
   `;
   elI.querySelector('#f-name').addEventListener('change', e => renameHost(name, e.target.value.trim()));
-  elI.querySelector('#f-net').addEventListener('change', e => {
+  // When the fabric type changes, update state and re-render
+  elI.querySelector('#f-fabric-type').addEventListener('change', e => {
     if (isTopologyLocked()) return;
-    state.hosts[name].network = e.target.value;
+    const newType = e.target.value;
+    const h = state.hosts[name];
+    if (newType === 'link') {
+      const firstLink = Object.keys(state.links)[0] || '';
+      h.link = firstLink;
+      delete h.network;
+    } else {
+      const firstNet = Object.keys(state.networks)[0] || '';
+      h.network = firstNet;
+      delete h.link;
+    }
+    markDirty(); renderInspector(); renderCanvas(); renderNav();
+  });
+  elI.querySelector('#f-fabric-name').addEventListener('change', e => {
+    if (isTopologyLocked()) return;
+    const h = state.hosts[name];
+    const curType = elI.querySelector('#f-fabric-type').value;
+    if (curType === 'link') {
+      h.link = e.target.value;
+      delete h.network;
+    } else {
+      h.network = e.target.value;
+      delete h.link;
+    }
     markDirty(); renderCanvas(); renderNav();
   });
   elI.querySelector('#f-addr').addEventListener('input', e => {
@@ -382,32 +471,35 @@ export function renderHostInsp(name, elI) {
     state.hosts[name].address = e.target.value.trim();
     markDirty(); renderCanvas(); renderNav();
   });
-  elI.querySelector('#f-gw').addEventListener('change', async (e) => {
-    const v = e.target.value.trim();
-    // While the sim is running, push the new gateway live so routes update immediately.
-    if (Sim.state === 'running' || Sim.state === 'paused') {
-      if (!v) {
-        toast('Clearing the gateway requires stopping the simulation', 'info', 'Gateway');
-        e.target.value = state.hosts[name].gateway || '';
-        return;
-      }
-      try {
-        const r = await RuntimeClient.deviceCommand(name, `set_gateway ${v}`);
-        if (!r.ok) {
-          toast(r.output, 'error', 'Gateway');
+  const gwInp = elI.querySelector('#f-gw');
+  if (gwInp) {
+    gwInp.addEventListener('change', async (e) => {
+      const v = e.target.value.trim();
+      // While the sim is running, push the new gateway live so routes update immediately.
+      if (Sim.state === 'running' || Sim.state === 'paused') {
+        if (!v) {
+          toast('Clearing the gateway requires stopping the simulation', 'info', 'Gateway');
           e.target.value = state.hosts[name].gateway || '';
           return;
         }
-      } catch (err) {
-        toast(err.message || String(err), 'error', 'Gateway');
-        e.target.value = state.hosts[name].gateway || '';
-        return;
+        try {
+          const r = await RuntimeClient.deviceCommand(name, `set_gateway ${v}`);
+          if (!r.ok) {
+            toast(r.output, 'error', 'Gateway');
+            e.target.value = state.hosts[name].gateway || '';
+            return;
+          }
+        } catch (err) {
+          toast(err.message || String(err), 'error', 'Gateway');
+          e.target.value = state.hosts[name].gateway || '';
+          return;
+        }
       }
-    }
-    if (v) state.hosts[name].gateway = v;
-    else delete state.hosts[name].gateway;
-    markDirty();
-  });
+      if (v) state.hosts[name].gateway = v;
+      else delete state.hosts[name].gateway;
+      markDirty();
+    });
+  }
   elI.querySelector('#f-del').addEventListener('click', deleteSelected);
   elI.querySelector('#f-dup').addEventListener('click', () => duplicateHost(name));
   Inspector.refreshRoutes(name);
@@ -417,10 +509,16 @@ export function renderRouterInsp(name, elI) {
   const router = state.routers[name];
   if (!router) { state.selection = null; return renderInspector(); }
   const ifaces = Object.entries(router.interfaces || {});
-  const optsFor = (sel) => {
+  // Build fabric-type-aware option lists for a given interface
+  const netOptsFor = (sel) => {
     const opts = Object.keys(state.networks)
       .map(n => `<option value="${escapeHtml(n)}" ${sel===n?'selected':''}>${escapeHtml(n)}</option>`).join('');
     return opts ? '<option value="">— none</option>' + opts : '<option value="">(no networks)</option>';
+  };
+  const linkOptsFor = (sel) => {
+    const opts = Object.keys(state.links)
+      .map(l => `<option value="${escapeHtml(l)}" ${sel===l?'selected':''}>${escapeHtml(l)}</option>`).join('');
+    return opts ? '<option value="">— none</option>' + opts : '<option value="">(no links)</option>';
   };
   elI.innerHTML = `
     <div class="insp-head">
@@ -435,12 +533,19 @@ export function renderRouterInsp(name, elI) {
       <div class="field">
         <label>Interfaces</label>
         <div class="iflist">
-          ${ifaces.map(([ifn, ifc]) => `
+          ${ifaces.map(([ifn, ifc]) => {
+            // Determine current fabric type for this interface
+            const ifFabric = ifc.link !== undefined ? 'link' : 'network';
+            const fabricSummary = ifFabric === 'link'
+              ? `link ${escapeHtml(ifc.link || '—')}`
+              : escapeHtml(ifc.network || '—');
+            const fabricNameOpts = ifFabric === 'link' ? linkOptsFor(ifc.link) : netOptsFor(ifc.network);
+            return `
             <details class="iface" data-iface="${escapeHtml(ifn)}">
               <summary class="ihead">
                 <span class="ttl">
                   <span class="pill">${escapeHtml(ifn)}</span>
-                  <span class="iface-summary">${escapeHtml(ifc.network || '—')} · ${escapeHtml(ifc.address || 'no ip')} · cost=${escapeHtml(String(ifc.cost ?? '—'))}</span>
+                  <span class="iface-summary">${fabricSummary} · ${escapeHtml(ifc.address || 'no ip')} · cost=${escapeHtml(String(ifc.cost ?? '—'))}</span>
                 </span>
                 <button class="del" data-del-iface="${escapeHtml(ifn)}" title="Remove">
                   <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l6 6M9 3l-6 6"/></svg>
@@ -454,9 +559,18 @@ export function renderRouterInsp(name, elI) {
               </div>
               <div class="grid">
                 <div class="pair">
-                  <label>Network</label>
-                  <select data-iface-net="${escapeHtml(ifn)}">${optsFor(ifc.network)}</select>
+                  <label>Fabric type</label>
+                  <select data-iface-fabric-type="${escapeHtml(ifn)}">
+                    <option value="network" ${ifFabric==='network'?'selected':''}>Network</option>
+                    <option value="link"    ${ifFabric==='link'   ?'selected':''}>Link</option>
+                  </select>
                 </div>
+                <div class="pair">
+                  <label data-iface-fabric-label="${escapeHtml(ifn)}">${ifFabric === 'link' ? 'Link' : 'Network'}</label>
+                  <select data-iface-fabric-name="${escapeHtml(ifn)}">${fabricNameOpts}</select>
+                </div>
+              </div>
+              <div class="grid">
                 <div class="pair">
                   <label>Cost</label>
                   <input type="number" min="0" data-iface-cost="${escapeHtml(ifn)}" value="${ifc.cost ?? ''}" />
@@ -469,7 +583,7 @@ export function renderRouterInsp(name, elI) {
                 </div>
               </div>
             </details>
-          `).join('')}
+          `;}).join('')}
         </div>
         <button class="add-if" id="add-if" style="margin-top:8px;">+ Add interface</button>
       </div>
@@ -518,10 +632,40 @@ export function renderRouterInsp(name, elI) {
       markDirty(); renderInspector(); renderCanvas(); renderNav();
     });
   });
-  elI.querySelectorAll('[data-iface-net]').forEach(s => {
+  // Fabric-type select: switching between Network and Link for an interface
+  elI.querySelectorAll('[data-iface-fabric-type]').forEach(s => {
     s.addEventListener('change', () => {
       if (isTopologyLocked()) return;
-      state.routers[name].interfaces[s.getAttribute('data-iface-net')].network = s.value;
+      const ifn = s.getAttribute('data-iface-fabric-type');
+      const iff = state.routers[name].interfaces[ifn];
+      const newType = s.value;
+      if (newType === 'link') {
+        iff.link = Object.keys(state.links)[0] || '';
+        delete iff.network;
+      } else {
+        iff.network = Object.keys(state.networks)[0] || '';
+        delete iff.link;
+      }
+      markDirty(); renderInspector(); renderCanvas(); renderNav();
+    });
+  });
+  // Fabric-name select: picking which network or link for an interface
+  elI.querySelectorAll('[data-iface-fabric-name]').forEach(s => {
+    s.addEventListener('change', () => {
+      if (isTopologyLocked()) return;
+      const ifn = s.getAttribute('data-iface-fabric-name');
+      const iff = state.routers[name].interfaces[ifn];
+      // Determine current type from the sibling type-select in same <details>
+      const details = s.closest('[data-iface]');
+      const typeSelect = details && details.querySelector(`[data-iface-fabric-type="${CSS.escape(ifn)}"]`);
+      const curType = typeSelect ? typeSelect.value : (iff.link !== undefined ? 'link' : 'network');
+      if (curType === 'link') {
+        iff.link = s.value;
+        delete iff.network;
+      } else {
+        iff.network = s.value;
+        delete iff.link;
+      }
       markDirty(); renderCanvas(); renderNav();
     });
   });
@@ -597,6 +741,28 @@ export function duplicateHost(name) {
   state.selection = { kind: 'host', name: newName };
   markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
 }
+export function renameLink(oldName, newName) {
+  if (isTopologyLocked()) return;
+  if (!newName || newName === oldName) return;
+  if (state.links[newName]) { toast(`Link "${newName}" already exists`, 'error', 'Rename'); renderInspector(); return; }
+  state.links = renameKey(state.links, oldName, newName);
+  // Rewrite all router interface and host references
+  Object.values(state.hosts).forEach(h => { if (h.link === oldName) h.link = newName; });
+  Object.values(state.routers).forEach(r => Object.values(r.interfaces || {}).forEach(iff => { if (iff.link === oldName) iff.link = newName; }));
+  state.selection = { kind: 'link', name: newName };
+  markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+}
+export function duplicateLink(name) {
+  if (isTopologyLocked() || (Sim && Sim.state === 'paused')) return;
+  const newName = uniqueName(name + '_', state.links);
+  const src = state.links[name];
+  // Clone the link entry but NOT its endpoints — a newly duplicated link has
+  // no devices attached; the user must wire them up. Toast explains this.
+  state.links[newName] = { cidr: src.cidr, x: src.x + 30, y: src.y + 30 };
+  state.selection = { kind: 'link', name: newName };
+  markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+  toast(`Link "${newName}" created (no endpoints — attach routers/hosts to use it)`, '', 'Duplicate');
+}
 export function duplicateRouter(name) {
   if (isTopologyLocked() || (Sim && Sim.state === 'paused')) return;
   const newName = uniqueName(name + '_', state.routers);
@@ -621,6 +787,19 @@ export function deleteSelected() {
     Object.values(state.routers).forEach(r => Object.values(r.interfaces || {}).forEach(i => { if (i.network === name) i.network = ''; }));
     delete state.networks[name];
     recordPatchOp({ op: 'remove_network', name });
+  } else if (kind === 'link') {
+    const linkUsedBy = [];
+    Object.entries(state.hosts).forEach(([hn, h]) => { if (h.link === name) linkUsedBy.push(`host ${hn}`); });
+    Object.entries(state.routers).forEach(([rn, r]) => {
+      Object.entries(r.interfaces || {}).forEach(([ifn, iff]) => { if (iff.link === name) linkUsedBy.push(`${rn}/${ifn}`); });
+    });
+    if (linkUsedBy.length && !confirm(`Link "${name}" is used by:\n  ${linkUsedBy.join('\n  ')}\n\nDelete anyway? Their link field will be cleared.`)) return;
+    // Clear link references from hosts and router interfaces
+    Object.values(state.hosts).forEach(h => { if (h.link === name) { h.network = ''; delete h.link; } });
+    Object.values(state.routers).forEach(r => Object.values(r.interfaces || {}).forEach(iff => {
+      if (iff.link === name) { iff.network = ''; delete iff.link; }
+    }));
+    delete state.links[name];
   } else if (kind === 'host') {
     delete state.hosts[name];
     recordPatchOp({ op: 'remove_host', name });
@@ -640,6 +819,11 @@ export function addNew(kind, world) {
     state.networks[name] = { cidr: '', x: def.x, y: def.y };
     state.selection = { kind, name };
     recordPatchOp({ op: 'add_network', name, address: '' });
+  } else if (kind === 'link') {
+    const name = uniqueName('p2p', state.links);
+    state.links[name] = { cidr: '', x: def.x, y: def.y };
+    state.selection = { kind, name };
+    toast(`Created ${name} — assign two router/host interfaces to use it`, '', 'new link');
   } else if (kind === 'host') {
     const name = uniqueName('h', state.hosts);
     state.hosts[name] = { network: '', address: '', x: def.x, y: def.y };

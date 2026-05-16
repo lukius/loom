@@ -352,7 +352,7 @@ export function clipToRect(cx, cy, w, h, tx, ty) {
  * Collect all {device, deviceKind, iface, cost} endpoints referencing `linkName`.
  * Scans both routers (interfaces with link===linkName) and hosts (host.link===linkName).
  */
-function collectLinkEndpoints(linkName) {
+export function collectLinkEndpoints(linkName) {
   const out = [];
   for (const [hn, h] of Object.entries(state.hosts)) {
     if (h.link === linkName) {
