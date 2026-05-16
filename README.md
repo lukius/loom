@@ -19,6 +19,31 @@ The simulator reads its topology from `samples/sample.yaml` by default. Set `LOO
 
 The web server binds `127.0.0.1:8000` by default. Set `LOOM_PORT` to override (e.g. for the e2e suite).
 
+## Point-to-point links
+
+The YAML topology supports `/30` or `/31` point-to-point links between any two endpoints (router–router, router–host, or host–host). Declare them under a top-level `links:` key alongside `networks:`:
+
+```yaml
+as:
+  name: example
+  networks:
+    lan1: "10.10.0.0/24"
+  links:
+    p2p1: "10.0.0.0/30"
+  hosts:
+    h1: { network: lan1, address: "10.10.0.10", gateway: "10.10.0.1" }
+    h2: { link: p2p1, address: "10.0.0.2" }   # gateway auto-filled to peer
+  routers:
+    r1:
+      interfaces:
+        eth0: { network: lan1, address: "10.10.0.1", cost: 5 }
+        eth1: { link:    p2p1, address: "10.0.0.1",  cost: 5 }
+```
+
+Rules: a link must have exactly two endpoints; `network:` and `link:` are mutually exclusive per interface; only `/30` or `/31` CIDRs are accepted; a host on a link has its gateway auto-filled to the peer's IP (an explicit `gateway:` must match).
+
+The SPA renders p2p links as direct edges between devices rather than a LAN-bus visual.
+
 ## Legacy CLI shell
 
 `cd src && python loom.py shell` launches the original cmd.Cmd REPL. Commands: `read`, `route`, `send`, `update_cost`, `ifconfig`, `neighbors`, `ping`, `exit`.
