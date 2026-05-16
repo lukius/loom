@@ -31,6 +31,10 @@ class _FabricBase(Entity):
         self._interfaces[interface.address()] = interface
         interface._set_out_queue(self._in_queue)
 
+    def endpoint_count(self) -> int:
+        """Return the number of interfaces (endpoints) attached to this fabric."""
+        return len(self._interfaces)
+
     def stop(self):
         for iface in self._interfaces.values():
             iface.stop()

@@ -111,9 +111,7 @@ class LinkValidator(Validator):
 
         name = link.name()
         if name in self._system.networks():
-            return ValidationFailure(
-                f'{name}: already exists as a network'
-            )
+            return ValidationFailure('already exists as a network')
 
         if name in self._system.links():
             return ValidationFailure('link already exists')

@@ -169,13 +169,17 @@ class ParserTest(unittest.TestCase):
         self._run_parsing_error_test('missing_netmask', 'missing netmask')
 
     def test_missing_interface_network(self):
-        self._run_parsing_error_test('missing_interface_network', 'no network assigned')
+        self._run_parsing_error_test(
+            'missing_interface_network', 'no network or link assigned'
+        )
 
     def test_missing_interface_address(self):
         self._run_parsing_error_test('missing_interface_address', 'no address assigned')
 
     def test_missing_host_network(self):
-        self._run_parsing_error_test('missing_host_network', 'no network assigned')
+        self._run_parsing_error_test(
+            'missing_host_network', 'no network or link assigned'
+        )
 
     def test_missing_host_address(self):
         self._run_parsing_error_test('missing_host_address', 'no address assigned')
@@ -196,7 +200,7 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(links['p2p1'].address(), NetworkAddress('10.0.0.0/30'))
 
         link = links['p2p1']
-        self.assertEqual(len(link._interfaces), 2)
+        self.assertEqual(link.endpoint_count(), 2)
 
         r1 = system.routers()['r1']
         r2 = system.routers()['r2']
@@ -260,7 +264,9 @@ class ParserTest(unittest.TestCase):
         self._run_parsing_error_test('link_iface_both_keys', 'network and link')
 
     def test_link_iface_neither_key(self):
-        self._run_parsing_error_test('link_iface_neither_key', 'no network assigned')
+        self._run_parsing_error_test(
+            'link_iface_neither_key', 'no network or link assigned'
+        )
 
     def test_link_addr_outside_cidr(self):
         self._run_parsing_error_test('link_addr_outside_cidr', 'invalid address for network')
@@ -285,7 +291,19 @@ class ParserTest(unittest.TestCase):
         self._run_parsing_error_test('link_host_iface_both_keys', 'network and link')
 
     def test_link_host_iface_neither_key(self):
-        self._run_parsing_error_test('link_host_iface_neither_key', 'no network assigned')
+        self._run_parsing_error_test(
+            'link_host_iface_neither_key', 'no network or link assigned'
+        )
+
+    def test_link_host_addr_outside_cidr(self):
+        self._run_parsing_error_test(
+            'link_host_addr_outside_cidr', 'address not in link'
+        )
+
+    def test_link_host_addr_is_network_or_broadcast(self):
+        self._run_parsing_error_test(
+            'link_host_addr_is_network_or_broadcast', 'invalid address for link'
+        )
 
     # ----------------------------------------------------------------- helpers
 

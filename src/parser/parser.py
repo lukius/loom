@@ -52,7 +52,7 @@ class Parser:
 
         return system
 
-    def _parse_networks(self, system, validator, network_dict):  # noqa: E501
+    def _parse_networks(self, system, validator, network_dict):
         for name, addr in network_dict.items():
             address = self._parse_net_address(name, addr, validator)
 
@@ -92,7 +92,7 @@ class Parser:
                 if has_network and has_link:
                     self._fail(f'{name}: {iface_name}: declares both network and link')
                 if not has_network and not has_link:
-                    self._fail(f'{name}: {iface_name}: no network assigned')
+                    self._fail(f'{name}: {iface_name}: no network or link assigned')
 
                 if has_network:
                     fabric = self._resolve_network(
@@ -142,7 +142,7 @@ class Parser:
             if has_network and has_link:
                 self._fail(f'{name}: declares both network and link')
             if not has_network and not has_link:
-                self._fail(f'{name}: no network assigned')
+                self._fail(f'{name}: no network or link assigned')
 
             if has_network:
                 fabric = self._resolve_network(system, name, None, obj['network'])
@@ -170,6 +170,13 @@ class Parser:
                 if has_network:
                     gw_address = Address(gw_str)
 
+            if has_link:
+                fabric_addr = Address(addr_str)
+                if not fabric.contains_address(fabric_addr):
+                    self._fail(f'{name}: address not in link {fabric.name()}')
+                if not fabric.is_valid_host_address(fabric_addr):
+                    self._fail(f'{name}: invalid address for link {fabric.name()}')
+
             host = Host(name, fabric, address, gw_address, gate=system.gate())
 
             if has_network:
@@ -185,7 +192,7 @@ class Parser:
 
     def _post_pass_links(self, system, hosts_on_links):
         for name, link in system.links().items():
-            endpoint_count = len(link._interfaces)
+            endpoint_count = link.endpoint_count()
             if endpoint_count != 2:
                 self._fail(
                     f'{name}: link must have exactly two endpoints'
@@ -202,7 +209,7 @@ class Parser:
                         f'{host.name()}: gateway mismatch: expected {peer_addr},'
                         f' got {explicit_gw_str}'
                     )
-            host._gw_address = peer_addr
+            host.set_gateway(peer_addr)
 
     def _resolve_network(self, system, dev_name, iface_name, net_name):
         try:
@@ -222,7 +229,7 @@ class Parser:
             else:
                 self._fail(f'{dev_name}: link not found')
 
-    def _parse_net_address(self, name, addr, validator):  # noqa: E501
+    def _parse_net_address(self, name, addr, validator):
         if '/' not in addr:
             self._fail(f'{name}: missing netmask')
 
