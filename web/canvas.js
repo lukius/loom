@@ -504,7 +504,12 @@ export function drawLinkEdge(linkName, linkObj) {
     }, `c·${ep2.cost}`));
   }
 
-  // Midpoint label group — the selection/drag target
+  // Midpoint label group — the selection/drag target. Skip rendering entirely
+  // when the iface-labels toggle is off: the per-end iface tags above are
+  // already gated on the same flag, so a clean canvas hides ALL fabric-name
+  // text consistently. Edge selection still works via the path itself.
+  if (!showIfaces) return;
+
   // Fall back to geometric midpoint if no x,y stored yet (ensureLinkPositions
   // covers this at load time, but guard here for robustness)
   const mx = typeof linkObj.x === 'number' ? linkObj.x : (a.x + b.x) / 2;

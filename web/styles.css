@@ -1274,6 +1274,11 @@ svg.canvas.linking { cursor: crosshair; }
 }
 .field .btn-sec:hover { color: var(--accent-text); border-color: var(--accent); background: var(--accent-bg); }
 
+/* fabric-name picker: select + inline "+ New" button on the same row */
+.fabric-name-row { display: flex; gap: 6px; align-items: center; }
+.fabric-name-row select { flex: 1; min-width: 0; }
+.fabric-name-row .btn-sec { white-space: nowrap; padding: 6px 10px; font-size: 12px; }
+
 .insp-routes {
   padding: 14px 20px;
   border-top: 1px solid var(--border);

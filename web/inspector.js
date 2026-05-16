@@ -417,8 +417,11 @@ export function renderHostInsp(name, elI) {
       </div>
       <div class="field">
         <label id="f-fabric-label">${fabricType === 'link' ? 'Link' : 'Network'}</label>
-        <select id="f-fabric-name">${fabricNameOpts}</select>
-        <div class="hint">${fabricType === 'link' ? 'Point-to-point link.' : 'Pin a host to a LAN by dragging it on the canvas.'}</div>
+        <div class="fabric-name-row">
+          <select id="f-fabric-name">${fabricNameOpts}</select>
+          ${fabricType === 'link' ? '<button id="f-new-link" type="button" class="btn-sec">+ New link</button>' : ''}
+        </div>
+        <div class="hint">${fabricType === 'link' ? 'Point-to-point link. Use "+ New link" to create a fresh one and attach this host to it.' : 'Pin a host to a LAN by dragging it on the canvas.'}</div>
       </div>
       <div class="field">
         <label>IP address</label>
@@ -467,6 +470,26 @@ export function renderHostInsp(name, elI) {
     }
     markDirty(); renderCanvas(); renderNav();
   });
+  const newLinkBtn = elI.querySelector('#f-new-link');
+  if (newLinkBtn) {
+    newLinkBtn.addEventListener('click', () => {
+      if (isTopologyLocked()) return;
+      const linkName = uniqueName('p2p', state.links);
+      const h = state.hosts[name];
+      state.links[linkName] = {
+        cidr: '',
+        x: (h.x ?? 600) + 80,
+        y: (h.y ?? 400),
+      };
+      h.link = linkName;
+      delete h.network;
+      markDirty();
+      renderInspector();
+      renderCanvas();
+      renderNav();
+      toast(`Created ${linkName} and attached ${name}`, 'ok', 'new link');
+    });
+  }
   elI.querySelector('#f-addr').addEventListener('input', e => {
     if (isTopologyLocked()) return;
     state.hosts[name].address = e.target.value.trim();
@@ -568,7 +591,10 @@ export function renderRouterInsp(name, elI) {
                 </div>
                 <div class="pair">
                   <label data-iface-fabric-label="${escapeHtml(ifn)}">${ifFabric === 'link' ? 'Link' : 'Network'}</label>
-                  <select data-iface-fabric-name="${escapeHtml(ifn)}">${fabricNameOpts}</select>
+                  <div class="fabric-name-row">
+                    <select data-iface-fabric-name="${escapeHtml(ifn)}">${fabricNameOpts}</select>
+                    ${ifFabric === 'link' ? `<button class="btn-sec" data-iface-new-link="${escapeHtml(ifn)}" type="button">+ New link</button>` : ''}
+                  </div>
                 </div>
               </div>
               <div class="grid">
@@ -670,6 +696,29 @@ export function renderRouterInsp(name, elI) {
         delete iff.link;
       }
       markDirty(); renderCanvas(); renderNav();
+    });
+  });
+  // "+ New link" button next to each iface's fabric-name select — creates a
+  // fresh link and attaches this interface to it in one click.
+  elI.querySelectorAll('[data-iface-new-link]').forEach(b => {
+    b.addEventListener('click', () => {
+      if (isTopologyLocked()) return;
+      const ifn = b.getAttribute('data-iface-new-link');
+      const r = state.routers[name];
+      const iff = r.interfaces[ifn];
+      const linkName = uniqueName('p2p', state.links);
+      state.links[linkName] = {
+        cidr: '',
+        x: (r.x ?? 600) + 80,
+        y: (r.y ?? 400),
+      };
+      iff.link = linkName;
+      delete iff.network;
+      markDirty();
+      renderInspector();
+      renderCanvas();
+      renderNav();
+      toast(`Created ${linkName} and attached ${name}/${ifn}`, 'ok', 'new link');
     });
   });
   elI.querySelectorAll('[data-iface-addr]').forEach(i => {

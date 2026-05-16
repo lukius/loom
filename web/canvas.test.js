@@ -426,6 +426,22 @@ describe('p2p link rendering', () => {
     expect(g.getAttribute('data-name')).toBe('p2p1');
   });
 
+  it('midpoint label is hidden when state.display.showIfaces is false', () => {
+    state.display = { showCosts: true, showIfaces: false };
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    // edge path still drawn — selection on the edge stays possible
+    expect(document.querySelectorAll('.edge.p2p').length).toBe(1);
+    // midpoint label group suppressed
+    expect(document.querySelectorAll('g[data-kind="link"]').length).toBe(0);
+  });
+
   it('shiftLinkLabelsForDeviceMove shifts label by half the device delta', () => {
     state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
     state.routers.r1 = { x: 200, y: 200, interfaces: {

@@ -399,6 +399,22 @@ describe('renderRouterInsp — fabric-type dropdown', () => {
     expect(state.routers.r1.interfaces.eth0.link).toBe('');
   });
 
+  it('router iface "+ New link" creates a fresh link and attaches this iface to it', () => {
+    state.routers = {
+      r1: { x: 100, y: 100, interfaces: { eth0: { link: '', address: '', cost: 0 } } },
+    };
+    state.links = {};
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const btn = elI.querySelector('[data-iface-new-link="eth0"]');
+    expect(btn).not.toBeNull();
+    btn.click();
+    const created = Object.keys(state.links);
+    expect(created.length).toBe(1);
+    expect(state.routers.r1.interfaces.eth0.link).toBe(created[0]);
+    expect(state.routers.r1.interfaces.eth0.network).toBeUndefined();
+  });
+
   it('switching fabric-type back to Network sets iff.network and deletes iff.link', () => {
     state.networks = { lan1: { cidr: '10.1.0.0/24', x: 0, y: 0 } };
     state.links    = { p2p1: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
@@ -475,6 +491,28 @@ describe('renderHostInsp — fabric-type dropdown', () => {
     typeSelect.value = 'link';
     typeSelect.dispatchEvent(new Event('change'));
     expect(state.hosts.h1.link).toBe('');
+  });
+
+  it('host editor "+ New link" creates a fresh link and attaches this host to it', () => {
+    state.hosts = { h1: { link: '', address: '', x: 100, y: 100 } };
+    state.links = {};
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const btn = elI.querySelector('#f-new-link');
+    expect(btn).not.toBeNull();
+    btn.click();
+    const created = Object.keys(state.links);
+    expect(created.length).toBe(1);
+    expect(state.hosts.h1.link).toBe(created[0]);
+    expect(state.hosts.h1.network).toBeUndefined();
+  });
+
+  it('host editor "+ New link" button only appears when fabric type is Link', () => {
+    state.networks = { lan1: { cidr: '10.1.0.0/24', x: 0, y: 0 } };
+    state.hosts = { h1: { network: 'lan1', address: '10.1.0.10', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    expect(elI.querySelector('#f-new-link')).toBeNull();
   });
 
   it('switching back to Network sets h.network and deletes h.link', () => {
