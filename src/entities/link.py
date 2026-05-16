@@ -31,6 +31,23 @@ class Link(_FabricBase):
     def contains_address(self, address: Address) -> bool:
         return self._address.matches(address)
 
+    def is_valid_host_address(self, address: Address) -> bool:
+        """Return True only if address is a usable host address in this link.
+
+        For /30 links, the network (.0) and broadcast (.3) addresses are
+        reserved and not usable.  For /31 links (RFC 3021) both addresses
+        are valid host addresses.
+        """
+        if not self._address.matches(address):
+            return False
+        if self._address.mask() == 30:
+            network_host = str(self._address).split('/')[0]
+            broadcast = str(self._address.broadcast())
+            addr_str = str(address)
+            if addr_str == network_host or addr_str == broadcast:
+                return False
+        return True
+
     def devices(self) -> dict:
         return {
             interface.device().name(): interface.device()

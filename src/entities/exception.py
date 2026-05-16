@@ -28,6 +28,13 @@ class NetworkNotFoundException(EntityException):
         super().__init__(message)
 
 
+class LinkNotFoundException(EntityException):
+
+    def __init__(self, message: str):
+        message = f'link not found: {message}'
+        super().__init__(message)
+
+
 class InvalidInterfaceException(EntityException):
 
     def __init__(self, dev, iface_name):

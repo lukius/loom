@@ -183,6 +183,112 @@ class ParserTest(unittest.TestCase):
     def test_invalid_host_gateway(self):
         self._run_parsing_error_test('invalid_gateway', 'gateway address not in host network')
 
+    # ------------------------------------------------------------------ links --
+
+    def test_two_routers_one_link(self):
+        system = Parser(f'{self.FILE_PATH}/two_routers_one_link.yaml').parse()
+
+        links = system.links()
+        self.assertEqual(len(links), 1)
+        self.assertIn('p2p1', links)
+
+        from entities import NetworkAddress
+        self.assertEqual(links['p2p1'].address(), NetworkAddress('10.0.0.0/30'))
+
+        link = links['p2p1']
+        self.assertEqual(len(link._interfaces), 2)
+
+        r1 = system.routers()['r1']
+        r2 = system.routers()['r2']
+
+        r1_eth1 = r1.interfaces()['eth1']
+        self.assertEqual(r1_eth1.address(), '10.0.0.1')
+        self.assertEqual(r1_eth1.cost(), 5)
+        self.assertEqual(r1_eth1.network().name(), 'p2p1')
+
+        r2_eth0 = r2.interfaces()['eth0']
+        self.assertEqual(r2_eth0.address(), '10.0.0.2')
+        self.assertEqual(r2_eth0.cost(), 5)
+        self.assertEqual(r2_eth0.network().name(), 'p2p1')
+
+        self.assertEqual(len(r1.interfaces()), 2)
+        r1_eth0 = r1.interfaces()['eth0']
+        self.assertEqual(r1_eth0.network().name(), 'lan1')
+
+    def test_host_on_link(self):
+        system = Parser(f'{self.FILE_PATH}/host_on_link.yaml').parse()
+
+        hosts = system.hosts()
+        h3 = hosts['h3']
+        self.assertEqual(h3.network().name(), 'h3link')
+
+        from entities import Address
+        self.assertEqual(h3.gateway(), Address('10.0.1.1'))
+
+    def test_host_to_host_link(self):
+        system = Parser(f'{self.FILE_PATH}/host_to_host_link.yaml').parse()
+
+        from entities import Address
+        h1 = system.hosts()['h1']
+        h2 = system.hosts()['h2']
+
+        self.assertEqual(h1.gateway(), Address('10.0.2.1'))
+        self.assertEqual(h2.gateway(), Address('10.0.2.0'))
+
+    def test_host_on_link_explicit_correct_gateway(self):
+        system = Parser(
+            f'{self.FILE_PATH}/host_on_link_explicit_correct_gateway.yaml'
+        ).parse()
+
+        from entities import Address
+        h3 = system.hosts()['h3']
+        self.assertEqual(h3.gateway(), Address('10.0.1.1'))
+
+    def test_link_too_wide(self):
+        self._run_parsing_error_test('link_too_wide', '/28')
+
+    def test_link_three_endpoints(self):
+        self._run_parsing_error_test('link_three_endpoints', 'two endpoints')
+
+    def test_link_one_endpoint(self):
+        self._run_parsing_error_test('link_one_endpoint', 'two endpoints')
+
+    def test_link_no_endpoints(self):
+        self._run_parsing_error_test('link_no_endpoints', 'two endpoints')
+
+    def test_link_iface_both_keys(self):
+        self._run_parsing_error_test('link_iface_both_keys', 'network and link')
+
+    def test_link_iface_neither_key(self):
+        self._run_parsing_error_test('link_iface_neither_key', 'no network assigned')
+
+    def test_link_addr_outside_cidr(self):
+        self._run_parsing_error_test('link_addr_outside_cidr', 'invalid address for network')
+
+    def test_link_addr_is_network_or_broadcast(self):
+        self._run_parsing_error_test(
+            'link_addr_is_network_or_broadcast', 'invalid address for network'
+        )
+
+    def test_link_host_wrong_gateway(self):
+        self._run_parsing_error_test('link_host_wrong_gateway', 'gateway mismatch')
+
+    def test_link_name_collides_with_network(self):
+        self._run_parsing_error_test(
+            'link_name_collides_with_network', 'already exists as a network'
+        )
+
+    def test_link_not_found(self):
+        self._run_parsing_error_test('link_not_found', 'link not found')
+
+    def test_link_host_iface_both_keys(self):
+        self._run_parsing_error_test('link_host_iface_both_keys', 'network and link')
+
+    def test_link_host_iface_neither_key(self):
+        self._run_parsing_error_test('link_host_iface_neither_key', 'no network assigned')
+
+    # ----------------------------------------------------------------- helpers
+
     def _run_parsing_error_test(self, filename, expected_msg):
         parser = Parser(f'{self.FILE_PATH}/{filename}.yaml')
         with self.assertRaises(ParsingException) as context:

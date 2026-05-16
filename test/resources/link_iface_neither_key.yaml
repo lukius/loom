@@ -1,0 +1,10 @@
+as:
+  name: "test_as"
+  networks:
+    lan1: "200.100.0.0/24"
+  routers:
+    r1:
+      interfaces:
+        eth0:
+          address: "200.100.0.1"
+          cost: 10
