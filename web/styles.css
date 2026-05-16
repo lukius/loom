@@ -703,6 +703,51 @@ svg.canvas.linking { cursor: crosshair; }
   stroke-linejoin: round;
 }
 
+/* p2p direct-link edges — dash pattern distinguishes them from LAN beziers */
+.canvas .edge.p2p {
+  stroke: var(--rtr);
+  stroke-width: 1.6;
+  stroke-dasharray: 6 3;
+  opacity: .75;
+  cursor: pointer;
+}
+.canvas .edge.p2p:hover {
+  stroke: var(--rtr);
+  opacity: 1;
+  stroke-width: 2;
+}
+.canvas .edge.p2p.selected {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 3;
+  opacity: 1;
+}
+
+/* p2p midpoint label — floating name·cidr chip on the edge */
+.canvas .link-label {
+  cursor: grab;
+}
+.canvas .link-label .hit {
+  fill: rgba(0,0,0,0);
+  pointer-events: all;
+}
+.canvas .link-label-text {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  paint-order: stroke fill;
+  stroke: var(--canvas-bg);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.canvas .link-label-text .name {
+  fill: var(--rtr-text);
+  font-weight: 600;
+}
+.canvas .link-label-text .cidr {
+  fill: var(--text-2);
+}
+.canvas .link-label.selected .link-label-text .name { fill: var(--accent); }
+
 /* node generic */
 .canvas .node { cursor: grab; }
 .canvas .node.dragging { cursor: grabbing; }

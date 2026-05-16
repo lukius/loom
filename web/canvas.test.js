@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { tapPointOnRail, railTapPoint, deviceNameForEndpoint } from './canvas.js';
+import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, renderCanvas, lookupLinkMidpoint } from './canvas.js';
 import {
-  state,
+  state, bus,
   RAIL_DEFAULT_WIDTH, RAIL_THICKNESS, RAIL_TICK_INSET,
 } from './state.js';
 
@@ -201,5 +201,191 @@ describe('deviceNameForEndpoint — resolves packet endpoints to device names', 
 
   it('returns null when neither device nor address is provided', () => {
     expect(deviceNameForEndpoint({})).toBeNull();
+  });
+});
+
+/* -----------------------------------------------------------------------
+   p2p link rendering
+   ----------------------------------------------------------------------- */
+
+function setupMinimalDOM() {
+  // Minimal SVG DOM expected by renderCanvas / drawLinkEdge
+  document.body.innerHTML = `
+    <svg id="canvas" class="canvas">
+      <g id="viewport">
+        <g id="edges-layer"></g>
+        <g id="nodes-layer"></g>
+        <g id="overlay-layer"></g>
+      </g>
+    </svg>
+    <div id="canv-empty" hidden></div>
+    <div id="zoom-lvl"></div>
+  `;
+}
+
+describe('p2p link rendering', () => {
+  beforeEach(() => {
+    setupMinimalDOM();
+    state.hosts    = {};
+    state.routers  = {};
+    state.networks = {};
+    state.links    = {};
+    state.selection = null;
+    state.view     = { x: 0, y: 0, k: 1 };
+    state.display  = { showCosts: true, showIfaces: true };
+  });
+
+  it('no links → no p2p edges drawn', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    expect(document.querySelectorAll('.edge.p2p').length).toBe(0);
+  });
+
+  it('one link with two router endpoints → one p2p edge + one midpoint group', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    expect(document.querySelectorAll('.edge.p2p').length).toBe(1);
+    // both the edge path and the midpoint group carry data-kind="link"
+    const linkEls = document.querySelectorAll('[data-kind="link"]');
+    expect(linkEls.length).toBe(2); // edge path + midpoint <g>
+    expect(document.querySelectorAll('g[data-kind="link"]').length).toBe(1);
+  });
+
+  it('midpoint label honors state.links[name].x,y', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 777, y: 888 };
+    state.routers.r1 = { x: 100, y: 100, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 500, y: 100, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    const midG = document.querySelector('g[data-kind="link"]');
+    expect(midG).not.toBeNull();
+    const t = midG.getAttribute('transform') || '';
+    expect(t).toContain('777');
+    expect(t).toContain('888');
+  });
+
+  it('midpoint label shows name and CIDR', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    const midG = document.querySelector('g[data-kind="link"]');
+    const text = midG.textContent;
+    expect(text).toContain('p2p1');
+    expect(text).toContain('10.1.0.0/30');
+  });
+
+  it('edge has selected class when link is the current selection', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    state.selection = { kind: 'link', name: 'p2p1' };
+    renderCanvas();
+    const edge = document.querySelector('.edge.p2p');
+    expect(edge.classList.contains('selected')).toBe(true);
+  });
+
+  it('edge path has data-kind="link" and data-name on it', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    const edge = document.querySelector('.edge.p2p');
+    expect(edge.getAttribute('data-kind')).toBe('link');
+    expect(edge.getAttribute('data-name')).toBe('p2p1');
+  });
+
+  it('clicking the p2p edge path selects the link', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    let selChanged = false;
+    bus.addEventListener('state:selection-changed', () => { selChanged = true; }, { once: true });
+    const edge = document.querySelector('.edge.p2p');
+    edge.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(state.selection).not.toBeNull();
+    expect(state.selection.kind).toBe('link');
+    expect(state.selection.name).toBe('p2p1');
+    expect(selChanged).toBe(true);
+  });
+
+  it('clicking the midpoint label selects the link', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    state.selection = null;
+    const midG = document.querySelector('g[data-kind="link"]');
+    midG.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(state.selection).not.toBeNull();
+    expect(state.selection.kind).toBe('link');
+    expect(state.selection.name).toBe('p2p1');
+  });
+
+  it('host-on-link is supported: renders one p2p edge', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.hosts.h1 = { link: 'p2p1', address: '10.1.0.2', x: 400, y: 200 };
+    renderCanvas();
+    expect(document.querySelectorAll('.edge.p2p').length).toBe(1);
+    const edge = document.querySelector('.edge.p2p');
+    expect(edge.getAttribute('data-name')).toBe('p2p1');
+  });
+
+  it('link with fewer than two endpoints → no p2p edge drawn', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    // Only one endpoint; canvas should skip gracefully
+    renderCanvas();
+    expect(document.querySelectorAll('.edge.p2p').length).toBe(0);
+  });
+
+  it('lookupLinkMidpoint returns the midpoint group element', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    const g = lookupLinkMidpoint('p2p1');
+    expect(g).not.toBeNull();
+    expect(g.getAttribute('data-kind')).toBe('link');
+    expect(g.getAttribute('data-name')).toBe('p2p1');
   });
 });
