@@ -212,8 +212,7 @@ carry the load:
   YAML format, and the legacy shell.
 
 An AI assistant pointed at `CLAUDE.md` plus the relevant
-`docs/architecture/` page can plan and execute most changes directly —
-the project is small enough that no agent-team scaffolding is needed.
+`docs/architecture/` page can plan and execute most changes directly.
 
 Human contributors do not need to use any AI tooling — all conventions
 apply equally. See [CONTRIBUTING.md](CONTRIBUTING.md#ai-assisted-development)
