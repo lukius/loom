@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, renderCanvas, lookupLinkMidpoint, lookupDeviceNode } from './canvas.js';
+import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, renderCanvas, lookupLinkMidpoint, lookupDeviceNode, shiftLinkLabelsForDeviceMove } from './canvas.js';
 import {
   state, bus,
   RAIL_DEFAULT_WIDTH, RAIL_THICKNESS, RAIL_TICK_INSET,
@@ -424,5 +424,48 @@ describe('p2p link rendering', () => {
     expect(g).not.toBeNull();
     expect(g.getAttribute('data-kind')).toBe('link');
     expect(g.getAttribute('data-name')).toBe('p2p1');
+  });
+
+  it('shiftLinkLabelsForDeviceMove shifts label by half the device delta', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    shiftLinkLabelsForDeviceMove('r1', 40, -20);
+    expect(state.links.p2p1.x).toBe(320);
+    expect(state.links.p2p1.y).toBe(190);
+  });
+
+  it('shiftLinkLabelsForDeviceMove does not touch labels for unrelated devices', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    state.routers.r3 = { x: 800, y: 800, interfaces: {} };  // not on any link
+    shiftLinkLabelsForDeviceMove('r3', 1000, 1000);
+    expect(state.links.p2p1.x).toBe(300);
+    expect(state.links.p2p1.y).toBe(200);
+  });
+
+  it('shiftLinkLabelsForDeviceMove preserves user-set offset between label and midpoint', () => {
+    // Label placed 50px above the geometric midpoint (300, 200) — i.e. at (300, 150).
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 150 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    // Move r1 to (240, 200): midpoint shifts to (320, 200), label should follow to (320, 150).
+    shiftLinkLabelsForDeviceMove('r1', 40, 0);
+    state.routers.r1.x = 240;
+    expect(state.links.p2p1.x).toBe(320);
+    expect(state.links.p2p1.y).toBe(150);  // 50px-above-midpoint offset preserved
   });
 });

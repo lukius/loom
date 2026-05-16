@@ -370,6 +370,25 @@ export function collectLinkEndpoints(linkName) {
 }
 
 /**
+ * Shift the midpoint label of every p2p link that has `deviceName` as one of
+ * its endpoints by half the supplied delta.
+ *
+ * Rationale: the geometric midpoint between two endpoints moves by half the
+ * delta when one endpoint moves; applying that same half-delta to the label
+ * preserves whatever offset the user previously set between the label and the
+ * midpoint (including offset == 0, i.e. label exactly at the midpoint).
+ */
+export function shiftLinkLabelsForDeviceMove(deviceName, ddx, ddy) {
+  if (ddx === 0 && ddy === 0) return;
+  for (const [linkName, lv] of Object.entries(state.links)) {
+    const endpoints = collectLinkEndpoints(linkName);
+    if (!endpoints.some(ep => ep.device === deviceName)) continue;
+    if (typeof lv.x === 'number') lv.x += ddx / 2;
+    if (typeof lv.y === 'number') lv.y += ddy / 2;
+  }
+}
+
+/**
  * Draw a direct device↔device edge for a p2p link.
  * The midpoint label (name + CIDR) is positioned at linkObj.{x,y} and is
  * the primary selection/drag target. The edge path itself is also selectable.
@@ -981,8 +1000,15 @@ export function wireCanvas() {
         drag.moved = true;
       }
       const w = clientToWorld(e.clientX, e.clientY);
-      drag.obj.x = w.x - drag.offX;
-      drag.obj.y = w.y - drag.offY;
+      const newX = w.x - drag.offX;
+      const newY = w.y - drag.offY;
+      // Drag along the midpoint label of every p2p link that touches this
+      // device.  See shiftLinkLabelsForDeviceMove for the math.
+      if (drag.kind === 'host' || drag.kind === 'router') {
+        shiftLinkLabelsForDeviceMove(drag.name, newX - drag.obj.x, newY - drag.obj.y);
+      }
+      drag.obj.x = newX;
+      drag.obj.y = newY;
 
       if (drag.kind === 'link') {
         // p2p midpoint drag: reRenderEdges() clears and fully rebuilds edgesLayer
