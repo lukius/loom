@@ -160,14 +160,17 @@ export const PacketAnim = {
     const srcCenter = getNodeCenter(srcNode);
     if (!srcCenter || !srcName) return [];
 
-    // Resolve the destination device. The simulator emits `dst.address`;
-    // on /30 floods the dst is the broadcast address which doesn't match
-    // any iface, so fall back to "the other endpoint of the link".
-    let dstName = deviceNameForEndpoint(evt.dst);
-    if (!dstName) {
-      const peers = collectLinkEndpoints(evt.network).filter(ep => ep.device !== srcName);
-      if (peers.length === 1) dstName = peers[0].device;
-    }
+    // Resolve the destination device. A p2p link has exactly two endpoints,
+    // so the peer is structurally determined: "the endpoint of this link
+    // that isn't the sender". Prefer that over an address-based lookup —
+    // the address can collide with another iface elsewhere in the topology
+    // (e.g. two /30 links both using 10.0.0.0/30), and the user's intent
+    // is unambiguous here regardless of address.
+    const peers = collectLinkEndpoints(evt.network).filter(ep => ep.device !== srcName);
+    let dstName = peers.length === 1 ? peers[0].device : null;
+    // Fallback: if the link's endpoint table is degenerate (0 or >1 peers,
+    // shouldn't happen in a valid topology), try the address lookup.
+    if (!dstName) dstName = deviceNameForEndpoint(evt.dst);
     if (!dstName) return [];
     const dstNode = lookupDeviceNode(dstName);
     const dstCenter = dstNode ? getNodeCenter(dstNode) : null;

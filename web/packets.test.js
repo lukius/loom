@@ -92,6 +92,42 @@ describe('PacketAnim._bezBetween — packet curves match drawEdge', () => {
     expect(segs[0].p3.x).toBeLessThan(400);
   });
 
+  it('_segmentsForLink prefers the link\'s structural peer over the address lookup (handles cross-link IP collisions)', () => {
+    // Two p2p links both using 10.0.0.0/30 — h5 on p2p2 happens to share
+    // address 10.0.0.2 with r3.eth2 on p2p1. The animation MUST go to r3,
+    // not to h5, when the event's network is p2p1.
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g class="node router" data-kind="router" data-name="r1" transform="translate(100 100)"></g>
+        <g class="node router" data-kind="router" data-name="r3" transform="translate(700 100)"></g>
+        <g class="node host"   data-kind="host"   data-name="h5" transform="translate(400 400)"></g>
+      </g></svg>`;
+    state.links = {
+      p2p1: { cidr: '10.0.0.0/30', x: 400, y: 100 },
+      p2p2: { cidr: '10.0.0.0/30', x: 400, y: 400 },
+    };
+    state.routers = {
+      r1: { x: 100, y: 100, interfaces: { eth2: { link: 'p2p1', address: '10.0.0.1', cost: 5 } } },
+      r3: { x: 700, y: 100, interfaces: { eth2: { link: 'p2p1', address: '10.0.0.2', cost: 5 } } },
+    };
+    state.hosts = {
+      h4: { link: 'p2p2', address: '10.0.0.1', x: 400, y: 350 },
+      h5: { link: 'p2p2', address: '10.0.0.2', x: 400, y: 450 },
+    };
+    state.networks = {};
+    const srcNode = document.querySelector('[data-name="r1"]');
+    const evt = {
+      type: 'ping_request',
+      network: 'p2p1',
+      src: { device: 'r1', address: '10.0.0.1' },
+      dst: { address: '10.0.0.2' },  // collides with h5
+    };
+    const segs = PacketAnim._segmentsForLink(evt, srcNode);
+    expect(segs.length).toBe(1);
+    // p3.x should be near r3's clipped left edge (around 668), NOT near h5's center (400).
+    expect(segs[0].p3.x).toBeGreaterThan(500);
+  });
+
   it('_segmentsForLink falls back to "the other endpoint" when dst is the link broadcast', () => {
     document.body.innerHTML = `
       <svg><g id="nodes-layer">
