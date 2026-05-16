@@ -57,8 +57,9 @@ export const HIT_PAD = { network: { x: 12, top: 12, bottom: 32 }, host: { x: 18,
 
 export const SAMPLE = {
   asName: 'test_as',
-  /* links is empty for now; a real p2p link will be added in Task 8 */
-  links: {},
+  links: {
+    p2p1: { cidr: '10.0.0.0/30', x: 920, y: 355 },
+  },
   networks: {
     lan1: { cidr: '200.100.0.0/24', x: 460, y: 160 },
     lan2: { cidr: '100.200.0.0/24', x: 460, y: 360 },
@@ -73,6 +74,7 @@ export const SAMPLE = {
     r1: { x: 720, y: 250, interfaces: {
       eth0: { network: 'lan1', address: '200.100.0.1',   cost: 10 },
       eth1: { network: 'lan2', address: '100.200.0.1',   cost: 15 },
+      eth2: { link: 'p2p1',   address: '10.0.0.1',       cost: 5  },
     }},
     r2: { x: 820, y: 360, interfaces: {
       eth0: { network: 'lan1', address: '200.100.0.254', cost: 5 },
@@ -82,6 +84,7 @@ export const SAMPLE = {
     r3: { x: 720, y: 460, interfaces: {
       eth0: { network: 'lan2', address: '100.200.0.10', cost: 20 },
       eth1: { network: 'lan3', address: '150.10.10.10', cost: 5 },
+      eth2: { link: 'p2p1',   address: '10.0.0.2',      cost: 5  },
     }},
   },
 };

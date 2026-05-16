@@ -438,9 +438,10 @@ describe('constants', () => {
     }
   });
 
-  it('SAMPLE has a links property (empty object for now)', () => {
+  it('SAMPLE has a links property with p2p1 entry', () => {
     expect(SAMPLE).toHaveProperty('links');
-    expect(SAMPLE.links).toEqual({});
+    expect(SAMPLE.links).toHaveProperty('p2p1');
+    expect(SAMPLE.links.p2p1.cidr).toBe('10.0.0.0/30');
   });
 });
 
@@ -492,10 +493,12 @@ describe('state.links', () => {
     expect(state.links).toEqual({});
   });
 
-  it('loadSample populates state.links as empty object', () => {
+  it('loadSample populates state.links with p2p1 from SAMPLE', () => {
     state.links = { existing: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
     loadSample();
-    expect(state.links).toEqual({});
+    expect(state.links).toHaveProperty('p2p1');
+    expect(state.links.p2p1.cidr).toBe('10.0.0.0/30');
+    expect(state.links).not.toHaveProperty('existing');
   });
 
   it('loadSample clones SAMPLE.links — mutations do not leak into SAMPLE', () => {

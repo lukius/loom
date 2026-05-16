@@ -4,6 +4,8 @@ as:
     lan1: "200.100.0.0/24"
     lan2: "100.200.0.0/24"
     lan3: "150.10.10.0/24"
+  links:
+    p2p1: "10.0.0.0/30"
   hosts:
     h1:
         network: "lan1"
@@ -22,12 +24,16 @@ as:
         interfaces:
             eth0:
                 network: "lan1"
-                address: "200.100.0.1"      
+                address: "200.100.0.1"
                 cost: 10
             eth1:
                 network: "lan2"
-                address: "100.200.0.1"      
+                address: "100.200.0.1"
                 cost: 15
+            eth2:
+                link: "p2p1"
+                address: "10.0.0.1"
+                cost: 5
     r2:
         interfaces:
             eth0:
@@ -46,9 +52,13 @@ as:
         interfaces:
             eth0:
                 network: "lan2"
-                address: "100.200.0.10"      
+                address: "100.200.0.10"
                 cost: 20
             eth1:
                 network: "lan3"
-                address: "150.10.10.10"      
-                cost: 5  
+                address: "150.10.10.10"
+                cost: 5
+            eth2:
+                link: "p2p1"
+                address: "10.0.0.2"
+                cost: 5
