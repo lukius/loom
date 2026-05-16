@@ -26,6 +26,7 @@ import {
 } from './inspector.js';
 import './terminals.js';
 import { PacketAnim } from './packets.js';
+import { importYaml as _importYaml, exportYaml } from './yaml-io.js';
 
 // Temporary bus wiring: bridges to module-local yaml exporter/importer. canvas.js,
 // inspector.js, terminals.js, and packets.js own their own listeners.
@@ -112,65 +113,11 @@ Sim.refreshState().catch(() => setConnectionStatus(false));
 RuntimeClient.connectEvents(_onEvent);
 
 /* ---------- yaml ---------- */
-function exportYaml() {
-  const out = { as: {
-    name: state.asName || 'topology',
-    networks: Object.fromEntries(Object.entries(state.networks).map(([k, v]) => [k, v.cidr || ''])),
-    hosts: Object.fromEntries(Object.entries(state.hosts).map(([k, v]) => {
-      const h = { network: v.network || '', address: v.address || '' };
-      if (v.gateway) h.gateway = v.gateway;
-      return [k, h];
-    })),
-    routers: Object.fromEntries(Object.entries(state.routers).map(([k, v]) => [k, {
-      interfaces: Object.fromEntries(Object.entries(v.interfaces || {}).map(([ifn, iff]) => [ifn, {
-        network: iff.network || '',
-        address: iff.address || '',
-        cost: typeof iff.cost === 'number' ? iff.cost : (parseInt(iff.cost, 10) || 0),
-      }])),
-    }])),
-  } };
-  return jsyaml.dump(out, { quotingType: '"', forceQuotes: true, lineWidth: -1, indent: 2 });
-}
+// exportYaml is imported from yaml-io.js above.
+// importYaml wraps the yaml-io function, injecting canvas helpers that are
+// unavailable in the yaml-io module (which has no DOM/canvas dependencies).
 function importYaml(text) {
-  let parsed;
-  try { parsed = jsyaml.load(text); } catch (e) {
-    toast(e.message || 'Failed to parse YAML', 'error', 'Parse error'); return false;
-  }
-  if (!parsed || !parsed.as) { toast('YAML root must be "as:"', 'error', 'Parse error'); return false; }
-  const node = parsed.as;
-  state.asName = node.name || 'unnamed_as';
-  state.networks = {}; state.hosts = {}; state.routers = {};
-  if (node.networks && typeof node.networks === 'object') {
-    for (const [n, cidr] of Object.entries(node.networks)) state.networks[n] = { cidr: typeof cidr === 'string' ? cidr : String(cidr || '') };
-  }
-  if (node.hosts && typeof node.hosts === 'object') {
-    for (const [n, v] of Object.entries(node.hosts)) {
-      const h = { network: v?.network || '', address: v?.address || '' };
-      if (v?.gateway) h.gateway = v.gateway;
-      state.hosts[n] = h;
-    }
-  }
-  if (node.routers && typeof node.routers === 'object') {
-    for (const [n, v] of Object.entries(node.routers)) {
-      const ifaces = {};
-      if (v && v.interfaces && typeof v.interfaces === 'object') {
-        for (const [ifn, iff] of Object.entries(v.interfaces)) {
-          ifaces[ifn] = {
-            network: iff?.network || '', address: iff?.address || '',
-            cost: typeof iff?.cost === 'number' ? iff.cost : parseInt(iff?.cost, 10) || 0,
-          };
-        }
-      }
-      state.routers[n] = { interfaces: ifaces };
-    }
-  }
-  ensurePositions();
-  state.selection = null;
-  document.getElementById('proj-name').value = state.asName;
-  fitView();
-  persist(); renderAll();
-  toast('Topology imported', 'ok');
-  return true;
+  return _importYaml(text, { ensurePositions, fitView, renderAll });
 }
 
 /* ---------- modal ---------- */
@@ -293,6 +240,7 @@ function init() {
     state.networks = JSON.parse(JSON.stringify(SAMPLE.networks));
     state.hosts = JSON.parse(JSON.stringify(SAMPLE.hosts));
     state.routers = JSON.parse(JSON.stringify(SAMPLE.routers));
+    state.links = JSON.parse(JSON.stringify(SAMPLE.links));
   }
   document.getElementById('proj-name').value = state.asName;
   setSave('autosaved');

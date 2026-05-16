@@ -3,17 +3,20 @@
    =========================================================== */
 import { toast } from './utils.js';
 
-export const STORAGE_KEY = 'loom.topology.v4';
+export const STORAGE_KEY = 'loom.topology.v5';
 export const THEME_KEY = 'loom.theme';
 
 export const state = {
   asName: 'test_as',
   /* networks[name] = { cidr, x, y } */
   networks: {},
-  /* hosts[name] = { network, address, x, y } */
+  /* hosts[name] = { network, address, x, y } OR { link, address, x, y }  — network and link are mutually exclusive */
   hosts: {},
-  /* routers[name] = { interfaces: { ifn: { network, address, cost } }, x, y } */
+  /* routers[name] = { interfaces: { ifn: { network, address, cost } OR { link, address, cost } }, x, y }
+     — network and link on each interface are mutually exclusive; exactly one must be present */
   routers: {},
+  /* links[name] = { cidr, x, y }  — x,y are the midpoint label's coords (draggable; used by canvas in Task 6) */
+  links: {},
   selection: null,        // { kind, name }
   view: { x: 0, y: 0, k: 1 }, // pan x,y and zoom factor
   /* visibility toggles for on-canvas annotations (persisted) */
@@ -54,6 +57,8 @@ export const HIT_PAD = { network: { x: 12, top: 12, bottom: 32 }, host: { x: 18,
 
 export const SAMPLE = {
   asName: 'test_as',
+  /* links is empty for now; a real p2p link will be added in Task 8 */
+  links: {},
   networks: {
     lan1: { cidr: '200.100.0.0/24', x: 460, y: 160 },
     lan2: { cidr: '100.200.0.0/24', x: 460, y: 360 },
@@ -100,6 +105,7 @@ export function persist() {
       networks: state.networks,
       hosts: state.hosts,
       routers: state.routers,
+      links: state.links,
       view: state.view,
       display: state.display,
     }));
@@ -115,6 +121,7 @@ export function restore() {
     state.networks = d.networks || {};
     state.hosts = d.hosts || {};
     state.routers = d.routers || {};
+    state.links = (d.links && typeof d.links === 'object' && !Array.isArray(d.links)) ? d.links : {};
     if (d.view) state.view = d.view;
     state.display = { ...DISPLAY_DEFAULTS, ...(d.display || {}) };
     return true;
@@ -125,6 +132,7 @@ export function loadSample() {
   state.networks = JSON.parse(JSON.stringify(SAMPLE.networks));
   state.hosts = JSON.parse(JSON.stringify(SAMPLE.hosts));
   state.routers = JSON.parse(JSON.stringify(SAMPLE.routers));
+  state.links = JSON.parse(JSON.stringify(SAMPLE.links));
   state.selection = null;
   state.view = { x: 0, y: 0, k: 1 };
   state.display = { ...DISPLAY_DEFAULTS };

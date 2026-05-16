@@ -5,6 +5,7 @@ import {
   NODE, HIT_PAD,
   persist, restore, loadSample, markDirty, setSave,
 } from './state.js';
+import { importYaml, exportYaml } from './yaml-io.js';
 
 // Snapshot of the original `state` shape, captured once at module load.
 // Tests mutate `state` and then call resetState() between cases.
@@ -435,5 +436,256 @@ describe('constants', () => {
       expect(HIT_PAD[kind]).toHaveProperty('top');
       expect(HIT_PAD[kind]).toHaveProperty('bottom');
     }
+  });
+
+  it('SAMPLE has a links property (empty object for now)', () => {
+    expect(SAMPLE).toHaveProperty('links');
+    expect(SAMPLE.links).toEqual({});
+  });
+});
+
+describe('state.links', () => {
+  it('exists by default as empty object', () => {
+    expect(state.links).toBeDefined();
+    expect(state.links).toEqual({});
+  });
+
+  it('persist + restore round-trips state.links', () => {
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 100, y: 100 } };
+    persist();
+    resetState();
+    expect(restore()).toBe(true);
+    expect(state.links.p2p1).toEqual({ cidr: '10.0.0.0/30', x: 100, y: 100 });
+  });
+
+  it('persist writes links into the stored payload', () => {
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 50, y: 50 } };
+    persist();
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    expect(raw).toHaveProperty('links');
+    expect(raw.links.p2p1.cidr).toBe('10.0.0.0/30');
+  });
+
+  it('restore falls back to {} when stored payload has no links field (v4 migration)', () => {
+    // Simulate a v4-era payload without the links key
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      asName: 'old_as',
+      networks: {},
+      hosts: {},
+      routers: {},
+      view: { x: 0, y: 0, k: 1 },
+      display: { showCosts: true, showIfaces: true },
+    }));
+    expect(restore()).toBe(true);
+    expect(state.links).toEqual({});
+  });
+
+  it('restore falls back to {} when stored links is not an object', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      asName: 'x',
+      networks: {},
+      hosts: {},
+      routers: {},
+      links: 'bad',
+    }));
+    expect(restore()).toBe(true);
+    expect(state.links).toEqual({});
+  });
+
+  it('loadSample populates state.links as empty object', () => {
+    state.links = { existing: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
+    loadSample();
+    expect(state.links).toEqual({});
+  });
+
+  it('loadSample clones SAMPLE.links — mutations do not leak into SAMPLE', () => {
+    loadSample();
+    state.links.leaked = { cidr: '1.2.3.0/30', x: 0, y: 0 };
+    expect(SAMPLE.links).not.toHaveProperty('leaked');
+  });
+});
+
+/* ---- helper: minimal DOM environment for yaml-io tests ---- */
+function setupYamlDom() {
+  document.body.innerHTML =
+    '<div id="save-state"><span class="dot"></span> idle</div>' +
+    '<input id="proj-name" />' +
+    '<div id="toasts"></div>' +
+    '<svg id="canvas"><g id="viewport"><g id="edges-layer"></g>' +
+    '<g id="nodes-layer"></g><g id="overlay-layer"></g></g></svg>' +
+    '<div id="zoom-lvl"></div>';
+}
+
+describe('YAML round-trip (yaml-io.js)', () => {
+  beforeEach(() => {
+    setupYamlDom();
+  });
+
+  it('import — link block present populates state.links and router interface', () => {
+    const yaml = `
+as:
+  name: test_as
+  networks: {}
+  links:
+    p2p1: "10.0.0.0/30"
+  hosts: {}
+  routers:
+    r1:
+      interfaces:
+        eth0: { network: lan1, address: "200.100.0.1", cost: 10 }
+        eth1: { link: p2p1, address: "10.0.0.1", cost: 5 }
+`;
+    importYaml(yaml);
+    expect(state.links.p2p1.cidr).toBe('10.0.0.0/30');
+    expect(state.routers.r1.interfaces.eth1.link).toBe('p2p1');
+    expect(state.routers.r1.interfaces.eth1).not.toHaveProperty('network');
+  });
+
+  it('import — network interface unchanged when no link key', () => {
+    const yaml = `
+as:
+  name: test_as
+  networks:
+    lan1: "200.100.0.0/24"
+  hosts: {}
+  routers:
+    r1:
+      interfaces:
+        eth0: { network: lan1, address: "200.100.0.1", cost: 10 }
+`;
+    importYaml(yaml);
+    expect(state.routers.r1.interfaces.eth0.network).toBe('lan1');
+    expect(state.routers.r1.interfaces.eth0).not.toHaveProperty('link');
+  });
+
+  it('import — host on link sets h.link (no network field)', () => {
+    const yaml = `
+as:
+  name: test_as
+  networks: {}
+  links:
+    p2p1: "10.0.0.0/30"
+  hosts:
+    h1: { link: p2p1, address: "10.0.0.1" }
+  routers: {}
+`;
+    importYaml(yaml);
+    expect(state.hosts.h1.link).toBe('p2p1');
+    expect(state.hosts.h1).not.toHaveProperty('network');
+  });
+
+  it('import — link gets default x and y coords (numbers)', () => {
+    const yaml = `
+as:
+  name: test_as
+  networks: {}
+  links:
+    p2p1: "10.0.0.0/30"
+  hosts: {}
+  routers:
+    r1:
+      interfaces:
+        eth1: { link: p2p1, address: "10.0.0.1", cost: 5 }
+    r2:
+      interfaces:
+        eth0: { link: p2p1, address: "10.0.0.2", cost: 5 }
+`;
+    importYaml(yaml);
+    expect(typeof state.links.p2p1.x).toBe('number');
+    expect(typeof state.links.p2p1.y).toBe('number');
+  });
+
+  it('import — missing links block results in state.links = {}', () => {
+    const yaml = `
+as:
+  name: test_as
+  networks:
+    lan1: "200.100.0.0/24"
+  hosts: {}
+  routers: {}
+`;
+    importYaml(yaml);
+    expect(state.links).toEqual({});
+  });
+
+  it('export — links block emitted when state.links is non-empty', () => {
+    state.asName = 'export_as';
+    state.networks = {};
+    state.hosts = {};
+    state.routers = {
+      r1: { x: 100, y: 100, interfaces: {
+        eth1: { link: 'p2p1', address: '10.0.0.1', cost: 5 },
+      }},
+    };
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 100, y: 100 } };
+    const yaml = exportYaml();
+    expect(yaml).toContain('links:');
+    expect(yaml).toContain('p2p1');
+    expect(yaml).toContain('10.0.0.0/30');
+    expect(yaml).toContain('link:');
+  });
+
+  it('export — interface with link emits link key, not network key', () => {
+    state.asName = 'test_as';
+    state.networks = {};
+    state.hosts = {};
+    state.routers = {
+      r1: { x: 100, y: 100, interfaces: {
+        eth1: { link: 'p2p1', address: '10.0.0.1', cost: 5 },
+      }},
+    };
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 100, y: 100 } };
+    const yaml = exportYaml();
+    // Should have link: p2p1 but not network: for eth1
+    expect(yaml).toContain('link:');
+    // The exported interface should not fallback to empty network
+    expect(yaml).not.toMatch(/network:\s*""\s*\n/);
+  });
+
+  it('export — host on link emits link key', () => {
+    state.asName = 'test_as';
+    state.networks = {};
+    state.hosts = { h1: { link: 'p2p1', address: '10.0.0.1', x: 50, y: 50 } };
+    state.routers = {};
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 100, y: 100 } };
+    const yaml = exportYaml();
+    expect(yaml).toContain('link:');
+    expect(yaml).toContain('p2p1');
+  });
+
+  it('export — no links block when state.links is empty', () => {
+    state.asName = 'test_as';
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 100, y: 100 } };
+    state.hosts = {};
+    state.routers = {};
+    state.links = {};
+    const yaml = exportYaml();
+    expect(yaml).not.toContain('links:');
+  });
+
+  it('round-trip: import → export → import preserves links', () => {
+    const yaml = `
+as:
+  name: test_as
+  networks: {}
+  links:
+    p2p1: "10.0.0.0/30"
+  hosts: {}
+  routers:
+    r1:
+      interfaces:
+        eth1: { link: p2p1, address: "10.0.0.1", cost: 5 }
+    r2:
+      interfaces:
+        eth0: { link: p2p1, address: "10.0.0.2", cost: 5 }
+`;
+    importYaml(yaml);
+    const exported = exportYaml();
+    // reset state and re-import
+    state.links = {};
+    state.routers = {};
+    importYaml(exported);
+    expect(state.links.p2p1.cidr).toBe('10.0.0.0/30');
+    expect(state.routers.r1.interfaces.eth1.link).toBe('p2p1');
   });
 });
