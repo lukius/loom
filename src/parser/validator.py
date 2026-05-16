@@ -1,6 +1,6 @@
 from collections import defaultdict
 
-from entities import Network, Router, Host, NetworkDevice
+from entities import Network, Router, Host, NetworkDevice, Link
 
 
 class ValidationResult:
@@ -35,6 +35,7 @@ class SystemValidator:
     def __init__(self, system):
         self._addr_validator = AddressValidator(system)
         self._net_validator = NetworkValidator(system)
+        self._link_validator = LinkValidator(system)
         self._router_validator = DeviceValidator(system)
         self._host_validator = HostValidator(system)
 
@@ -43,6 +44,9 @@ class SystemValidator:
 
     def validate_network(self, net: Network) -> ValidationResult:
         return self._net_validator.validate(net)
+
+    def validate_link(self, link) -> ValidationResult:
+        return self._link_validator.validate(link)
 
     def validate_router(self, router: Router) -> ValidationResult:
         return self._router_validator.validate(router)
@@ -96,6 +100,25 @@ class NetworkValidator(Validator):
         return ValidationSuccess()
 
 
+class LinkValidator(Validator):
+
+    def validate(self, link) -> ValidationResult:
+        mask = link.address().mask()
+        if mask not in (30, 31):
+            return ValidationFailure(
+                f'link CIDR must be /30 or /31, got /{mask}'
+            )
+
+        name = link.name()
+        if name in self._system.networks():
+            return ValidationFailure('already exists as a network')
+
+        if name in self._system.links():
+            return ValidationFailure('link already exists')
+
+        return ValidationSuccess()
+
+
 class DeviceValidator(Validator):
 
     def validate(self, device: NetworkDevice) -> ValidationResult:
@@ -105,7 +128,12 @@ class DeviceValidator(Validator):
             net = iface.network()
             addr = iface.address()
 
-            if not net.contains_address(addr):
+            valid = (
+                net.is_valid_host_address(addr)
+                if isinstance(net, Link)
+                else net.contains_address(addr)
+            )
+            if not valid:
                 return ValidationFailure(f'invalid address for network {net.name()}')
 
             if self._addr_already_used(addrs_by_net, iface):

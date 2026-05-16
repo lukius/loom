@@ -112,6 +112,8 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 
 - **`Network._interfaces` is keyed by interface IP address, not by `iface.name()`.** Interface names are only unique within a single device (every router happens to call its first interface `eth0`), so keying by name would clobber siblings on the same LAN. The parser/validator enforces IP-address uniqueness within each network, which is what makes the address a safe key. Anything new that joins interfaces to networks must follow this rule.
 
+- **`Link` is a sibling of `Network`, both subclassing `_FabricBase` (`entities/_fabric.py`).** `Link._dispatch_packet` delivers to the endpoint whose IP is not `frame.source()`; drops silently if only one endpoint is attached (construction race guard). No broadcast/unicast split — there is no broadcast domain. `/30` or `/31` only, enforced in both `Link.__init__` and `LinkValidator`. A host's gateway on a link is auto-filled by the parser post-pass from the peer's IP; an explicit `gateway:` must match the peer exactly.
+
 - **`NullAddress` next-hop = directly connected.** In `RoutingTable`, a rule whose `next_hop` is `NullAddress` means "destination network is on this interface; deliver to the packet's final destination directly." `Router._handle_forwarding` substitutes `packet.destination()` when it sees `NullAddress`. New code that builds rules must follow the same convention.
 
 - **Hosts cannot forward.** `Host._handle_forwarding` raises. Multi-homed hosts are not modeled; a host has exactly one interface and (optionally) one gateway.

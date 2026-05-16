@@ -3,6 +3,7 @@ from .clock import PauseGate
 from .device import NetworkDevice
 from .exception import (
     HostNotFoundException,
+    LinkNotFoundException,
     NetworkNotFoundException,
     RouterNotFoundException,
 )
@@ -15,6 +16,7 @@ class AS(Entity):
     def __init__(self, name):
         super().__init__(name)
         self._networks = dict()
+        self._links = dict()
         self._routers = dict()
         self._hosts = dict()
         self._gate = PauseGate()
@@ -28,6 +30,9 @@ class AS(Entity):
     def networks(self):
         return self._networks
 
+    def links(self):
+        return self._links
+
     def hosts(self):
         return self._hosts
 
@@ -36,6 +41,12 @@ class AS(Entity):
             raise NetworkNotFoundException(name)
 
         return self._networks[name]
+
+    def link(self, name):
+        if name not in self._links:
+            raise LinkNotFoundException(name)
+
+        return self._links[name]
 
     def device(self, name: str) -> NetworkDevice:
         try:
@@ -58,6 +69,9 @@ class AS(Entity):
     def add_network(self, network):
         self._networks[network.name()] = network
 
+    def add_link(self, link):
+        self._links[link.name()] = link
+
     def add_router(self, router):
         router._as_gate = self._gate
         self._routers[router.name()] = router
@@ -69,5 +83,7 @@ class AS(Entity):
         self._gate.stop()
         for network in self._networks.values():
             network.stop()
+        for link in self._links.values():
+            link.stop()
         for router in self._routers.values():
             router.stop()

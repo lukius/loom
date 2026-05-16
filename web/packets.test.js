@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { PacketAnim } from './packets.js';
+import { state } from './state.js';
 
 // Sample one dimension of a cubic bezier at parameter t.
 function bez1d(p0, c1, c2, p3, t) {
@@ -60,6 +61,140 @@ describe('PacketAnim._bezBetween — packet curves match drawEdge', () => {
     const len = PacketAnim._segLength({ kind: 'bez', p0, c1, c2, p3 });
     expect(len).toBeGreaterThanOrEqual(chord * 0.99);   // sampled, so a hair under is fine
     expect(len).toBeLessThan(chord * 1.15);
+  });
+
+  it('_segmentsForLink builds a direct device-to-device bezier (no rail tap)', () => {
+    // Minimal DOM: two router nodes whose centers we can read via getNodeCenter.
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g class="node router" data-kind="router" data-name="r1" transform="translate(100 100)"></g>
+        <g class="node router" data-kind="router" data-name="r2" transform="translate(400 100)"></g>
+      </g></svg>`;
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 250, y: 100 } };
+    state.routers = {
+      r1: { x: 100, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.0.0.1', cost: 5 } } },
+      r2: { x: 400, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.0.0.2', cost: 5 } } },
+    };
+    state.hosts = {};
+    state.networks = {};
+    const srcNode = document.querySelector('[data-name="r1"]');
+    const evt = {
+      type: 'user_datagram',
+      network: 'p2p1',
+      src: { device: 'r1', address: '10.0.0.1' },
+      dst: { address: '10.0.0.2' },
+    };
+    const segs = PacketAnim._segmentsForLink(evt, srcNode);
+    expect(segs.length).toBe(1);
+    expect(segs[0].kind).toBe('bez');
+    // The bezier should land near r2's clipped boundary, not at r2's center.
+    expect(segs[0].p3.x).toBeGreaterThan(100);
+    expect(segs[0].p3.x).toBeLessThan(400);
+  });
+
+  it('_segmentsForNetwork resolves dst on the event\'s fabric, ignoring same-IP devices on other LANs', () => {
+    // Two LANs both using 192.168.1.0/24 — h_a on lan1 and h_b on lan2 both
+    // have IP 192.168.1.10. A packet on lan1 destined for 192.168.1.10 must
+    // animate to h_a, not h_b.
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g class="node host"    data-kind="host"    data-name="h_a"  transform="translate(100 100)"></g>
+        <g class="node host"    data-kind="host"    data-name="h_b"  transform="translate(700 100)"></g>
+        <g class="node router"  data-kind="router"  data-name="r1"   transform="translate(400 100)"></g>
+        <g class="node network" data-kind="network" data-name="lan1" transform="translate(250 100)"></g>
+        <g class="node network" data-kind="network" data-name="lan2" transform="translate(550 100)"></g>
+      </g></svg>`;
+    state.networks = {
+      lan1: { cidr: '192.168.1.0/24', x: 250, y: 100 },
+      lan2: { cidr: '192.168.1.0/24', x: 550, y: 100 },
+    };
+    state.hosts = {
+      h_a: { network: 'lan1', address: '192.168.1.10', x: 100, y: 100 },
+      h_b: { network: 'lan2', address: '192.168.1.10', x: 700, y: 100 },
+    };
+    state.routers = {
+      r1: { x: 400, y: 100, interfaces: {
+        eth0: { network: 'lan1', address: '192.168.1.1', cost: 1 },
+        eth1: { network: 'lan2', address: '192.168.1.1', cost: 1 },
+      } },
+    };
+    state.links = {};
+    const srcNode = document.querySelector('[data-name="r1"]');
+    const netNode = document.querySelector('[data-name="lan1"]');
+    const evt = {
+      type: 'user_datagram',
+      network: 'lan1',
+      src: { device: 'r1', address: '192.168.1.1' },
+      dst: { address: '192.168.1.10' },
+    };
+    const segs = PacketAnim._segmentsForNetwork(evt, srcNode, netNode);
+    // Final bezier should land near h_a's center (~100), not h_b's (~700).
+    const lastBez = segs[segs.length - 1];
+    expect(lastBez.kind).toBe('bez');
+    expect(lastBez.p3.x).toBeLessThan(300);
+  });
+
+  it('_segmentsForLink prefers the link\'s structural peer over the address lookup (handles cross-link IP collisions)', () => {
+    // Two p2p links both using 10.0.0.0/30 — h5 on p2p2 happens to share
+    // address 10.0.0.2 with r3.eth2 on p2p1. The animation MUST go to r3,
+    // not to h5, when the event's network is p2p1.
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g class="node router" data-kind="router" data-name="r1" transform="translate(100 100)"></g>
+        <g class="node router" data-kind="router" data-name="r3" transform="translate(700 100)"></g>
+        <g class="node host"   data-kind="host"   data-name="h5" transform="translate(400 400)"></g>
+      </g></svg>`;
+    state.links = {
+      p2p1: { cidr: '10.0.0.0/30', x: 400, y: 100 },
+      p2p2: { cidr: '10.0.0.0/30', x: 400, y: 400 },
+    };
+    state.routers = {
+      r1: { x: 100, y: 100, interfaces: { eth2: { link: 'p2p1', address: '10.0.0.1', cost: 5 } } },
+      r3: { x: 700, y: 100, interfaces: { eth2: { link: 'p2p1', address: '10.0.0.2', cost: 5 } } },
+    };
+    state.hosts = {
+      h4: { link: 'p2p2', address: '10.0.0.1', x: 400, y: 350 },
+      h5: { link: 'p2p2', address: '10.0.0.2', x: 400, y: 450 },
+    };
+    state.networks = {};
+    const srcNode = document.querySelector('[data-name="r1"]');
+    const evt = {
+      type: 'ping_request',
+      network: 'p2p1',
+      src: { device: 'r1', address: '10.0.0.1' },
+      dst: { address: '10.0.0.2' },  // collides with h5
+    };
+    const segs = PacketAnim._segmentsForLink(evt, srcNode);
+    expect(segs.length).toBe(1);
+    // p3.x should be near r3's clipped left edge (around 668), NOT near h5's center (400).
+    expect(segs[0].p3.x).toBeGreaterThan(500);
+  });
+
+  it('_segmentsForLink falls back to "the other endpoint" when dst is the link broadcast', () => {
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g class="node router" data-kind="router" data-name="r1" transform="translate(100 100)"></g>
+        <g class="node router" data-kind="router" data-name="r2" transform="translate(400 100)"></g>
+      </g></svg>`;
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 250, y: 100 } };
+    state.routers = {
+      r1: { x: 100, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.0.0.1', cost: 5 } } },
+      r2: { x: 400, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.0.0.2', cost: 5 } } },
+    };
+    state.hosts = {};
+    state.networks = {};
+    const srcNode = document.querySelector('[data-name="r1"]');
+    // dst.address = .3 broadcast: doesn't match any interface, so the
+    // animation should still find r2 as "the other endpoint".
+    const evt = {
+      type: 'routing_flood',
+      network: 'p2p1',
+      src: { device: 'r1', address: '10.0.0.1' },
+      dst: { address: '10.0.0.3' },
+    };
+    const segs = PacketAnim._segmentsForLink(evt, srcNode);
+    expect(segs.length).toBe(1);
+    expect(segs[0].kind).toBe('bez');
   });
 
   it('produces a curved path (control points pulled off the chord) for non-aligned endpoints', () => {

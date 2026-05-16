@@ -438,6 +438,7 @@ body.col-resizing * { cursor: col-resize !important; }
 .nav-row .glyph.network { color: var(--net); }
 .nav-row .glyph.host    { color: var(--host); }
 .nav-row .glyph.router  { color: var(--rtr); }
+.nav-row .glyph.link    { color: var(--rtr); }
 .nav-row .name {
   font-size: 13px;
   font-weight: 500;
@@ -702,6 +703,62 @@ svg.canvas.linking { cursor: crosshair; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+/* p2p direct-link edges — dash pattern distinguishes them from LAN beziers */
+.canvas .edge.p2p {
+  stroke: var(--rtr);
+  stroke-width: 1.6;
+  stroke-dasharray: 6 3;
+  opacity: .75;
+  cursor: pointer;
+}
+.canvas .edge.p2p:hover {
+  stroke: var(--rtr);
+  opacity: 1;
+  stroke-width: 2;
+}
+.canvas .edge.p2p.selected {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 3;
+  opacity: 1;
+}
+
+/* endpoint devices highlighted when the p2p edge or midpoint label is hovered */
+.canvas .node.host.p2p-hovered .icon,
+.canvas .node.router.p2p-hovered .icon {
+  filter: drop-shadow(0 0 8px var(--rtr));
+}
+.canvas .node.host.p2p-hovered .ring,
+.canvas .node.router.p2p-hovered .ring {
+  stroke: var(--rtr);
+  opacity: .65;
+}
+
+/* p2p midpoint label — floating name·cidr chip on the edge */
+.canvas .link-label {
+  cursor: grab;
+}
+.canvas .link-label .hit {
+  fill: rgba(0,0,0,0);
+  pointer-events: all;
+}
+.canvas .link-label-text {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  paint-order: stroke fill;
+  stroke: var(--canvas-bg);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.canvas .link-label-text .name {
+  fill: var(--rtr-text);
+  font-weight: 600;
+}
+.canvas .link-label-text .cidr {
+  fill: var(--text-2);
+}
+.canvas .link-label.selected .link-label-text .name { fill: var(--accent); }
 
 /* node generic */
 .canvas .node { cursor: grab; }
@@ -1046,6 +1103,8 @@ svg.canvas.linking { cursor: crosshair; }
 .insp-head .pre .pill.network { color: var(--net-text); border-color: var(--net-border); background: var(--net-bg); }
 .insp-head .pre .pill.host    { color: var(--host-text); border-color: var(--host-border); background: var(--host-bg); }
 .insp-head .pre .pill.router  { color: var(--rtr-text); border-color: var(--rtr-border); background: var(--rtr-bg); }
+/* p2p link pill — reuses the router/p2p purple palette (same as the canvas edge color) */
+.insp-head .pre .pill.link    { color: var(--rtr-text); border-color: var(--rtr-border); background: var(--rtr-bg); }
 .insp-head .name {
   font-size: 22px;
   font-weight: 600;
@@ -1079,7 +1138,21 @@ svg.canvas.linking { cursor: crosshair; }
 }
 .field .hint { font-size: 11px; color: var(--text-3); }
 
+/* Inline field validation */
+input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srgb, var(--neg) 15%, transparent); }
+.field-error { color: var(--neg); font-size: 11px; margin-top: 4px; display: none; }
+.field-error.show { display: block; }
+
 .iflist { display: flex; flex-direction: column; gap: 8px; }
+.ep-list { display: flex; flex-direction: column; gap: 6px; }
+.ep-row {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px 10px;
+  background: var(--bg);
+  font-size: 12px;
+  color: var(--text-2);
+}
 .iface {
   border: 1px solid var(--border);
   border-radius: 7px;
@@ -1205,6 +1278,11 @@ svg.canvas.linking { cursor: crosshair; }
   text-align: left;
 }
 .field .btn-sec:hover { color: var(--accent-text); border-color: var(--accent); background: var(--accent-bg); }
+
+/* fabric-name picker: select + inline "+ New" button on the same row */
+.fabric-name-row { display: flex; gap: 6px; align-items: center; }
+.fabric-name-row select { flex: 1; min-width: 0; }
+.fabric-name-row .btn-sec { white-space: nowrap; padding: 6px 10px; font-size: 12px; }
 
 .insp-routes {
   padding: 14px 20px;
@@ -1386,3 +1464,51 @@ svg.canvas.linking { cursor: crosshair; }
   z-index: 10000; display: none;
   box-shadow: 0 4px 12px rgba(0,0,0,0.25);
 }
+
+/* ============================================================
+   p2p link wizard
+   ============================================================ */
+/* Source device glow ring during linking mode */
+.node.link-wizard-source .ring {
+  display: block;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+  animation: wizard-ring-pulse 1s ease-in-out infinite alternate;
+}
+@keyframes wizard-ring-pulse {
+  from { opacity: 0.6; }
+  to   { opacity: 1; }
+}
+
+/* Dashed rubber-band line from source to cursor */
+.wizard-preview {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  pointer-events: none;
+}
+
+/* Floating instruction banner at top of canvas */
+.link-wizard-banner {
+  position: fixed;
+  top: 56px; /* below the app header */
+  left: 50%; transform: translateX(-50%);
+  background: var(--bg);
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  padding: 8px 36px 8px 14px;
+  font-size: 12px;
+  color: var(--accent-text);
+  box-shadow: var(--shadow-2);
+  z-index: 150;
+  white-space: nowrap;
+}
+.link-wizard-banner-close {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  font-size: 11px;
+  color: var(--text-3);
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.link-wizard-banner-close:hover { background: var(--bg-3); color: var(--text); }

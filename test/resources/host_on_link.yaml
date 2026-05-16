@@ -1,0 +1,13 @@
+as:
+  name: "test_as"
+  networks:
+    lan1: "200.100.0.0/24"
+  links:
+    h3link: "10.0.1.0/31"
+  hosts:
+    h3: { link: h3link, address: "10.0.1.0" }
+  routers:
+    r2:
+      interfaces:
+        eth0: { network: lan1, address: "200.100.0.1", cost: 10 }
+        eth1: { link: h3link, address: "10.0.1.1", cost: 1 }

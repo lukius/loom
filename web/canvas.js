@@ -9,7 +9,7 @@ import {
   RAIL_THICKNESS, RAIL_ENDCAP_LEN, RAIL_HANDLE_LEN,
   RAIL_TICK_INSET, RAIL_TICK_LEN, RAIL_LABEL_GAP,
 } from './state.js';
-import { el, escapeHtml, cssEscape, uniqueIface, toast } from './utils.js';
+import { el, escapeHtml, cssEscape, uniqueIface, uniqueName, toast } from './utils.js';
 import { isTopologyLocked } from './sim.js';
 
 export function lookupDeviceNode(name) {
@@ -22,6 +22,11 @@ export function lookupNetworkNode(name) {
   return document.querySelector(`#nodes-layer g[data-name="${cssEscape(name)}"][data-kind="network"]`);
 }
 
+export function lookupLinkMidpoint(name) {
+  if (!name) return null;
+  return document.querySelector(`#edges-layer g[data-kind="link"][data-name="${cssEscape(name)}"]`);
+}
+
 export function lookupAddressNode(address) {
   if (!address) return null;
   // Find host whose address matches
@@ -32,6 +37,27 @@ export function lookupAddressNode(address) {
   for (const [rn, r] of Object.entries(state.routers || {})) {
     for (const iname of Object.keys(r.interfaces || {})) {
       if (r.interfaces[iname].address === address) return lookupDeviceNode(rn);
+    }
+  }
+  return null;
+}
+
+// Fabric-scoped variant of lookupAddressNode. Only considers devices that are
+// actually attached to `fabricName` (a Network OR a Link). Necessary because
+// private IPs are intentionally reusable across separate subnets: e.g. two
+// LANs with 192.168.1.10 on each, or two /30 links both using 10.0.0.0/30.
+// The global lookup would pick the first match in iteration order and the
+// animation would land on the wrong device.
+export function lookupAddressNodeOnFabric(address, fabricName) {
+  if (!address || !fabricName) return null;
+  for (const [hn, h] of Object.entries(state.hosts || {})) {
+    if (h.address !== address) continue;
+    if (h.network === fabricName || h.link === fabricName) return lookupDeviceNode(hn);
+  }
+  for (const [rn, r] of Object.entries(state.routers || {})) {
+    for (const iff of Object.values(r.interfaces || {})) {
+      if (iff.address !== address) continue;
+      if (iff.network === fabricName || iff.link === fabricName) return lookupDeviceNode(rn);
     }
   }
   return null;
@@ -63,6 +89,28 @@ export function deviceNameForEndpoint(endpoint) {
   for (const [rn, r] of Object.entries(state.routers || {})) {
     for (const ifn of Object.keys(r.interfaces || {})) {
       if (r.interfaces[ifn].address === address) return rn;
+    }
+  }
+  return null;
+}
+
+// Fabric-scoped variant: resolve a packet endpoint to a device name, only
+// considering devices attached to `fabricName`. Honours the principle that
+// private IPs may legitimately be reused on separate subnets — see
+// lookupAddressNodeOnFabric for the same scoping rationale.
+export function deviceNameForEndpointOnFabric(endpoint, fabricName) {
+  if (!endpoint) return null;
+  if (endpoint.device) return endpoint.device;
+  const address = endpoint.address;
+  if (!address || !fabricName) return null;
+  for (const [hn, h] of Object.entries(state.hosts || {})) {
+    if (h.address !== address) continue;
+    if (h.network === fabricName || h.link === fabricName) return hn;
+  }
+  for (const [rn, r] of Object.entries(state.routers || {})) {
+    for (const iff of Object.values(r.interfaces || {})) {
+      if (iff.address !== address) continue;
+      if (iff.network === fabricName || iff.link === fabricName) return rn;
     }
   }
   return null;
@@ -269,6 +317,11 @@ export function renderCanvas() {
     }
   }
 
+  // p2p link edges (direct device↔device) + midpoint labels
+  for (const [linkName, linkObj] of Object.entries(state.links || {})) {
+    drawLinkEdge(linkName, linkObj);
+  }
+
   // nodes — networks first so they sit "behind" devices
   for (const [name, n] of Object.entries(state.networks)) drawNode('network', name, n);
   for (const [name, h] of Object.entries(state.hosts))    drawNode('host',    name, h);
@@ -336,6 +389,243 @@ export function clipToRect(cx, cy, w, h, tx, ty) {
   const th = (h / 2) / Math.max(0.0001, Math.abs(dy));
   const t = Math.min(tw, th);
   return [cx + dx * t, cy + dy * t];
+}
+
+/**
+ * Collect all {device, deviceKind, iface, cost} endpoints referencing `linkName`.
+ * Scans both routers (interfaces with link===linkName) and hosts (host.link===linkName).
+ */
+export function collectLinkEndpoints(linkName) {
+  const out = [];
+  for (const [hn, h] of Object.entries(state.hosts)) {
+    if (h.link === linkName) {
+      out.push({ device: hn, deviceKind: 'host', iface: null, cost: null, obj: h });
+    }
+  }
+  for (const [rn, r] of Object.entries(state.routers)) {
+    for (const [ifn, iff] of Object.entries(r.interfaces || {})) {
+      if (iff.link === linkName) {
+        out.push({ device: rn, deviceKind: 'router', iface: ifn, cost: iff.cost, obj: r });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Shift the midpoint label of every p2p link that has `deviceName` as one of
+ * its endpoints by half the supplied delta.
+ *
+ * Rationale: the geometric midpoint between two endpoints moves by half the
+ * delta when one endpoint moves; applying that same half-delta to the label
+ * preserves whatever offset the user previously set between the label and the
+ * midpoint (including offset == 0, i.e. label exactly at the midpoint).
+ */
+export function shiftLinkLabelsForDeviceMove(deviceName, ddx, ddy) {
+  if (ddx === 0 && ddy === 0) return;
+  for (const [linkName, lv] of Object.entries(state.links)) {
+    const endpoints = collectLinkEndpoints(linkName);
+    if (!endpoints.some(ep => ep.device === deviceName)) continue;
+    if (typeof lv.x === 'number') lv.x += ddx / 2;
+    if (typeof lv.y === 'number') lv.y += ddy / 2;
+  }
+}
+
+/**
+ * Draw a direct device↔device edge for a p2p link.
+ * The midpoint label (name + CIDR) is positioned at linkObj.{x,y} and is
+ * the primary selection/drag target. The edge path itself is also selectable.
+ */
+export function drawLinkEdge(linkName, linkObj) {
+  const endpoints = collectLinkEndpoints(linkName);
+  if (endpoints.length < 2) return; // need exactly two endpoints to draw
+
+  const ep1 = endpoints[0];
+  const ep2 = endpoints[1];
+
+  const a = ep1.obj;
+  const b = ep2.obj;
+
+  const aSize = NODE[ep1.deviceKind];
+  const bSize = NODE[ep2.deviceKind];
+
+  // Clip each end to the device rect boundary
+  const [ax, ay] = clipToRect(a.x, a.y, aSize.w, aSize.h, b.x, b.y);
+  const [bx, by] = clipToRect(b.x, b.y, bSize.w, bSize.h, a.x, a.y);
+
+  // Smooth bezier — horizontal bias (same approach as drawEdge)
+  const dx = bx - ax;
+  const c1x = ax + dx * 0.55, c1y = ay;
+  const c2x = bx - dx * 0.55, c2y = by;
+  const d = `M ${ax} ${ay} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${bx} ${by}`;
+
+  const isSel = state.selection &&
+    state.selection.kind === 'link' &&
+    state.selection.name === linkName;
+
+  const path = el('path', {
+    class: `edge p2p${isSel ? ' selected' : ''}`,
+    d,
+    'data-kind': 'link',
+    'data-name': linkName,
+    cursor: 'pointer',
+  });
+  // clicking the edge path selects the link
+  path.addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.selection = { kind: 'link', name: linkName };
+    bus.dispatchEvent(new CustomEvent('state:selection-changed'));
+  });
+
+  // hover: add p2p-hovered class to both endpoint device groups (deferred lookup
+  // so the nodes layer is guaranteed to exist even though edges are drawn first)
+  const addP2pHover = () => {
+    const g1 = lookupDeviceNode(ep1.device);
+    const g2 = lookupDeviceNode(ep2.device);
+    g1?.classList.add('p2p-hovered');
+    g2?.classList.add('p2p-hovered');
+    path.classList.add('p2p-hovered');
+    lookupLinkMidpoint(linkName)?.classList.add('p2p-hovered');
+  };
+  const removeP2pHover = () => {
+    const g1 = lookupDeviceNode(ep1.device);
+    const g2 = lookupDeviceNode(ep2.device);
+    g1?.classList.remove('p2p-hovered');
+    g2?.classList.remove('p2p-hovered');
+    path.classList.remove('p2p-hovered');
+    lookupLinkMidpoint(linkName)?.classList.remove('p2p-hovered');
+  };
+  path.addEventListener('mouseenter', addP2pHover);
+  path.addEventListener('mouseleave', removeP2pHover);
+
+  edgesLayer().appendChild(path);
+
+  // Per-endpoint iface/cost tags
+  const showCosts  = state.display?.showCosts  ?? true;
+  const showIfaces = state.display?.showIfaces ?? true;
+
+  if (showIfaces && ep1.iface) {
+    // near endpoint 1 (t≈0.12)
+    const t1 = 0.12;
+    const ix = bezPoint(ax, c1x, c2x, bx, t1);
+    const iy = bezPoint(ay, c1y, c2y, by, t1);
+    edgesLayer().appendChild(el('text', {
+      class: 'edge-iface',
+      x: ix, y: iy - 5,
+      'text-anchor': 'middle',
+    }, ep1.iface));
+  }
+  if (showIfaces && ep2.iface) {
+    // near endpoint 2 (t≈0.88)
+    const t2 = 0.88;
+    const ix = bezPoint(ax, c1x, c2x, bx, t2);
+    const iy = bezPoint(ay, c1y, c2y, by, t2);
+    edgesLayer().appendChild(el('text', {
+      class: 'edge-iface',
+      x: ix, y: iy - 5,
+      'text-anchor': 'middle',
+    }, ep2.iface));
+  }
+  if (showCosts && ep1.cost != null && ep1.cost !== '') {
+    const t1c = 0.25;
+    const cx1 = bezPoint(ax, c1x, c2x, bx, t1c);
+    const cy1 = bezPoint(ay, c1y, c2y, by, t1c);
+    edgesLayer().appendChild(el('text', {
+      class: 'edge-cost',
+      x: cx1, y: cy1 - 6,
+      'text-anchor': 'middle',
+    }, `c·${ep1.cost}`));
+  }
+  if (showCosts && ep2.cost != null && ep2.cost !== '') {
+    const t2c = 0.75;
+    const cx2 = bezPoint(ax, c1x, c2x, bx, t2c);
+    const cy2 = bezPoint(ay, c1y, c2y, by, t2c);
+    edgesLayer().appendChild(el('text', {
+      class: 'edge-cost',
+      x: cx2, y: cy2 - 6,
+      'text-anchor': 'middle',
+    }, `c·${ep2.cost}`));
+  }
+
+  // Midpoint label group — the selection/drag target. Skip rendering entirely
+  // when the iface-labels toggle is off: the per-end iface tags above are
+  // already gated on the same flag, so a clean canvas hides ALL fabric-name
+  // text consistently. Edge selection still works via the path itself.
+  if (!showIfaces) return;
+
+  // Fall back to geometric midpoint if no x,y stored yet (ensureLinkPositions
+  // covers this at load time, but guard here for robustness)
+  const mx = typeof linkObj.x === 'number' ? linkObj.x : (a.x + b.x) / 2;
+  const my = typeof linkObj.y === 'number' ? linkObj.y : (a.y + b.y) / 2;
+
+  const midG = el('g', {
+    class: `link-label${isSel ? ' selected' : ''}`,
+    transform: `translate(${mx} ${my})`,
+    'data-kind': 'link',
+    'data-name': linkName,
+    cursor: 'grab',
+  });
+
+  // invisible hit rect for easier clicking
+  midG.appendChild(el('rect', {
+    class: 'hit',
+    x: -40, y: -10,
+    width: 80, height: 20,
+    rx: 4,
+  }));
+
+  // name tspan
+  const txt = el('text', {
+    class: 'link-label-text',
+    x: 0, y: 0,
+    'text-anchor': 'middle',
+    'dominant-baseline': 'middle',
+  });
+  txt.appendChild(el('tspan', { class: 'name' }, linkName));
+  txt.appendChild(el('tspan', { class: 'sep' }, '  '));
+  txt.appendChild(el('tspan', { class: 'cidr' }, linkObj.cidr || '—'));
+  midG.appendChild(txt);
+
+  // wire click → select link
+  midG.addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.selection = { kind: 'link', name: linkName };
+    bus.dispatchEvent(new CustomEvent('state:selection-changed'));
+  });
+
+  // drag: move the midpoint label (updates linkObj.{x,y})
+  midG.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    if (isTopologyLocked()) return;
+    // Dispatch selection first — this triggers reRenderEdges() which clears
+    // edgesLayer and re-creates the midG element. setPointerCapture must be
+    // called AFTER re-render so it targets the fresh (attached) element;
+    // calling it on a detached node silently drops the capture.
+    state.selection = { kind: 'link', name: linkName };
+    bus.dispatchEvent(new CustomEvent('state:selection-changed'));
+    // Re-query for the fresh midG after the re-render, then capture on it.
+    lookupLinkMidpoint(linkName)?.setPointerCapture?.(e.pointerId);
+    const start = clientToWorld(e.clientX, e.clientY);
+    drag = {
+      pointerId: e.pointerId,
+      kind: 'link',
+      name: linkName,
+      obj: linkObj,
+      offX: start.x - mx,
+      offY: start.y - my,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      moved: false,
+      hoverNet: null,
+    };
+  });
+
+  // hover: mirror p2p-hovered onto endpoint device groups (same as edge path above)
+  midG.addEventListener('mouseenter', addP2pHover);
+  midG.addEventListener('mouseleave', removeP2pHover);
+
+  edgesLayer().appendChild(midG);
 }
 
 // Compute where an edge from `device` should terminate on `rail`.
@@ -634,6 +924,129 @@ function startRailResize(e, name, handle) {
 }
 
 
+/* ---------- p2p link wizard ---------- */
+
+// Transient (never persisted) linking-mode state.
+// Shape: { source: { kind, name } } or null.
+let _wizard = null;
+
+// Banner element injected into the DOM during linking mode.
+let _wizardBanner = null;
+
+/**
+ * Enter linking mode: the user right-clicked on a device and chose
+ * "New p2p link…". We record the source and enter a mode where the next
+ * click on another host/router completes the link.
+ */
+export function startLinkWizard(source) {
+  cancelLinkWizard(); // clear any prior wizard
+
+  _wizard = { source };
+
+  // Visual: add ring class to source device group
+  const srcG = lookupDeviceNode(source.name);
+  if (srcG) srcG.classList.add('link-wizard-source');
+
+  // Banner
+  _wizardBanner = document.createElement('div');
+  _wizardBanner.className = 'link-wizard-banner';
+  _wizardBanner.textContent = 'Pick the other endpoint of the new p2p link. Esc to cancel.';
+  const dismiss = document.createElement('button');
+  dismiss.className = 'link-wizard-banner-close';
+  dismiss.textContent = '✕';
+  dismiss.addEventListener('click', cancelLinkWizard);
+  _wizardBanner.appendChild(dismiss);
+  document.body.appendChild(_wizardBanner);
+}
+
+/**
+ * Cancel linking mode — removes all transient state and visual feedback.
+ * Safe to call when no wizard is active.
+ */
+export function cancelLinkWizard() {
+  if (!_wizard) return;
+  const srcG = lookupDeviceNode(_wizard.source.name);
+  if (srcG) srcG.classList.remove('link-wizard-source');
+  _wizard = null;
+  if (_wizardBanner) { _wizardBanner.remove(); _wizardBanner = null; }
+  // Remove dashed preview line
+  const overlay = overlayLay();
+  if (overlay) {
+    const prev = overlay.querySelector('.wizard-preview');
+    if (prev) prev.remove();
+  }
+}
+
+/**
+ * Complete the wizard: create a new p2p link between source and target.
+ * Both `source` and `target` are `{ kind: 'host'|'router', name }`.
+ */
+export function finishLinkWizard(target) {
+  if (!_wizard) return;
+  const source = _wizard.source;
+  cancelLinkWizard();
+
+  // Lookup positions for midpoint calculation
+  const srcObj = (source.kind === 'host' ? state.hosts : state.routers)[source.name];
+  const tgtObj = (target.kind === 'host' ? state.hosts : state.routers)[target.name];
+  const midX = srcObj && tgtObj ? (srcObj.x + tgtObj.x) / 2 : (srcObj?.x ?? 600);
+  const midY = srcObj && tgtObj ? (srcObj.y + tgtObj.y) / 2 : (srcObj?.y ?? 400);
+
+  const linkName = uniqueName('p2p', state.links);
+  state.links[linkName] = { cidr: '', x: midX, y: midY };
+
+  // Attach source
+  if (source.kind === 'host') {
+    state.hosts[source.name].link = linkName;
+    delete state.hosts[source.name].network;
+  } else {
+    const r = state.routers[source.name];
+    const ifn = uniqueIface(r.interfaces);
+    r.interfaces[ifn] = { link: linkName, address: '', cost: 1 };
+  }
+
+  // Attach target
+  if (target.kind === 'host') {
+    state.hosts[target.name].link = linkName;
+    delete state.hosts[target.name].network;
+  } else {
+    const r = state.routers[target.name];
+    const ifn = uniqueIface(r.interfaces);
+    r.interfaces[ifn] = { link: linkName, address: '', cost: 1 };
+  }
+
+  state.selection = { kind: 'link', name: linkName };
+  markDirty();
+  bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+  toast(`Created ${linkName} — set the link CIDR and endpoint IPs`, 'ok', 'new p2p link');
+}
+
+/**
+ * Update the dashed "rubber-band" line from the source device's center to the
+ * current cursor position (in world coordinates) while in linking mode.
+ */
+export function updateWizardPreview(worldX, worldY) {
+  const overlay = overlayLay();
+  if (!overlay) return;
+  // Remove old preview
+  const old = overlay.querySelector('.wizard-preview');
+  if (old) old.remove();
+
+  if (!_wizard) return;
+  const srcObj = (_wizard.source.kind === 'host' ? state.hosts : state.routers)[_wizard.source.name];
+  if (!srcObj) return;
+
+  const line = el('line', {
+    class: 'wizard-preview',
+    x1: srcObj.x, y1: srcObj.y,
+    x2: worldX, y2: worldY,
+  });
+  overlay.appendChild(line);
+}
+
+/** Return the current wizard state (for testing). */
+export function getLinkWizard() { return _wizard; }
+
 /* ---------- interaction ---------- */
 let drag = null;          // active drag state
 let pan  = null;          // active pan state
@@ -642,6 +1055,18 @@ let rclickTimer = null;
 export function attachNodeEvents(g, kind, name) {
   g.addEventListener('pointerdown', (e) => {
     if (e.button === 2) return; // right-click handled separately
+
+    // Linking wizard: if active, this click either finalizes or cancels.
+    if (_wizard) {
+      e.stopPropagation();
+      if ((kind === 'host' || kind === 'router') && name !== _wizard.source.name) {
+        finishLinkWizard({ kind, name });
+      } else {
+        // Clicking the source device or a non-device (network/link) → cancel
+        cancelLinkWizard();
+      }
+      return;
+    }
 
     // Rotate button — has its own handler, never bubbles. Always available
     // when visible (hover / selected) and not locked.
@@ -724,11 +1149,14 @@ export function attachNodeEvents(g, kind, name) {
 export function wireCanvas() {
   const svg = canvasEl();
 
-  // pointerdown on background → pan, dismiss any ctxmenu
+  // pointerdown on background → pan, dismiss any ctxmenu; cancel wizard on bg click
   svg.addEventListener('pointerdown', (e) => {
     bus.dispatchEvent(new CustomEvent('canvas:contextmenu-close-requested'));
     if (e.target.closest('.node')) return;
     if (e.button === 2) return; // right click handled by contextmenu listener
+    // Cancel wizard on background click (click handler also covers this, but
+    // pointerdown fires first so we handle it here and avoid starting a pan).
+    if (_wizard) { cancelLinkWizard(); return; }
     pan = {
       pointerId: e.pointerId,
       sx: e.clientX, sy: e.clientY,
@@ -747,8 +1175,13 @@ export function wireCanvas() {
     }));
   });
 
-  // pointermove — drag or pan
+  // pointermove — drag, pan, or wizard rubber-band
   document.addEventListener('pointermove', (e) => {
+    if (_wizard) {
+      const w = clientToWorld(e.clientX, e.clientY);
+      updateWizardPreview(w.x, w.y);
+      return;
+    }
     if (drag) {
       // ignore tiny jitter so a click isn't mis-classified as a drag
       if (!drag.moved) {
@@ -758,38 +1191,53 @@ export function wireCanvas() {
         drag.moved = true;
       }
       const w = clientToWorld(e.clientX, e.clientY);
-      drag.obj.x = w.x - drag.offX;
-      drag.obj.y = w.y - drag.offY;
-
-      // for host/router: detect drop target (LAN under cursor)
-      let hover = null;
+      const newX = w.x - drag.offX;
+      const newY = w.y - drag.offY;
+      // Drag along the midpoint label of every p2p link that touches this
+      // device.  See shiftLinkLabelsForDeviceMove for the math.
       if (drag.kind === 'host' || drag.kind === 'router') {
-        for (const [nn, nv] of Object.entries(state.networks)) {
-          const { width: nw, height: nh } = railRenderSize(nv);
-          if (Math.abs(w.x - nv.x) < nw/2 + 24 && Math.abs(w.y - nv.y) < nh/2 + 24) {
-            hover = nn; break;
+        shiftLinkLabelsForDeviceMove(drag.name, newX - drag.obj.x, newY - drag.obj.y);
+      }
+      drag.obj.x = newX;
+      drag.obj.y = newY;
+
+      if (drag.kind === 'link') {
+        // p2p midpoint drag: reRenderEdges() clears and fully rebuilds edgesLayer
+        // (including the midpoint group), so a direct setAttribute here would be
+        // immediately discarded. Unlike node drag — where nodes live in a separate
+        // layer that reRenderEdges does NOT touch — there is nothing to pre-update.
+        reRenderEdges();
+      } else {
+        // for host/router: detect drop target (LAN under cursor)
+        let hover = null;
+        if (drag.kind === 'host' || drag.kind === 'router') {
+          for (const [nn, nv] of Object.entries(state.networks)) {
+            const { width: nw, height: nh } = railRenderSize(nv);
+            if (Math.abs(w.x - nv.x) < nw/2 + 24 && Math.abs(w.y - nv.y) < nh/2 + 24) {
+              hover = nn; break;
+            }
           }
         }
+        if (drag.hoverNet !== hover) {
+          // re-render to flip drop-target class — cheap enough
+          drag.hoverNet = hover;
+          // toggle classes directly to avoid full re-render thrash
+          nodesLayer().querySelectorAll('.node.network').forEach(node => {
+            node.classList.toggle('drop-target', node.getAttribute('data-name') === hover);
+          });
+        }
+        // partial: re-render edges connected to drag.obj
+        reRenderEdges();
+        // and update the dragged node's transform directly — the group is
+        // centered at obj.x/obj.y (its inner contents are placed around 0,0),
+        // so the transform is just translate(obj.x, obj.y), not offset by w/2.
+        const nodeEl = nodesLayer().querySelector(`.node[data-kind="${drag.kind}"][data-name="${cssEscape(drag.name)}"]`);
+        if (nodeEl) {
+          nodeEl.setAttribute('transform', `translate(${drag.obj.x} ${drag.obj.y})`);
+        }
+        // preview link line for host/router → hovered LAN
+        drawDragPreview();
       }
-      if (drag.hoverNet !== hover) {
-        // re-render to flip drop-target class — cheap enough
-        drag.hoverNet = hover;
-        // toggle classes directly to avoid full re-render thrash
-        nodesLayer().querySelectorAll('.node.network').forEach(node => {
-          node.classList.toggle('drop-target', node.getAttribute('data-name') === hover);
-        });
-      }
-      // partial: re-render edges connected to drag.obj
-      reRenderEdges();
-      // and update the dragged node's transform directly — the group is
-      // centered at obj.x/obj.y (its inner contents are placed around 0,0),
-      // so the transform is just translate(obj.x, obj.y), not offset by w/2.
-      const nodeEl = nodesLayer().querySelector(`.node[data-kind="${drag.kind}"][data-name="${cssEscape(drag.name)}"]`);
-      if (nodeEl) {
-        nodeEl.setAttribute('transform', `translate(${drag.obj.x} ${drag.obj.y})`);
-      }
-      // preview link line for host/router → hovered LAN
-      drawDragPreview();
     }
     if (pan) {
       state.view.x = pan.ox + (e.clientX - pan.sx);
@@ -800,36 +1248,45 @@ export function wireCanvas() {
 
   document.addEventListener('pointerup', (e) => {
     if (drag) {
-      const node = nodesLayer().querySelector(`.node[data-kind="${drag.kind}"][data-name="${cssEscape(drag.name)}"]`);
-      node?.classList.remove('dragging');
+      if (drag.kind === 'link') {
+        // p2p midpoint drag cleanup — just persist the new position
+        if (drag.moved) {
+          markDirty();
+          bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+        }
+        drag = null;
+      } else {
+        const node = nodesLayer().querySelector(`.node[data-kind="${drag.kind}"][data-name="${cssEscape(drag.name)}"]`);
+        node?.classList.remove('dragging');
 
-      if (drag.moved) {
-        const target = drag.hoverNet;
-        nodesLayer().querySelectorAll('.node.network.drop-target').forEach(n => n.classList.remove('drop-target'));
-        overlayLay().innerHTML = '';
+        if (drag.moved) {
+          const target = drag.hoverNet;
+          nodesLayer().querySelectorAll('.node.network.drop-target').forEach(n => n.classList.remove('drop-target'));
+          overlayLay().innerHTML = '';
 
-        // commit attachment
-        if (target) {
-          if (drag.kind === 'host') {
-            if (state.hosts[drag.name].network !== target) {
-              state.hosts[drag.name].network = target;
-              toast(`Pinned host ${drag.name} → ${target}`, 'ok');
-            }
-          } else if (drag.kind === 'router') {
-            const r = state.routers[drag.name];
-            const has = Object.values(r.interfaces || {}).some(iff => iff.network === target);
-            if (!has) {
-              const newIf = uniqueIface(r.interfaces);
-              r.interfaces[newIf] = { network: target, address: '', cost: 10 };
-              toast(`Added ${newIf} on ${drag.name} → ${target}`, 'ok');
+          // commit attachment
+          if (target) {
+            if (drag.kind === 'host') {
+              if (state.hosts[drag.name].network !== target) {
+                state.hosts[drag.name].network = target;
+                toast(`Pinned host ${drag.name} → ${target}`, 'ok');
+              }
+            } else if (drag.kind === 'router') {
+              const r = state.routers[drag.name];
+              const has = Object.values(r.interfaces || {}).some(iff => iff.network === target);
+              if (!has) {
+                const newIf = uniqueIface(r.interfaces);
+                r.interfaces[newIf] = { network: target, address: '', cost: 10 };
+                toast(`Added ${newIf} on ${drag.name} → ${target}`, 'ok');
+              }
             }
           }
-        }
 
-        markDirty();
-        bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+          markDirty();
+          bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+        }
+        drag = null;
       }
-      drag = null;
     }
     if (pan) {
       canvasEl().classList.remove('panning');
@@ -870,12 +1327,19 @@ export function wireCanvas() {
     bus.dispatchEvent(new CustomEvent('view:changed'));
   }, { passive: false });
 
-  // dismiss menu on background click
+  // dismiss menu on background click; also cancel wizard on background click
   svg.addEventListener('click', (e) => {
+    if (_wizard) {
+      if (!e.target.closest('.node')) {
+        cancelLinkWizard();
+        return;
+      }
+    }
     if (e.target.closest('.node')) return;
     state.selection = null;
     bus.dispatchEvent(new CustomEvent('state:selection-changed'));
   });
+
 }
 
 /* re-render only the edges (drag perf) */
@@ -891,6 +1355,9 @@ export function reRenderEdges() {
       drawEdge(r, state.networks[iff.network], 'router',
         { kind:'router', name: rn }, { ifname: ifn, cost: iff.cost });
     }
+  }
+  for (const [linkName, linkObj] of Object.entries(state.links || {})) {
+    drawLinkEdge(linkName, linkObj);
   }
 }
 
@@ -939,3 +1406,8 @@ bus.addEventListener('state:topology-changed', renderCanvas);
 bus.addEventListener('state:selection-changed', renderSelection);
 bus.addEventListener('view:changed', applyView);
 bus.addEventListener('state:topology-loaded', fitView);
+
+// Esc cancels the link wizard globally (not gated on wireCanvas being called)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && _wizard) cancelLinkWizard();
+});

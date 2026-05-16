@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { tapPointOnRail, railTapPoint, deviceNameForEndpoint } from './canvas.js';
+import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, deviceNameForEndpointOnFabric, lookupAddressNodeOnFabric, renderCanvas, lookupLinkMidpoint, lookupDeviceNode, shiftLinkLabelsForDeviceMove, startLinkWizard, cancelLinkWizard, finishLinkWizard, getLinkWizard } from './canvas.js';
 import {
-  state,
+  state, bus,
   RAIL_DEFAULT_WIDTH, RAIL_THICKNESS, RAIL_TICK_INSET,
 } from './state.js';
 
@@ -201,5 +201,633 @@ describe('deviceNameForEndpoint — resolves packet endpoints to device names', 
 
   it('returns null when neither device nor address is provided', () => {
     expect(deviceNameForEndpoint({})).toBeNull();
+  });
+});
+
+describe('deviceNameForEndpointOnFabric — fabric-scoped address lookup', () => {
+  beforeEach(() => {
+    state.hosts = {};
+    state.routers = {};
+    state.networks = {};
+    state.links = {};
+  });
+
+  it('prefers an explicit device field over the address lookup', () => {
+    expect(deviceNameForEndpointOnFabric({ device: 'r9', address: '10.0.0.1' }, 'lan1')).toBe('r9');
+  });
+
+  it('returns the host on the matching fabric (not the same-IP host on a different fabric)', () => {
+    state.networks = {
+      lan1: { cidr: '192.168.1.0/24', x: 0, y: 0 },
+      lan2: { cidr: '192.168.1.0/24', x: 0, y: 0 },  // intentional CIDR reuse
+    };
+    state.hosts = {
+      h_a: { network: 'lan1', address: '192.168.1.10', x: 0, y: 0 },
+      h_b: { network: 'lan2', address: '192.168.1.10', x: 0, y: 0 },  // same IP, other fabric
+    };
+    expect(deviceNameForEndpointOnFabric({ address: '192.168.1.10' }, 'lan1')).toBe('h_a');
+    expect(deviceNameForEndpointOnFabric({ address: '192.168.1.10' }, 'lan2')).toBe('h_b');
+  });
+
+  it('returns the router with a matching iface on this fabric, ignoring same-IP iface on another fabric', () => {
+    state.networks = {
+      lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 },
+      lan2: { cidr: '10.0.0.0/24', x: 0, y: 0 },
+    };
+    state.routers = {
+      r_a: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.0.0.1', cost: 1 } } },
+      r_b: { x: 0, y: 0, interfaces: { eth0: { network: 'lan2', address: '10.0.0.1', cost: 1 } } },
+    };
+    expect(deviceNameForEndpointOnFabric({ address: '10.0.0.1' }, 'lan1')).toBe('r_a');
+    expect(deviceNameForEndpointOnFabric({ address: '10.0.0.1' }, 'lan2')).toBe('r_b');
+  });
+
+  it('disambiguates link endpoints that share an address with a host on a different fabric', () => {
+    state.networks = {};
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
+    state.routers = {
+      r3: { x: 0, y: 0, interfaces: { eth2: { link: 'p2p1', address: '10.0.0.2', cost: 5 } } },
+    };
+    state.hosts = {
+      h5: { link: 'p2p2', address: '10.0.0.2', x: 0, y: 0 },
+    };
+    expect(deviceNameForEndpointOnFabric({ address: '10.0.0.2' }, 'p2p1')).toBe('r3');
+    expect(deviceNameForEndpointOnFabric({ address: '10.0.0.2' }, 'p2p2')).toBe('h5');
+  });
+
+  it('returns null when no device on the fabric matches the address', () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
+    expect(deviceNameForEndpointOnFabric({ address: '10.0.0.99' }, 'lan1')).toBeNull();
+  });
+
+  it('returns null when the fabric name is empty/undefined', () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
+    expect(deviceNameForEndpointOnFabric({ address: '10.0.0.5' }, '')).toBeNull();
+    expect(deviceNameForEndpointOnFabric({ address: '10.0.0.5' }, undefined)).toBeNull();
+  });
+
+  it('returns null on a falsy endpoint', () => {
+    expect(deviceNameForEndpointOnFabric(null, 'lan1')).toBeNull();
+    expect(deviceNameForEndpointOnFabric(undefined, 'lan1')).toBeNull();
+  });
+});
+
+describe('lookupAddressNodeOnFabric — fabric-scoped DOM lookup', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g class="node host"   data-kind="host"   data-name="h_a" transform="translate(100 100)"></g>
+        <g class="node host"   data-kind="host"   data-name="h_b" transform="translate(200 200)"></g>
+      </g></svg>`;
+    state.hosts = {
+      h_a: { network: 'lan1', address: '192.168.1.10', x: 100, y: 100 },
+      h_b: { network: 'lan2', address: '192.168.1.10', x: 200, y: 200 },
+    };
+    state.routers = {};
+    state.networks = {
+      lan1: { cidr: '192.168.1.0/24', x: 0, y: 0 },
+      lan2: { cidr: '192.168.1.0/24', x: 0, y: 0 },
+    };
+    state.links = {};
+  });
+
+  it('returns the host node on the requested fabric', () => {
+    expect(lookupAddressNodeOnFabric('192.168.1.10', 'lan1')?.getAttribute('data-name')).toBe('h_a');
+    expect(lookupAddressNodeOnFabric('192.168.1.10', 'lan2')?.getAttribute('data-name')).toBe('h_b');
+  });
+
+  it('returns null for an unknown address on the fabric', () => {
+    expect(lookupAddressNodeOnFabric('192.168.1.99', 'lan1')).toBeNull();
+  });
+
+  it('returns null when address or fabric is missing', () => {
+    expect(lookupAddressNodeOnFabric('', 'lan1')).toBeNull();
+    expect(lookupAddressNodeOnFabric('192.168.1.10', '')).toBeNull();
+  });
+});
+
+/* -----------------------------------------------------------------------
+   p2p link rendering
+   ----------------------------------------------------------------------- */
+
+function setupMinimalDOM() {
+  // Minimal SVG DOM expected by renderCanvas / drawLinkEdge / markDirty
+  document.body.innerHTML = `
+    <svg id="canvas" class="canvas">
+      <g id="viewport">
+        <g id="edges-layer"></g>
+        <g id="nodes-layer"></g>
+        <g id="overlay-layer"></g>
+      </g>
+    </svg>
+    <div id="canv-empty" hidden></div>
+    <div id="zoom-lvl"></div>
+    <div id="save-state"><span class="dot"></span> autosaved</div>
+    <div id="toasts"></div>
+  `;
+}
+
+describe('p2p link rendering', () => {
+  beforeEach(() => {
+    setupMinimalDOM();
+    state.hosts    = {};
+    state.routers  = {};
+    state.networks = {};
+    state.links    = {};
+    state.selection = null;
+    state.view     = { x: 0, y: 0, k: 1 };
+    state.display  = { showCosts: true, showIfaces: true };
+  });
+
+  it('no links → no p2p edges drawn', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    expect(document.querySelectorAll('.edge.p2p').length).toBe(0);
+  });
+
+  it('one link with two router endpoints → one p2p edge + one midpoint group', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    expect(document.querySelectorAll('.edge.p2p').length).toBe(1);
+    // both the edge path and the midpoint group carry data-kind="link"
+    const linkEls = document.querySelectorAll('[data-kind="link"]');
+    expect(linkEls.length).toBe(2); // edge path + midpoint <g>
+    expect(document.querySelectorAll('g[data-kind="link"]').length).toBe(1);
+  });
+
+  it('midpoint label honors state.links[name].x,y', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 777, y: 888 };
+    state.routers.r1 = { x: 100, y: 100, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 500, y: 100, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    const midG = document.querySelector('g[data-kind="link"]');
+    expect(midG).not.toBeNull();
+    const t = midG.getAttribute('transform') || '';
+    expect(t).toContain('777');
+    expect(t).toContain('888');
+  });
+
+  it('midpoint label shows name and CIDR', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    const midG = document.querySelector('g[data-kind="link"]');
+    const text = midG.textContent;
+    expect(text).toContain('p2p1');
+    expect(text).toContain('10.1.0.0/30');
+  });
+
+  it('edge has selected class when link is the current selection', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    state.selection = { kind: 'link', name: 'p2p1' };
+    renderCanvas();
+    const edge = document.querySelector('.edge.p2p');
+    expect(edge.classList.contains('selected')).toBe(true);
+  });
+
+  it('edge path has data-kind="link" and data-name on it', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    const edge = document.querySelector('.edge.p2p');
+    expect(edge.getAttribute('data-kind')).toBe('link');
+    expect(edge.getAttribute('data-name')).toBe('p2p1');
+  });
+
+  it('clicking the p2p edge path selects the link', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    let selChanged = false;
+    bus.addEventListener('state:selection-changed', () => { selChanged = true; }, { once: true });
+    const edge = document.querySelector('.edge.p2p');
+    edge.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(state.selection).not.toBeNull();
+    expect(state.selection.kind).toBe('link');
+    expect(state.selection.name).toBe('p2p1');
+    expect(selChanged).toBe(true);
+  });
+
+  it('clicking the midpoint label selects the link', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    state.selection = null;
+    const midG = document.querySelector('g[data-kind="link"]');
+    midG.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(state.selection).not.toBeNull();
+    expect(state.selection.kind).toBe('link');
+    expect(state.selection.name).toBe('p2p1');
+  });
+
+  it('host-on-link is supported: renders one p2p edge', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.hosts.h1 = { link: 'p2p1', address: '10.1.0.2', x: 400, y: 200 };
+    renderCanvas();
+    expect(document.querySelectorAll('.edge.p2p').length).toBe(1);
+    const edge = document.querySelector('.edge.p2p');
+    expect(edge.getAttribute('data-name')).toBe('p2p1');
+  });
+
+  it('link with fewer than two endpoints → no p2p edge drawn', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    // Only one endpoint; canvas should skip gracefully
+    renderCanvas();
+    expect(document.querySelectorAll('.edge.p2p').length).toBe(0);
+  });
+
+  it('mouseenter on p2p edge path adds p2p-hovered to both endpoint device groups', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    const edge = document.querySelector('.edge.p2p');
+    edge.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
+    expect(lookupDeviceNode('r1').classList.contains('p2p-hovered')).toBe(true);
+    expect(lookupDeviceNode('r2').classList.contains('p2p-hovered')).toBe(true);
+    // mouseleave removes the class
+    edge.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }));
+    expect(lookupDeviceNode('r1').classList.contains('p2p-hovered')).toBe(false);
+    expect(lookupDeviceNode('r2').classList.contains('p2p-hovered')).toBe(false);
+  });
+
+  it('mouseenter on midpoint label also adds p2p-hovered to endpoint device groups', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    const midG = document.querySelector('g[data-kind="link"]');
+    midG.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
+    expect(lookupDeviceNode('r1').classList.contains('p2p-hovered')).toBe(true);
+    expect(lookupDeviceNode('r2').classList.contains('p2p-hovered')).toBe(true);
+    midG.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }));
+    expect(lookupDeviceNode('r1').classList.contains('p2p-hovered')).toBe(false);
+    expect(lookupDeviceNode('r2').classList.contains('p2p-hovered')).toBe(false);
+  });
+
+  it('lookupLinkMidpoint returns the midpoint group element', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    const g = lookupLinkMidpoint('p2p1');
+    expect(g).not.toBeNull();
+    expect(g.getAttribute('data-kind')).toBe('link');
+    expect(g.getAttribute('data-name')).toBe('p2p1');
+  });
+
+  it('midpoint label is hidden when state.display.showIfaces is false', () => {
+    state.display = { showCosts: true, showIfaces: false };
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    renderCanvas();
+    // edge path still drawn — selection on the edge stays possible
+    expect(document.querySelectorAll('.edge.p2p').length).toBe(1);
+    // midpoint label group suppressed
+    expect(document.querySelectorAll('g[data-kind="link"]').length).toBe(0);
+  });
+
+  it('shiftLinkLabelsForDeviceMove shifts label by half the device delta', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    shiftLinkLabelsForDeviceMove('r1', 40, -20);
+    expect(state.links.p2p1.x).toBe(320);
+    expect(state.links.p2p1.y).toBe(190);
+  });
+
+  it('shiftLinkLabelsForDeviceMove does not touch labels for unrelated devices', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    state.routers.r3 = { x: 800, y: 800, interfaces: {} };  // not on any link
+    shiftLinkLabelsForDeviceMove('r3', 1000, 1000);
+    expect(state.links.p2p1.x).toBe(300);
+    expect(state.links.p2p1.y).toBe(200);
+  });
+
+  it('shiftLinkLabelsForDeviceMove preserves user-set offset between label and midpoint', () => {
+    // Label placed 50px above the geometric midpoint (300, 200) — i.e. at (300, 150).
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 150 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    // Move r1 to (240, 200): midpoint shifts to (320, 200), label should follow to (320, 150).
+    shiftLinkLabelsForDeviceMove('r1', 40, 0);
+    state.routers.r1.x = 240;
+    expect(state.links.p2p1.x).toBe(320);
+    expect(state.links.p2p1.y).toBe(150);  // 50px-above-midpoint offset preserved
+  });
+});
+
+/* -----------------------------------------------------------------------
+   p2p link wizard
+   ----------------------------------------------------------------------- */
+
+describe('link wizard — startLinkWizard / cancelLinkWizard', () => {
+  beforeEach(() => {
+    setupMinimalDOM();
+    state.hosts    = {};
+    state.routers  = {};
+    state.networks = {};
+    state.links    = {};
+    state.selection = null;
+    state.view     = { x: 0, y: 0, k: 1 };
+    state.display  = { showCosts: true, showIfaces: true };
+    // Ensure no wizard leftover
+    cancelLinkWizard();
+  });
+
+  it('getLinkWizard() returns null before any wizard starts', () => {
+    expect(getLinkWizard()).toBeNull();
+  });
+
+  it('startLinkWizard sets transient wizard state', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    const w = getLinkWizard();
+    expect(w).not.toBeNull();
+    expect(w.source.kind).toBe('router');
+    expect(w.source.name).toBe('r1');
+  });
+
+  it('startLinkWizard adds link-wizard-source class to source device group', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    const g = lookupDeviceNode('r1');
+    expect(g.classList.contains('link-wizard-source')).toBe(true);
+  });
+
+  it('cancelLinkWizard clears wizard state', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    cancelLinkWizard();
+    expect(getLinkWizard()).toBeNull();
+  });
+
+  it('cancelLinkWizard removes link-wizard-source class', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    cancelLinkWizard();
+    const g = lookupDeviceNode('r1');
+    expect(g.classList.contains('link-wizard-source')).toBe(false);
+  });
+
+  it('cancelLinkWizard is safe to call when no wizard is active', () => {
+    expect(() => cancelLinkWizard()).not.toThrow();
+  });
+
+  it('startLinkWizard injects a .link-wizard-banner into document.body', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    expect(document.querySelector('.link-wizard-banner')).not.toBeNull();
+    cancelLinkWizard();
+  });
+
+  it('cancelLinkWizard removes the banner', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    cancelLinkWizard();
+    expect(document.querySelector('.link-wizard-banner')).toBeNull();
+  });
+});
+
+describe('link wizard — finishLinkWizard: all four endpoint combinations', () => {
+  beforeEach(() => {
+    setupMinimalDOM();
+    state.hosts    = {};
+    state.routers  = {};
+    state.networks = {};
+    state.links    = {};
+    state.selection = null;
+    state.view     = { x: 0, y: 0, k: 1 };
+    state.display  = { showCosts: true, showIfaces: true };
+    document.body.innerHTML += '<div id="toasts"></div>';
+    cancelLinkWizard();
+  });
+
+  it('router → router: creates link and allocates new interfaces on both', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    state.routers.r2 = { x: 300, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    finishLinkWizard({ kind: 'router', name: 'r2' });
+
+    expect(Object.keys(state.links).length).toBe(1);
+    const linkName = Object.keys(state.links)[0];
+    const r1Iface = Object.values(state.routers.r1.interfaces).find(i => i.link === linkName);
+    const r2Iface = Object.values(state.routers.r2.interfaces).find(i => i.link === linkName);
+    expect(r1Iface).toBeDefined();
+    expect(r2Iface).toBeDefined();
+  });
+
+  it('host → host: creates link and sets link on both hosts', () => {
+    state.hosts.h1 = { network: 'lan1', address: '', x: 100, y: 100 };
+    state.hosts.h2 = { network: 'lan1', address: '', x: 300, y: 100 };
+    renderCanvas();
+    startLinkWizard({ kind: 'host', name: 'h1' });
+    finishLinkWizard({ kind: 'host', name: 'h2' });
+
+    const linkName = Object.keys(state.links)[0];
+    expect(state.hosts.h1.link).toBe(linkName);
+    expect(state.hosts.h2.link).toBe(linkName);
+    expect(state.hosts.h1.network).toBeUndefined();
+    expect(state.hosts.h2.network).toBeUndefined();
+  });
+
+  it('router → host: creates link, allocates iface on router, sets link on host', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    state.hosts.h1 = { network: 'lan1', address: '', x: 300, y: 100 };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    finishLinkWizard({ kind: 'host', name: 'h1' });
+
+    const linkName = Object.keys(state.links)[0];
+    const rIface = Object.values(state.routers.r1.interfaces).find(i => i.link === linkName);
+    expect(rIface).toBeDefined();
+    expect(state.hosts.h1.link).toBe(linkName);
+  });
+
+  it('host → router: creates link, sets link on host, allocates iface on router', () => {
+    state.hosts.h1 = { network: '', address: '', x: 100, y: 100 };
+    state.routers.r1 = { x: 300, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'host', name: 'h1' });
+    finishLinkWizard({ kind: 'router', name: 'r1' });
+
+    const linkName = Object.keys(state.links)[0];
+    expect(state.hosts.h1.link).toBe(linkName);
+    const rIface = Object.values(state.routers.r1.interfaces).find(i => i.link === linkName);
+    expect(rIface).toBeDefined();
+  });
+
+  it('created link has empty cidr and empty endpoint addresses', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    state.routers.r2 = { x: 300, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    finishLinkWizard({ kind: 'router', name: 'r2' });
+
+    const link = Object.values(state.links)[0];
+    expect(link.cidr).toBe('');
+    const r1Iface = Object.values(state.routers.r1.interfaces)[0];
+    const r2Iface = Object.values(state.routers.r2.interfaces)[0];
+    expect(r1Iface.address).toBe('');
+    expect(r2Iface.address).toBe('');
+  });
+
+  it('finishLinkWizard selects the new link', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    state.routers.r2 = { x: 300, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    finishLinkWizard({ kind: 'router', name: 'r2' });
+
+    expect(state.selection).not.toBeNull();
+    expect(state.selection.kind).toBe('link');
+    expect(Object.keys(state.links)).toContain(state.selection.name);
+  });
+
+  it('finishLinkWizard clears wizard state', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    state.routers.r2 = { x: 300, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    finishLinkWizard({ kind: 'router', name: 'r2' });
+    expect(getLinkWizard()).toBeNull();
+  });
+
+  it('positions link midpoint at geometric center of the two devices', () => {
+    state.routers.r1 = { x: 100, y: 200, interfaces: {} };
+    state.routers.r2 = { x: 300, y: 400, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    finishLinkWizard({ kind: 'router', name: 'r2' });
+
+    const link = Object.values(state.links)[0];
+    expect(link.x).toBe(200); // (100+300)/2
+    expect(link.y).toBe(300); // (200+400)/2
+  });
+
+  it('wizard creates exactly ONE new link per invocation', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    state.routers.r2 = { x: 300, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    finishLinkWizard({ kind: 'router', name: 'r2' });
+    expect(Object.keys(state.links).length).toBe(1);
+  });
+});
+
+describe('link wizard — cancellation paths', () => {
+  beforeEach(() => {
+    setupMinimalDOM();
+    state.hosts    = {};
+    state.routers  = {};
+    state.networks = {};
+    state.links    = {};
+    state.selection = null;
+    state.view     = { x: 0, y: 0, k: 1 };
+    state.display  = { showCosts: true, showIfaces: true };
+    document.body.innerHTML += '<div id="toasts"></div>';
+    cancelLinkWizard();
+  });
+
+  it('Esc keydown cancels the wizard', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    expect(getLinkWizard()).not.toBeNull();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(getLinkWizard()).toBeNull();
+  });
+
+  it('clicking the source device again cancels without creating a link', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    // Simulate a click on the source device's node group
+    const g = lookupDeviceNode('r1');
+    g.dispatchEvent(new PointerEvent('pointerdown', { button: 0, bubbles: true }));
+    expect(getLinkWizard()).toBeNull();
+    expect(Object.keys(state.links).length).toBe(0);
   });
 });

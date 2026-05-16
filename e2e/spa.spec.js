@@ -307,7 +307,7 @@ test.describe('loom SPA - smoke', () => {
     // persistence — read the slot directly instead).
     await page.waitForTimeout(300);
     const persistedW = await page.evaluate(() => {
-      const raw = localStorage.getItem('loom.topology.v4');
+      const raw = localStorage.getItem('loom.topology.v5');
       if (!raw) return null;
       const s = JSON.parse(raw);
       const firstKey = Object.keys(s.networks)[0];
@@ -476,7 +476,7 @@ test.describe('loom SPA - smoke', () => {
     await page.locator('#tb-toggle-costs').click();
     await page.waitForTimeout(300); // markDirty debounce
     const persisted = await page.evaluate(() => {
-      const raw = localStorage.getItem('loom.topology.v4');
+      const raw = localStorage.getItem('loom.topology.v5');
       return raw ? JSON.parse(raw).display : null;
     });
     expect(persisted).toEqual({ showCosts: false, showIfaces: true });
@@ -507,5 +507,37 @@ test.describe('loom SPA - smoke', () => {
 
     const widthAfter = Number(await rail.getAttribute('width'));
     expect(widthAfter).toBeGreaterThan(widthBefore);
+  });
+
+  test('p2p link p2p1 is rendered, selectable, and visible in nav', async ({ page }) => {
+    // A. The p2p edge is rendered in the SVG.
+    // sample.yaml defines exactly one p2p link (p2p1 on 10.0.0.0/30), so there
+    // must be exactly one path.edge.p2p element.
+    const p2pEdge = page.locator('#edges-layer path.edge.p2p');
+    await expect(p2pEdge).toHaveCount(1);
+    await expect(p2pEdge).toHaveAttribute('data-kind', 'link');
+    await expect(p2pEdge).toHaveAttribute('data-name', 'p2p1');
+
+    // The midpoint label group is also in the edges layer.
+    const midG = page.locator('#edges-layer g[data-kind="link"][data-name="p2p1"]');
+    await expect(midG).toHaveCount(1);
+    await expect(midG).toBeVisible();
+
+    // B. Clicking the midpoint label selects the link and shows it in the inspector.
+    // (The thin stroke-only edge path is unreliable as a click target under
+    // Playwright; the midpoint group has a real hit-rect.)
+    await midG.click();
+    const inspector = page.locator('#inspector');
+    await expect(inspector.locator('.pill.link')).toBeVisible();
+    await expect(inspector.locator('.insp-head .name')).toHaveText('p2p1');
+    // The CIDR input is readonly and contains the link's subnet.
+    await expect(inspector.locator('#f-cidr')).toHaveValue('10.0.0.0/30');
+
+    // C. The left nav has a Links section with a row for p2p1.
+    const nav = page.locator('#nav');
+    // Find the nav section whose heading reads "Links".
+    const linksSection = nav.locator('.nav-section', { has: page.locator('.nav-shead .ttl', { hasText: 'Links' }) });
+    await expect(linksSection).toBeVisible();
+    await expect(linksSection.locator('.nav-row .name', { hasText: 'p2p1' })).toBeVisible();
   });
 });

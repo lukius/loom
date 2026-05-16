@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { escapeHtml, uniqueName, uniqueIface, pad2, cssEscape, el, toast } from './utils.js';
+import { escapeHtml, uniqueName, uniqueIface, pad2, cssEscape, el, toast, isValidIpv4, isValidNetworkCidr, addressInCidr } from './utils.js';
 
 describe('escapeHtml', () => {
   it('escapes ampersand and angle brackets', () => {
@@ -224,5 +224,136 @@ describe('toast', () => {
     vi.advanceTimersByTime(320);
     // Inner timeout removes the element.
     expect(wrap.children.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isValidIpv4
+// ---------------------------------------------------------------------------
+describe('isValidIpv4', () => {
+  it('accepts a valid dotted-quad', () => {
+    expect(isValidIpv4('192.168.0.1')).toBe(true);
+  });
+  it('accepts all-zeros address', () => {
+    expect(isValidIpv4('0.0.0.0')).toBe(true);
+  });
+  it('accepts 255.255.255.255', () => {
+    expect(isValidIpv4('255.255.255.255')).toBe(true);
+  });
+  it('rejects empty string', () => {
+    expect(isValidIpv4('')).toBe(false);
+  });
+  it('rejects null', () => {
+    expect(isValidIpv4(null)).toBe(false);
+  });
+  it('rejects an octet out of range (256)', () => {
+    expect(isValidIpv4('256.0.0.0')).toBe(false);
+  });
+  it('rejects leading zeros in an octet', () => {
+    expect(isValidIpv4('10.01.0.1')).toBe(false);
+  });
+  it('rejects too few octets', () => {
+    expect(isValidIpv4('10.0.0')).toBe(false);
+  });
+  it('rejects too many octets', () => {
+    expect(isValidIpv4('10.0.0.1.2')).toBe(false);
+  });
+  it('rejects non-numeric octets', () => {
+    expect(isValidIpv4('10.0.0.x')).toBe(false);
+  });
+  it('rejects a CIDR string (has slash)', () => {
+    expect(isValidIpv4('10.0.0.0/24')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isValidNetworkCidr
+// ---------------------------------------------------------------------------
+describe('isValidNetworkCidr — network CIDR (0–32)', () => {
+  it('accepts a valid /24', () => {
+    expect(isValidNetworkCidr('192.168.0.0/24').ok).toBe(true);
+  });
+  it('accepts /0 (any prefix)', () => {
+    expect(isValidNetworkCidr('0.0.0.0/0').ok).toBe(true);
+  });
+  it('accepts /32 (host route)', () => {
+    expect(isValidNetworkCidr('10.0.0.1/32').ok).toBe(true);
+  });
+  it('returns ok:true for empty string', () => {
+    expect(isValidNetworkCidr('').ok).toBe(true);
+  });
+  it('rejects string without slash', () => {
+    const r = isValidNetworkCidr('192.168.0.0');
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('malformed CIDR');
+  });
+  it('rejects host-bits-set address', () => {
+    const r = isValidNetworkCidr('10.0.0.5/30');
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('not a network address');
+    expect(r.reason).toContain('10.0.0.4/30');
+  });
+  it('rejects prefix > 32', () => {
+    expect(isValidNetworkCidr('10.0.0.0/33').ok).toBe(false);
+  });
+  it('rejects malformed IP part', () => {
+    expect(isValidNetworkCidr('999.0.0.0/24').ok).toBe(false);
+  });
+});
+
+describe('isValidNetworkCidr — link CIDR (/30 or /31)', () => {
+  const opts = { allowMaskMin: 30, allowMaskMax: 31 };
+
+  it('accepts a valid /30', () => {
+    expect(isValidNetworkCidr('10.0.0.0/30', opts).ok).toBe(true);
+  });
+  it('accepts a valid /31', () => {
+    expect(isValidNetworkCidr('10.0.0.4/31', opts).ok).toBe(true);
+  });
+  it('rejects /29 with specific message', () => {
+    const r = isValidNetworkCidr('10.0.0.0/29', opts);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('CIDR must be /30 or /31');
+  });
+  it('rejects /32 with specific message', () => {
+    const r = isValidNetworkCidr('10.0.0.0/32', opts);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('CIDR must be /30 or /31');
+  });
+  it('rejects host-bits-set for /30', () => {
+    const r = isValidNetworkCidr('10.0.0.1/30', opts);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('not a network address');
+  });
+  it('returns ok:true for empty string', () => {
+    expect(isValidNetworkCidr('', opts).ok).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// addressInCidr
+// ---------------------------------------------------------------------------
+describe('addressInCidr', () => {
+  it('returns true when address is within the CIDR', () => {
+    expect(addressInCidr('10.0.0.1', '10.0.0.0/30')).toBe(true);
+  });
+  it('returns false when address is outside the CIDR', () => {
+    expect(addressInCidr('10.0.0.5', '10.0.0.0/30')).toBe(false);
+  });
+  it('returns true (bail) when address is empty', () => {
+    expect(addressInCidr('', '10.0.0.0/30')).toBe(true);
+  });
+  it('returns true (bail) when cidr is empty', () => {
+    expect(addressInCidr('10.0.0.1', '')).toBe(true);
+  });
+  it('returns true (bail) when address is malformed', () => {
+    expect(addressInCidr('bad', '10.0.0.0/30')).toBe(true);
+  });
+  it('returns true (bail) when cidr is malformed', () => {
+    expect(addressInCidr('10.0.0.1', 'bad')).toBe(true);
+  });
+  it('handles /31 correctly', () => {
+    expect(addressInCidr('10.0.0.2', '10.0.0.2/31')).toBe(true);
+    expect(addressInCidr('10.0.0.4', '10.0.0.2/31')).toBe(false);
   });
 });
