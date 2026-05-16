@@ -384,6 +384,21 @@ describe('renderRouterInsp — fabric-type dropdown', () => {
     expect(state.routers.r1.interfaces.eth0.network).toBeUndefined();
   });
 
+  it('switching iface fabric-type to Link defaults to unattached, not the first existing link', () => {
+    state.networks = { lan1: { cidr: '10.1.0.0/24', x: 0, y: 0 } };
+    state.links    = { p2p1: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
+    state.routers  = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.1.0.1', cost: 5 } } },
+    };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const typeSelect = elI.querySelector('[data-iface-fabric-type="eth0"]');
+    typeSelect.value = 'link';
+    typeSelect.dispatchEvent(new Event('change'));
+    // Must NOT auto-attach to p2p1 — that would silently overflow a /30.
+    expect(state.routers.r1.interfaces.eth0.link).toBe('');
+  });
+
   it('switching fabric-type back to Network sets iff.network and deletes iff.link', () => {
     state.networks = { lan1: { cidr: '10.1.0.0/24', x: 0, y: 0 } };
     state.links    = { p2p1: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
@@ -448,6 +463,18 @@ describe('renderHostInsp — fabric-type dropdown', () => {
     typeSelect.dispatchEvent(new Event('change'));
     expect(state.hosts.h1.link).toBeDefined();
     expect(state.hosts.h1.network).toBeUndefined();
+  });
+
+  it('switching host fabric-type to Link defaults to unattached, not the first existing link', () => {
+    state.networks = { lan1: { cidr: '10.1.0.0/24', x: 0, y: 0 } };
+    state.links    = { p2p1: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
+    state.hosts    = { h1: { network: 'lan1', address: '10.1.0.10', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const typeSelect = elI.querySelector('#f-fabric-type');
+    typeSelect.value = 'link';
+    typeSelect.dispatchEvent(new Event('change'));
+    expect(state.hosts.h1.link).toBe('');
   });
 
   it('switching back to Network sets h.network and deletes h.link', () => {

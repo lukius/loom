@@ -443,8 +443,9 @@ export function renderHostInsp(name, elI) {
     const newType = e.target.value;
     const h = state.hosts[name];
     if (newType === 'link') {
-      const firstLink = Object.keys(state.links)[0] || '';
-      h.link = firstLink;
+      // Default to unattached so we don't silently inject this host as a third
+      // endpoint on an existing /30 — the user must pick a link explicitly.
+      h.link = '';
       delete h.network;
     } else {
       const firstNet = Object.keys(state.networks)[0] || '';
@@ -640,7 +641,9 @@ export function renderRouterInsp(name, elI) {
       const iff = state.routers[name].interfaces[ifn];
       const newType = s.value;
       if (newType === 'link') {
-        iff.link = Object.keys(state.links)[0] || '';
+        // Default to unattached: never silently overflow an existing /30
+        // when the user just wanted to flip the fabric kind.
+        iff.link = '';
         delete iff.network;
       } else {
         iff.network = Object.keys(state.networks)[0] || '';
