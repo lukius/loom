@@ -3,7 +3,7 @@
 // the canvas right-click context menu. Listens on the shared bus for topology
 // and selection changes, and re-renders accordingly.
 import { state, bus, markDirty, loadSample } from './state.js';
-import { escapeHtml, uniqueName, uniqueIface, pad2, toast } from './utils.js';
+import { escapeHtml, uniqueName, uniqueIface, pad2, toast, cssEscape } from './utils.js';
 import {
   canvasEl, applyView, clientToWorld, fitView,
   renderCanvas, toggleNetworkOrientation, collectLinkEndpoints,
@@ -657,7 +657,7 @@ export function renderRouterInsp(name, elI) {
       const iff = state.routers[name].interfaces[ifn];
       // Determine current type from the sibling type-select in same <details>
       const details = s.closest('[data-iface]');
-      const typeSelect = details && details.querySelector(`[data-iface-fabric-type="${CSS.escape(ifn)}"]`);
+      const typeSelect = details && details.querySelector(`[data-iface-fabric-type="${cssEscape(ifn)}"]`);
       const curType = typeSelect ? typeSelect.value : (iff.link !== undefined ? 'link' : 'network');
       if (curType === 'link') {
         iff.link = s.value;
