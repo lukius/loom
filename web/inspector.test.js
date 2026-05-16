@@ -159,28 +159,25 @@ describe('renderLinkInsp — editor structure', () => {
     expect(elI.querySelector('#f-name').value).toBe('p2p1');
   });
 
-  it('shows the CIDR in a readonly input', () => {
+  it('shows the CIDR in an editable input', () => {
     setupLink();
     const elI = document.getElementById('inspector');
     renderLinkInsp('p2p1', elI);
     const cidrInput = elI.querySelector('#f-cidr');
     expect(cidrInput).not.toBeNull();
     expect(cidrInput.value).toBe('10.0.0.0/30');
+    expect(cidrInput.hasAttribute('readonly')).toBe(false);
   });
 
-  it('CIDR field has readonly attribute', () => {
+  it('typing in the CIDR field writes to state.links[name].cidr', () => {
     setupLink();
+    state.links.p2p1.cidr = '';
     const elI = document.getElementById('inspector');
     renderLinkInsp('p2p1', elI);
     const cidrInput = elI.querySelector('#f-cidr');
-    expect(cidrInput.hasAttribute('readonly')).toBe(true);
-  });
-
-  it('shows a hint about immutability on the CIDR field', () => {
-    setupLink();
-    const elI = document.getElementById('inspector');
-    renderLinkInsp('p2p1', elI);
-    expect(elI.textContent).toContain('Immutable');
+    cidrInput.value = '10.0.0.0/30';
+    cidrInput.dispatchEvent(new Event('input'));
+    expect(state.links.p2p1.cidr).toBe('10.0.0.0/30');
   });
 
   it('renders endpoint list with both attached routers', () => {

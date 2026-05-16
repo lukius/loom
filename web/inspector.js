@@ -367,8 +367,8 @@ export function renderLinkInsp(name, elI) {
       </div>
       <div class="field">
         <label>CIDR</label>
-        <input id="f-cidr" value="${escapeHtml(link.cidr || '')}" readonly spellcheck="false" />
-        <div class="hint">Immutable — recreate to change width.</div>
+        <input id="f-cidr" value="${escapeHtml(link.cidr || '')}" spellcheck="false" placeholder="10.0.0.0/30" />
+        <div class="hint">Must be /30 or /31. Changing width may invalidate already-set endpoint addresses — the parser will flag any mismatch.</div>
       </div>
       <div class="field">
         <label>Endpoints</label>
@@ -381,6 +381,11 @@ export function renderLinkInsp(name, elI) {
     </div>
   `;
   elI.querySelector('#f-name').addEventListener('change', e => renameLink(name, e.target.value.trim()));
+  elI.querySelector('#f-cidr').addEventListener('input', e => {
+    if (isTopologyLocked()) return;
+    state.links[name].cidr = e.target.value.trim();
+    markDirty(); renderCanvas(); renderNav();
+  });
   elI.querySelector('#f-del').addEventListener('click', deleteSelected);
   elI.querySelector('#f-dup').addEventListener('click', () => duplicateLink(name));
 }
