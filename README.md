@@ -211,10 +211,9 @@ ChatGPT, Gemini, ...) out of the box. Two files carry the load:
   User-guide pages (`docs/user-guide/`) cover the web UI, terminals,
   YAML format, and the legacy shell.
 
-There is no agent team, no spec-driven pipeline, no custom Claude Code
-skills — the project is small enough that an AI assistant pointed at
-`CLAUDE.md` plus the relevant `docs/architecture/` page can plan and
-execute most changes directly.
+An AI assistant pointed at `CLAUDE.md` plus the relevant
+`docs/architecture/` page can plan and execute most changes directly —
+the project is small enough that no agent-team scaffolding is needed.
 
 Human contributors do not need to use any AI tooling — all conventions
 apply equally. See [CONTRIBUTING.md](CONTRIBUTING.md#ai-assisted-development)

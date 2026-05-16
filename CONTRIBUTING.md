@@ -360,11 +360,9 @@ wire format), update the affected page in the same commit. See
 full rule.
 
 The `.claude/` directory holds only local Claude Code settings
-(`settings.local.json` is gitignored). There is **no project-wide
-agent team, no spec-driven workflow, no custom skills** — `loom` is
-small enough that an AI assistant reading `CLAUDE.md` plus the
-relevant architecture page can plan and execute most changes
-directly.
+(`settings.local.json` is gitignored). `loom` is small enough that an
+AI assistant reading `CLAUDE.md` plus the relevant architecture page
+can plan and execute most changes directly.
 
 ### If you use Claude Code (or a similar agent-style assistant)
 
