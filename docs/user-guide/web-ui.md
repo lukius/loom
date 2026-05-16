@@ -113,8 +113,9 @@ The left pane lists all entities grouped by type — networks, links,
 hosts, routers. Click a name to select; right-click for the context
 menu. The same selection model as the canvas; the two stay in sync.
 
-The pane is also where you see the **Save state** indicator: `autosaved`
-under normal operation, `saving…` for a brief moment after a mutation.
+The **Save state** indicator — `autosaved` under normal operation,
+`saving…` for a brief moment after a mutation — sits in the **top
+bar**, next to the editable project name.
 
 ## Right pane (inspector)
 
@@ -194,7 +195,7 @@ anywhere outside it or pressing <kbd>Esc</kbd>.
 
 ## Status indicators
 
-- **Save state** (top-left of the nav): `autosaved` / `saving…`.
+- **Save state** (top bar, next to the project name): `autosaved` / `saving…`.
 - **Sim state** is implicit in the toolbar — the Start button label
   changes between **Start** / **Stop**, and the Pause label changes
   between **Pause** / **Resume (N edits)**.
