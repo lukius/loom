@@ -419,7 +419,7 @@ export function renderLinkInsp(name, elI) {
         <label>CIDR</label>
         <input id="f-cidr" value="${escapeHtml(link.cidr || '')}" spellcheck="false" placeholder="10.0.0.0/30" />
         <span class="field-error" id="f-cidr-err"></span>
-        <div class="hint">Must be /30 or /31. Changing width may invalidate already-set endpoint addresses — the parser will flag any mismatch.</div>
+        <div class="hint">Must be /30 or /31. Changing width may invalidate already-set endpoint addresses.</div>
       </div>
       <div class="field">
         <label>Endpoints</label>
