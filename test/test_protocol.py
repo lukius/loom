@@ -10,6 +10,16 @@ from parser import Parser
 from entities import Interface, RoutingProtocol, Router, Network, NetworkAddress, Address, NullAddress, RoutingMessage
 
 
+def _wait(condition, timeout=3.0, interval=0.02):
+    """Poll *condition* until True or *timeout* elapses."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        time.sleep(interval)
+    return False
+
+
 SAMPLE_TOPOLOGY = textwrap.dedent("""
 as:
   name: t
@@ -495,3 +505,242 @@ class ProtocolTest(unittest.TestCase):
         result = r1.routing_table().match(Address('10.0.4.100'))
         self.assertTrue(result.succeeded())
         self.assertEqual(result.interface().name(), 'eth2')
+
+
+# ---------------------------------------------------------------------------
+# P2P link convergence tests
+# ---------------------------------------------------------------------------
+
+TWO_ROUTERS_SLASH30 = textwrap.dedent("""
+as:
+  name: t
+  networks:
+    lan_r1: "10.0.1.0/24"
+    lan_r2: "10.0.2.0/24"
+  links:
+    p2p1: "10.0.0.0/30"
+  routers:
+    r1:
+      interfaces:
+        eth0: {network: lan_r1, address: "10.0.1.1", cost: 1}
+        eth1: {link: p2p1, address: "10.0.0.1", cost: 5}
+    r2:
+      interfaces:
+        eth0: {link: p2p1, address: "10.0.0.2", cost: 5}
+        eth1: {network: lan_r2, address: "10.0.2.1", cost: 1}
+""")
+
+TWO_ROUTERS_SLASH31 = textwrap.dedent("""
+as:
+  name: t
+  networks:
+    lan_r1: "10.0.1.0/24"
+    lan_r2: "10.0.2.0/24"
+  links:
+    p2p1: "10.0.0.0/31"
+  routers:
+    r1:
+      interfaces:
+        eth0: {network: lan_r1, address: "10.0.1.1", cost: 1}
+        eth1: {link: p2p1, address: "10.0.0.0", cost: 5}
+    r2:
+      interfaces:
+        eth0: {link: p2p1, address: "10.0.0.1", cost: 5}
+        eth1: {network: lan_r2, address: "10.0.2.1", cost: 1}
+""")
+
+# Three routers: r1<->r2 via /30 link (asymmetric cost), r1<->r3 via lan_mid,
+# r3<->r2 via lan_mid2.  After convergence r1 prefers the longer (link) path
+# only if it is cheaper; with asymmetric link costs 5+5 < alternate we verify
+# graph weights, not route selection, here.
+TWO_ROUTERS_ASYMMETRIC_COST = textwrap.dedent("""
+as:
+  name: t
+  networks:
+    lan_r1: "10.0.1.0/24"
+    lan_r2: "10.0.2.0/24"
+    lan_mid: "10.0.10.0/24"
+    lan_mid2: "10.0.20.0/24"
+  links:
+    p2p1: "10.0.0.0/30"
+  routers:
+    r1:
+      interfaces:
+        eth0: {network: lan_r1, address: "10.0.1.1", cost: 1}
+        eth1: {link: p2p1, address: "10.0.0.1", cost: 5}
+        eth2: {network: lan_mid, address: "10.0.10.1", cost: 1}
+    r2:
+      interfaces:
+        eth0: {link: p2p1, address: "10.0.0.2", cost: 9}
+        eth1: {network: lan_r2, address: "10.0.2.1", cost: 1}
+        eth2: {network: lan_mid2, address: "10.0.20.1", cost: 1}
+    r3:
+      interfaces:
+        eth0: {network: lan_mid, address: "10.0.10.2", cost: 1}
+        eth1: {network: lan_mid2, address: "10.0.20.2", cost: 1}
+""")
+
+
+def _make_tmp_topology(yaml_text):
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_text)
+        return f.name
+
+
+def _table_has_prefix(router, prefix_str):
+    """Return True when the router's table has a rule for prefix_str."""
+    prefix = NetworkAddress(prefix_str)
+    return any(r.prefix() == prefix for r in router.routing_table().rules())
+
+
+def test_two_routers_one_link_converge():
+    """Two routers on a /30 link converge: each learns the peer's LAN and the
+    link prefix as directly connected."""
+    path = _make_tmp_topology(TWO_ROUTERS_SLASH30)
+    system = Parser(path).parse()
+    try:
+        r1 = system.routers()["r1"]
+        r2 = system.routers()["r2"]
+
+        # Wait for full convergence on both sides.
+        assert _wait(lambda: (
+            _table_has_prefix(r1, "10.0.0.0/30")
+            and _table_has_prefix(r1, "10.0.1.0/24")
+            and _table_has_prefix(r1, "10.0.2.0/24")
+        )), "r1 did not converge in time"
+
+        assert _wait(lambda: (
+            _table_has_prefix(r2, "10.0.0.0/30")
+            and _table_has_prefix(r2, "10.0.2.0/24")
+            and _table_has_prefix(r2, "10.0.1.0/24")
+        )), "r2 did not converge in time"
+
+        # r1: link prefix and own LAN are directly connected (NullAddress).
+        r1_link = r1.routing_table().match(Address("10.0.0.1"))
+        assert r1_link.succeeded()
+        assert r1_link.next_hop() == NullAddress
+        assert r1_link.interface().name() == "eth1"
+
+        r1_own = r1.routing_table().match(Address("10.0.1.100"))
+        assert r1_own.succeeded()
+        assert r1_own.next_hop() == NullAddress
+        assert r1_own.interface().name() == "eth0"
+
+        # r1 reaches r2's LAN via r2's link address as next-hop.
+        r1_remote = r1.routing_table().match(Address("10.0.2.100"))
+        assert r1_remote.succeeded()
+        assert r1_remote.next_hop() == Address("10.0.0.2")
+        assert r1_remote.interface().name() == "eth1"
+
+        # r2: mirror assertions.
+        r2_link = r2.routing_table().match(Address("10.0.0.2"))
+        assert r2_link.succeeded()
+        assert r2_link.next_hop() == NullAddress
+        assert r2_link.interface().name() == "eth0"
+
+        r2_own = r2.routing_table().match(Address("10.0.2.100"))
+        assert r2_own.succeeded()
+        assert r2_own.next_hop() == NullAddress
+        assert r2_own.interface().name() == "eth1"
+
+        r2_remote = r2.routing_table().match(Address("10.0.1.100"))
+        assert r2_remote.succeeded()
+        assert r2_remote.next_hop() == Address("10.0.0.1")
+        assert r2_remote.interface().name() == "eth0"
+    finally:
+        system.stop()
+        os.unlink(path)
+
+
+def test_link_slash31_converge():
+    """/31 link topology converges with identical table structure to /30."""
+    path = _make_tmp_topology(TWO_ROUTERS_SLASH31)
+    system = Parser(path).parse()
+    try:
+        r1 = system.routers()["r1"]
+        r2 = system.routers()["r2"]
+
+        assert _wait(lambda: (
+            _table_has_prefix(r1, "10.0.0.0/31")
+            and _table_has_prefix(r1, "10.0.1.0/24")
+            and _table_has_prefix(r1, "10.0.2.0/24")
+        )), "r1 did not converge in time (/31)"
+
+        assert _wait(lambda: (
+            _table_has_prefix(r2, "10.0.0.0/31")
+            and _table_has_prefix(r2, "10.0.2.0/24")
+            and _table_has_prefix(r2, "10.0.1.0/24")
+        )), "r2 did not converge in time (/31)"
+
+        # r1's link prefix is directly connected.
+        r1_link = r1.routing_table().match(Address("10.0.0.0"))
+        assert r1_link.succeeded()
+        assert r1_link.next_hop() == NullAddress
+        assert r1_link.interface().name() == "eth1"
+
+        # r1 reaches r2's LAN via r2's link address.
+        r1_remote = r1.routing_table().match(Address("10.0.2.100"))
+        assert r1_remote.succeeded()
+        assert r1_remote.next_hop() == Address("10.0.0.1")
+        assert r1_remote.interface().name() == "eth1"
+
+        # r2's link prefix is directly connected.
+        r2_link = r2.routing_table().match(Address("10.0.0.1"))
+        assert r2_link.succeeded()
+        assert r2_link.next_hop() == NullAddress
+        assert r2_link.interface().name() == "eth0"
+
+        # r2 reaches r1's LAN via r1's link address.
+        r2_remote = r2.routing_table().match(Address("10.0.1.100"))
+        assert r2_remote.succeeded()
+        assert r2_remote.next_hop() == Address("10.0.0.0")
+        assert r2_remote.interface().name() == "eth0"
+    finally:
+        system.stop()
+        os.unlink(path)
+
+
+def test_link_cost_propagates():
+    """Asymmetric costs on a /30 link propagate into each router's graph.
+
+    r1↔r2 link has cost 5 on r1's side and 9 on r2's side.  r3 bridges r1
+    and r2 via two shared LANs at cost 1 each.  After convergence:
+      - r1's graph stores weight 5 from r1 to the link prefix.
+      - r2's graph stores weight 9 from r2 to the link prefix.
+      - r1 reaches r2's LAN (10.0.2.0/24) via r3 (eth2, cost 1+1+1=3)
+        rather than the direct link (eth1, cost 5+9=14 end-to-end but
+        graph uses one-sided costs, so r1 sees 5 direct vs 3 via r3).
+    """
+    path = _make_tmp_topology(TWO_ROUTERS_ASYMMETRIC_COST)
+    system = Parser(path).parse()
+    try:
+        r1 = system.routers()["r1"]
+        r2 = system.routers()["r2"]
+
+        link_prefix = NetworkAddress("10.0.0.0/30")
+
+        # Wait until both sides have lan_r2 in their tables.
+        assert _wait(lambda: (
+            _table_has_prefix(r1, "10.0.2.0/24")
+            and _table_has_prefix(r2, "10.0.1.0/24")
+        )), "routers did not converge in time (asymmetric-cost test)"
+
+        # r1's graph: edge r1→link_prefix has cost 5 (r1's own cost).
+        r1_link_cost = r1._protocol._graph.weight(r1, link_prefix)
+        assert r1_link_cost == 5, f"expected r1→link cost 5, got {r1_link_cost}"
+
+        # r2's graph: edge r2→link_prefix has cost 9 (r2's own cost).
+        r2_link_cost = r2._protocol._graph.weight(r2, link_prefix)
+        assert r2_link_cost == 9, f"expected r2→link cost 9, got {r2_link_cost}"
+
+        # r1 prefers r3's path (cost 1+1) over the link (cost 5) to reach
+        # lan_r2.  Verify r1's table routes 10.0.2.x via eth2 (lan_mid side).
+        r1_to_lan_r2 = r1.routing_table().match(Address("10.0.2.100"))
+        assert r1_to_lan_r2.succeeded()
+        assert r1_to_lan_r2.interface().name() == "eth2", (
+            f"expected r1 to route via eth2 (cheaper via r3), "
+            f"got {r1_to_lan_r2.interface().name()}"
+        )
+    finally:
+        system.stop()
+        os.unlink(path)
