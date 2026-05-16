@@ -1,6 +1,6 @@
-<p align="center">
+<div align="center">
   <img src="web/favicon.svg" width="80" alt="loom">
-</p>
+</div>
 
 # loom
 
