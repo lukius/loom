@@ -672,6 +672,12 @@ def test_link_slash31_converge():
             and _table_has_prefix(r2, "10.0.1.0/24")
         )), "r2 did not converge in time (/31)"
 
+        # r1's own LAN is directly connected.
+        r1_own = r1.routing_table().match(Address("10.0.1.100"))
+        assert r1_own.succeeded()
+        assert r1_own.next_hop() == NullAddress
+        assert r1_own.interface().name() == "eth0"
+
         # r1's link prefix is directly connected.
         r1_link = r1.routing_table().match(Address("10.0.0.0"))
         assert r1_link.succeeded()
@@ -707,23 +713,35 @@ def test_link_cost_propagates():
     and r2 via two shared LANs at cost 1 each.  After convergence:
       - r1's graph stores weight 5 from r1 to the link prefix.
       - r2's graph stores weight 9 from r2 to the link prefix.
-      - r1 reaches r2's LAN (10.0.2.0/24) via r3 (eth2, cost 1+1+1=3)
-        rather than the direct link (eth1, cost 5+9=14 end-to-end but
-        graph uses one-sided costs, so r1 sees 5 direct vs 3 via r3).
+      - r1 reaches r2's LAN (10.0.2.0/24) via r3 (eth2, cost 1+1+1+1+1=5)
+        rather than the direct link (eth1, graph cost 5+9+1=15: r1→p2p1
+        at 5, p2p1→r2 at r2's announced cost 9, r2→lan_r2 at 1).
     """
     path = _make_tmp_topology(TWO_ROUTERS_ASYMMETRIC_COST)
     system = Parser(path).parse()
     try:
         r1 = system.routers()["r1"]
         r2 = system.routers()["r2"]
+        r3 = system.routers()["r3"]
 
         link_prefix = NetworkAddress("10.0.0.0/30")
 
-        # Wait until both sides have lan_r2 in their tables.
-        assert _wait(lambda: (
-            _table_has_prefix(r1, "10.0.2.0/24")
-            and _table_has_prefix(r2, "10.0.1.0/24")
-        )), "routers did not converge in time (asymmetric-cost test)"
+        def _r1_routes_lan_r2_via_eth2():
+            result = r1.routing_table().match(Address("10.0.2.100"))
+            return result.succeeded() and result.interface().name() == "eth2"
+
+        # Wait for full convergence: every router must have every prefix AND r1
+        # must have settled on the cheaper path via r3 (eth2).  Checking only
+        # prefix presence is not enough — the route may temporarily point at
+        # eth1 (direct link, cost 5+9+1=15) before r3's LSAs arrive and cause
+        # Dijkstra to prefer the cheaper path via r3 (cost 1+1+1+1+1=5).
+        assert _wait(lambda: all(
+            _table_has_prefix(r, p)
+            for r in [r1, r2, r3]
+            for p in ["10.0.1.0/24", "10.0.2.0/24", "10.0.0.0/30",
+                      "10.0.10.0/24", "10.0.20.0/24"]
+        ) and _r1_routes_lan_r2_via_eth2()), \
+            "routers did not converge in time (asymmetric-cost test)"
 
         # r1's graph: edge r1→link_prefix has cost 5 (r1's own cost).
         r1_link_cost = r1._protocol._graph.weight(r1, link_prefix)
@@ -733,8 +751,9 @@ def test_link_cost_propagates():
         r2_link_cost = r2._protocol._graph.weight(r2, link_prefix)
         assert r2_link_cost == 9, f"expected r2→link cost 9, got {r2_link_cost}"
 
-        # r1 prefers r3's path (cost 1+1) over the link (cost 5) to reach
-        # lan_r2.  Verify r1's table routes 10.0.2.x via eth2 (lan_mid side).
+        # r1 prefers r3's path (cost 1+1+1+1+1=5) over the direct link (cost
+        # 5+9+1=15) to reach lan_r2; verified by _wait above.
+        # Double-check the final routing table entry.
         r1_to_lan_r2 = r1.routing_table().match(Address("10.0.2.100"))
         assert r1_to_lan_r2.succeeded()
         assert r1_to_lan_r2.interface().name() == "eth2", (

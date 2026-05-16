@@ -258,11 +258,9 @@ class ForwardingTest(unittest.TestCase):
             ttls = [e[2] for e in fwd_events]
             self.assertEqual(ttls, [63, 62, 61])
 
-            # No self-echo: the link interface address never appears as dst
-            # in the src field of forwarded events originating from the link.
-            link_addrs = {'10.0.0.1', '10.0.0.2'}
-            for src, dst, _ in fwd_events:
-                self.assertNotIn(dst, link_addrs - {dst})
+            # The packet must ultimately be delivered to h_dst, not to a link
+            # endpoint: verifies that the p2p link does not absorb the datagram.
+            self.assertEqual(fwd_events[-1][1], str(h_dst.address()))
         finally:
             self._stop_chain(lan_r1, link, lan_mid, lan_r3, r1, r2, r3)
 
