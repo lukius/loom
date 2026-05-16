@@ -8,11 +8,18 @@
 import { state, persist } from './state.js';
 import { toast } from './utils.js';
 
-// In the browser jsyaml is loaded via CDN as a global. In the test environment
-// (vitest / Node) we import it from the npm package instead.
-// The global check lets the module work in both contexts without separate bundles.
-import * as _jsyamlModule from 'js-yaml';
-const jsyaml = (typeof globalThis.jsyaml !== 'undefined') ? globalThis.jsyaml : _jsyamlModule;
+// In the browser, js-yaml is loaded via CDN as a global (see web/index.html
+// <script src="…/js-yaml.min.js">). In the vitest environment the test setup
+// file installs the npm package onto globalThis.jsyaml before any module that
+// uses it is imported. We deliberately avoid `import 'js-yaml'` so this module
+// stays loadable in the browser via native ESM (bare specifiers cannot be
+// resolved without an import map).
+function jsyaml() {
+  if (typeof globalThis.jsyaml === 'undefined') {
+    throw new Error('js-yaml is not available — load it as a global before importing yaml-io.js');
+  }
+  return globalThis.jsyaml;
+}
 
 /* ---------- ensureLinkPositions ------------------------------------------
    Assigns default x,y coords to any link in state.links that lacks them.
@@ -108,7 +115,7 @@ export function exportYaml() {
   }]));
 
   const out = { as: asBlock };
-  return jsyaml.dump(out, { quotingType: '"', forceQuotes: true, lineWidth: -1, indent: 2 });
+  return jsyaml().dump(out, { quotingType: '"', forceQuotes: true, lineWidth: -1, indent: 2 });
 }
 
 /* ---------- importYaml ---------------------------------------------------
@@ -123,7 +130,7 @@ export function exportYaml() {
    -------------------------------------------------------------------------- */
 export function importYaml(text, { ensurePositions, fitView, renderAll } = {}) {
   let parsed;
-  try { parsed = jsyaml.load(text); } catch (e) {
+  try { parsed = jsyaml().load(text); } catch (e) {
     toast(e.message || 'Failed to parse YAML', 'error', 'Parse error'); return false;
   }
   if (!parsed || !parsed.as) { toast('YAML root must be "as:"', 'error', 'Parse error'); return false; }
