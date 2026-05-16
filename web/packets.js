@@ -5,8 +5,8 @@
 import { bus, state, NODE } from './state.js';
 import { escapeHtml } from './utils.js';
 import {
-  lookupDeviceNode, lookupAddressNode, lookupNetworkNode,
-  getNodeCenter, railTapPoint, deviceNameForEndpoint,
+  lookupDeviceNode, lookupAddressNodeOnFabric, lookupNetworkNode,
+  getNodeCenter, railTapPoint, deviceNameForEndpointOnFabric,
   collectLinkEndpoints, clipToRect,
 } from './canvas.js';
 import { Sim } from './sim.js';
@@ -135,11 +135,15 @@ export const PacketAnim = {
   //   src device  →[bezier]→  src tap on rail  →[line]→  dst tap  →[bezier]→  dst device
   _segmentsForNetwork(evt, srcNode, netNode) {
     const srcCenter = getNodeCenter(srcNode);
-    const dstNode = lookupAddressNode(evt.dst && evt.dst.address) || lookupDeviceNode(evt.dst && evt.dst.device);
+    // Scope the address lookup to this fabric so we don't pick a same-IP
+    // device from a different subnet (private IPs are intentionally
+    // reusable across separate networks per RFC 1918).
+    const dstNode = lookupAddressNodeOnFabric(evt.dst && evt.dst.address, evt.network)
+      || lookupDeviceNode(evt.dst && evt.dst.device);
     const dstCenter = dstNode ? getNodeCenter(dstNode) : null;
     // Simulator emits `dst.address` (no `dst.device`); resolve the address
     // back to a device name to compute the rail tap point.
-    const dstName = deviceNameForEndpoint(evt.dst);
+    const dstName = deviceNameForEndpointOnFabric(evt.dst, evt.network);
     const srcTap = railTapPoint(evt.src && evt.src.device, evt.network) || getNodeCenter(netNode);
     const dstTap = dstName
       ? (railTapPoint(dstName, evt.network) || getNodeCenter(netNode))

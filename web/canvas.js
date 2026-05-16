@@ -42,6 +42,27 @@ export function lookupAddressNode(address) {
   return null;
 }
 
+// Fabric-scoped variant of lookupAddressNode. Only considers devices that are
+// actually attached to `fabricName` (a Network OR a Link). Necessary because
+// private IPs are intentionally reusable across separate subnets: e.g. two
+// LANs with 192.168.1.10 on each, or two /30 links both using 10.0.0.0/30.
+// The global lookup would pick the first match in iteration order and the
+// animation would land on the wrong device.
+export function lookupAddressNodeOnFabric(address, fabricName) {
+  if (!address || !fabricName) return null;
+  for (const [hn, h] of Object.entries(state.hosts || {})) {
+    if (h.address !== address) continue;
+    if (h.network === fabricName || h.link === fabricName) return lookupDeviceNode(hn);
+  }
+  for (const [rn, r] of Object.entries(state.routers || {})) {
+    for (const iff of Object.values(r.interfaces || {})) {
+      if (iff.address !== address) continue;
+      if (iff.network === fabricName || iff.link === fabricName) return lookupDeviceNode(rn);
+    }
+  }
+  return null;
+}
+
 // Where a device's edge meets a LAN's rail — in world coordinates.
 // Used by packet animation so packets travel along the visible wire instead
 // of cutting straight through the LAN's centroid.
@@ -68,6 +89,28 @@ export function deviceNameForEndpoint(endpoint) {
   for (const [rn, r] of Object.entries(state.routers || {})) {
     for (const ifn of Object.keys(r.interfaces || {})) {
       if (r.interfaces[ifn].address === address) return rn;
+    }
+  }
+  return null;
+}
+
+// Fabric-scoped variant: resolve a packet endpoint to a device name, only
+// considering devices attached to `fabricName`. Honours the principle that
+// private IPs may legitimately be reused on separate subnets — see
+// lookupAddressNodeOnFabric for the same scoping rationale.
+export function deviceNameForEndpointOnFabric(endpoint, fabricName) {
+  if (!endpoint) return null;
+  if (endpoint.device) return endpoint.device;
+  const address = endpoint.address;
+  if (!address || !fabricName) return null;
+  for (const [hn, h] of Object.entries(state.hosts || {})) {
+    if (h.address !== address) continue;
+    if (h.network === fabricName || h.link === fabricName) return hn;
+  }
+  for (const [rn, r] of Object.entries(state.routers || {})) {
+    for (const iff of Object.values(r.interfaces || {})) {
+      if (iff.address !== address) continue;
+      if (iff.network === fabricName || iff.link === fabricName) return rn;
     }
   }
   return null;

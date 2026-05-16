@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, renderCanvas, lookupLinkMidpoint, lookupDeviceNode, shiftLinkLabelsForDeviceMove, startLinkWizard, cancelLinkWizard, finishLinkWizard, getLinkWizard } from './canvas.js';
+import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, deviceNameForEndpointOnFabric, lookupAddressNodeOnFabric, renderCanvas, lookupLinkMidpoint, lookupDeviceNode, shiftLinkLabelsForDeviceMove, startLinkWizard, cancelLinkWizard, finishLinkWizard, getLinkWizard } from './canvas.js';
 import {
   state, bus,
   RAIL_DEFAULT_WIDTH, RAIL_THICKNESS, RAIL_TICK_INSET,
@@ -201,6 +201,110 @@ describe('deviceNameForEndpoint — resolves packet endpoints to device names', 
 
   it('returns null when neither device nor address is provided', () => {
     expect(deviceNameForEndpoint({})).toBeNull();
+  });
+});
+
+describe('deviceNameForEndpointOnFabric — fabric-scoped address lookup', () => {
+  beforeEach(() => {
+    state.hosts = {};
+    state.routers = {};
+    state.networks = {};
+    state.links = {};
+  });
+
+  it('prefers an explicit device field over the address lookup', () => {
+    expect(deviceNameForEndpointOnFabric({ device: 'r9', address: '10.0.0.1' }, 'lan1')).toBe('r9');
+  });
+
+  it('returns the host on the matching fabric (not the same-IP host on a different fabric)', () => {
+    state.networks = {
+      lan1: { cidr: '192.168.1.0/24', x: 0, y: 0 },
+      lan2: { cidr: '192.168.1.0/24', x: 0, y: 0 },  // intentional CIDR reuse
+    };
+    state.hosts = {
+      h_a: { network: 'lan1', address: '192.168.1.10', x: 0, y: 0 },
+      h_b: { network: 'lan2', address: '192.168.1.10', x: 0, y: 0 },  // same IP, other fabric
+    };
+    expect(deviceNameForEndpointOnFabric({ address: '192.168.1.10' }, 'lan1')).toBe('h_a');
+    expect(deviceNameForEndpointOnFabric({ address: '192.168.1.10' }, 'lan2')).toBe('h_b');
+  });
+
+  it('returns the router with a matching iface on this fabric, ignoring same-IP iface on another fabric', () => {
+    state.networks = {
+      lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 },
+      lan2: { cidr: '10.0.0.0/24', x: 0, y: 0 },
+    };
+    state.routers = {
+      r_a: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.0.0.1', cost: 1 } } },
+      r_b: { x: 0, y: 0, interfaces: { eth0: { network: 'lan2', address: '10.0.0.1', cost: 1 } } },
+    };
+    expect(deviceNameForEndpointOnFabric({ address: '10.0.0.1' }, 'lan1')).toBe('r_a');
+    expect(deviceNameForEndpointOnFabric({ address: '10.0.0.1' }, 'lan2')).toBe('r_b');
+  });
+
+  it('disambiguates link endpoints that share an address with a host on a different fabric', () => {
+    state.networks = {};
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
+    state.routers = {
+      r3: { x: 0, y: 0, interfaces: { eth2: { link: 'p2p1', address: '10.0.0.2', cost: 5 } } },
+    };
+    state.hosts = {
+      h5: { link: 'p2p2', address: '10.0.0.2', x: 0, y: 0 },
+    };
+    expect(deviceNameForEndpointOnFabric({ address: '10.0.0.2' }, 'p2p1')).toBe('r3');
+    expect(deviceNameForEndpointOnFabric({ address: '10.0.0.2' }, 'p2p2')).toBe('h5');
+  });
+
+  it('returns null when no device on the fabric matches the address', () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
+    expect(deviceNameForEndpointOnFabric({ address: '10.0.0.99' }, 'lan1')).toBeNull();
+  });
+
+  it('returns null when the fabric name is empty/undefined', () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
+    expect(deviceNameForEndpointOnFabric({ address: '10.0.0.5' }, '')).toBeNull();
+    expect(deviceNameForEndpointOnFabric({ address: '10.0.0.5' }, undefined)).toBeNull();
+  });
+
+  it('returns null on a falsy endpoint', () => {
+    expect(deviceNameForEndpointOnFabric(null, 'lan1')).toBeNull();
+    expect(deviceNameForEndpointOnFabric(undefined, 'lan1')).toBeNull();
+  });
+});
+
+describe('lookupAddressNodeOnFabric — fabric-scoped DOM lookup', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g class="node host"   data-kind="host"   data-name="h_a" transform="translate(100 100)"></g>
+        <g class="node host"   data-kind="host"   data-name="h_b" transform="translate(200 200)"></g>
+      </g></svg>`;
+    state.hosts = {
+      h_a: { network: 'lan1', address: '192.168.1.10', x: 100, y: 100 },
+      h_b: { network: 'lan2', address: '192.168.1.10', x: 200, y: 200 },
+    };
+    state.routers = {};
+    state.networks = {
+      lan1: { cidr: '192.168.1.0/24', x: 0, y: 0 },
+      lan2: { cidr: '192.168.1.0/24', x: 0, y: 0 },
+    };
+    state.links = {};
+  });
+
+  it('returns the host node on the requested fabric', () => {
+    expect(lookupAddressNodeOnFabric('192.168.1.10', 'lan1')?.getAttribute('data-name')).toBe('h_a');
+    expect(lookupAddressNodeOnFabric('192.168.1.10', 'lan2')?.getAttribute('data-name')).toBe('h_b');
+  });
+
+  it('returns null for an unknown address on the fabric', () => {
+    expect(lookupAddressNodeOnFabric('192.168.1.99', 'lan1')).toBeNull();
+  });
+
+  it('returns null when address or fabric is missing', () => {
+    expect(lookupAddressNodeOnFabric('', 'lan1')).toBeNull();
+    expect(lookupAddressNodeOnFabric('192.168.1.10', '')).toBeNull();
   });
 });
 

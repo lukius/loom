@@ -92,6 +92,48 @@ describe('PacketAnim._bezBetween — packet curves match drawEdge', () => {
     expect(segs[0].p3.x).toBeLessThan(400);
   });
 
+  it('_segmentsForNetwork resolves dst on the event\'s fabric, ignoring same-IP devices on other LANs', () => {
+    // Two LANs both using 192.168.1.0/24 — h_a on lan1 and h_b on lan2 both
+    // have IP 192.168.1.10. A packet on lan1 destined for 192.168.1.10 must
+    // animate to h_a, not h_b.
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g class="node host"    data-kind="host"    data-name="h_a"  transform="translate(100 100)"></g>
+        <g class="node host"    data-kind="host"    data-name="h_b"  transform="translate(700 100)"></g>
+        <g class="node router"  data-kind="router"  data-name="r1"   transform="translate(400 100)"></g>
+        <g class="node network" data-kind="network" data-name="lan1" transform="translate(250 100)"></g>
+        <g class="node network" data-kind="network" data-name="lan2" transform="translate(550 100)"></g>
+      </g></svg>`;
+    state.networks = {
+      lan1: { cidr: '192.168.1.0/24', x: 250, y: 100 },
+      lan2: { cidr: '192.168.1.0/24', x: 550, y: 100 },
+    };
+    state.hosts = {
+      h_a: { network: 'lan1', address: '192.168.1.10', x: 100, y: 100 },
+      h_b: { network: 'lan2', address: '192.168.1.10', x: 700, y: 100 },
+    };
+    state.routers = {
+      r1: { x: 400, y: 100, interfaces: {
+        eth0: { network: 'lan1', address: '192.168.1.1', cost: 1 },
+        eth1: { network: 'lan2', address: '192.168.1.1', cost: 1 },
+      } },
+    };
+    state.links = {};
+    const srcNode = document.querySelector('[data-name="r1"]');
+    const netNode = document.querySelector('[data-name="lan1"]');
+    const evt = {
+      type: 'user_datagram',
+      network: 'lan1',
+      src: { device: 'r1', address: '192.168.1.1' },
+      dst: { address: '192.168.1.10' },
+    };
+    const segs = PacketAnim._segmentsForNetwork(evt, srcNode, netNode);
+    // Final bezier should land near h_a's center (~100), not h_b's (~700).
+    const lastBez = segs[segs.length - 1];
+    expect(lastBez.kind).toBe('bez');
+    expect(lastBez.p3.x).toBeLessThan(300);
+  });
+
   it('_segmentsForLink prefers the link\'s structural peer over the address lookup (handles cross-link IP collisions)', () => {
     // Two p2p links both using 10.0.0.0/30 — h5 on p2p2 happens to share
     // address 10.0.0.2 with r3.eth2 on p2p1. The animation MUST go to r3,
