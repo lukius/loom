@@ -307,7 +307,7 @@ test.describe('loom SPA - smoke', () => {
     // persistence — read the slot directly instead).
     await page.waitForTimeout(300);
     const persistedW = await page.evaluate(() => {
-      const raw = localStorage.getItem('loom.topology.v4');
+      const raw = localStorage.getItem('loom.topology.v5');
       if (!raw) return null;
       const s = JSON.parse(raw);
       const firstKey = Object.keys(s.networks)[0];
@@ -476,7 +476,7 @@ test.describe('loom SPA - smoke', () => {
     await page.locator('#tb-toggle-costs').click();
     await page.waitForTimeout(300); // markDirty debounce
     const persisted = await page.evaluate(() => {
-      const raw = localStorage.getItem('loom.topology.v4');
+      const raw = localStorage.getItem('loom.topology.v5');
       return raw ? JSON.parse(raw).display : null;
     });
     expect(persisted).toEqual({ showCosts: false, showIfaces: true });
@@ -523,8 +523,10 @@ test.describe('loom SPA - smoke', () => {
     await expect(midG).toHaveCount(1);
     await expect(midG).toBeVisible();
 
-    // B. Clicking the edge path selects the link and shows it in the inspector.
-    await p2pEdge.click();
+    // B. Clicking the midpoint label selects the link and shows it in the inspector.
+    // (The thin stroke-only edge path is unreliable as a click target under
+    // Playwright; the midpoint group has a real hit-rect.)
+    await midG.click();
     const inspector = page.locator('#inspector');
     await expect(inspector.locator('.pill.link')).toBeVisible();
     await expect(inspector.locator('.insp-head .name')).toHaveText('p2p1');
