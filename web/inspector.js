@@ -7,6 +7,7 @@ import { escapeHtml, uniqueName, uniqueIface, pad2, toast, cssEscape, isValidIpv
 import {
   canvasEl, applyView, clientToWorld, fitView,
   renderCanvas, toggleNetworkOrientation, collectLinkEndpoints,
+  startLinkWizard,
 } from './canvas.js';
 import { Sim, RuntimeClient, isTopologyLocked, recordPatchOp } from './sim.js';
 
@@ -108,6 +109,9 @@ export function openContextMenu(clientX, clientY, target, world) {
     if (target.kind === 'network') {
       html += `<button class="ctx-item" ${mut('add-host-here')}><svg class="ico"><use href="#ui-host"/></svg>Add host here</button>`;
       html += `<button class="ctx-item" ${mut('add-router-here')}><svg class="ico"><use href="#ui-router"/></svg>Add router here</button>`;
+    }
+    if (target.kind === 'host' || target.kind === 'router') {
+      html += `<button class="ctx-item" ${mut('new-p2p-link')}><svg class="ico" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 7h8M9 4l3 3-3 3"/></svg>New p2p link…</button>`;
     }
     if (target.kind === 'host') {
       const obj = state.hosts[target.name];
@@ -225,6 +229,9 @@ export function handleCtxAction(act, target, world, arg) {
       markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
       break;
     }
+    case 'new-p2p-link':
+      startLinkWizard({ kind: target.kind, name: target.name });
+      break;
     case 'duplicate':
       if (target.kind === 'network') duplicateNetwork(target.name);
       else if (target.kind === 'host') duplicateHost(target.name);

@@ -9,7 +9,7 @@ import {
   RAIL_THICKNESS, RAIL_ENDCAP_LEN, RAIL_HANDLE_LEN,
   RAIL_TICK_INSET, RAIL_TICK_LEN, RAIL_LABEL_GAP,
 } from './state.js';
-import { el, escapeHtml, cssEscape, uniqueIface, toast } from './utils.js';
+import { el, escapeHtml, cssEscape, uniqueIface, uniqueName, toast } from './utils.js';
 import { isTopologyLocked } from './sim.js';
 
 export function lookupDeviceNode(name) {
@@ -881,6 +881,129 @@ function startRailResize(e, name, handle) {
 }
 
 
+/* ---------- p2p link wizard ---------- */
+
+// Transient (never persisted) linking-mode state.
+// Shape: { source: { kind, name } } or null.
+let _wizard = null;
+
+// Banner element injected into the DOM during linking mode.
+let _wizardBanner = null;
+
+/**
+ * Enter linking mode: the user right-clicked on a device and chose
+ * "New p2p link…". We record the source and enter a mode where the next
+ * click on another host/router completes the link.
+ */
+export function startLinkWizard(source) {
+  cancelLinkWizard(); // clear any prior wizard
+
+  _wizard = { source };
+
+  // Visual: add ring class to source device group
+  const srcG = lookupDeviceNode(source.name);
+  if (srcG) srcG.classList.add('link-wizard-source');
+
+  // Banner
+  _wizardBanner = document.createElement('div');
+  _wizardBanner.className = 'link-wizard-banner';
+  _wizardBanner.textContent = 'Pick the other endpoint of the new p2p link. Esc to cancel.';
+  const dismiss = document.createElement('button');
+  dismiss.className = 'link-wizard-banner-close';
+  dismiss.textContent = '✕';
+  dismiss.addEventListener('click', cancelLinkWizard);
+  _wizardBanner.appendChild(dismiss);
+  document.body.appendChild(_wizardBanner);
+}
+
+/**
+ * Cancel linking mode — removes all transient state and visual feedback.
+ * Safe to call when no wizard is active.
+ */
+export function cancelLinkWizard() {
+  if (!_wizard) return;
+  const srcG = lookupDeviceNode(_wizard.source.name);
+  if (srcG) srcG.classList.remove('link-wizard-source');
+  _wizard = null;
+  if (_wizardBanner) { _wizardBanner.remove(); _wizardBanner = null; }
+  // Remove dashed preview line
+  const overlay = overlayLay();
+  if (overlay) {
+    const prev = overlay.querySelector('.wizard-preview');
+    if (prev) prev.remove();
+  }
+}
+
+/**
+ * Complete the wizard: create a new p2p link between source and target.
+ * Both `source` and `target` are `{ kind: 'host'|'router', name }`.
+ */
+export function finishLinkWizard(target) {
+  if (!_wizard) return;
+  const source = _wizard.source;
+  cancelLinkWizard();
+
+  // Lookup positions for midpoint calculation
+  const srcObj = (source.kind === 'host' ? state.hosts : state.routers)[source.name];
+  const tgtObj = (target.kind === 'host' ? state.hosts : state.routers)[target.name];
+  const midX = srcObj && tgtObj ? (srcObj.x + tgtObj.x) / 2 : (srcObj?.x ?? 600);
+  const midY = srcObj && tgtObj ? (srcObj.y + tgtObj.y) / 2 : (srcObj?.y ?? 400);
+
+  const linkName = uniqueName('p2p', state.links);
+  state.links[linkName] = { cidr: '', x: midX, y: midY };
+
+  // Attach source
+  if (source.kind === 'host') {
+    state.hosts[source.name].link = linkName;
+    delete state.hosts[source.name].network;
+  } else {
+    const r = state.routers[source.name];
+    const ifn = uniqueIface(r.interfaces);
+    r.interfaces[ifn] = { link: linkName, address: '', cost: 1 };
+  }
+
+  // Attach target
+  if (target.kind === 'host') {
+    state.hosts[target.name].link = linkName;
+    delete state.hosts[target.name].network;
+  } else {
+    const r = state.routers[target.name];
+    const ifn = uniqueIface(r.interfaces);
+    r.interfaces[ifn] = { link: linkName, address: '', cost: 1 };
+  }
+
+  state.selection = { kind: 'link', name: linkName };
+  markDirty();
+  bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+  toast(`Created ${linkName} — set the link CIDR and endpoint IPs`, 'ok', 'new p2p link');
+}
+
+/**
+ * Update the dashed "rubber-band" line from the source device's center to the
+ * current cursor position (in world coordinates) while in linking mode.
+ */
+export function updateWizardPreview(worldX, worldY) {
+  const overlay = overlayLay();
+  if (!overlay) return;
+  // Remove old preview
+  const old = overlay.querySelector('.wizard-preview');
+  if (old) old.remove();
+
+  if (!_wizard) return;
+  const srcObj = (_wizard.source.kind === 'host' ? state.hosts : state.routers)[_wizard.source.name];
+  if (!srcObj) return;
+
+  const line = el('line', {
+    class: 'wizard-preview',
+    x1: srcObj.x, y1: srcObj.y,
+    x2: worldX, y2: worldY,
+  });
+  overlay.appendChild(line);
+}
+
+/** Return the current wizard state (for testing). */
+export function getLinkWizard() { return _wizard; }
+
 /* ---------- interaction ---------- */
 let drag = null;          // active drag state
 let pan  = null;          // active pan state
@@ -889,6 +1012,18 @@ let rclickTimer = null;
 export function attachNodeEvents(g, kind, name) {
   g.addEventListener('pointerdown', (e) => {
     if (e.button === 2) return; // right-click handled separately
+
+    // Linking wizard: if active, this click either finalizes or cancels.
+    if (_wizard) {
+      e.stopPropagation();
+      if ((kind === 'host' || kind === 'router') && name !== _wizard.source.name) {
+        finishLinkWizard({ kind, name });
+      } else {
+        // Clicking the source device or a non-device (network/link) → cancel
+        cancelLinkWizard();
+      }
+      return;
+    }
 
     // Rotate button — has its own handler, never bubbles. Always available
     // when visible (hover / selected) and not locked.
@@ -971,11 +1106,14 @@ export function attachNodeEvents(g, kind, name) {
 export function wireCanvas() {
   const svg = canvasEl();
 
-  // pointerdown on background → pan, dismiss any ctxmenu
+  // pointerdown on background → pan, dismiss any ctxmenu; cancel wizard on bg click
   svg.addEventListener('pointerdown', (e) => {
     bus.dispatchEvent(new CustomEvent('canvas:contextmenu-close-requested'));
     if (e.target.closest('.node')) return;
     if (e.button === 2) return; // right click handled by contextmenu listener
+    // Cancel wizard on background click (click handler also covers this, but
+    // pointerdown fires first so we handle it here and avoid starting a pan).
+    if (_wizard) { cancelLinkWizard(); return; }
     pan = {
       pointerId: e.pointerId,
       sx: e.clientX, sy: e.clientY,
@@ -994,8 +1132,13 @@ export function wireCanvas() {
     }));
   });
 
-  // pointermove — drag or pan
+  // pointermove — drag, pan, or wizard rubber-band
   document.addEventListener('pointermove', (e) => {
+    if (_wizard) {
+      const w = clientToWorld(e.clientX, e.clientY);
+      updateWizardPreview(w.x, w.y);
+      return;
+    }
     if (drag) {
       // ignore tiny jitter so a click isn't mis-classified as a drag
       if (!drag.moved) {
@@ -1141,12 +1284,19 @@ export function wireCanvas() {
     bus.dispatchEvent(new CustomEvent('view:changed'));
   }, { passive: false });
 
-  // dismiss menu on background click
+  // dismiss menu on background click; also cancel wizard on background click
   svg.addEventListener('click', (e) => {
+    if (_wizard) {
+      if (!e.target.closest('.node')) {
+        cancelLinkWizard();
+        return;
+      }
+    }
     if (e.target.closest('.node')) return;
     state.selection = null;
     bus.dispatchEvent(new CustomEvent('state:selection-changed'));
   });
+
 }
 
 /* re-render only the edges (drag perf) */
@@ -1213,3 +1363,8 @@ bus.addEventListener('state:topology-changed', renderCanvas);
 bus.addEventListener('state:selection-changed', renderSelection);
 bus.addEventListener('view:changed', applyView);
 bus.addEventListener('state:topology-loaded', fitView);
+
+// Esc cancels the link wizard globally (not gated on wireCanvas being called)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && _wizard) cancelLinkWizard();
+});

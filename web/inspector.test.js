@@ -890,3 +890,45 @@ describe('renderRouterInsp — inline IP validation for iface address', () => {
     expect(err.classList.contains('show')).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 16. Context menu — "New p2p link…" item for host and router targets
+// ---------------------------------------------------------------------------
+describe('openContextMenu — "New p2p link…" on host and router', () => {
+  it('shows "New p2p link…" for a host target', () => {
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    openContextMenu(100, 100, { kind: 'host', name: 'h1' }, { x: 0, y: 0 });
+    const ctx = document.querySelector('.ctx');
+    expect(ctx.textContent).toContain('New p2p link');
+    closeContextMenu();
+  });
+
+  it('shows "New p2p link…" for a router target', () => {
+    state.routers = { r1: { x: 100, y: 100, interfaces: {} } };
+    openContextMenu(100, 100, { kind: 'router', name: 'r1' }, { x: 0, y: 0 });
+    const ctx = document.querySelector('.ctx');
+    expect(ctx.textContent).toContain('New p2p link');
+    closeContextMenu();
+  });
+
+  it('does NOT show "New p2p link…" for a network target', () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    openContextMenu(100, 100, { kind: 'network', name: 'lan1' }, { x: 0, y: 0 });
+    const ctx = document.querySelector('.ctx');
+    // There should be no "New p2p link…" button on network context menus
+    const items = Array.from(ctx.querySelectorAll('.ctx-item'));
+    expect(items.some(b => b.getAttribute('data-act') === 'new-p2p-link')).toBe(false);
+    closeContextMenu();
+  });
+
+  it('"New p2p link…" button has data-act="new-p2p-link"', () => {
+    state.routers = { r1: { x: 100, y: 100, interfaces: {} } };
+    openContextMenu(100, 100, { kind: 'router', name: 'r1' }, { x: 0, y: 0 });
+    const ctx = document.querySelector('.ctx');
+    const btn = Array.from(ctx.querySelectorAll('.ctx-item'))
+      .find(b => b.getAttribute('data-act') === 'new-p2p-link');
+    expect(btn).not.toBeNull();
+    closeContextMenu();
+  });
+});

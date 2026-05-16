@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, renderCanvas, lookupLinkMidpoint, lookupDeviceNode, shiftLinkLabelsForDeviceMove } from './canvas.js';
+import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, renderCanvas, lookupLinkMidpoint, lookupDeviceNode, shiftLinkLabelsForDeviceMove, startLinkWizard, cancelLinkWizard, finishLinkWizard, getLinkWizard } from './canvas.js';
 import {
   state, bus,
   RAIL_DEFAULT_WIDTH, RAIL_THICKNESS, RAIL_TICK_INSET,
@@ -209,7 +209,7 @@ describe('deviceNameForEndpoint — resolves packet endpoints to device names', 
    ----------------------------------------------------------------------- */
 
 function setupMinimalDOM() {
-  // Minimal SVG DOM expected by renderCanvas / drawLinkEdge
+  // Minimal SVG DOM expected by renderCanvas / drawLinkEdge / markDirty
   document.body.innerHTML = `
     <svg id="canvas" class="canvas">
       <g id="viewport">
@@ -220,6 +220,8 @@ function setupMinimalDOM() {
     </svg>
     <div id="canv-empty" hidden></div>
     <div id="zoom-lvl"></div>
+    <div id="save-state"><span class="dot"></span> autosaved</div>
+    <div id="toasts"></div>
   `;
 }
 
@@ -483,5 +485,245 @@ describe('p2p link rendering', () => {
     state.routers.r1.x = 240;
     expect(state.links.p2p1.x).toBe(320);
     expect(state.links.p2p1.y).toBe(150);  // 50px-above-midpoint offset preserved
+  });
+});
+
+/* -----------------------------------------------------------------------
+   p2p link wizard
+   ----------------------------------------------------------------------- */
+
+describe('link wizard — startLinkWizard / cancelLinkWizard', () => {
+  beforeEach(() => {
+    setupMinimalDOM();
+    state.hosts    = {};
+    state.routers  = {};
+    state.networks = {};
+    state.links    = {};
+    state.selection = null;
+    state.view     = { x: 0, y: 0, k: 1 };
+    state.display  = { showCosts: true, showIfaces: true };
+    // Ensure no wizard leftover
+    cancelLinkWizard();
+  });
+
+  it('getLinkWizard() returns null before any wizard starts', () => {
+    expect(getLinkWizard()).toBeNull();
+  });
+
+  it('startLinkWizard sets transient wizard state', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    const w = getLinkWizard();
+    expect(w).not.toBeNull();
+    expect(w.source.kind).toBe('router');
+    expect(w.source.name).toBe('r1');
+  });
+
+  it('startLinkWizard adds link-wizard-source class to source device group', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    const g = lookupDeviceNode('r1');
+    expect(g.classList.contains('link-wizard-source')).toBe(true);
+  });
+
+  it('cancelLinkWizard clears wizard state', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    cancelLinkWizard();
+    expect(getLinkWizard()).toBeNull();
+  });
+
+  it('cancelLinkWizard removes link-wizard-source class', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    cancelLinkWizard();
+    const g = lookupDeviceNode('r1');
+    expect(g.classList.contains('link-wizard-source')).toBe(false);
+  });
+
+  it('cancelLinkWizard is safe to call when no wizard is active', () => {
+    expect(() => cancelLinkWizard()).not.toThrow();
+  });
+
+  it('startLinkWizard injects a .link-wizard-banner into document.body', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    expect(document.querySelector('.link-wizard-banner')).not.toBeNull();
+    cancelLinkWizard();
+  });
+
+  it('cancelLinkWizard removes the banner', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    cancelLinkWizard();
+    expect(document.querySelector('.link-wizard-banner')).toBeNull();
+  });
+});
+
+describe('link wizard — finishLinkWizard: all four endpoint combinations', () => {
+  beforeEach(() => {
+    setupMinimalDOM();
+    state.hosts    = {};
+    state.routers  = {};
+    state.networks = {};
+    state.links    = {};
+    state.selection = null;
+    state.view     = { x: 0, y: 0, k: 1 };
+    state.display  = { showCosts: true, showIfaces: true };
+    document.body.innerHTML += '<div id="toasts"></div>';
+    cancelLinkWizard();
+  });
+
+  it('router → router: creates link and allocates new interfaces on both', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    state.routers.r2 = { x: 300, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    finishLinkWizard({ kind: 'router', name: 'r2' });
+
+    expect(Object.keys(state.links).length).toBe(1);
+    const linkName = Object.keys(state.links)[0];
+    const r1Iface = Object.values(state.routers.r1.interfaces).find(i => i.link === linkName);
+    const r2Iface = Object.values(state.routers.r2.interfaces).find(i => i.link === linkName);
+    expect(r1Iface).toBeDefined();
+    expect(r2Iface).toBeDefined();
+  });
+
+  it('host → host: creates link and sets link on both hosts', () => {
+    state.hosts.h1 = { network: 'lan1', address: '', x: 100, y: 100 };
+    state.hosts.h2 = { network: 'lan1', address: '', x: 300, y: 100 };
+    renderCanvas();
+    startLinkWizard({ kind: 'host', name: 'h1' });
+    finishLinkWizard({ kind: 'host', name: 'h2' });
+
+    const linkName = Object.keys(state.links)[0];
+    expect(state.hosts.h1.link).toBe(linkName);
+    expect(state.hosts.h2.link).toBe(linkName);
+    expect(state.hosts.h1.network).toBeUndefined();
+    expect(state.hosts.h2.network).toBeUndefined();
+  });
+
+  it('router → host: creates link, allocates iface on router, sets link on host', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    state.hosts.h1 = { network: 'lan1', address: '', x: 300, y: 100 };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    finishLinkWizard({ kind: 'host', name: 'h1' });
+
+    const linkName = Object.keys(state.links)[0];
+    const rIface = Object.values(state.routers.r1.interfaces).find(i => i.link === linkName);
+    expect(rIface).toBeDefined();
+    expect(state.hosts.h1.link).toBe(linkName);
+  });
+
+  it('host → router: creates link, sets link on host, allocates iface on router', () => {
+    state.hosts.h1 = { network: '', address: '', x: 100, y: 100 };
+    state.routers.r1 = { x: 300, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'host', name: 'h1' });
+    finishLinkWizard({ kind: 'router', name: 'r1' });
+
+    const linkName = Object.keys(state.links)[0];
+    expect(state.hosts.h1.link).toBe(linkName);
+    const rIface = Object.values(state.routers.r1.interfaces).find(i => i.link === linkName);
+    expect(rIface).toBeDefined();
+  });
+
+  it('created link has empty cidr and empty endpoint addresses', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    state.routers.r2 = { x: 300, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    finishLinkWizard({ kind: 'router', name: 'r2' });
+
+    const link = Object.values(state.links)[0];
+    expect(link.cidr).toBe('');
+    const r1Iface = Object.values(state.routers.r1.interfaces)[0];
+    const r2Iface = Object.values(state.routers.r2.interfaces)[0];
+    expect(r1Iface.address).toBe('');
+    expect(r2Iface.address).toBe('');
+  });
+
+  it('finishLinkWizard selects the new link', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    state.routers.r2 = { x: 300, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    finishLinkWizard({ kind: 'router', name: 'r2' });
+
+    expect(state.selection).not.toBeNull();
+    expect(state.selection.kind).toBe('link');
+    expect(Object.keys(state.links)).toContain(state.selection.name);
+  });
+
+  it('finishLinkWizard clears wizard state', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    state.routers.r2 = { x: 300, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    finishLinkWizard({ kind: 'router', name: 'r2' });
+    expect(getLinkWizard()).toBeNull();
+  });
+
+  it('positions link midpoint at geometric center of the two devices', () => {
+    state.routers.r1 = { x: 100, y: 200, interfaces: {} };
+    state.routers.r2 = { x: 300, y: 400, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    finishLinkWizard({ kind: 'router', name: 'r2' });
+
+    const link = Object.values(state.links)[0];
+    expect(link.x).toBe(200); // (100+300)/2
+    expect(link.y).toBe(300); // (200+400)/2
+  });
+
+  it('wizard creates exactly ONE new link per invocation', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    state.routers.r2 = { x: 300, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    finishLinkWizard({ kind: 'router', name: 'r2' });
+    expect(Object.keys(state.links).length).toBe(1);
+  });
+});
+
+describe('link wizard — cancellation paths', () => {
+  beforeEach(() => {
+    setupMinimalDOM();
+    state.hosts    = {};
+    state.routers  = {};
+    state.networks = {};
+    state.links    = {};
+    state.selection = null;
+    state.view     = { x: 0, y: 0, k: 1 };
+    state.display  = { showCosts: true, showIfaces: true };
+    document.body.innerHTML += '<div id="toasts"></div>';
+    cancelLinkWizard();
+  });
+
+  it('Esc keydown cancels the wizard', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    expect(getLinkWizard()).not.toBeNull();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(getLinkWizard()).toBeNull();
+  });
+
+  it('clicking the source device again cancels without creating a link', () => {
+    state.routers.r1 = { x: 100, y: 100, interfaces: {} };
+    renderCanvas();
+    startLinkWizard({ kind: 'router', name: 'r1' });
+    // Simulate a click on the source device's node group
+    const g = lookupDeviceNode('r1');
+    g.dispatchEvent(new PointerEvent('pointerdown', { button: 0, bubbles: true }));
+    expect(getLinkWizard()).toBeNull();
+    expect(Object.keys(state.links).length).toBe(0);
   });
 });
