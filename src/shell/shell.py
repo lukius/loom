@@ -31,7 +31,7 @@ class Shell(cmd.Cmd):
 
     @requires_system
     def do_route(self, arg):
-        'Imprimir la tabla de ruteo del host/router dado'
+        'Print the routing table of the given host/router'
         device = self._system.device(arg)
         routing_rules = device.routing_table().rules()
         print(f'{"Prefix": <20} {"Next hop": <15} {"Interface": <10}')
@@ -40,7 +40,7 @@ class Shell(cmd.Cmd):
 
     @requires_system
     def do_send(self, arg):
-        'Enviar un datagrama de un host a otro'
+        'Send a datagram from one host to another'
         try:
             src, dst, msg_str = arg.split()
         except ValueError:
@@ -54,7 +54,7 @@ class Shell(cmd.Cmd):
 
     @requires_system
     def do_set_gateway(self, arg):
-        'Configurar gateway de un host. Sintaxis: set_gateway <host> <ip>'
+        "Set a host's default gateway. Syntax: set_gateway <host> <ip>"
         parts = arg.split()
         if len(parts) != 2:
             print('syntax: set_gateway <host> <ip>')
@@ -80,7 +80,7 @@ class Shell(cmd.Cmd):
 
     @requires_system
     def do_update_cost(self, arg):
-        'Actualizar el costo de un enlace'
+        'Update the cost of a router interface'
         try:
             router_str, iface_str, cost_str = arg.split()
             cost = int(cost_str)
@@ -94,7 +94,7 @@ class Shell(cmd.Cmd):
 
     @requires_system
     def do_ifconfig(self, arg):
-        'Mostrar las interfaces del dispositivo dado. Sintaxis: ifconfig <dispositivo>'
+        'Show the interfaces of the given device. Syntax: ifconfig <device>'
         name = arg.strip()
         if not name:
             print('syntax: ifconfig <device>')
@@ -113,7 +113,7 @@ class Shell(cmd.Cmd):
 
     @requires_system
     def do_neighbors(self, arg):
-        'Listar los routers vecinos. Sintaxis: neighbors <router>'
+        'List the directly-connected neighbor routers. Syntax: neighbors <router>'
         name = arg.strip()
         if not name:
             print('syntax: neighbors <router>')
@@ -144,7 +144,7 @@ class Shell(cmd.Cmd):
 
     @requires_system
     def do_ping(self, arg):
-        'Hacer ping entre hosts. Sintaxis: ping <origen> <destino> [-W <segundos>]'
+        'Ping between hosts. Syntax: ping <src> <dst> [-W <seconds>]'
         parts = arg.split()
         timeout = 3.0
         if '-W' in parts:
@@ -183,7 +183,7 @@ class Shell(cmd.Cmd):
             print(f'ping {src_name} -> {dst} ({dst_addr}): time={rtt * 1000:.2f} ms')
 
     def do_read(self, arg):
-        'Leer el archivo YAML dado con la descripcion de la red'
+        'Read the given YAML file with the network description'
         try:
             system = Parser(arg).parse()
         except Exception as e:

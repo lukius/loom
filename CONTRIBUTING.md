@@ -228,8 +228,8 @@ Linting must be clean before opening a merge request.
 - Default line length is whatever ruff defaults to. Wrap aggressively.
 - No new runtime dependencies without discussion. The runtime set is
   small on purpose: PyYAML, FastAPI, Uvicorn.
-- Identifiers in English. Shell-help docstrings in Spanish to match the
-  existing user-facing convention.
+- Identifiers, docstrings, comments, and all user-facing strings in
+  English.
 
 ### JavaScript
 

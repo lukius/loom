@@ -18,8 +18,7 @@ loom shell v1.0
 ```
 
 The prompt is `# `. Type `help` to list commands; `help <cmd>` shows
-that command's docstring (in Spanish, matching the project's
-user-facing language convention).
+that command's docstring.
 
 ```
 # help
@@ -231,9 +230,3 @@ Wait a few seconds before the first ping if you want to give the
 routing protocol time to converge — the shell does not block until
 convergence on its own.
 
-## A note on language
-
-Shell help strings are in Spanish (the project's user-facing language).
-Code identifiers and most comments are in English. Keep new shell help
-in Spanish to match. The web UI's terminal output is in English — same
-implementation, different end-of-line audience.
