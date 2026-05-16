@@ -1,0 +1,238 @@
+# Packets
+
+`loom` models two layers and a payload:
+
+```
+┌────────────────────────────────────────────────────┐
+│ Frame   (src_addr_L2, dst_addr_L2, payload)        │  ← what travels on a fabric
+│   payload = Datagram                               │
+└───────────────┬────────────────────────────────────┘
+                │
+                ▼
+┌────────────────────────────────────────────────────┐
+│ Datagram  (src_addr_L3, dst_addr_L3, ttl, payload) │  ← what survives forwarding
+│   payload = Message                                │
+└───────────────┬────────────────────────────────────┘
+                │
+                ▼
+┌────────────────────────────────────────────────────┐
+│ Message  (subtype-specific fields)                 │  ← the application bits
+└────────────────────────────────────────────────────┘
+```
+
+All four classes live in `src/entities/packet.py`.
+
+## `Packet` (base)
+
+```python
+class Packet:
+    def __init__(self, src_addr, dst_addr, payload):
+        self._src_addr = src_addr
+        self._dst_addr = dst_addr
+        self._payload = payload
+```
+
+Just three accessors: `source()`, `destination()`, `payload()`. `Frame`
+inherits directly (it adds nothing); `Datagram` extends it with TTL.
+
+## `Frame`
+
+The L2 envelope. Built by `Interface.send_to`:
+
+```python
+frame = Frame(src_addr=self._address, dst_addr=dst_addr, payload=datagram)
+self._out_queue.put(frame)
+```
+
+- `src_addr` is **always the interface's own address** — the local hop,
+  not the original sender.
+- `dst_addr` is the L2 next-hop — either the L3 destination (when the
+  next hop is "directly connected" via `NullAddress`) or the next-hop
+  router's address.
+- `payload` is the `Datagram`, which carries the unchanged L3 endpoints.
+
+The L2 vs. L3 distinction is what makes routing work: every hop
+re-frames the datagram with new `src_addr`/`dst_addr` but leaves the
+inner `Datagram.source()` / `Datagram.destination()` alone.
+
+`Network._dispatch_unicast` keys delivery on `frame.destination()` — the
+L2 next-hop. `Link._dispatch_packet` uses **structural** peer resolution:
+deliver to the interface whose `address()` is **not** `frame.source()`.
+That's deliberately not address-based, so two parallel links can reuse
+the same `/30` without cross-talk.
+
+## `Datagram`
+
+```python
+_DEFAULT_TTL = 64
+
+class Datagram(Packet):
+    def __init__(self, src_addr, dst_addr, payload, ttl=_DEFAULT_TTL):
+        super().__init__(src_addr, dst_addr, payload)
+        self._ttl = ttl
+
+    def ttl(self): return self._ttl
+    def decrement_ttl(self): self._ttl -= 1
+```
+
+The L3 packet. `src_addr` / `dst_addr` are the **original endpoints**;
+they don't change as the datagram is forwarded.
+
+TTL handling lives in `Router._handle_forwarding`:
+
+```python
+packet.decrement_ttl()
+if packet.ttl() <= 0:
+    print(f'TTL expired: dropping datagram to {dst}', file=sys.stderr)
+    return None
+```
+
+Two consequences:
+
+- **Hosts do not decrement TTL.** `Host._handle_message` is the terminal
+  receiver; TTL is only touched on forwarding hops.
+- **TTL-expired packets are dropped silently** to the simulator process
+  (log to stderr only). No ICMP-style notification, no UI signal. The
+  packet animation simply ends.
+
+## `Message`
+
+```python
+class Message:
+    def __init__(self):
+        self._id = uuid.uuid4()
+
+    def type(self):
+        return self.__class__
+
+    def id(self):
+        return self._id
+```
+
+A `Message` is identified by a fresh UUID. Two `Message` instances are
+equal iff they have the same class **and** the same `_id` — important
+because `EventTracer.register_message_event` uses the message as a dict
+key, and the `RoutingProtocol` uses sequence numbers separately from
+message identity.
+
+Four subclasses live alongside the base.
+
+### `UserMessage`
+
+The payload of a user-level `send`:
+
+```python
+class UserMessage(Message):
+    def __init__(self, payload):
+        super().__init__()
+        self._payload = payload
+
+    def payload(self):
+        return self._payload
+```
+
+Created by `Host.send_message_to` and by `cmd_send` in the host terminal.
+The `payload` is a single string token — the shell's `send h1 h2 hello`
+syntax does not support quoting or spaces. (The terminals use
+`shlex.split`, so quoting works there if you need it.)
+
+### `RoutingMessage`
+
+The link-state advertisement:
+
+```python
+class RoutingMessage(Message):
+    def __init__(self, src, seq: int):
+        super().__init__()
+        self._src = src               # the originating Interface
+        self._seq = seq               # monotonically increasing per source
+        self._dests = dict()          # NetworkAddress -> cost
+
+    def seq(self): return self._seq
+    def src_address(self): return self._src.address()
+    def src_router(self): return self._src.device()
+    def destinations(self): return self._dests
+    def add_destination(self, prefix, cost): self._dests[prefix] = cost
+```
+
+Origination: `RoutingProtocol._handle_update` walks the local router's
+interfaces, builds one `RoutingMessage` per interface, fills its
+`_dests` dict with every directly-connected `(prefix, cost)`, and floods
+the broadcast address of each fabric.
+
+**The `_seq` field is per-interface**, not per-router — every interface
+has its own counter inside `_seqs`. The `_seqs_by_address` table on each
+receiving router is also keyed by `src_address` (the interface
+originating the flood), so two routers will accept ten messages, one per
+unique source. **See [`routing-protocol.md`](routing-protocol.md)** for
+the full flooding rules; the trap is that `seq` and the receiver's "last
+seen seq" are both **per originating interface**, not per source router.
+
+### `PingRequest` and `PingReply`
+
+```python
+class PingRequest(Message):
+    def __init__(self, seq: int):
+        super().__init__()
+        self._seq = seq
+        self._sent_at = _time.monotonic()
+    # exposes .seq and .sent_at as @property
+
+class PingReply(Message):
+    def __init__(self, seq: int, request_ts: float):
+        super().__init__()
+        self._seq = seq
+        self._request_ts = request_ts
+    # exposes .seq and .request_ts as @property
+```
+
+The flow:
+
+1. `Host.ping(dst, timeout)` allocates `seq = next(self._ping_seq)`,
+   registers a `(str(dst), seq) → threading.Event` in `_pending_pings`,
+   sends a `Datagram(payload=PingRequest(seq))`.
+2. The destination host's `_handle_message` sees a `PingRequest`, sends
+   back a `PingReply(seq, request_ts=msg.sent_at)`.
+3. The originating host's `_handle_message` matches the reply by
+   `(str(packet.source()), msg.seq)`, records
+   `_ping_results[key] = time.monotonic() - msg.request_ts`, sets the
+   event.
+4. The `ping` call wakes from `evt.wait`, pops the event/result and
+   returns the RTT (or `None` on timeout).
+
+**The reply carries the request's `sent_at` value** as `request_ts`.
+That's important: the destination host doesn't keep state per ping; it
+echoes the request's timestamp back so the originator can compute RTT
+locally without clock-sync issues.
+
+If a host has no gateway and the destination is off-link, `ping` raises
+`ValueError("no route to host: no gateway configured")` *before* sending
+anything (and the pending-pings entry is rolled back).
+
+## Packet classification for the UI
+
+`Interface.send_to` emits an event with a `type` field for the SPA to
+color-code packet animations:
+
+```python
+_PACKET_KIND = {
+    "RoutingMessage": "routing_flood",
+    "UserMessage":    "user_datagram",
+    "PingRequest":    "ping_request",
+    "PingReply":      "ping_reply",
+}
+```
+
+Unknown classes get `"unknown"` — they animate too, just in the default
+color.
+
+Two correlation ids accompany every packet event:
+
+- `payload_id` = `str(message.id())` — identifies the single direction of
+  a flow. A ping request and its reply have **different** `payload_id`s.
+- `flow` = `"{min}<->{max}"` (sorted endpoints) — identifies the
+  end-to-end conversation. The ping pair shares the same `flow`, so the
+  SPA can sequence their animations in order.
+
+`packets.js` uses `flow` to chain hops; the chatter toggle filters by
+`type === "routing_flood"`.

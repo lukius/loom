@@ -1,0 +1,210 @@
+# Running Simulations
+
+Once you've built (or loaded) a topology, the sim has a lifecycle: it
+starts, runs, pauses, resumes, and eventually stops. This guide explains
+each transition and what's safe at each step.
+
+## States
+
+```
+                  ┌─────────────────────┐
+                  │       idle          │   ← initial state
+                  │  no AS in memory    │
+                  └──────────┬──────────┘
+                             │ Start
+                             ▼
+                  ┌─────────────────────┐
+                  │      running        │
+                  │  threads alive,     │
+                  │  keepalives ticking │
+                  └─────┬───────────┬───┘
+              Pause     │           │   Stop
+                        ▼           ▼
+              ┌──────────────────┐  ┌──────────────────┐
+              │     paused       │  │       idle       │
+              │  threads parked  │  └──────────────────┘
+              │  on PauseGate    │
+              └────────┬─────────┘
+                       │ Resume (with optional patch)
+                       └───►  running
+```
+
+The UI mirrors this state machine — at any moment, the toolbar's
+**Start/Stop** and **Pause/Resume** buttons reflect the server's
+authoritative state, as fed by the WebSocket `sim_state` events.
+
+## Start
+
+Click **Start** (or press <kbd>Space</kbd>). The SPA does, in order:
+
+1. Serializes the current canvas to YAML.
+2. POSTs to `/topology` — the server validates and constructs a fresh
+   `AS`. On any validation error, the start is aborted and the toolbar
+   surfaces the error via toast.
+3. POSTs to `/sim/start` — the server resumes the `PauseGate` and starts
+   every router's keepalive thread.
+
+If the topology was already loaded (e.g. you stopped and want to start
+again with the same topology), step 1+2 is a no-op overwrite of the
+same YAML. The session file is updated either way.
+
+**While running:**
+
+- The **Add LAN / Host / Router** toolbar buttons are disabled.
+- Right-click → **Rename / Duplicate / Delete** in the canvas is
+  blocked.
+- The inspector's editable fields are read-only.
+- The **Refresh** field is editable (you can re-tune the keepalive
+  interval live).
+
+Mutations are deliberately blocked because applying them safely to a
+running simulator is hard — the patch API is designed for the paused
+state, where threads are quiesced.
+
+## Pause
+
+Click **Pause** (or press <kbd>P</kbd>). The SPA POSTs to `/sim/pause`;
+the server calls `PauseGate.pause()`.
+
+Effects, observable in the canvas:
+
+- Packet animations freeze (in-flight frames remain queued but workers
+  block on their next `wait_or_stop`).
+- Routing-protocol keepalives stop ticking.
+- The **Pause** button becomes **Resume**.
+
+**While paused, you can edit:**
+
+- Add a LAN, host, or router.
+- Delete any of the above.
+- Update an interface cost.
+- Edit names and addresses (with the same uniqueness/validity rules
+  enforced by the validator).
+
+Each mutation appears in the **Resume** button label as a counter:
+*Resume (3 edits)*. These ops accumulate in the SPA's `Sim.patch`
+list; nothing is applied to the server until you Resume.
+
+While paused, you cannot **Start** (already started) or **Stop** the sim
+through the toolbar without first stopping the underlying simulation
+(Stop is allowed from paused, but it discards the queued patch).
+
+## Resume
+
+Click **Resume**. The SPA:
+
+1. Calls `reconcilePatch(Sim.patch)` to rewrite `add_*` ops with the
+   latest values from `state` (so a network you added and then renamed
+   is sent with its current name), and drops any op whose target was
+   deleted between Pause and Resume.
+2. POSTs the reconciled patch to `/sim/resume`.
+
+The server validates the entire patch atomically:
+
+- If any op fails validation, the **whole patch is rejected** with a
+  `400 Bad Request` and a description of the failing op. The sim
+  remains paused; the patch stays in the SPA so you can fix the
+  problem.
+- If validation passes, every op is applied in order, then the gate is
+  resumed and the routing protocol continues from where it left off.
+
+Common patch-validation errors:
+
+| Error | Cause |
+|---|---|
+| `duplicate_name` | `add_*` with a name that's now taken. |
+| `network_in_use` | `remove_network` for a LAN still attached to a host or router. |
+| `network_not_found` | `add_host` / `add_router` references a non-existent network. |
+| `interface_not_found` | `update_cost` for a router that doesn't have that interface. |
+| `invalid_cost` | Cost is non-numeric or non-positive. |
+
+The reconciliation step is what makes "pause → add → rename → resume"
+feel natural: you don't think about the patch wire format, just the
+final shape you want.
+
+## Stop
+
+Click **Stop** (or press <kbd>Space</kbd> again). The SPA POSTs to
+`/sim/stop`; the server's `SimState.stop()`:
+
+- Calls `AS.stop()` — cascades through every network, link, router, and
+  interface. Each worker thread observes the stop signal and exits.
+- Discards the `AS` reference.
+- Returns to `idle`.
+
+What survives:
+
+- The **session YAML file** (`<source>.session.yaml`). The next Start
+  will re-read it.
+- The SPA's canvas state. Stop and Start without touching the topology
+  and you're right back where you were.
+- The terminals on screen — they continue to refer to a no-longer-
+  existing AS. Commands sent to a stopped sim return `409 no topology
+  loaded`. Close and re-open the terminal after Start to get a clean
+  session.
+
+If you've been editing the canvas while idle (after a stop, but before
+the next start), those edits **are not** on the server yet — they live
+in the SPA's `state` + `localStorage`. The next Start serializes them
+to YAML and pushes via `/topology`.
+
+## Reset
+
+Click **Reset** (only enabled when idle). This:
+
+1. Deletes `<source>.session.yaml`.
+2. Re-clones from the source file (`samples/sample.yaml` by default, or
+   whatever `LOOM_TOPOLOGY` points at).
+3. Re-parses the source into a fresh `AS`.
+4. The SPA fetches the new YAML and replaces the canvas.
+
+Use Reset when the session has drifted from the source and you want to
+roll back. The source file is **never modified** by the SPA — Reset
+discards only the session clone.
+
+## Tuning the keepalive interval
+
+The **Refresh** field is the routing-protocol keepalive interval in
+seconds, range `[1, 300]`. Lower = faster convergence, more chatter.
+Higher = slower convergence, quieter. The default is 10 s.
+
+The change is applied to **every router** the moment you change the
+field — `POST /sim/refresh_interval` calls
+`set_keepalive_interval(s)` on each `RoutingProtocol`. The next sleep
+boundary on each router's keepalive thread is when the new value takes
+effect, so the maximum lag is the *previous* interval's value.
+
+This is the right knob to reach for if you're watching convergence and
+the default 10 s feels too slow. Dropping it to 1 s makes the protocol
+visibly chatter on every render frame.
+
+## Edits while idle vs. paused: a comparison
+
+| Action | Idle (sim not started) | Paused (sim is loaded) |
+|---|---|---|
+| Where the edit lives | SPA `state` + `localStorage` | SPA `state` + `Sim.patch` queue |
+| When the server sees it | On next **Start** (whole YAML) | On **Resume** (incremental patch) |
+| Validation | Full re-parse on start | Per-op validation on resume |
+| If it fails | Start aborts; topology stays unloaded | Resume rejected; patch preserved for editing |
+| Convergence impact | Routers start from scratch | Existing routing state is preserved; new edges feed in |
+
+If you're prototyping ("does this CIDR work?"), idle edits + Start are
+fine — the parser tells you within seconds. If you're testing
+incremental convergence ("what happens when I bring up r4 *while
+running*?"), pause/edit/resume is the right path.
+
+## Tips
+
+- **Set Refresh to 1 s when exploring.** The default 10 s convergence
+  is realistic but tedious. Bring it down to 1 s while you're poking,
+  then up again when you want a quieter canvas.
+- **Pause before bulk edits.** The patch list batches efficiently; the
+  one server round-trip is cheaper than starting and stopping for each
+  change.
+- **Use Reset, not Stop+Start, when the session has gotten weird.**
+  Stop just unloads the AS; Reset throws the session away and starts
+  from the source.
+- **The session file is in the same directory as the source.** If you
+  pointed `LOOM_TOPOLOGY` at `/path/to/lab.yaml`, the session lives at
+  `/path/to/lab.session.yaml`. Both are plain YAML; you can `git
+  diff` them.

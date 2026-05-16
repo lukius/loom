@@ -1,64 +1,210 @@
+<p align="center">
+  <img src="web/favicon.svg" width="80" alt="loom">
+</p>
+
 # loom
 
-A Python simulator for an IPv4 autonomous system: hosts, routers, networks, and a link-state routing protocol over a YAML-described topology, with an interactive web UI.
+A Python simulator for an IPv4 **autonomous system** — hosts, routers,
+networks, and point-to-point links interconnected through a **link-state
+routing protocol** — driven by a YAML topology and an interactive web UI.
 
-## Quick start
+`loom` is built for teaching and exploration. You describe a network in
+YAML (or draw it on the canvas), press **Start**, and watch the routing
+protocol converge, datagrams hop across routers, and routing tables update
+in real time. The codebase is small, threaded, and dependency-light by
+design.
+
+## Features
+
+- **Multi-router IPv4 simulation** — Hosts, routers, multi-access LANs,
+  and `/30` / `/31` point-to-point links, all wired through real
+  per-interface and per-fabric threads. Forwarding decisions use
+  longest-prefix match on a per-router routing table.
+- **Live link-state protocol** — Sequence-numbered flooding, per-router
+  keepalive thread (interval live-tunable from the toolbar), Dijkstra
+  shortest-path computation that re-runs only when the graph actually
+  changes.
+- **Interactive web UI** — Drag networks, hosts, and routers onto an SVG
+  canvas; edit interfaces and costs in the right pane; double-click any
+  device to open a terminal with `ping`, `send`, `route`, `ifconfig`,
+  `neighbors`, `update_cost`, `set_gateway`.
+- **Topology edits without restart** — Pause the simulation, add or remove
+  a router, change a link cost, then resume. Edits accumulate as a patch
+  list and are applied atomically on resume.
+- **Packet animations** — Datagrams, ping, and routing-protocol packets
+  animate across the canvas as they flow; toolbar toggles control speed
+  and chatter visibility.
+- **YAML import / export** — The topology is the source of truth. Drop a
+  YAML file into the import dialog, copy the canvas back out, persist or
+  share.
+- **Legacy `cmd.Cmd` shell** — The original REPL is still available
+  (`python loom.py shell`); same simulator core underneath.
+- **No external state** — No database, no auth, no network calls.
+  Everything lives in memory plus a single session-YAML clone on disk.
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Simulator core | Python 3.11+, threads + queues, custom `PauseGate` |
+| Web server | FastAPI + Uvicorn, static SPA mount, REST + WebSocket |
+| Web UI | Plain ES modules + SVG (no framework, no bundler) |
+| Topology | YAML (PyYAML), with a structural validator |
+| Tests | `pytest` (190+), `pytest-asyncio`, `vitest`, Playwright |
+| Lint / format | `ruff` |
+
+External dependencies: none beyond the four packages above. No database,
+no message broker, no third-party APIs.
+
+## Quick Start
+
+**Prerequisites:** Python 3.11+
 
 ```bash
+git clone git@gitlab.com:lukius/netrouting.git
+cd netrouting
+
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-cd src && python loom.py
+
+cd src
+python loom.py
 ```
 
-Then open http://127.0.0.1:8000/ in a browser to use the SPA. Drag/drop networks, hosts, and routers onto the canvas, click Start, and watch packets flow.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000). You'll see the canvas
+pre-populated with the bundled sample topology (3 hosts, 3 routers, 3
+LANs, 1 point-to-point link). Press **Start** in the toolbar and watch the
+routing protocol converge.
 
-Toolbar offers Start/Pause, a Refresh field that tunes the routing keepalive (1–300s, applied to every router live), and a Chatter toggle that shows or hides routing-protocol packets. Double-click a host or router to open a terminal — `Ctrl+L` clears, `Ctrl+D` closes when the prompt is empty.
+### Topology source
 
-## Topology source
+By default `loom` reads `samples/sample.yaml`. Override with
+`LOOM_TOPOLOGY`:
 
-The simulator reads its topology from `samples/sample.yaml` by default. Set `LOOM_TOPOLOGY` to point at a different file. Mutations during simulation land in `<source>.session.yaml`; the source is never modified.
-
-The web server binds `127.0.0.1:8000` by default. Set `LOOM_PORT` to override (e.g. for the e2e suite).
-
-## Point-to-point links
-
-The YAML topology supports `/30` or `/31` point-to-point links between any two endpoints (router–router, router–host, or host–host). Declare them under a top-level `links:` key alongside `networks:`:
-
-```yaml
-as:
-  name: example
-  networks:
-    lan1: "10.10.0.0/24"
-  links:
-    p2p1: "10.0.0.0/30"
-  hosts:
-    h1: { network: lan1, address: "10.10.0.10", gateway: "10.10.0.1" }
-    h2: { link: p2p1, address: "10.0.0.2" }   # gateway auto-filled to peer
-  routers:
-    r1:
-      interfaces:
-        eth0: { network: lan1, address: "10.10.0.1", cost: 5 }
-        eth1: { link:    p2p1, address: "10.0.0.1",  cost: 5 }
+```bash
+LOOM_TOPOLOGY=/path/to/topology.yaml python loom.py
 ```
 
-Rules: a link must have exactly two endpoints; `network:` and `link:` are mutually exclusive per interface; only `/30` or `/31` CIDRs are accepted; a host on a link has its gateway auto-filled to the peer's IP (an explicit `gateway:` must match).
+Edits made through the UI land in `<source>.session.yaml`; the source file
+is never modified. Use the toolbar's **Reset** button (or
+`POST /topology/reset`) to wipe the session and re-clone from source.
 
-The SPA renders p2p links as direct edges between devices rather than a LAN-bus visual.
+### Port
 
-## Legacy CLI shell
+The server binds `127.0.0.1:8000` by default. Override:
 
-`cd src && python loom.py shell` launches the original cmd.Cmd REPL. Commands: `read`, `route`, `send`, `update_cost`, `ifconfig`, `neighbors`, `ping`, `exit`.
+```bash
+LOOM_PORT=8123 python loom.py
+```
 
-## Development
+### Legacy CLI shell
 
-- Requires Python 3.11+.
-- Dev deps: `pip install -r requirements-dev.txt`.
-- Run tests: `pytest`.
-- Lint: `ruff check src/ test/`.
+```bash
+cd src
+python loom.py shell
+```
 
-### JS tests
+```
+loom shell v1.0
+# read ../samples/sample.yaml
+# route r1
+# ping h1 h3
+# send h1 h2 hello
+# update_cost r1 eth0 25
+# exit
+```
 
-After `pip install`, also install JS dev deps once: `npm install`. Then `npm test` to run the vitest suite for `web/utils.js`, `web/state.js`, and `web/sim.js`.
+See [`docs/user-guide/shell-cli.md`](docs/user-guide/shell-cli.md) for the
+full command set.
 
-### End-to-end
+## Documentation
 
-`npm run test:e2e` runs a Playwright/Chromium smoke suite from `e2e/` against a real FastAPI server (spawned by Playwright on port 8766 via `LOOM_PORT`). Requires `@playwright/test` (installed via `npm install`) and a system Chromium browser; see `playwright.config.js`.
+The full documentation set lives under [`docs/`](docs/).
+
+### User Guide
+
+Start here if you want to **drive** the simulator.
+
+| File | Topic |
+|---|---|
+| [`docs/user-guide/getting-started.md`](docs/user-guide/getting-started.md) | Install, run the UI and the shell, your first ping |
+| [`docs/user-guide/web-ui.md`](docs/user-guide/web-ui.md) | Toolbar, canvas, inspector, terminals — a guided tour |
+| [`docs/user-guide/building-topologies.md`](docs/user-guide/building-topologies.md) | Add LANs, hosts, routers, point-to-point links |
+| [`docs/user-guide/running-simulations.md`](docs/user-guide/running-simulations.md) | Start / pause / resume / reset, edits while paused, keepalive interval |
+| [`docs/user-guide/routing-tables.md`](docs/user-guide/routing-tables.md) | Inspecting routing tables, neighbors, costs |
+| [`docs/user-guide/terminals.md`](docs/user-guide/terminals.md) | Per-device terminals: `ping`, `send`, `ifconfig`, ... |
+| [`docs/user-guide/yaml-format.md`](docs/user-guide/yaml-format.md) | YAML schema reference, save / resume workflow |
+| [`docs/user-guide/shell-cli.md`](docs/user-guide/shell-cli.md) | The legacy `cmd.Cmd` shell |
+
+### Architecture / Technical Reference
+
+Start here if you want to **change** the simulator or understand how it works.
+
+| File | Topic |
+|---|---|
+| [`docs/architecture/overview.md`](docs/architecture/overview.md) | The big picture — components, layers, data flow |
+| [`docs/architecture/entities.md`](docs/architecture/entities.md) | `AS`, `Router`, `Host`, `Network`, `Link`, `Interface`, `Address` |
+| [`docs/architecture/packets.md`](docs/architecture/packets.md) | `Frame`, `Datagram`, `Message` (user / routing / ping) |
+| [`docs/architecture/routing-protocol.md`](docs/architecture/routing-protocol.md) | Link-state protocol, flooding, Dijkstra, sequence diagrams |
+| [`docs/architecture/concurrency.md`](docs/architecture/concurrency.md) | Threads, queues, `PauseGate`, lifecycle |
+| [`docs/architecture/parser.md`](docs/architecture/parser.md) | YAML parser, validators, error paths |
+| [`docs/architecture/web-spa.md`](docs/architecture/web-spa.md) | SPA module map and event-bus contract |
+| [`docs/architecture/server-api.md`](docs/architecture/server-api.md) | HTTP + WebSocket reference |
+
+### Other top-level files
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev setup, TDD workflow, MR process
+- [`CHANGELOG.md`](CHANGELOG.md) — release history
+- [`CLAUDE.md`](CLAUDE.md) — non-obvious project context for AI assistants and new contributors
+- [`LICENSE`](LICENSE) — MIT
+
+## Project Structure
+
+```
+loom/
+├── src/
+│   ├── loom.py            # Entry point — web UI (default) or 'shell' subcommand
+│   ├── entities/          # AS, Router, Host, Network, Link, Interface, Address, Packet, Event, PauseGate
+│   ├── routing/           # RoutingProtocol (link-state) + NetworkGraph (Dijkstra)
+│   ├── parser/            # YAML topology loader + SystemValidator
+│   ├── server/            # FastAPI app, routes, sim state machine, persistence, command dispatch
+│   └── shell/             # cmd.Cmd-based REPL
+├── test/                  # pytest suite (190+ tests) + invalid YAML fixtures under resources/
+├── samples/               # sample.yaml — the bundled example topology
+├── web/                   # SPA: ES modules, styles, favicon, vitest tests
+├── e2e/                   # Playwright/Chromium smoke suite
+├── docs/                  # User guide + architecture reference (this directory)
+├── pyproject.toml         # ruff + pytest config (pythonpath = ["src"], testpaths = ["test"])
+├── requirements.txt       # Runtime deps (PyYAML, FastAPI, uvicorn)
+├── requirements-dev.txt   # Dev deps (pytest, pytest-asyncio, ruff, httpx)
+├── playwright.config.js   # E2E config (chromium-only, LOOM_PORT=8766)
+├── vitest.config.js       # JS unit tests config
+└── package.json           # npm scripts: test (vitest), test:e2e (playwright)
+```
+
+## Running Tests
+
+```bash
+# Python
+pytest                              # full suite
+ruff check src/ test/               # lint
+
+# JavaScript
+npm test                            # vitest unit suite
+npm run test:e2e                    # Playwright + real Chromium (binds LOOM_PORT=8766)
+```
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full TDD workflow.
+
+## Contributing
+
+This project is developed test-first. See [`CONTRIBUTING.md`](CONTRIBUTING.md)
+for the development setup, the red → green → refactor cycle, the
+documentation discipline, commit conventions, and the merge-request
+process. The project is hosted on GitLab — use `glab` or the web UI for
+MRs.
+
+## License
+
+[MIT](LICENSE)

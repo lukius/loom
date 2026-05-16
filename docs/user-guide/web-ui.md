@@ -1,0 +1,203 @@
+# The Web UI
+
+This is a guided tour of the SPA. Every clickable affordance is covered
+here, organized by region.
+
+## Layout
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  Toolbar (always visible)                                              │
+├──────────┬───────────────────────────────────┬─────────────────────────┤
+│          │                                   │                         │
+│  Left    │            Canvas                 │   Right pane            │
+│  nav     │            (SVG, drag/pan/zoom)   │   (Inspector)           │
+│          │                                   │                         │
+└──────────┴───────────────────────────────────┴─────────────────────────┘
+```
+
+Both side panes are resizable: drag the vertical splitters between
+them. The widths persist to `localStorage` (`LAYOUT_KEY = 'loom.layout'`)
+with min/max bounds.
+
+![Three-pane layout: nav, canvas, inspector](../images/05-layout.png)
+
+## Toolbar
+
+From left to right (IDs in `web/index.html` for reference):
+
+| Group | Control | What it does |
+|---|---|---|
+| Project | **Project name** | Editable AS name. Persisted; round-trips to/from YAML. |
+| Project | **Load sample** | Reset the canvas to the bundled sample topology. |
+| Project | **Import** | Open a modal to paste YAML; **Parse & load** replaces the canvas. |
+| Project | **Export** | Open a modal showing the current YAML; **Copy to clipboard** copies it. |
+| Build | **LAN** (<kbd>N</kbd>) | Add a network rail at the canvas center. Disabled while running. |
+| Build | **Host** (<kbd>H</kbd>) | Add a host. Disabled while running. |
+| Build | **Router** (<kbd>R</kbd>) | Add a router. Disabled while running. |
+| View | **Reset view** (<kbd>F</kbd>) | Fit topology to the visible canvas. |
+| Sim | **Start / Stop** (<kbd>Space</kbd>) | Toggle between `idle` and `running`. Starts: serializes YAML → POST `/topology` → POST `/sim/start`. |
+| Sim | **Pause / Resume** (<kbd>P</kbd>) | Toggle between `running` and `paused`. The label shows pending patch ops while paused. |
+| Sim | **Reset** | Idle-only: discard the session and re-clone from the source YAML. |
+| Sim | **Refresh** | Routing-protocol keepalive interval in seconds (1–300). Enabled while sim is loaded. |
+| Sim | **Packet speed** | Per-hop animation duration in ms (200–5000). Local to the SPA; doesn't talk to the server. |
+| View | **Chatter** | Mute or unmute routing-protocol packet animations. |
+| View | **Costs** | Show or hide link cost labels at each router interface. |
+| View | **Interfaces** | Show or hide interface name + count badges. |
+| Theme | **Theme buttons** | Light / dark / contrast — persisted to `localStorage`. |
+
+The **Refresh** field is disabled when the sim is `idle` — there's
+nothing to apply the new interval to until a topology is loaded and
+running.
+
+### Keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| <kbd>Space</kbd> | Start / Stop |
+| <kbd>P</kbd> | Pause / Resume |
+| <kbd>N</kbd> | Add LAN |
+| <kbd>H</kbd> | Add host |
+| <kbd>R</kbd> | Add router |
+| <kbd>F</kbd> | Fit view |
+| <kbd>Esc</kbd> | Clear selection / close context menu |
+| <kbd>Delete</kbd> | Delete the selected node |
+
+Shortcuts are **disabled** while an input or textarea has focus (so
+typing inside a terminal doesn't accidentally fire **Router**), and
+while any modifier is held (so <kbd>Ctrl+R</kbd> remains the browser's
+reload).
+
+## Canvas
+
+The canvas is an SVG with three coordinate systems (world / view /
+screen). You interact with it through three gestures:
+
+- **Click a node** — selects it. The inspector populates on the right.
+- **Drag a node** — moves it. Coordinates are persisted.
+- **Drag the empty canvas** — pans. The pan/zoom is also persisted.
+- **Scroll on the canvas** — zooms about the cursor.
+- **Right-click a node** — opens the context menu (rename, duplicate,
+  delete).
+- **Double-click a host or router** — opens its terminal popup.
+
+### What you see
+
+- **Hosts** appear as workstation icons.
+- **Routers** appear as cube icons.
+- **LANs (multi-access networks)** appear as horizontal or vertical
+  rails with end caps and one tick per attached interface. Drag the
+  rail's handle to lengthen it; drag the rail body to move it.
+- **Point-to-point links** appear as direct edges between the two
+  endpoints, with a draggable midpoint label that carries the link's
+  name and CIDR.
+- **Interface labels** (when **Interfaces** is on) show the interface
+  name and address at each connection point.
+- **Cost labels** (when **Costs** is on) show the metric at each router
+  interface.
+
+Selection is shown by a highlight ring around the node.
+
+### Pan and zoom
+
+| Gesture | What |
+|---|---|
+| Drag empty space | Pan |
+| Scroll wheel | Zoom about cursor |
+| **Reset view** button or <kbd>F</kbd> | Fit topology to canvas |
+| **+** / **−** buttons | Discrete zoom about canvas center |
+
+## Left pane (navigation)
+
+The left pane lists all entities grouped by type — networks, links,
+hosts, routers. Click a name to select; right-click for the context
+menu. The same selection model as the canvas; the two stay in sync.
+
+The pane is also where you see the **Save state** indicator: `autosaved`
+under normal operation, `saving…` for a brief moment after a mutation.
+
+## Right pane (inspector)
+
+The inspector renders **one panel per selected node**, with sections
+that vary by node type. The whole panel is visible at once — there are
+no tabs to switch between.
+
+For every node type:
+
+- **Identifier / name** — editable. Renames are validated for
+  uniqueness.
+- **Properties** — address, network/link membership, gateway (hosts
+  only).
+- **Duplicate / Delete** — bottom of the panel. Duplicate clones the
+  node with a new name; Delete removes it.
+
+Type-specific sections:
+
+| Selection | Extra sections |
+|---|---|
+| Network | (CIDR only) |
+| Link | (CIDR only) |
+| Host | Fabric type, network/link, IP, default gateway |
+| Router | Interfaces list (one row per interface, expandable) + Routing table |
+
+### Router inspector
+
+For a selected router, the inspector includes both the interface list
+(name · network · address · cost, plus `+ Add interface`) **and** the
+current routing table. The routing table re-fetches via
+`GET /devices/{name}/routes` on selection and re-fetches on every
+`routing_table_changed` event for this device. Columns: prefix, next
+hop, interface.
+
+A directly-connected route shows `0.0.0.0` as the next hop — that's
+`NullAddress` serialized as a string, meaning "deliver to the packet's
+destination on this interface." See [Routing tables](routing-tables.md)
+for what to read into this.
+
+## Terminals
+
+Double-click any host or router to open a floating terminal. Each
+terminal is a self-contained popup with:
+
+- A title bar showing the device name.
+- A scrollable output area.
+- A prompt with `#`.
+- Drag-to-move and drag-to-resize handles on the corners.
+
+Position and size persist per device.
+
+Keyboard inside a terminal:
+
+| Key | Action |
+|---|---|
+| <kbd>Enter</kbd> | Submit the typed command |
+| <kbd>Ctrl+L</kbd> | Clear the output area |
+| <kbd>Ctrl+D</kbd> | Close the terminal (when the prompt is empty) |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | Command history |
+
+Multiple terminals can be open at once. Commands and their output are
+isolated per terminal; nothing is shared.
+
+For the full command set, see [Terminals](terminals.md).
+
+## Context menu (right-click)
+
+| Item | Behavior |
+|---|---|
+| **Rename** | Inline rename, validated for uniqueness. |
+| **Duplicate** | Clone the node with a new name; useful for routers. |
+| **Delete** | Same as the <kbd>Delete</kbd> shortcut. |
+
+All three are **disabled** while the sim is running (the sim must be
+paused or idle to mutate topology). The menu is dismissed by clicking
+anywhere outside it or pressing <kbd>Esc</kbd>.
+
+## Status indicators
+
+- **Save state** (top-left of the nav): `autosaved` / `saving…`.
+- **Sim state** is implicit in the toolbar — the Start button label
+  changes between **Start** / **Stop**, and the Pause label changes
+  between **Pause** / **Resume (N edits)**.
+- **Connection banner**: if the WebSocket disconnects, a yellow strip
+  appears at the bottom — *"connection lost — retrying"*. Reconnection
+  is automatic (exponential backoff, max 8 s).
