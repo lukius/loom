@@ -1,7 +1,7 @@
 // web/app.js
 //
-// Entrypoint: imports, bus-bridge listeners, exportYaml/importYaml, modal helper,
-// wire (DOM event handlers), init (boot), DOMContentLoaded guard.
+// Entrypoint: imports (incl. exportYaml/importYaml from yaml-io.js), bus-bridge listeners,
+// modal helper, wire (DOM event handlers), init (boot), DOMContentLoaded guard.
 
 import { escapeHtml, toast } from './utils.js';
 import {

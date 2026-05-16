@@ -466,8 +466,8 @@ describe('state.links', () => {
     expect(raw.links.p2p1.cidr).toBe('10.0.0.0/30');
   });
 
-  it('restore falls back to {} when stored payload has no links field (v4 migration)', () => {
-    // Simulate a v4-era payload without the links key
+  it('restore falls back to {} when stored v5 payload lacks links field', () => {
+    // Simulate a v5-era payload that predates the links field
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       asName: 'old_as',
       networks: {},
