@@ -3,12 +3,49 @@
 // the canvas right-click context menu. Listens on the shared bus for topology
 // and selection changes, and re-renders accordingly.
 import { state, bus, markDirty, loadSample } from './state.js';
-import { escapeHtml, uniqueName, uniqueIface, pad2, toast, cssEscape } from './utils.js';
+import { escapeHtml, uniqueName, uniqueIface, pad2, toast, cssEscape, isValidIpv4, isValidNetworkCidr, addressInCidr } from './utils.js';
 import {
   canvasEl, applyView, clientToWorld, fitView,
   renderCanvas, toggleNetworkOrientation, collectLinkEndpoints,
 } from './canvas.js';
 import { Sim, RuntimeClient, isTopologyLocked, recordPatchOp } from './sim.js';
+
+/* ---------- Inline validation helpers ---------- */
+
+/**
+ * Wire inline validation on an <input> + its sibling <span class="field-error">.
+ * `validate(value) → { ok, reason }` is called on every `input` event and
+ * also immediately (so an already-invalid stored value shows on open).
+ *
+ * Empty values (`'' | null | undefined`) are treated as "no feedback" — the
+ * input is neither valid-styled nor invalid-styled, matching the draft-state
+ * convention where an empty field is deliberately allowed.
+ */
+function wireFieldValidation(input, errorEl, validateFn) {
+  const update = (value) => {
+    const v = (value ?? '').trim();
+    if (!v) {
+      input.classList.remove('invalid');
+      errorEl.textContent = '';
+      errorEl.classList.remove('show');
+      return;
+    }
+    const result = validateFn(v);
+    if (result.ok) {
+      input.classList.remove('invalid');
+      errorEl.textContent = '';
+      errorEl.classList.remove('show');
+    } else {
+      input.classList.add('invalid');
+      errorEl.textContent = result.reason;
+      errorEl.classList.add('show');
+    }
+  };
+  // Validate on every keystroke
+  input.addEventListener('input', () => update(input.value));
+  // Validate immediately on render (catches invalid stored values)
+  update(input.value);
+}
 
 /* ---------- Inspector ---------- */
 export const Inspector = {
@@ -314,6 +351,7 @@ export function renderNetworkInsp(name, elI) {
       <div class="field">
         <label>CIDR</label>
         <input id="f-cidr" value="${escapeHtml(net.cidr || '')}" spellcheck="false" placeholder="192.168.0.0/24" />
+        <span class="field-error" id="f-cidr-err"></span>
         <div class="hint">Network address with prefix length.</div>
       </div>
       <div class="field">
@@ -333,6 +371,11 @@ export function renderNetworkInsp(name, elI) {
     state.networks[name].cidr = e.target.value.trim();
     markDirty(); renderCanvas(); renderNav();
   });
+  wireFieldValidation(
+    elI.querySelector('#f-cidr'),
+    elI.querySelector('#f-cidr-err'),
+    v => isValidNetworkCidr(v, { allowMaskMin: 0, allowMaskMax: 32 }),
+  );
   elI.querySelector('#f-rotate').addEventListener('click', () => {
     if (isTopologyLocked()) return;
     toggleNetworkOrientation(name);
@@ -368,6 +411,7 @@ export function renderLinkInsp(name, elI) {
       <div class="field">
         <label>CIDR</label>
         <input id="f-cidr" value="${escapeHtml(link.cidr || '')}" spellcheck="false" placeholder="10.0.0.0/30" />
+        <span class="field-error" id="f-cidr-err"></span>
         <div class="hint">Must be /30 or /31. Changing width may invalidate already-set endpoint addresses — the parser will flag any mismatch.</div>
       </div>
       <div class="field">
@@ -386,6 +430,11 @@ export function renderLinkInsp(name, elI) {
     state.links[name].cidr = e.target.value.trim();
     markDirty(); renderCanvas(); renderNav();
   });
+  wireFieldValidation(
+    elI.querySelector('#f-cidr'),
+    elI.querySelector('#f-cidr-err'),
+    v => isValidNetworkCidr(v, { allowMaskMin: 30, allowMaskMax: 31 }),
+  );
   elI.querySelector('#f-del').addEventListener('click', deleteSelected);
   elI.querySelector('#f-dup').addEventListener('click', () => duplicateLink(name));
 }
@@ -431,10 +480,12 @@ export function renderHostInsp(name, elI) {
       <div class="field">
         <label>IP address</label>
         <input id="f-addr" value="${escapeHtml(host.address || '')}" spellcheck="false" placeholder="192.168.0.10" />
+        <span class="field-error" id="f-addr-err"></span>
       </div>
       <div class="field" id="f-gw-field"${gwHidden ? ' hidden' : ''}>
         <label>Default gateway</label>
         <input id="f-gw" value="${escapeHtml(host.gateway || '')}" spellcheck="false" placeholder="(none)" />
+        <span class="field-error" id="f-gw-err"></span>
         <div class="hint">Must be an IP within the host's network.</div>
       </div>
     </div>
@@ -500,6 +551,11 @@ export function renderHostInsp(name, elI) {
     state.hosts[name].address = e.target.value.trim();
     markDirty(); renderCanvas(); renderNav();
   });
+  wireFieldValidation(
+    elI.querySelector('#f-addr'),
+    elI.querySelector('#f-addr-err'),
+    v => isValidIpv4(v) ? { ok: true } : { ok: false, reason: 'not a valid IPv4 address' },
+  );
   const gwInp = elI.querySelector('#f-gw');
   if (gwInp) {
     gwInp.addEventListener('change', async (e) => {
@@ -528,6 +584,11 @@ export function renderHostInsp(name, elI) {
       else delete state.hosts[name].gateway;
       markDirty();
     });
+    wireFieldValidation(
+      gwInp,
+      elI.querySelector('#f-gw-err'),
+      v => isValidIpv4(v) ? { ok: true } : { ok: false, reason: 'not a valid IPv4 address' },
+    );
   }
   elI.querySelector('#f-del').addEventListener('click', deleteSelected);
   elI.querySelector('#f-dup').addEventListener('click', () => duplicateHost(name));
@@ -612,6 +673,7 @@ export function renderRouterInsp(name, elI) {
                 <div class="pair">
                   <label>IP address</label>
                   <input data-iface-addr="${escapeHtml(ifn)}" value="${escapeHtml(ifc.address || '')}" spellcheck="false" placeholder="10.0.0.1" />
+                  <span class="field-error" data-iface-addr-err="${escapeHtml(ifn)}"></span>
                 </div>
               </div>
             </details>
@@ -732,6 +794,14 @@ export function renderRouterInsp(name, elI) {
       state.routers[name].interfaces[i.getAttribute('data-iface-addr')].address = i.value.trim();
       markDirty(); renderCanvas();
     });
+    const errEl = elI.querySelector(`[data-iface-addr-err="${cssEscape(i.getAttribute('data-iface-addr'))}"]`);
+    if (errEl) {
+      wireFieldValidation(
+        i,
+        errEl,
+        v => isValidIpv4(v) ? { ok: true } : { ok: false, reason: 'not a valid IPv4 address' },
+      );
+    }
   });
   elI.querySelectorAll('[data-iface-cost]').forEach(i => {
     i.addEventListener('input', () => {

@@ -666,3 +666,227 @@ describe('openContextMenu — link target', () => {
     expect(state.links.p2p1).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 12. Inline validation — link CIDR field
+// ---------------------------------------------------------------------------
+describe('renderLinkInsp — inline CIDR validation', () => {
+  function setupLink(cidr = '') {
+    state.links = { p2p1: { cidr, x: 0, y: 0 } };
+    state.routers = {};
+  }
+
+  it('renders a .field-error element sibling to #f-cidr', () => {
+    setupLink();
+    const elI = document.getElementById('inspector');
+    renderLinkInsp('p2p1', elI);
+    expect(elI.querySelector('#f-cidr-err')).not.toBeNull();
+  });
+
+  it('no validation feedback for empty CIDR', () => {
+    setupLink('');
+    const elI = document.getElementById('inspector');
+    renderLinkInsp('p2p1', elI);
+    const input = elI.querySelector('#f-cidr');
+    const err = elI.querySelector('#f-cidr-err');
+    expect(input.classList.contains('invalid')).toBe(false);
+    expect(err.classList.contains('show')).toBe(false);
+  });
+
+  it('shows error immediately on render when stored CIDR is invalid (wrong mask)', () => {
+    setupLink('10.0.0.0/24');
+    const elI = document.getElementById('inspector');
+    renderLinkInsp('p2p1', elI);
+    const input = elI.querySelector('#f-cidr');
+    const err = elI.querySelector('#f-cidr-err');
+    expect(input.classList.contains('invalid')).toBe(true);
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toBe('CIDR must be /30 or /31');
+  });
+
+  it('shows "not a network address" for host-bit-set /30', () => {
+    setupLink('10.0.0.1/30');
+    const elI = document.getElementById('inspector');
+    renderLinkInsp('p2p1', elI);
+    const err = elI.querySelector('#f-cidr-err');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toContain('not a network address');
+  });
+
+  it('clears error when user types a valid /30', () => {
+    setupLink('10.0.0.1/30'); // start invalid
+    const elI = document.getElementById('inspector');
+    renderLinkInsp('p2p1', elI);
+    const input = elI.querySelector('#f-cidr');
+    const err = elI.querySelector('#f-cidr-err');
+    input.value = '10.0.0.0/30';
+    input.dispatchEvent(new Event('input'));
+    expect(input.classList.contains('invalid')).toBe(false);
+    expect(err.classList.contains('show')).toBe(false);
+  });
+
+  it('shows no error for a valid /31', () => {
+    setupLink('10.0.0.4/31');
+    const elI = document.getElementById('inspector');
+    renderLinkInsp('p2p1', elI);
+    const input = elI.querySelector('#f-cidr');
+    expect(input.classList.contains('invalid')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 13. Inline validation — network CIDR field
+// ---------------------------------------------------------------------------
+describe('renderNetworkInsp — inline CIDR validation', () => {
+  it('shows error for a host-bits-set network CIDR', async () => {
+    state.networks = { lan1: { cidr: '192.168.0.5/24', x: 0, y: 0 } };
+    state.selection = { kind: 'network', name: 'lan1' };
+    const { renderNetworkInsp } = await import('./inspector.js');
+    const elI = document.getElementById('inspector');
+    renderNetworkInsp('lan1', elI);
+    const err = elI.querySelector('#f-cidr-err');
+    expect(err).not.toBeNull();
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toContain('not a network address');
+  });
+
+  it('shows "malformed CIDR" for a bare IP without slash', async () => {
+    state.networks = { lan1: { cidr: '192.168.0.0', x: 0, y: 0 } };
+    state.selection = { kind: 'network', name: 'lan1' };
+    const { renderNetworkInsp } = await import('./inspector.js');
+    const elI = document.getElementById('inspector');
+    renderNetworkInsp('lan1', elI);
+    const err = elI.querySelector('#f-cidr-err');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toBe('malformed CIDR');
+  });
+
+  it('shows no error for empty CIDR', async () => {
+    state.networks = { lan1: { cidr: '', x: 0, y: 0 } };
+    const { renderNetworkInsp } = await import('./inspector.js');
+    const elI = document.getElementById('inspector');
+    renderNetworkInsp('lan1', elI);
+    const err = elI.querySelector('#f-cidr-err');
+    expect(err.classList.contains('show')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 14. Inline validation — host IP address and gateway fields
+// ---------------------------------------------------------------------------
+describe('renderHostInsp — inline IP validation', () => {
+  it('shows error for invalid IP in #f-addr on render', () => {
+    state.hosts = { h1: { network: 'lan1', address: 'bad', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const err = elI.querySelector('#f-addr-err');
+    expect(err).not.toBeNull();
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toBe('not a valid IPv4 address');
+  });
+
+  it('shows no error for empty #f-addr', () => {
+    state.hosts = { h1: { network: 'lan1', address: '', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const err = elI.querySelector('#f-addr-err');
+    expect(err.classList.contains('show')).toBe(false);
+  });
+
+  it('shows no error for a valid IP in #f-addr', () => {
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const err = elI.querySelector('#f-addr-err');
+    expect(err.classList.contains('show')).toBe(false);
+  });
+
+  it('clears error when user types a valid IP in #f-addr', () => {
+    state.hosts = { h1: { network: 'lan1', address: 'bad', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const input = elI.querySelector('#f-addr');
+    const err = elI.querySelector('#f-addr-err');
+    input.value = '10.0.0.5';
+    input.dispatchEvent(new Event('input'));
+    expect(err.classList.contains('show')).toBe(false);
+  });
+
+  it('shows error for invalid gateway in #f-gw', () => {
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', gateway: 'notanip', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const err = elI.querySelector('#f-gw-err');
+    expect(err).not.toBeNull();
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toBe('not a valid IPv4 address');
+  });
+
+  it('shows no error for empty #f-gw', () => {
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const err = elI.querySelector('#f-gw-err');
+    expect(err.classList.contains('show')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 15. Inline validation — router interface address fields
+// ---------------------------------------------------------------------------
+describe('renderRouterInsp — inline IP validation for iface address', () => {
+  it('shows error for invalid IP in iface addr on render', () => {
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: 'notanip', cost: 5 } } },
+    };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const err = elI.querySelector('[data-iface-addr-err="eth0"]');
+    expect(err).not.toBeNull();
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toBe('not a valid IPv4 address');
+  });
+
+  it('shows no error for valid IP in iface addr', () => {
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.0.0.1', cost: 5 } } },
+    };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const err = elI.querySelector('[data-iface-addr-err="eth0"]');
+    expect(err.classList.contains('show')).toBe(false);
+  });
+
+  it('shows no error for empty iface address', () => {
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '', cost: 5 } } },
+    };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const err = elI.querySelector('[data-iface-addr-err="eth0"]');
+    expect(err.classList.contains('show')).toBe(false);
+  });
+
+  it('clears error when user types a valid IP in iface addr input', () => {
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: 'bad', cost: 5 } } },
+    };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const input = elI.querySelector('[data-iface-addr="eth0"]');
+    const err = elI.querySelector('[data-iface-addr-err="eth0"]');
+    input.value = '10.0.0.1';
+    input.dispatchEvent(new Event('input'));
+    expect(err.classList.contains('show')).toBe(false);
+  });
+});

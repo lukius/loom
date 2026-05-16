@@ -1138,6 +1138,11 @@ svg.canvas.linking { cursor: crosshair; }
 }
 .field .hint { font-size: 11px; color: var(--text-3); }
 
+/* Inline field validation */
+input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srgb, var(--neg) 15%, transparent); }
+.field-error { color: var(--neg); font-size: 11px; margin-top: 4px; display: none; }
+.field-error.show { display: block; }
+
 .iflist { display: flex; flex-direction: column; gap: 8px; }
 .ep-list { display: flex; flex-direction: column; gap: 6px; }
 .ep-row {
