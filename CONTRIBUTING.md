@@ -16,6 +16,7 @@ to run the test suites, and the merge-request process.
 - [Documentation Discipline](#documentation-discipline)
 - [Commit Conventions](#commit-conventions)
 - [Submitting Changes](#submitting-changes)
+- [AI-Assisted Development](#ai-assisted-development)
 - [Project Conventions and Traps](#project-conventions-and-traps)
 
 ---
@@ -320,6 +321,72 @@ for merge requests and issues.
    ```
 5. Describe **what** the MR does and **why** in the description; reference
    related issues. Keep MRs focused — one logical change per MR.
+
+---
+
+## AI-Assisted Development
+
+`loom` is primarily developed with [Claude Code](https://claude.ai/code),
+but any AI assistant — Cursor, Copilot, ChatGPT, Gemini — can use
+`CLAUDE.md` and the `docs/` tree to get oriented. Human contributors
+do not need to use any AI tooling; all conventions apply equally.
+
+### CLAUDE.md
+
+`CLAUDE.md` is the AI context file for this project. Keep it useful:
+
+- **Under 200 lines.** If it grows past that, something belongs
+  elsewhere (probably `docs/architecture/`) or can be cut.
+- **Only non-obvious context.** Things a reader cannot derive by
+  reading the source, tests, or `git log`: the *why* behind decisions,
+  implicit conventions, known traps, the rationale for non-default
+  choices. Routine implementation details belong in
+  `docs/architecture/` or in the code itself.
+- **Update when the trap surface changes.** New gotchas, renamed
+  entry points, schema changes, threading-model shifts — those go
+  here. Internal refactors that don't change observable behavior
+  usually don't need a `CLAUDE.md` update.
+- **Don't duplicate this file.** `CONTRIBUTING.md` is the canonical
+  dev guide; `CLAUDE.md` is the trap cheat sheet. Link between them,
+  don't copy.
+
+### The doc set
+
+`docs/architecture/` and `docs/user-guide/` are the long-form
+reference. When you change observable behavior (interfaces, layout,
+build/run, YAML schema, HTTP/WS API, packet types, the routing-protocol
+wire format), update the affected page in the same commit. See
+[Documentation Discipline](#documentation-discipline) above for the
+full rule.
+
+The `.claude/` directory holds only local Claude Code settings
+(`settings.local.json` is gitignored). There is **no project-wide
+agent team, no spec-driven workflow, no custom skills** — `loom` is
+small enough that an AI assistant reading `CLAUDE.md` plus the
+relevant architecture page can plan and execute most changes
+directly.
+
+### If you use Claude Code (or a similar agent-style assistant)
+
+A few pointers that save time on this project specifically:
+
+- **Always read `CLAUDE.md` first.** It's the shortest path to "what
+  will trip me up."
+- **For protocol or packet-level work**, also read
+  `docs/architecture/routing-protocol.md` and
+  `docs/architecture/packets.md` — they cover the non-obvious
+  invariants in detail (sequence-number dedup, `NullAddress` as the
+  directly-connected sentinel, structural link-peer resolution).
+- **For threading work**, read `docs/architecture/concurrency.md`
+  before adding a new worker — every new thread must gate on the
+  shared `PauseGate`, or pause/resume will be broken.
+- **For UI work**, `docs/architecture/web-spa.md` is the module map
+  and event-bus contract.
+- **The `docs/superpowers/` directory is gitignored.** It's where the
+  `superpowers:writing-plans` and related skills drop their working
+  files; plans and specs that live there are local artifacts, not
+  project documentation. Lift anything worth keeping into
+  `docs/architecture/` before deleting.
 
 ---
 

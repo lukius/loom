@@ -197,6 +197,30 @@ npm run test:e2e                    # Playwright + real Chromium (binds LOOM_POR
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full TDD workflow.
 
+## AI-Assisted Development
+
+`loom` is approachable by AI assistants (Claude Code, Cursor, Copilot,
+ChatGPT, Gemini, ...) out of the box. Two files carry the load:
+
+- **`CLAUDE.md`** — short cheat sheet of non-obvious project context:
+  entry points, key design decisions, traps. Under 200 lines on purpose
+  — read this first to avoid the common footguns.
+- **`docs/`** — the deep-dive reference. Architecture pages
+  (`docs/architecture/`) cover components, the link-state protocol,
+  concurrency, the parser, the HTTP/WS API, and the SPA module map.
+  User-guide pages (`docs/user-guide/`) cover the web UI, terminals,
+  YAML format, and the legacy shell.
+
+There is no agent team, no spec-driven pipeline, no custom Claude Code
+skills — the project is small enough that an AI assistant pointed at
+`CLAUDE.md` plus the relevant `docs/architecture/` page can plan and
+execute most changes directly.
+
+Human contributors do not need to use any AI tooling — all conventions
+apply equally. See [CONTRIBUTING.md](CONTRIBUTING.md#ai-assisted-development)
+for guidelines on maintaining `CLAUDE.md` and the doc set as the project
+evolves.
+
 ## Contributing
 
 This project is developed test-first. See [`CONTRIBUTING.md`](CONTRIBUTING.md)
