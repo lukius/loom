@@ -24,7 +24,7 @@ A receiving router:
 
 The whole cycle is **observable**: each routing-table rebuild emits a
 `routing_table_changed` event, and the SPA's routing-table section
-updates within a frame.
+re-renders almost immediately.
 
 ## Inspecting a routing table
 

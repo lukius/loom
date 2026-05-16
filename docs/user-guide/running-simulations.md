@@ -176,7 +176,7 @@ effect, so the maximum lag is the *previous* interval's value.
 
 This is the right knob to reach for if you're watching convergence and
 the default 10 s feels too slow. Dropping it to 1 s makes the protocol
-visibly chatter on every render frame.
+visibly chatter on the canvas at roughly one flood per second.
 
 ## Edits while idle vs. paused: a comparison
 
