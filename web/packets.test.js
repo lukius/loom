@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { PacketAnim } from './packets.js';
+import { state } from './state.js';
 
 // Sample one dimension of a cubic bezier at parameter t.
 function bez1d(p0, c1, c2, p3, t) {
@@ -60,6 +61,62 @@ describe('PacketAnim._bezBetween — packet curves match drawEdge', () => {
     const len = PacketAnim._segLength({ kind: 'bez', p0, c1, c2, p3 });
     expect(len).toBeGreaterThanOrEqual(chord * 0.99);   // sampled, so a hair under is fine
     expect(len).toBeLessThan(chord * 1.15);
+  });
+
+  it('_segmentsForLink builds a direct device-to-device bezier (no rail tap)', () => {
+    // Minimal DOM: two router nodes whose centers we can read via getNodeCenter.
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g class="node router" data-kind="router" data-name="r1" transform="translate(100 100)"></g>
+        <g class="node router" data-kind="router" data-name="r2" transform="translate(400 100)"></g>
+      </g></svg>`;
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 250, y: 100 } };
+    state.routers = {
+      r1: { x: 100, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.0.0.1', cost: 5 } } },
+      r2: { x: 400, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.0.0.2', cost: 5 } } },
+    };
+    state.hosts = {};
+    state.networks = {};
+    const srcNode = document.querySelector('[data-name="r1"]');
+    const evt = {
+      type: 'user_datagram',
+      network: 'p2p1',
+      src: { device: 'r1', address: '10.0.0.1' },
+      dst: { address: '10.0.0.2' },
+    };
+    const segs = PacketAnim._segmentsForLink(evt, srcNode);
+    expect(segs.length).toBe(1);
+    expect(segs[0].kind).toBe('bez');
+    // The bezier should land near r2's clipped boundary, not at r2's center.
+    expect(segs[0].p3.x).toBeGreaterThan(100);
+    expect(segs[0].p3.x).toBeLessThan(400);
+  });
+
+  it('_segmentsForLink falls back to "the other endpoint" when dst is the link broadcast', () => {
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g class="node router" data-kind="router" data-name="r1" transform="translate(100 100)"></g>
+        <g class="node router" data-kind="router" data-name="r2" transform="translate(400 100)"></g>
+      </g></svg>`;
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 250, y: 100 } };
+    state.routers = {
+      r1: { x: 100, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.0.0.1', cost: 5 } } },
+      r2: { x: 400, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.0.0.2', cost: 5 } } },
+    };
+    state.hosts = {};
+    state.networks = {};
+    const srcNode = document.querySelector('[data-name="r1"]');
+    // dst.address = .3 broadcast: doesn't match any interface, so the
+    // animation should still find r2 as "the other endpoint".
+    const evt = {
+      type: 'routing_flood',
+      network: 'p2p1',
+      src: { device: 'r1', address: '10.0.0.1' },
+      dst: { address: '10.0.0.3' },
+    };
+    const segs = PacketAnim._segmentsForLink(evt, srcNode);
+    expect(segs.length).toBe(1);
+    expect(segs[0].kind).toBe('bez');
   });
 
   it('produces a curved path (control points pulled off the chord) for non-aligned endpoints', () => {

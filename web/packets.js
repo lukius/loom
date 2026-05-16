@@ -2,11 +2,12 @@
 // Packet animation namespace + tooltip helpers. Listens on the shared bus for
 // sim:packet events emitted by sim.js and renders short tweened SVG dots over
 // the canvas. Reads Sim.state to freeze in-flight tweens while paused.
-import { bus } from './state.js';
+import { bus, state, NODE } from './state.js';
 import { escapeHtml } from './utils.js';
 import {
   lookupDeviceNode, lookupAddressNode, lookupNetworkNode,
   getNodeCenter, railTapPoint, deviceNameForEndpoint,
+  collectLinkEndpoints, clipToRect,
 } from './canvas.js';
 import { Sim } from './sim.js';
 
@@ -66,8 +67,15 @@ export const PacketAnim = {
 
   _render(evt, onDone) {
     const srcNode = lookupDeviceNode(evt.src && evt.src.device);
-    const netNode = lookupNetworkNode(evt.network);
-    if (!srcNode || !netNode) { if (onDone) onDone(); return; }
+    if (!srcNode) { if (onDone) onDone(); return; }
+
+    // Two fabric kinds: multi-access Networks have a visible rail node;
+    // point-to-point Links are a direct device↔device edge with no fabric
+    // node. Look up which kind this event's fabric is so we can route the
+    // animation along the right geometry.
+    const isLink = !!(state.links && state.links[evt.network]);
+    const netNode = isLink ? null : lookupNetworkNode(evt.network);
+    if (!isLink && !netNode) { if (onDone) onDone(); return; }
 
     const layer = document.getElementById('packet-layer');
     if (!layer) { if (onDone) onDone(); return; }
@@ -92,29 +100,14 @@ export const PacketAnim = {
     dot.addEventListener('mouseenter', () => showPacketTooltip(evt, dot));
     dot.addEventListener('mouseleave', hidePacketTooltip);
 
-    const dstNode = lookupAddressNode(evt.dst && evt.dst.address) || lookupDeviceNode(evt.dst && evt.dst.device);
     const finish = () => {
       if (dot.parentNode) layer.removeChild(dot);
       if (onDone) onDone();
     };
 
-    // Visual path through the rail — mirrors what drawEdge renders so the
-    // packet hugs the visible wire instead of cutting through the air:
-    //   src device  →[bezier]→  src tap on rail  →[line]→  dst tap  →[bezier]→  dst device
-    const srcCenter = getNodeCenter(srcNode);
-    const dstCenter = dstNode ? getNodeCenter(dstNode) : null;
-    // Simulator emits `dst.address` (no `dst.device`), so we resolve the
-    // address back to a device name to compute the rail tap point.
-    const dstName = deviceNameForEndpoint(evt.dst);
-    const srcTap = railTapPoint(evt.src && evt.src.device, evt.network) || getNodeCenter(netNode);
-    const dstTap = dstName
-      ? (railTapPoint(dstName, evt.network) || getNodeCenter(netNode))
-      : null;
-
-    const segs = [];
-    if (srcCenter && srcTap) segs.push({ kind: 'bez', ...this._bezBetween(srcCenter, srcTap) });
-    if (srcTap && dstTap)    segs.push({ kind: 'line', from: srcTap, to: dstTap });
-    if (dstTap && dstCenter) segs.push({ kind: 'bez', ...this._bezBetween(dstTap, dstCenter) });
+    const segs = isLink
+      ? this._segmentsForLink(evt, srcNode)
+      : this._segmentsForNetwork(evt, srcNode, netNode);
     if (segs.length === 0) { finish(); return; }
 
     // Weight each segment's duration by its approximate length so the packet
@@ -136,6 +129,57 @@ export const PacketAnim = {
       else                  this._tweenPoints(dot, s.from, s.to, d, onSegDone);
     };
     stepNext();
+  },
+
+  // Multi-access (LAN/rail) path:
+  //   src device  →[bezier]→  src tap on rail  →[line]→  dst tap  →[bezier]→  dst device
+  _segmentsForNetwork(evt, srcNode, netNode) {
+    const srcCenter = getNodeCenter(srcNode);
+    const dstNode = lookupAddressNode(evt.dst && evt.dst.address) || lookupDeviceNode(evt.dst && evt.dst.device);
+    const dstCenter = dstNode ? getNodeCenter(dstNode) : null;
+    // Simulator emits `dst.address` (no `dst.device`); resolve the address
+    // back to a device name to compute the rail tap point.
+    const dstName = deviceNameForEndpoint(evt.dst);
+    const srcTap = railTapPoint(evt.src && evt.src.device, evt.network) || getNodeCenter(netNode);
+    const dstTap = dstName
+      ? (railTapPoint(dstName, evt.network) || getNodeCenter(netNode))
+      : null;
+
+    const segs = [];
+    if (srcCenter && srcTap) segs.push({ kind: 'bez', ...this._bezBetween(srcCenter, srcTap) });
+    if (srcTap && dstTap)    segs.push({ kind: 'line', from: srcTap, to: dstTap });
+    if (dstTap && dstCenter) segs.push({ kind: 'bez', ...this._bezBetween(dstTap, dstCenter) });
+    return segs;
+  },
+
+  // Point-to-point link path: a single bezier directly from src device to
+  // dst device, clipped to both device rects so the packet rides the same
+  // curve that drawLinkEdge renders. No rail tap.
+  _segmentsForLink(evt, srcNode) {
+    const srcName = evt.src && evt.src.device;
+    const srcCenter = getNodeCenter(srcNode);
+    if (!srcCenter || !srcName) return [];
+
+    // Resolve the destination device. The simulator emits `dst.address`;
+    // on /30 floods the dst is the broadcast address which doesn't match
+    // any iface, so fall back to "the other endpoint of the link".
+    let dstName = deviceNameForEndpoint(evt.dst);
+    if (!dstName) {
+      const peers = collectLinkEndpoints(evt.network).filter(ep => ep.device !== srcName);
+      if (peers.length === 1) dstName = peers[0].device;
+    }
+    if (!dstName) return [];
+    const dstNode = lookupDeviceNode(dstName);
+    const dstCenter = dstNode ? getNodeCenter(dstNode) : null;
+    if (!dstCenter) return [];
+
+    const srcKind = state.routers[srcName] ? 'router' : 'host';
+    const dstKind = state.routers[dstName] ? 'router' : 'host';
+    const aSize = NODE[srcKind];
+    const bSize = NODE[dstKind];
+    const [ax, ay] = clipToRect(srcCenter.x, srcCenter.y, aSize.w, aSize.h, dstCenter.x, dstCenter.y);
+    const [bx, by] = clipToRect(dstCenter.x, dstCenter.y, bSize.w, bSize.h, srcCenter.x, srcCenter.y);
+    return [{ kind: 'bez', ...this._bezBetween({ x: ax, y: ay }, { x: bx, y: by }) }];
   },
 
   // Cubic bezier with horizontal tangents at both ends — same shape used by
