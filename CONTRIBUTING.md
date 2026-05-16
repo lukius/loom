@@ -327,9 +327,9 @@ for merge requests and issues.
 ## AI-Assisted Development
 
 `loom` is primarily developed with [Claude Code](https://claude.ai/code),
-but any AI assistant — Cursor, Copilot, ChatGPT, Gemini — can use
-`CLAUDE.md` and the `docs/` tree to get oriented. Human contributors
-do not need to use any AI tooling; all conventions apply equally.
+but any AI assistant can use `CLAUDE.md` and the `docs/` tree to get
+oriented. Human contributors do not need to use any AI tooling; all
+conventions apply equally.
 
 ### CLAUDE.md
 

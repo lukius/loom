@@ -199,8 +199,8 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full TDD workflow.
 
 ## AI-Assisted Development
 
-`loom` is approachable by AI assistants (Claude Code, Cursor, Copilot,
-ChatGPT, Gemini, ...) out of the box. Two files carry the load:
+`loom` is approachable by AI assistants out of the box. Two files
+carry the load:
 
 - **`CLAUDE.md`** — short cheat sheet of non-obvious project context:
   entry points, key design decisions, traps. Under 200 lines on purpose
