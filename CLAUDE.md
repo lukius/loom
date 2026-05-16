@@ -32,8 +32,7 @@ loom/
 ├── docs/
 │   ├── architecture/      # Technical reference (overview, entities, packets, routing-protocol, concurrency, parser, server-api, web-spa)
 │   ├── user-guide/        # User manual (getting-started, web-ui, building-topologies, running-simulations, routing-tables, terminals, yaml-format, shell-cli)
-│   ├── images/            # Screenshots used by user-guide
-│   └── superpowers/       # Historical specs/plans (pre-existing)
+│   └── images/            # Screenshots used by user-guide
 ├── playwright.config.js   # E2E config: chromium-only, webServer on LOOM_PORT=8766
 ├── pyproject.toml         # ruff + pytest config (sets pythonpath = ["src"], testpaths = ["test"])
 ├── requirements.txt       # Runtime deps (PyYAML, FastAPI, uvicorn)

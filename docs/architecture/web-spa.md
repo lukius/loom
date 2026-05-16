@@ -19,9 +19,9 @@ web/
 └── utils.js             # DOM helpers (el, escapeHtml, toast, ...)
 ```
 
-The intent of the split (see `docs/superpowers/specs/2026-05-13-web-module-split-design.md`
-for the original design notes) is one module per concern, no
-module-to-module direct render calls.
+The intent of the split is one module per concern, with cross-component
+coordination flowing through the `bus` (see below) rather than direct
+inter-module render calls.
 
 ## The event bus
 

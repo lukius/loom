@@ -26,8 +26,7 @@ docs/
 │   ├── web-spa.md
 │   └── server-api.md
 ├── images/                ← Screenshots and figures referenced by the docs
-├── manual-smoke-test.md   ← Pre-existing manual QA checklist
-└── superpowers/           ← Pre-existing design specs and plans (historical)
+└── manual-smoke-test.md   ← Pre-existing manual QA checklist
 ```
 
 ## User Guide
