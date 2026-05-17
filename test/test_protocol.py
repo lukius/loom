@@ -794,7 +794,8 @@ def test_handle_update_omits_private_prefixes_from_outbound_message():
     system = Parser(path).parse()
     try:
         r1 = system.routers()["r1"]
-        r1._protocol.stop()   # quiesce keepalive thread before installing the capture patch
+        # quiesce keepalive thread before installing the capture patch
+        r1._protocol.stop()
 
         captured: list[RoutingMessage] = []
 
@@ -814,10 +815,12 @@ def test_handle_update_omits_private_prefixes_from_outbound_message():
         )
         for msg in captured:
             prefixes = list(msg.destinations().keys())
-            assert NetworkAddress('200.100.0.0/24') in prefixes, \
+            assert NetworkAddress('200.100.0.0/24') in prefixes, (
                 f"public prefix should be advertised, got {prefixes}"
-            assert NetworkAddress('192.168.1.0/24') not in prefixes, \
+            )
+            assert NetworkAddress('192.168.1.0/24') not in prefixes, (
                 f"private prefix should NOT be advertised, got {prefixes}"
+            )
     finally:
         system.stop()
         os.unlink(path)
@@ -854,7 +857,7 @@ def test_receiver_graph_never_learns_private_prefix():
         path = f.name
     system = Parser(path).parse()
     try:
-        r1 = system.routers()["r1"]
+        _r1 = system.routers()["r1"]
         r2 = system.routers()["r2"]
 
         # Wait for r2 to converge on what r1 advertises.
