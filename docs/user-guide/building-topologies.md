@@ -1,6 +1,6 @@
 # Building Topologies
 
-A `loom` topology is built from four kinds of entity: **networks**
+A `loom` topology is built from four kinds of entities: **networks**
 (multi-access LANs), **links** (point-to-point), **hosts**, and
 **routers**. This guide walks through each, on the canvas and in YAML.
 
