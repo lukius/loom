@@ -799,22 +799,16 @@ def test_handle_update_omits_private_prefixes_from_outbound_message():
 
         captured: list[RoutingMessage] = []
 
-        # Patch only r1's interfaces so stray keepalive threads from earlier
-        # tests' Systems can't pollute the capture.
-        patched = []
-        for iface in r1.interfaces().values():
-            original = iface.send_to
-            def capturing_send(pkt, dst_addr, _orig=original):
-                if isinstance(pkt.payload(), RoutingMessage):
-                    captured.append(pkt.payload())
-                return _orig(pkt, dst_addr)
-            iface.send_to = capturing_send
-            patched.append((iface, original))
+        original_send = Interface.send_to
+        def capturing_send(self, pkt, dst_addr):
+            if isinstance(pkt.payload(), RoutingMessage):
+                captured.append(pkt.payload())
+            return original_send(self, pkt, dst_addr)
+        Interface.send_to = capturing_send
         try:
             r1._protocol._handle_update()
         finally:
-            for iface, original in patched:
-                iface.send_to = original
+            Interface.send_to = original_send
 
         assert len(captured) == 2, (
             f"expected one RoutingMessage per interface, got {len(captured)}"
