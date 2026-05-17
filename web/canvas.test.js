@@ -513,6 +513,52 @@ describe('p2p link rendering', () => {
     expect(edge.classList.contains('selected')).toBe(true);
   });
 
+  it('edge has selected class when one of its router endpoints is selected', () => {
+    // LAN edges already get selected when their host/router endpoint is
+    // selected (see drawEdge). p2p edges should behave the same so users
+    // can see at a glance which links belong to the device they clicked.
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    state.selection = { kind: 'router', name: 'r1' };
+    renderCanvas();
+    const edge = document.querySelector('.edge.p2p');
+    expect(edge.classList.contains('selected')).toBe(true);
+  });
+
+  it('edge has selected class when its host endpoint is selected (host-to-router p2p)', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.hosts.h1 = { link: 'p2p1', address: '10.1.0.1', x: 200, y: 200 };
+    state.routers.r1 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    state.selection = { kind: 'host', name: 'h1' };
+    renderCanvas();
+    const edge = document.querySelector('.edge.p2p');
+    expect(edge.classList.contains('selected')).toBe(true);
+  });
+
+  it('edge does NOT get selected class for an unrelated device', () => {
+    // Sanity: selecting a router that's NOT on this link must leave the
+    // edge alone.
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    state.routers.r3 = { x: 600, y: 200, interfaces: {} };  // not on p2p1
+    state.selection = { kind: 'router', name: 'r3' };
+    renderCanvas();
+    const edge = document.querySelector('.edge.p2p');
+    expect(edge.classList.contains('selected')).toBe(false);
+  });
+
   it('edge path has data-kind="link" and data-name on it', () => {
     state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
     state.routers.r1 = { x: 200, y: 200, interfaces: {

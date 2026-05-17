@@ -500,9 +500,15 @@ export function drawLinkEdge(linkName, linkObj) {
   const c2x = bz.c2.x, c2y = bz.c2.y;
   const d = `M ${ax} ${ay} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${bx} ${by}`;
 
-  const isSel = state.selection &&
-    state.selection.kind === 'link' &&
-    state.selection.name === linkName;
+  // Edge highlights when the link itself is selected OR either of its
+  // endpoint devices is selected — matches drawEdge's behavior for LAN
+  // rails, so the user can see at a glance which links belong to the
+  // host/router they clicked.
+  const isSel = !!state.selection && (
+    (state.selection.kind === 'link' && state.selection.name === linkName) ||
+    (state.selection.kind === ep1.deviceKind && state.selection.name === ep1.device) ||
+    (state.selection.kind === ep2.deviceKind && state.selection.name === ep2.device)
+  );
 
   const path = el('path', {
     class: `edge p2p${isSel ? ' selected' : ''}`,
