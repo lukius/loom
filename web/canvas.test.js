@@ -385,6 +385,55 @@ describe('linkBezier — per-link bow keeps parallel links visually distinct', (
   });
 });
 
+describe('private LAN visual hint', () => {
+  beforeEach(() => {
+    setupMinimalDOM();
+    state.hosts    = {};
+    state.routers  = {};
+    state.networks = {};
+    state.links    = {};
+    state.selection = null;
+    state.view     = { x: 0, y: 0, k: 1 };
+    state.display  = { showCosts: true, showIfaces: true };
+  });
+
+  it('tags a network node with class `private` when its CIDR is RFC1918', () => {
+    state.networks.lan_priv = { cidr: '192.168.1.0/24', x: 200, y: 200 };
+    state.networks.lan_pub  = { cidr: '200.100.0.0/24', x: 200, y: 400 };
+    renderCanvas();
+    const priv = document.querySelector('g.node.network[data-name="lan_priv"]');
+    const pub  = document.querySelector('g.node.network[data-name="lan_pub"]');
+    expect(priv.classList.contains('private')).toBe(true);
+    expect(pub.classList.contains('private')).toBe(false);
+  });
+
+  it('tags the router-side iface label with `private` when the edge lands on a private LAN', () => {
+    state.networks.lan_priv = { cidr: '192.168.1.0/24', x: 200, y: 200 };
+    state.networks.lan_pub  = { cidr: '200.100.0.0/24', x: 200, y: 400 };
+    state.routers.r1 = {
+      x: 400, y: 300,
+      interfaces: {
+        eth0: { network: 'lan_priv', address: '192.168.1.1', cost: 1 },
+        eth1: { network: 'lan_pub',  address: '200.100.0.1', cost: 1 },
+      },
+    };
+    renderCanvas();
+    const labels = Array.from(document.querySelectorAll('text.edge-iface'));
+    const eth0Label = labels.find(t => t.textContent === 'eth0');
+    const eth1Label = labels.find(t => t.textContent === 'eth1');
+    expect(eth0Label.classList.contains('private')).toBe(true);
+    expect(eth1Label.classList.contains('private')).toBe(false);
+  });
+
+  it('does not tag host nodes with `private` (hosts stay at full chroma)', () => {
+    state.networks.lan_priv = { cidr: '192.168.1.0/24', x: 200, y: 200 };
+    state.hosts.h_a = { network: 'lan_priv', address: '192.168.1.10', x: 100, y: 200 };
+    renderCanvas();
+    const node = document.querySelector('g.node.host[data-name="h_a"]');
+    expect(node.classList.contains('private')).toBe(false);
+  });
+});
+
 describe('p2p link rendering', () => {
   beforeEach(() => {
     setupMinimalDOM();

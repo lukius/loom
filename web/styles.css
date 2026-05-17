@@ -840,6 +840,25 @@ svg.canvas.linking { cursor: crosshair; }
   filter: drop-shadow(0 4px 10px rgba(0,0,0,.06));
 }
 
+/* private (RFC1918) LAN — muted tone so the NAT boundary reads at a glance.
+   Selection halo and hover lift still apply on top; this only shifts the
+   resting palette to the neutral text tones. */
+.canvas .node.network.private .rail,
+.canvas .node.network.private .endcap {
+  fill: var(--text-3);
+}
+.canvas .node.network.private .tick {
+  fill: var(--text-2);
+}
+.canvas .node.network.private:hover .rail,
+.canvas .node.network.private:hover .endcap {
+  fill: color-mix(in srgb, var(--text-3) 88%, white);
+}
+.canvas .node.network.private .rail-label .name { fill: var(--text-2); }
+.canvas .node.network.private .rail-label .cidr { fill: var(--text-3); }
+/* iface label on the router side of a private-LAN edge — same neutral tone */
+.canvas .edge-iface.private { fill: var(--text-3); }
+
 /* inline "name · cidr" label below the rail */
 .canvas .node.network .rail-label { font-size: 15px; }
 .canvas .node.network .rail-label .name { fill: var(--net-text); font-weight: 600; }

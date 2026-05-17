@@ -9,7 +9,7 @@ import {
   RAIL_THICKNESS, RAIL_ENDCAP_LEN, RAIL_HANDLE_LEN,
   RAIL_TICK_INSET, RAIL_TICK_LEN, RAIL_LABEL_GAP,
 } from './state.js';
-import { el, escapeHtml, cssEscape, uniqueIface, uniqueName, toast } from './utils.js';
+import { el, escapeHtml, cssEscape, uniqueIface, uniqueName, toast, isPrivateCidr } from './utils.js';
 import { isTopologyLocked } from './sim.js';
 
 export function lookupDeviceNode(name) {
@@ -366,12 +366,15 @@ export function drawEdge(a, b, kind, sel, info) {
       }, `c·${info.cost}`));
     }
     if (showIfaces && info.ifname) {
-      // ifname placed near "a" side
+      // ifname placed near "a" side. Iface labels on the router side of a
+      // private LAN get the same muted treatment as the LAN rail, so the
+      // NAT boundary reads at a glance from either end of the wire.
       const tn = 0.18;
       const ix = bezPoint(ax, c1x, c2x, bx, tn);
       const iy = bezPoint(ay, c1y, c2y, by, tn);
+      const isPrivIface = isPrivateCidr(b && b.cidr);
       edgesLayer().appendChild(el('text', {
-        class: 'edge-iface',
+        class: `edge-iface${isPrivIface ? ' private' : ''}`,
         x: ix, y: iy - 5,
         'text-anchor': 'middle',
       }, info.ifname));
@@ -693,10 +696,13 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 export function drawNode(kind, name, obj) {
   const isSel = state.selection && state.selection.kind === kind && state.selection.name === name;
   const pad = HIT_PAD[kind];
+  // RFC1918 LANs get a `private` modifier so the rail + its labels can
+  // render in a muted tone — a visual cue that the subnet sits behind NAT.
+  const isPrivate = kind === 'network' && isPrivateCidr(obj.cidr);
 
   // group is centered at obj.x, obj.y
   const g = el('g', {
-    class: `node ${kind}${isSel ? ' selected' : ''}`,
+    class: `node ${kind}${isPrivate ? ' private' : ''}${isSel ? ' selected' : ''}`,
     transform: `translate(${obj.x} ${obj.y})`,
     'data-kind': kind,
     'data-name': name,

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { escapeHtml, uniqueName, uniqueIface, pad2, cssEscape, el, toast, isValidIpv4, isValidNetworkCidr, addressInCidr } from './utils.js';
+import { escapeHtml, uniqueName, uniqueIface, pad2, cssEscape, el, toast, isValidIpv4, isValidNetworkCidr, addressInCidr, isPrivateCidr } from './utils.js';
 
 describe('escapeHtml', () => {
   it('escapes ampersand and angle brackets', () => {
@@ -355,5 +355,47 @@ describe('addressInCidr', () => {
   it('handles /31 correctly', () => {
     expect(addressInCidr('10.0.0.2', '10.0.0.2/31')).toBe(true);
     expect(addressInCidr('10.0.0.4', '10.0.0.2/31')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isPrivateCidr — RFC1918 detection (mirrors entities.Address.is_private)
+// ---------------------------------------------------------------------------
+describe('isPrivateCidr', () => {
+  it('recognizes a CIDR fully inside 10.0.0.0/8', () => {
+    expect(isPrivateCidr('10.0.0.0/24')).toBe(true);
+    expect(isPrivateCidr('10.255.255.0/30')).toBe(true);
+  });
+  it('recognizes a CIDR fully inside 172.16.0.0/12', () => {
+    expect(isPrivateCidr('172.16.5.0/24')).toBe(true);
+    expect(isPrivateCidr('172.31.0.0/16')).toBe(true);
+  });
+  it('recognizes a CIDR fully inside 192.168.0.0/16', () => {
+    expect(isPrivateCidr('192.168.1.0/24')).toBe(true);
+    expect(isPrivateCidr('192.168.99.0/30')).toBe(true);
+  });
+  it('rejects public CIDRs that look adjacent to a private range', () => {
+    // 172.32.x.x is just past the 172.16.0.0/12 ceiling.
+    expect(isPrivateCidr('172.32.0.0/24')).toBe(false);
+    // 192.169.x.x is just past 192.168/16.
+    expect(isPrivateCidr('192.169.0.0/24')).toBe(false);
+    // 9.x.x.x is just below 10/8.
+    expect(isPrivateCidr('9.255.255.0/24')).toBe(false);
+  });
+  it('rejects fully public CIDRs', () => {
+    expect(isPrivateCidr('200.100.0.0/24')).toBe(false);
+    expect(isPrivateCidr('8.8.8.0/24')).toBe(false);
+    expect(isPrivateCidr('198.51.100.0/30')).toBe(false);
+  });
+  it('rejects a CIDR that only partially overlaps a private range', () => {
+    // Wider-than-private prefix: not "fully private".
+    expect(isPrivateCidr('10.0.0.0/4')).toBe(false);
+  });
+  it('returns false for invalid input', () => {
+    expect(isPrivateCidr('')).toBe(false);
+    expect(isPrivateCidr('not-a-cidr')).toBe(false);
+    expect(isPrivateCidr('10.0.0.0')).toBe(false);   // missing mask
+    expect(isPrivateCidr(null)).toBe(false);
+    expect(isPrivateCidr(undefined)).toBe(false);
   });
 });
