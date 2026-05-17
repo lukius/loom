@@ -281,7 +281,7 @@ exponential backoff (initial 500 ms, max 8 s).
 1. Client connects, server `accept()`s.
 2. Server subscribes a fresh `asyncio.Queue` to the `EventBus`.
 3. Server loops: `event = await queue.get(); ws.send_json(event)`.
-4. Client disconnect → `WebSocketDisconnect` → server unsubscribes the
+4. Client disconnects → `WebSocketDisconnect` → server unsubscribes the
    queue and closes.
 
 **Event shapes**
