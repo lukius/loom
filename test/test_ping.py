@@ -153,44 +153,44 @@ H1_SLASH30_LINK = textwrap.dedent("""
 as:
   name: t
   networks:
-    lan_h1: "10.0.1.0/24"
-    lan_h2: "10.0.2.0/24"
+    lan_h1: "200.100.1.0/24"
+    lan_h2: "200.100.2.0/24"
   links:
-    p2p1: "10.0.0.0/30"
+    p2p1: "200.100.0.0/30"
   hosts:
-    h1: {network: lan_h1, address: "10.0.1.10", gateway: "10.0.1.1"}
-    h2: {network: lan_h2, address: "10.0.2.10", gateway: "10.0.2.1"}
+    h1: {network: lan_h1, address: "200.100.1.10", gateway: "200.100.1.1"}
+    h2: {network: lan_h2, address: "200.100.2.10", gateway: "200.100.2.1"}
   routers:
     r1:
       interfaces:
-        eth0: {network: lan_h1, address: "10.0.1.1", cost: 1}
-        eth1: {link: p2p1, address: "10.0.0.1", cost: 1}
+        eth0: {network: lan_h1, address: "200.100.1.1", cost: 1}
+        eth1: {link: p2p1, address: "200.100.0.1", cost: 1}
     r2:
       interfaces:
-        eth0: {link: p2p1, address: "10.0.0.2", cost: 1}
-        eth1: {network: lan_h2, address: "10.0.2.1", cost: 1}
+        eth0: {link: p2p1, address: "200.100.0.2", cost: 1}
+        eth1: {network: lan_h2, address: "200.100.2.1", cost: 1}
 """)
 
 H1_SLASH31_LINK = textwrap.dedent("""
 as:
   name: t
   networks:
-    lan_h1: "10.0.1.0/24"
-    lan_h2: "10.0.2.0/24"
+    lan_h1: "200.100.1.0/24"
+    lan_h2: "200.100.2.0/24"
   links:
-    p2p1: "10.0.0.0/31"
+    p2p1: "200.100.0.0/31"
   hosts:
-    h1: {network: lan_h1, address: "10.0.1.10", gateway: "10.0.1.1"}
-    h2: {network: lan_h2, address: "10.0.2.10", gateway: "10.0.2.1"}
+    h1: {network: lan_h1, address: "200.100.1.10", gateway: "200.100.1.1"}
+    h2: {network: lan_h2, address: "200.100.2.10", gateway: "200.100.2.1"}
   routers:
     r1:
       interfaces:
-        eth0: {network: lan_h1, address: "10.0.1.1", cost: 1}
-        eth1: {link: p2p1, address: "10.0.0.0", cost: 1}
+        eth0: {network: lan_h1, address: "200.100.1.1", cost: 1}
+        eth1: {link: p2p1, address: "200.100.0.0", cost: 1}
     r2:
       interfaces:
-        eth0: {link: p2p1, address: "10.0.0.1", cost: 1}
-        eth1: {network: lan_h2, address: "10.0.2.1", cost: 1}
+        eth0: {link: p2p1, address: "200.100.0.1", cost: 1}
+        eth1: {network: lan_h2, address: "200.100.2.1", cost: 1}
 """)
 
 HOST_ON_SLASH31_LINK = textwrap.dedent("""
@@ -222,8 +222,8 @@ def test_ping_host_behind_p2p_slash30_link():
         r2 = system.router("r2")
         # Wait for full routing convergence before pinging.
         assert _wait(lambda: (
-            _table_has_prefix(r1, "10.0.2.0/24")
-            and _table_has_prefix(r2, "10.0.1.0/24")
+            _table_has_prefix(r1, "200.100.2.0/24")
+            and _table_has_prefix(r2, "200.100.1.0/24")
         )), "routers did not converge before ping (/30)"
         rtt = h1.ping(h2.address(), timeout=3.0)
         assert rtt is not None, "ping across /30 link returned None (timeout)"
@@ -244,8 +244,8 @@ def test_ping_host_behind_p2p_slash31_link():
         r2 = system.router("r2")
         # Wait for full routing convergence before pinging.
         assert _wait(lambda: (
-            _table_has_prefix(r1, "10.0.2.0/24")
-            and _table_has_prefix(r2, "10.0.1.0/24")
+            _table_has_prefix(r1, "200.100.2.0/24")
+            and _table_has_prefix(r2, "200.100.1.0/24")
         )), "routers did not converge before ping (/31)"
         rtt = h1.ping(h2.address(), timeout=3.0)
         assert rtt is not None, "ping across /31 link returned None (timeout)"
