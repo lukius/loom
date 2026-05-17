@@ -146,6 +146,19 @@ Three queues sit on the path: `h1.iface→lan1`, `lan1→r1.eth0`,
 `r1.eth1→lan2`, `lan2→h3.iface`. Each is a `queue.Queue` (unbounded).
 The flow involves four thread switches and one routing-table lookup.
 
+**NAT interposition:** when a router sits at the boundary between a
+private and a public network, NAT may rewrite addresses during the
+forwarding step — no additional threads are involved. On the outbound
+path, if the source address is private and the chosen egress interface
+is public, the source is rewritten to the router's public address and
+the translation is registered in the router's NAT table. On the inbound
+path, before the usual destination check, if the incoming destination
+matches a recorded translation the destination is rewritten back to the
+original private host and the packet re-enters forwarding normally. The
+NAT table is per-router and protected by a single lock; when it reaches
+capacity, the least-recently-used entry is evicted — there is no
+time-based expiration.
+
 **Pause behavior:** if the gate flips to paused between any two threads
 in this chain, the frame remains queued and the receiving thread blocks
 on its next `wait_or_stop`. No frames are lost; nothing animates in the
