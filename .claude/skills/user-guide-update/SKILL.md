@@ -59,11 +59,13 @@ If you find yourself reaching for any of those, the content belongs under `docs/
    ```bash
    npm run screenshot -- docs/images/<NN>-<short-name>.png \
        [--load-yaml=samples/<topology>.yaml] \
+       [--exec-file=tools/scenarios/<scenario>.mjs] \
        [--viewport=1400x900] [--selector=#canvas] [--delay=800]
    ```
    - Requires a running server (`cd src && python loom.py`).
    - `--load-yaml` drives the same import path as the Reset toolbar button, so any sample topology works.
-   - Default `--selector=#canvas` clips to the SVG; switch to a panel selector when documenting an inspector panel.
+   - Default `--selector=#canvas` clips to the SVG; switch to a panel selector (e.g. `#inspector`, `#insp-nat`, `#insp-routes`) when documenting an inspector panel.
+   - `--exec-file` runs a JS scenario in the page context after the YAML is loaded and before capture — use it when the screenshot needs a setup step the canvas alone can't provide (start the sim, run a ping, select a node, pause). Scenario files live under `tools/scenarios/` and are wrapped in an async IIFE by the tool, so the body can use top-level `await` and `await import('/sim.js')` to reach the SPA's modules. See `tools/scenarios/nat-panel.mjs` for a working example.
    - Name files `<NN>-<name>.png` matching the existing sequence in `docs/images/`.
 
 4. **Reference the image** from the doc with a one-line caption:
@@ -92,7 +94,8 @@ The user guide describes the SPA the user touches. Backend-side code/comments st
 | Step | Command / file |
 |---|---|
 | Capture | `npm run screenshot -- docs/images/<NN>-<name>.png --load-yaml=samples/<file>.yaml` |
-| Tool source | `tools/screenshot.mjs` |
+| Capture with setup | add `--exec-file=tools/scenarios/<name>.mjs --selector=<panel-sel>` |
+| Tool source | `tools/screenshot.mjs` (scenarios under `tools/scenarios/`) |
 | Image folder | `docs/images/` |
 | Pages | `docs/user-guide/*.md` |
 | Commit prefix | `docs(user-guide):` |
