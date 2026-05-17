@@ -122,9 +122,20 @@ export const Inspector = {
     const entries = (state.natTables && state.natTables[deviceName]) || [];
     if (!entries.length) { sec.hidden = true; return; }
     sec.hidden = false;
-    const rows = entries.map(e =>
-      `<tr><td>${escapeHtml(e.original_src)}</td><td>${escapeHtml(e.rewritten_src)}</td><td>${escapeHtml(e.dst)}</td><td>${e.flow_id === null ? '—' : escapeHtml(String(e.flow_id))}</td></tr>`
-    ).join('');
+    const rows = entries.map(e => {
+      // Conversation-keyed flow_ids are UUIDs (~36 chars). Show a short
+      // prefix so the column stays single-line at the default pane width;
+      // keep the full id available on hover via `title`.
+      let fidCell;
+      if (e.flow_id === null || e.flow_id === undefined) {
+        fidCell = '<td>—</td>';
+      } else {
+        const s = String(e.flow_id);
+        const short = s.length > 10 ? s.slice(0, 8) + '…' : s;
+        fidCell = `<td title="${escapeHtml(s)}">${escapeHtml(short)}</td>`;
+      }
+      return `<tr><td>${escapeHtml(e.original_src)}</td><td>${escapeHtml(e.rewritten_src)}</td><td>${escapeHtml(e.dst)}</td>${fidCell}</tr>`;
+    }).join('');
     sec.innerHTML = `<h4 class="insp-h">NAT table — ${escapeHtml(deviceName)}</h4>` +
       `<table class="insp-table"><thead><tr><th>Original</th><th>Rewritten</th><th>Destination</th><th>Flow ID</th></tr></thead><tbody>${rows}</tbody></table>`;
   },

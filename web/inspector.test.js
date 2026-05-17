@@ -1165,6 +1165,35 @@ describe('Inspector.refreshNAT', () => {
     expect(sec.innerHTML).toContain('r_a');
   });
 
+  it('truncates long string flow_ids (UUIDs) to a short prefix, full value in title', () => {
+    // Flow_ids are now conversation UUIDs (~36 chars). Rendering them in
+    // full would overflow the NAT column we tuned to fit on one line.
+    const fullUuid = '0123456789abcdef-0123-4567-89ab-cdef01234567';
+    state.natTables['r_a'] = [{
+      original_src: '192.168.1.10',
+      rewritten_src: '200.100.0.1',
+      dst: '8.8.8.8',
+      flow_id: fullUuid,
+    }];
+    Inspector.refreshNAT('r_a');
+    const cell = document.querySelector('#insp-nat tbody tr td:nth-child(4)');
+    expect(cell.textContent.length).toBeLessThan(fullUuid.length);
+    // The full id should still be accessible via the title (hover tooltip).
+    expect(cell.getAttribute('title')).toBe(fullUuid);
+  });
+
+  it('renders short flow_ids verbatim (no truncation)', () => {
+    state.natTables['r_a'] = [{
+      original_src: '192.168.1.10',
+      rewritten_src: '200.100.0.1',
+      dst: '8.8.8.8',
+      flow_id: 7,
+    }];
+    Inspector.refreshNAT('r_a');
+    const cell = document.querySelector('#insp-nat tbody tr td:nth-child(4)');
+    expect(cell.textContent).toBe('7');
+  });
+
   it('renders an em-dash for entries whose flow_id is null', () => {
     state.natTables['r_a'] = [{
       original_src: '192.168.1.10',
