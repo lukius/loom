@@ -167,9 +167,12 @@ Pause the simulation and hover over the packet to see lines like
 in the inspector opens a NAT table panel listing live entries — each row
 shows the original private source, the rewritten public source, the
 destination, and the flow ID. The table grows as traffic flows; entries
-are LRU-bounded.
+are bounded by least-recent-use eviction.
 
-<!-- TODO: screenshot -->
+![Inspector panel for an egress router, showing one active NAT translation](../images/51-nat-panel.png)
+
+See [NAT and private LANs](nat-and-private-lans.md) for the broader
+workflow.
 
 ## Left pane (navigation)
 

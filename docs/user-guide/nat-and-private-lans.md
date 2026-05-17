@@ -59,6 +59,8 @@ translation, oldest first:
 - **Flow ID** — a per-conversation identifier; truncated for the
   column, hover for the full value.
 
+![NAT table on r_a after a ping from h_a to h_public — one translation entry, with the private source rewritten to r_a's public address](../images/51-nat-panel.png)
+
 The panel updates the moment the packet animation reaches the router
 (not when the host fires it), so the table state stays in sync with
 what you see on the canvas.
