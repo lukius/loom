@@ -7,6 +7,7 @@ import time
 import pytest
 
 from entities import NetworkAddress
+from entities.event import EventTracer
 from parser import Parser
 
 
@@ -362,4 +363,50 @@ def test_multi_tenant_nat_e2e():
         assert rtt_cross is None, "h_a should NOT reach h_b's address (CIDRs overlap)"
     finally:
         system.stop()
+        os.unlink(path)
+
+
+def test_nat_ping_packet_events_share_one_flow():
+    """All packet events for one ping across NAT must share one flow key.
+
+    `flow` identifies the end-to-end conversation. A single ping — request
+    and reply, on both sides of a NAT boundary — is one conversation, so
+    every emitted `packet` event must carry the same `flow` even when NAT
+    rewrites the visible src/dst mid-path.
+    """
+    path = _make_topology(MULTI_TENANT_NAT)
+    EventTracer._subscribers = []
+    events = []
+    EventTracer.subscribe(events.append)
+    system = Parser(path).parse()
+    try:
+        h_a = system.host("h_a")
+        h_pub = system.host("h_pub")
+        r_a = system.routers()["r_a"]
+        r_b = system.routers()["r_b"]
+        assert _wait(lambda: _table_has_prefix(r_a, "200.100.0.0/24"), timeout=5.0)
+        assert _wait(lambda: _table_has_prefix(r_b, "200.100.0.0/24"), timeout=5.0)
+
+        # Clear out the routing-convergence chatter; we only want this ping's events.
+        events.clear()
+        rtt = h_a.ping(h_pub.address(), timeout=2.0)
+        assert rtt is not None, "h_a -> h_pub ping failed (NAT path)"
+
+        ping_kinds = ("ping_request", "ping_reply")
+        ping_packet_events = [
+            e for e in events
+            if e.get("kind") == "packet" and e.get("type") in ping_kinds
+        ]
+        assert len(ping_packet_events) >= 6, (
+            f"expected at least 6 hops (3 request + 3 reply), "
+            f"got {len(ping_packet_events)}: {ping_packet_events}"
+        )
+        flows = {e.get("flow") for e in ping_packet_events}
+        assert len(flows) == 1, (
+            f"all hops of one ping should share a flow; "
+            f"got {len(flows)} flows: {flows}"
+        )
+    finally:
+        system.stop()
+        EventTracer._subscribers = []
         os.unlink(path)

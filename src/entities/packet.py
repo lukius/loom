@@ -62,6 +62,14 @@ class Message:
     def id(self):
         return self._id
 
+    def flow_key(self) -> str:
+        # Stable identifier for the end-to-end conversation this message
+        # belongs to. Keyed on the payload, not the packet's address pair,
+        # so it survives NAT rewriting src/dst mid-path. Request/reply
+        # subtypes (PingReply) override this to echo the originating
+        # request's key, so both directions share one conversation id.
+        return str(self._id)
+
     def __eq__(self, other):
         if other.__class__ != self.__class__:
             return False
@@ -119,13 +127,24 @@ class PingRequest(Message):
 
 
 class PingReply(Message):
-    def __init__(self, seq: int, request_ts: float):
+    def __init__(self, seq: int, request_ts: float, request_id=None):
         super().__init__()
         self._seq = seq
         self._request_ts = request_ts
+        # Echoed from the originating PingRequest so request + reply share
+        # a single conversation key (see Message.flow_key).
+        self._request_id = request_id
 
     @property
     def seq(self) -> int: return self._seq
 
     @property
     def request_ts(self) -> float: return self._request_ts
+
+    @property
+    def request_id(self): return self._request_id
+
+    def flow_key(self) -> str:
+        if self._request_id is None:
+            return super().flow_key()
+        return str(self._request_id)

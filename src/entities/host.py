@@ -87,7 +87,9 @@ class Host(NetworkDevice):
     def _handle_message(self, msg, interface, packet):
         if isinstance(msg, PingRequest):
             originator = packet.source()
-            reply = PingReply(seq=msg.seq, request_ts=msg.sent_at)
+            reply = PingReply(
+                seq=msg.seq, request_ts=msg.sent_at, request_id=msg.id(),
+            )
             datagram = Datagram(
                 src_addr=self.address(), dst_addr=originator, payload=reply
             )

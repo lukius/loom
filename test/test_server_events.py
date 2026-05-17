@@ -103,8 +103,13 @@ def test_sim_state_event_emitted_on_transitions(tmp_path, monkeypatch):
 
 
 def test_packet_event_carries_flow_and_payload_id(tmp_path, monkeypatch):
-    """The UI uses `flow` (unordered endpoint pair) to queue request + reply
-    of a single conversation on the same animation track."""
+    """Each `packet` event carries `flow` and `payload_id`.
+
+    `payload_id` uniquely identifies one Message instance (one direction).
+    `flow` is the end-to-end conversation key reported by the payload —
+    stable across NAT, and shared between a ping request and its reply so
+    both directions group as one conversation.
+    """
     import textwrap
 
     from fastapi.testclient import TestClient
@@ -160,12 +165,12 @@ def test_packet_event_carries_flow_and_payload_id(tmp_path, monkeypatch):
     for p in packets:
         for f in ("flow", "payload_id", "payload_src", "payload_dst"):
             assert p.get(f), f"missing {f} in {p}"
-    # Request and reply share the same flow (unordered endpoint pair).
+    # Request and reply share the same flow (one conversation).
     assert requests[0]["flow"] == replies[0]["flow"]
     # But carry different payload_ids (different Message instances).
     assert requests[0]["payload_id"] != replies[0]["payload_id"]
-    # The flow is the sorted pair "10.0.0.1<->10.0.1.1".
-    assert requests[0]["flow"] == "10.0.0.1<->10.0.1.1"
+    # The flow equals the request's payload_id; the reply echoes it.
+    assert requests[0]["flow"] == requests[0]["payload_id"]
     # Request: src=h1, dst=h2. Reply: src=h2, dst=h1. Endpoints are flipped.
     assert requests[0]["payload_src"] == "10.0.0.1"
     assert requests[0]["payload_dst"] == "10.0.1.1"

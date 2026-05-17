@@ -223,10 +223,14 @@ def send_to(self, datagram, dst_addr):
     # plus: emit EventTracer "packet" event with src/dst/flow/payload_id
 ```
 
-The event dict includes both a **`payload_id`** (one direction of a flow
-— a single message) and a **`flow`** key (the unordered pair
-`src<->dst`). The SPA uses `flow` to keep ping requests and replies in
-the same animation thread.
+The event dict includes both a **`payload_id`** (uniquely identifies one
+Message instance — one direction) and a **`flow`** key (the end-to-end
+conversation identifier reported by the payload via `Message.flow_key()`).
+The flow is keyed on the payload — not on the packet's address pair — so
+it stays stable across NAT rewrites of src/dst as the packet traverses
+private↔public boundaries. `PingReply` overrides `flow_key` to echo its
+originating `PingRequest`'s id, so a single ping (request + reply, even
+across NAT) reports one flow.
 
 Two fields are derived to keep `Frame.source()` valid for the fabric's
 peer-resolution code:
