@@ -206,23 +206,23 @@ does to the worker threads.
 Events flow **out** of the simulator core via the `EventTracer`
 class-level pub/sub bus:
 
-```
-Simulator thread                          asyncio loop                  Browser
-─────────────────                         ────────────                  ───────
-EventTracer._broadcast(event)
-    │
-    ├─► EventBus.emit(event)
-    │       │
-    │       └─► loop.call_soon_threadsafe(
-    │               _enqueue, q, event)
-    │                                      asyncio.Queue.put_nowait
-    │                                              │
-    │                                              └─► ws.send_json(event)
-    │                                                          │
-    │                                                          └─► SPA WS handler
-    │                                                                  │
-    │                                                                  └─► bus.dispatchEvent(
-    │                                                                          'sim:packet' / 'sim:routing-table-changed' / 'sim:status-changed')
+```mermaid
+sequenceDiagram
+  participant WT as Worker thread<br/>(Interface / Protocol)
+  participant ET as EventTracer<br/>(class-level)
+  participant EB as EventBus
+  participant L as asyncio loop
+  participant WS as /ws/events handler
+  participant SPA as Browser SPA
+
+  Note over WT,ET: thread side (GIL)
+  WT->>ET: _broadcast(event)
+  ET->>EB: emit(event)
+  EB->>L: call_soon_threadsafe(_enqueue, q, event)
+  Note over L,SPA: asyncio side (single loop)
+  L->>WS: q.put_nowait(event)  per-WS queue
+  WS->>SPA: ws.send_json(event)
+  SPA->>SPA: bus.dispatchEvent(<br/>'sim:packet' /<br/>'sim:routing-table-changed' /<br/>'sim:status-changed')
 ```
 
 `EventBus` is a thread-safe fan-out: every WebSocket connection has its
