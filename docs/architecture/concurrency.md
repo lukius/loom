@@ -251,3 +251,75 @@ queue can hang the whole AS**. The defensive layers are:
 - The `EventBus` enforces a per-queue 1000-event cap; on overflow it
   drops the oldest event and increments `overflow_count`. A slow
   WebSocket consumer won't pin memory.
+
+---
+
+## Scaling Characteristics
+
+`loom` is built for teaching, not load. The threaded architecture is
+honest at small scale and predictable in how it degrades at large
+scale. Thread count grows linearly with topology size:
+
+```
+threads ≈ H + R·K + N + L + R + 1
+        (host)  (router)  (fabric)  (keepalive)  (asyncio loop)
+```
+
+Most threads are I/O-bound and release the GIL on `queue.Queue.get()`
+or `PauseGate.wait_or_stop()`, so idle threads cost almost nothing —
+about 8 KB of stack each on Linux. The bottleneck is **not thread
+count itself**; it's serialization through shared locks and CPython's
+single-threaded Python-bytecode execution.
+
+### Practical ceilings
+
+Rough thresholds against CPython 3.11 on Linux, with the routing
+protocol at the default 10 s keepalive interval:
+
+| Topology size | Threads | What works | What starts to bite |
+|---|---|---|---|
+| ≤100 routers | ≤1000 | Convergence in seconds, animations crisp | Nothing |
+| ~500 routers (~25 sample-scale ASes) | ~2500 | Sim still runs | `EventTracer._broadcast` and `EventBus.emit` saturate under their class-level / instance locks; WebSocket consumers see lag |
+| ~1000+ routers | >5000 | Routing protocol still converges, slowly | WebSocket JSON serialization pins one CPU; packet animations skip frames |
+| ~5000+ routers | >25000 | Not viable on threads + GIL | Dispatch loops would need to move to asyncio |
+
+These are upper-bound estimates. Dropping the keepalive interval to
+1 s roughly halves the useful topology size at every tier — the
+protocol chatter (which dominates packet traffic) scales inversely
+with the interval.
+
+### Bottleneck order
+
+As topology size grows, the choke points appear in this order:
+
+1. **Event-bus fan-out.** `EventTracer._broadcast` and `EventBus.emit`
+   each hold a class-level / instance lock during fan-out. At hundreds
+   of packet events per second × every WebSocket subscriber, this
+   serializes.
+2. **Per-fabric queue contention.** Each `_FabricBase._in_queue` is a
+   single `queue.Queue` shared by every attached interface. On a busy
+   LAN with many devices, the queue's lock becomes hot.
+3. **GIL on dispatch.** `device.handle_packet` and `RoutingTable.match`
+   are Python-bytecode work. At a few thousand packets per second
+   aggregated across all routers, CPython can't keep up on a single
+   core.
+4. **Raw thread count.** Linux pthread + CPython tolerate ~10k threads
+   comfortably; beyond that, `pthread_create` itself slows down.
+
+### When to reach for asyncio
+
+The realistic ceiling on the current architecture is around 10–25
+sample-scale ASes (~30–75 routers total) plus a future BGP-like
+inter-AS speaker. That's plenty for the teaching scenarios `loom` was
+built for. If a future use case calls for "model the Internet" —
+hundreds of ASes, BGP convergence dynamics, route reflectors — that's
+the right moment to rewrite the core packet loops in asyncio. It
+composes naturally with the FastAPI event loop already present at the
+HTTP/WS boundary, but it's a substantial refactor (every `_pkt_loop`
+becomes a coroutine, `PauseGate` becomes an `asyncio.Event`, the
+queues become `asyncio.Queue`).
+
+Feature work that doesn't add threads — NAT tables, new packet types,
+link-cost dynamics, additional protocols layered on top of the
+existing keepalive — does **not** move the bottleneck. It scales on
+the same curve as the current topology.
