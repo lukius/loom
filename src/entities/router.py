@@ -8,7 +8,7 @@ from .address import Address, NetworkAddress, NullAddress
 from .device import NetworkDevice
 from .event import EventTracer
 from .interface import Interface
-from .nat import NATTable
+from .nat import NATTable, flow_id
 from .packet import Datagram, RoutingMessage
 
 
@@ -171,7 +171,11 @@ class Router(NetworkDevice):
         dest = packet.destination()
         result = self._routing_table.match(dest)
         if not result.succeeded():
-            # TODO
+            if packet.source().is_private() and not self._has_public_interface():
+                raise Exception(
+                    f'no NAT egress: router {self.name()} has no public interface '
+                    f'for private source {packet.source()}'
+                )
             raise Exception(f'no route to host {dest}')
 
         out_iface = result.interface()
@@ -179,8 +183,39 @@ class Router(NetworkDevice):
         if next_hop == NullAddress:
             next_hop = packet.destination()
 
+        src = packet.source()
+        if src.is_private() and not out_iface.network().address().is_private():
+            original_src = src
+            rewritten_src = out_iface.address()
+            fid = flow_id(packet.payload())
+            self._nat_table.register(
+                rewritten_src, packet.destination(),
+                flow_id=fid, original_src=original_src,
+            )
+            packet.rewrite_source(rewritten_src)
+            EventTracer._broadcast({
+                'kind': 'nat',
+                'router': self.name(),
+                'direction': 'outbound',
+                'original_src': str(original_src),
+                'rewritten_src': str(rewritten_src),
+                'dst': str(packet.destination()),
+                'flow_id': fid,
+            })
+            EventTracer._broadcast({
+                'kind': 'nat_table_changed',
+                'device': self.name(),
+                'entries': self._nat_table.snapshot(),
+            })
+
         out_iface.send_to(packet, next_hop)
 
         return EventTracer.datagram_forwarded(
             src=out_iface.address(), dst=next_hop, datagram=packet
+        )
+
+    def _has_public_interface(self):
+        return any(
+            not iface.network().address().is_private()
+            for iface in self._interfaces.values()
         )
