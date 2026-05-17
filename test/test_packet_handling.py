@@ -255,14 +255,13 @@ class PacketHandlingTest(unittest.TestCase):
 class NetworkBroadcastTest(unittest.TestCase):
     """A multi-access Network must not echo a broadcast back to its sender.
 
-    Real NICs filter out frames whose source MAC matches their own; modelling
-    that here keeps the routing protocol from treating its own LSP as an
-    incoming external message and re-flooding it (which amplifies LSP
-    traffic on every shared LAN — once outbound, once "received from self"
-    and re-flooded out the other interfaces).
+    Real NICs filter out frames whose source matches their own, regardless
+    of the upper-layer payload. This filter happens on the wire, so it must
+    apply to every kind of broadcast: routing updates, user datagrams, or
+    anything else a future caller pushes through the fabric.
     """
 
-    def test_broadcast_is_not_delivered_back_to_the_sending_interface(self):
+    def _build_lan(self):
         net = Network('lan', NetworkAddress('10.0.0.0/24'))
         sender = Interface('eth0', net, Address('10.0.0.1'))
         peer_a = Interface('eth_a', net, Address('10.0.0.2'))
@@ -270,21 +269,50 @@ class NetworkBroadcastTest(unittest.TestCase):
         net.add_interface(sender)
         net.add_interface(peer_a)
         net.add_interface(peer_b)
-
         received_on = []
         sender.receive = lambda pkt: received_on.append('sender')
         peer_a.receive = lambda pkt: received_on.append('peer_a')
         peer_b.receive = lambda pkt: received_on.append('peer_b')
+        return net, sender, received_on
 
+    def _routing_msg_for(self, interface):
+        return RoutingMessage(interface, 1)
+
+    def test_broadcast_never_returns_to_sender_regardless_of_payload(self):
+        # Same source-filtering invariant must hold for every payload kind.
+        # If a new payload type ever sneaks through with the filter bypassed,
+        # this loop catches it.
+        net, sender, _ = self._build_lan()
+        cases = [
+            ('UserMessage',    UserMessage('hello LAN')),
+            ('RoutingMessage', self._routing_msg_for(sender)),
+            ('raw payload',    'opaque-bytes-no-message-type'),
+        ]
+        for label, payload in cases:
+            with self.subTest(payload=label):
+                net2, sender2, received_on = self._build_lan()
+                frame = Frame(
+                    src_addr=sender2.address(),
+                    dst_addr=net2.broadcast_address(),
+                    payload=payload,
+                )
+                net2._dispatch_broadcast(frame)
+                self.assertNotIn('sender', received_on)
+                self.assertEqual(sorted(received_on), ['peer_a', 'peer_b'])
+
+    def test_broadcast_from_an_unattached_source_reaches_every_interface(self):
+        # If no interface on the LAN claims the source address, nothing is
+        # filtered out — every interface receives the frame. Guards against
+        # over-eager filtering that would silently drop traffic from a peer
+        # we don't know about yet (mid-attach race, manually injected frames).
+        net, _, received_on = self._build_lan()
         frame = Frame(
-            src_addr=sender.address(),
+            src_addr=Address('10.0.0.99'),  # not on this LAN
             dst_addr=net.broadcast_address(),
-            payload=UserMessage('hello LAN'),
+            payload=UserMessage('from outside'),
         )
         net._dispatch_broadcast(frame)
-
-        self.assertNotIn('sender', received_on)
-        self.assertEqual(sorted(received_on), ['peer_a', 'peer_b'])
+        self.assertEqual(sorted(received_on), ['peer_a', 'peer_b', 'sender'])
 
 
 class PacketRewriteTest(unittest.TestCase):
