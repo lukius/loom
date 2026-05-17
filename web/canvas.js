@@ -405,7 +405,13 @@ export function linkBezier(linkName, p0, p3) {
   const perpY = dx / len;
   // Bow magnitude: a fraction of the chord, capped so short links don't
   // bulge and long links don't arc absurdly.
-  const bow = _linkBowFactor(linkName) * Math.min(len * 0.10, 36);
+  const magnitude = _linkBowFactor(linkName) * Math.min(len * 0.10, 36);
+  // Orientation sign canonicalizes the bow direction: when the caller flips
+  // p0 and p3, both `perp` and this sign flip, so `perp * bow` stays the
+  // same. Without it, drawLinkEdge (stable endpoint order) and the packet
+  // animation (sender→receiver order) would render mirror-image arcs.
+  const orientationSign = (dx > 0 || (dx === 0 && dy > 0)) ? 1 : -1;
+  const bow = magnitude * orientationSign;
   // The bowless formula matches drawEdge's horizontal-tangent shape.
   return {
     p0, p3,

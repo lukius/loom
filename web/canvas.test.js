@@ -361,6 +361,19 @@ describe('linkBezier — per-link bow keeps parallel links visually distinct', (
     expect(c2Diff).toBeGreaterThan(0);
   });
 
+  it('produces the same curve regardless of input direction', () => {
+    // The visible link uses a stable endpoint order; the packet animation
+    // uses the sender's direction. If linkBezier weren't direction-symmetric,
+    // the two curves would mirror each other and the packet would visibly
+    // float off the wire on parallel links.
+    const forward = linkBezier('p2p_x', p0, p3);
+    const reverse = linkBezier('p2p_x', p3, p0);
+    // A bezier from p3→p0 with controls (c2, c1) traces the same curve as
+    // one from p0→p3 with (c1, c2). So the swap should produce exactly that.
+    expect(reverse.c1).toEqual(forward.c2);
+    expect(reverse.c2).toEqual(forward.c1);
+  });
+
   it('the bow is bounded — does not overshoot the chord length', () => {
     // A short link should not get a wildly oversized bow, and a long
     // link should not bow off the canvas.
