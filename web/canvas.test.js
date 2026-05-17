@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, deviceNameForEndpointOnFabric, lookupAddressNodeOnFabric, renderCanvas, lookupLinkMidpoint, lookupDeviceNode, shiftLinkLabelsForDeviceMove, startLinkWizard, cancelLinkWizard, finishLinkWizard, getLinkWizard } from './canvas.js';
+import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, deviceNameForEndpointOnFabric, lookupAddressNodeOnFabric, renderCanvas, lookupLinkMidpoint, lookupDeviceNode, shiftLinkLabelsForDeviceMove, startLinkWizard, cancelLinkWizard, finishLinkWizard, getLinkWizard, linkBezier } from './canvas.js';
 import {
   state, bus,
   RAIL_DEFAULT_WIDTH, RAIL_THICKNESS, RAIL_TICK_INSET,
@@ -328,6 +328,49 @@ function setupMinimalDOM() {
     <div id="toasts"></div>
   `;
 }
+
+describe('linkBezier — per-link bow keeps parallel links visually distinct', () => {
+  // Two near-vertical links from the same column would otherwise overlap
+  // exactly, hiding the topology. The helper bows each link's bezier
+  // perpendicular to the chord by a name-keyed amount so they fan apart.
+
+  const p0 = { x: 200, y: 100 };
+  const p3 = { x: 200, y: 500 }; // straight vertical chord
+
+  it('preserves the chord endpoints exactly', () => {
+    const b = linkBezier('p2p_a', p0, p3);
+    expect(b.p0).toEqual(p0);
+    expect(b.p3).toEqual(p3);
+  });
+
+  it('is deterministic — same name → same control points', () => {
+    const a = linkBezier('p2p_a', p0, p3);
+    const b = linkBezier('p2p_a', p0, p3);
+    expect(a.c1).toEqual(b.c1);
+    expect(a.c2).toEqual(b.c2);
+  });
+
+  it('two distinct link names sharing a chord produce distinct control points', () => {
+    // The whole reason this helper exists: links sharing a column on the
+    // canvas should not render the same path.
+    const a = linkBezier('p2p_a', p0, p3);
+    const b = linkBezier('p2p_b', p0, p3);
+    const c1Diff = Math.hypot(a.c1.x - b.c1.x, a.c1.y - b.c1.y);
+    const c2Diff = Math.hypot(a.c2.x - b.c2.x, a.c2.y - b.c2.y);
+    expect(c1Diff).toBeGreaterThan(0);
+    expect(c2Diff).toBeGreaterThan(0);
+  });
+
+  it('the bow is bounded — does not overshoot the chord length', () => {
+    // A short link should not get a wildly oversized bow, and a long
+    // link should not bow off the canvas.
+    const short = linkBezier('whatever', { x: 0, y: 0 }, { x: 0, y: 40 });
+    const long  = linkBezier('whatever-else', { x: 0, y: 0 }, { x: 0, y: 4000 });
+    // Perpendicular offset of c1 from the chord (chord is x=0):
+    expect(Math.abs(short.c1.x)).toBeLessThanOrEqual(40);   // <= chord length
+    expect(Math.abs(long.c1.x)).toBeLessThanOrEqual(80);    // capped — not 10% of 4000
+  });
+});
 
 describe('p2p link rendering', () => {
   beforeEach(() => {

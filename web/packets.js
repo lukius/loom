@@ -7,7 +7,7 @@ import { escapeHtml } from './utils.js';
 import {
   lookupDeviceNode, lookupAddressNodeOnFabric, lookupNetworkNode,
   getNodeCenter, railTapPoint, deviceNameForEndpointOnFabric,
-  collectLinkEndpoints, clipToRect,
+  collectLinkEndpoints, clipToRect, linkBezier,
 } from './canvas.js';
 import { Sim } from './sim.js';
 
@@ -227,7 +227,10 @@ export const PacketAnim = {
     const bSize = NODE[dstKind];
     const [ax, ay] = clipToRect(srcCenter.x, srcCenter.y, aSize.w, aSize.h, dstCenter.x, dstCenter.y);
     const [bx, by] = clipToRect(dstCenter.x, dstCenter.y, bSize.w, bSize.h, srcCenter.x, srcCenter.y);
-    return [{ kind: 'bez', ...this._bezBetween({ x: ax, y: ay }, { x: bx, y: by }) }];
+    // Use the same bowed bezier the canvas renders so the packet rides the
+    // visible wire (otherwise parallel-link packets would diverge from their
+    // edge paths).
+    return [{ kind: 'bez', ...linkBezier(evt.network, { x: ax, y: ay }, { x: bx, y: by }) }];
   },
 
   // Cubic bezier with horizontal tangents at both ends — same shape used by

@@ -382,6 +382,37 @@ export function bezPoint(p0, p1, p2, p3, t) {
   const u = 1 - t;
   return u*u*u*p0 + 3*u*u*t*p1 + 3*u*t*t*p2 + t*t*t*p3;
 }
+
+// Per-link bow keyed off the link name. Parallel p2p links sharing an
+// endpoint (e.g. two links from r_core in a vertical column) would otherwise
+// render on top of each other and look like one wire. A small, deterministic
+// perpendicular offset on the bezier control points fans them apart.
+const _LINK_BOW_BINS = [0, 1, -1, 0.6, -0.6, 1.4, -1.4];
+function _linkBowFactor(linkName) {
+  if (!linkName) return 0;
+  let h = 5381;
+  for (let i = 0; i < linkName.length; i++) {
+    h = ((h * 33) ^ linkName.charCodeAt(i)) | 0;
+  }
+  return _LINK_BOW_BINS[Math.abs(h) % _LINK_BOW_BINS.length];
+}
+export function linkBezier(linkName, p0, p3) {
+  const dx = p3.x - p0.x;
+  const dy = p3.y - p0.y;
+  const len = Math.hypot(dx, dy) || 1;
+  // Perpendicular to the chord (rotate +90°: (dx,dy) → (-dy,dx)).
+  const perpX = -dy / len;
+  const perpY = dx / len;
+  // Bow magnitude: a fraction of the chord, capped so short links don't
+  // bulge and long links don't arc absurdly.
+  const bow = _linkBowFactor(linkName) * Math.min(len * 0.10, 36);
+  // The bowless formula matches drawEdge's horizontal-tangent shape.
+  return {
+    p0, p3,
+    c1: { x: p0.x + dx * 0.55 + perpX * bow, y: p0.y + perpY * bow },
+    c2: { x: p3.x - dx * 0.55 + perpX * bow, y: p3.y + perpY * bow },
+  };
+}
 export function clipToRect(cx, cy, w, h, tx, ty) {
   const dx = tx - cx, dy = ty - cy;
   if (dx === 0 && dy === 0) return [cx, cy];
@@ -453,10 +484,11 @@ export function drawLinkEdge(linkName, linkObj) {
   const [ax, ay] = clipToRect(a.x, a.y, aSize.w, aSize.h, b.x, b.y);
   const [bx, by] = clipToRect(b.x, b.y, bSize.w, bSize.h, a.x, a.y);
 
-  // Smooth bezier — horizontal bias (same approach as drawEdge)
-  const dx = bx - ax;
-  const c1x = ax + dx * 0.55, c1y = ay;
-  const c2x = bx - dx * 0.55, c2y = by;
+  // Bowed bezier — each link gets a per-name perpendicular offset so
+  // parallel links sharing an endpoint don't render on top of each other.
+  const bz = linkBezier(linkName, { x: ax, y: ay }, { x: bx, y: by });
+  const c1x = bz.c1.x, c1y = bz.c1.y;
+  const c2x = bz.c2.x, c2y = bz.c2.y;
   const d = `M ${ax} ${ay} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${bx} ${by}`;
 
   const isSel = state.selection &&
