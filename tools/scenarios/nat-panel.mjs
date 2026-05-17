@@ -37,9 +37,3 @@ await RuntimeClient.deviceCommand('h_a', 'ping h_public -W 2.0');
 state.selection = { kind: 'router', name: 'r_a' };
 bus.dispatchEvent(new CustomEvent('state:selection-changed'));
 await new Promise(r => setTimeout(r, 400));
-
-// Widen the inspector pane for the capture so the NAT table's Flow ID
-// column doesn't get clipped. Runtime default sits tighter (350px) to keep
-// the chrome compact; the screenshot needs room to show the full column.
-document.documentElement.style.setProperty('--insp-w', '420px');
-await new Promise(r => setTimeout(r, 100));
