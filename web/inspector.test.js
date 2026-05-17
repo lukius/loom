@@ -14,7 +14,9 @@ import {
   deleteSelected,
   openContextMenu,
   closeContextMenu,
+  Inspector,
 } from './inspector.js';
+import { Sim } from './sim.js';
 
 // ---------------------------------------------------------------------------
 // Minimal DOM environment — mirrors the subset that inspector.js touches.
@@ -43,6 +45,7 @@ function resetState() {
   state.networks  = {};
   state.hosts     = {};
   state.routers   = {};
+  state.natTables = {};
   state.selection = null;
   state.view      = { x: 0, y: 0, k: 1 };
   state.display   = { showCosts: true, showIfaces: true };
@@ -930,5 +933,140 @@ describe('openContextMenu — "New p2p link…" on host and router', () => {
       .find(b => b.getAttribute('data-act') === 'new-p2p-link');
     expect(btn).not.toBeNull();
     closeContextMenu();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 17. Router inspector — NAT table panel
+// ---------------------------------------------------------------------------
+describe('renderRouterInsp — NAT table panel', () => {
+  it('injects an #insp-nat div alongside #insp-routes', () => {
+    state.routers = { r1: { x: 0, y: 0, interfaces: {} } };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    expect(elI.querySelector('#insp-nat')).not.toBeNull();
+    expect(elI.querySelector('#insp-routes')).not.toBeNull();
+  });
+});
+
+describe('Inspector.refreshNAT', () => {
+  beforeEach(() => {
+    document.body.innerHTML += '<div id="insp-nat" hidden></div>';
+    Sim.state = 'running';
+    state.routers = { r_a: { x: 0, y: 0, interfaces: {} } };
+    state.hosts = {};
+    state.natTables = {};
+  });
+
+  it('hides the panel when there are no entries for the device', () => {
+    Inspector.refreshNAT('r_a');
+    expect(document.getElementById('insp-nat').hidden).toBe(true);
+  });
+
+  it('hides the panel when Sim is idle', () => {
+    Sim.state = 'idle';
+    state.natTables['r_a'] = [{
+      original_src: '192.168.1.10',
+      rewritten_src: '200.100.0.1',
+      dst: '8.8.8.8',
+      flow_id: 7,
+    }];
+    Inspector.refreshNAT('r_a');
+    expect(document.getElementById('insp-nat').hidden).toBe(true);
+  });
+
+  it('hides the panel for hosts (no NAT table)', () => {
+    state.hosts = { h1: { network: '', address: '', x: 0, y: 0 } };
+    state.natTables['h1'] = [{
+      original_src: '192.168.1.10',
+      rewritten_src: '200.100.0.1',
+      dst: '8.8.8.8',
+      flow_id: null,
+    }];
+    Inspector.refreshNAT('h1');
+    expect(document.getElementById('insp-nat').hidden).toBe(true);
+  });
+
+  it('renders one row per entry with the expected columns', () => {
+    state.natTables['r_a'] = [{
+      original_src: '192.168.1.10',
+      rewritten_src: '200.100.0.1',
+      dst: '8.8.8.8',
+      flow_id: 7,
+    }];
+    Inspector.refreshNAT('r_a');
+    const sec = document.getElementById('insp-nat');
+    expect(sec.hidden).toBe(false);
+    expect(sec.innerHTML).toContain('192.168.1.10');
+    expect(sec.innerHTML).toContain('200.100.0.1');
+    expect(sec.innerHTML).toContain('8.8.8.8');
+    expect(sec.innerHTML).toContain('7');
+    expect(sec.innerHTML).toContain('NAT table');
+    expect(sec.innerHTML).toContain('r_a');
+  });
+
+  it('renders an em-dash for entries whose flow_id is null', () => {
+    state.natTables['r_a'] = [{
+      original_src: '192.168.1.10',
+      rewritten_src: '200.100.0.1',
+      dst: '8.8.8.8',
+      flow_id: null,
+    }];
+    Inspector.refreshNAT('r_a');
+    const sec = document.getElementById('insp-nat');
+    expect(sec.innerHTML).toContain('—');
+  });
+
+  it('renders multiple entries in the order they appear (oldest first)', () => {
+    state.natTables['r_a'] = [
+      { original_src: '192.168.1.10', rewritten_src: '200.100.0.1', dst: '1.1.1.1', flow_id: null },
+      { original_src: '192.168.1.11', rewritten_src: '200.100.0.1', dst: '2.2.2.2', flow_id: 3 },
+    ];
+    Inspector.refreshNAT('r_a');
+    const sec = document.getElementById('insp-nat');
+    const rows = sec.querySelectorAll('tbody tr');
+    expect(rows.length).toBe(2);
+    expect(rows[0].textContent).toContain('1.1.1.1');
+    expect(rows[1].textContent).toContain('2.2.2.2');
+  });
+
+  it('is a no-op when #insp-nat is missing from the DOM', () => {
+    document.getElementById('insp-nat').remove();
+    expect(() => Inspector.refreshNAT('r_a')).not.toThrow();
+  });
+});
+
+describe('Inspector.onNATChange', () => {
+  beforeEach(() => {
+    document.body.innerHTML += '<div id="insp-nat" hidden></div>';
+    Sim.state = 'running';
+    state.routers = { r_a: { x: 0, y: 0, interfaces: {} } };
+    state.hosts = {};
+    state.natTables = {};
+  });
+
+  it('re-renders the panel when the changed device matches the current selection', () => {
+    state.selection = { kind: 'router', name: 'r_a' };
+    state.natTables['r_a'] = [{
+      original_src: '192.168.1.10',
+      rewritten_src: '200.100.0.1',
+      dst: '8.8.8.8',
+      flow_id: 1,
+    }];
+    Inspector.onNATChange({ device: 'r_a' });
+    expect(document.getElementById('insp-nat').hidden).toBe(false);
+  });
+
+  it('does not re-render when the changed device is not selected', () => {
+    state.selection = { kind: 'router', name: 'other' };
+    state.natTables['r_a'] = [{
+      original_src: '192.168.1.10',
+      rewritten_src: '200.100.0.1',
+      dst: '8.8.8.8',
+      flow_id: 1,
+    }];
+    Inspector.onNATChange({ device: 'r_a' });
+    // Panel stays hidden because refreshNAT was never called for r_a.
+    expect(document.getElementById('insp-nat').hidden).toBe(true);
   });
 });

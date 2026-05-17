@@ -263,4 +263,9 @@ export function _onEvent(evt) {
     bus.dispatchEvent(new CustomEvent('sim:nat', { detail: evt }));
     return;
   }
+  if (evt.kind === 'nat_table_changed') {
+    state.natTables[evt.device] = evt.entries || [];
+    bus.dispatchEvent(new CustomEvent('sim:nat-table-changed', { detail: { device: evt.device } }));
+    return;
+  }
 }

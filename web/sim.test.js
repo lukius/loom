@@ -25,6 +25,7 @@ beforeEach(() => {
   state.networks = {};
   state.hosts = {};
   state.routers = {};
+  state.natTables = {};
   state.selection = null;
   // Toolbar + banner DOM that _renderToolbar and other helpers touch.
   // #toasts is the parent for error toasts emitted by onPrimary/onSecondary/onReset.
@@ -162,6 +163,38 @@ describe('_onEvent (WS dispatcher)', () => {
       original_src: '10.0.0.1', rewritten_src: '1.2.3.4',
       dst: '8.8.8.8', flow_id: null, payload_id: 'p',
     });
+    expect(Sim.state).toBe('running');
+  });
+
+  it('routes kind:nat_table_changed to sim:nat-table-changed and updates state.natTables', () => {
+    const cap = captureEvents('sim:nat-table-changed');
+    listenerCleanups.push(cap.stop);
+    state.natTables = {};
+    _onEvent({
+      kind: 'nat_table_changed',
+      device: 'r_a',
+      entries: [{
+        original_src: '192.168.1.10',
+        rewritten_src: '200.100.0.1',
+        dst: '8.8.8.8',
+        flow_id: 7,
+      }],
+    });
+    expect(state.natTables['r_a']).toBeDefined();
+    expect(state.natTables['r_a'].length).toBe(1);
+    expect(state.natTables['r_a'][0].rewritten_src).toBe('200.100.0.1');
+    expect(cap.events).toEqual([{ device: 'r_a' }]);
+  });
+
+  it('nat_table_changed with missing entries defaults to an empty list', () => {
+    state.natTables = { r1: [{ original_src: 'x', rewritten_src: 'y', dst: 'z', flow_id: null }] };
+    _onEvent({ kind: 'nat_table_changed', device: 'r1' });
+    expect(state.natTables['r1']).toEqual([]);
+  });
+
+  it('nat_table_changed events do not touch Sim.state', () => {
+    Sim.state = 'running';
+    _onEvent({ kind: 'nat_table_changed', device: 'r1', entries: [] });
     expect(Sim.state).toBe('running');
   });
 });
