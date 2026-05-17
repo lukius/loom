@@ -152,6 +152,32 @@ class Router(NetworkDevice):
     def stop(self):
         self._protocol.stop()
 
+    def handle_packet(self, packet, interface):
+        dst = packet.destination()
+        on_public = not interface.network().address().is_private()
+        if dst == interface.address() and on_public:
+            fid = flow_id(packet.payload())
+            original_dst = self._nat_table.lookup(
+                rewritten_src=dst,
+                original_dst=packet.source(),
+                flow_id=fid,
+            )
+            if original_dst is not None:
+                EventTracer._broadcast({
+                    'kind': 'nat',
+                    'router': self.name(),
+                    'direction': 'inbound',
+                    'rewritten_dst': str(dst),
+                    'original_dst': str(original_dst),
+                    'src': str(packet.source()),
+                    'flow_id': fid,
+                })
+                packet.rewrite_destination(original_dst)
+                self._handle_forwarding(packet)
+                return
+
+        super().handle_packet(packet, interface)
+
     def _handle_message(self, msg, interface, packet):
         if msg.type() == RoutingMessage:
             self._handle_routing_message(msg, interface)
