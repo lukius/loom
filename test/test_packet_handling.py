@@ -248,3 +248,24 @@ class PacketHandlingTest(unittest.TestCase):
     def _routing_msg_datagram(self, interface, src, dst):
         msg = RoutingMessage(interface, 1)
         return Datagram(src, dst, msg)
+
+
+class PacketRewriteTest(unittest.TestCase):
+
+    def test_rewrite_source_changes_source_only(self):
+        d = Datagram(Address('192.168.1.10'), Address('8.8.8.8'), payload='x')
+        d.rewrite_source(Address('200.100.0.1'))
+        self.assertEqual(d.source(), Address('200.100.0.1'))
+        self.assertEqual(d.destination(), Address('8.8.8.8'))
+
+    def test_rewrite_destination_changes_destination_only(self):
+        d = Datagram(Address('192.168.1.10'), Address('200.100.0.1'), payload='x')
+        d.rewrite_destination(Address('192.168.1.10'))
+        self.assertEqual(d.destination(), Address('192.168.1.10'))
+        self.assertEqual(d.source(), Address('192.168.1.10'))
+
+    def test_rewrite_preserves_payload_identity(self):
+        payload = object()
+        d = Datagram(Address('192.168.1.10'), Address('8.8.8.8'), payload)
+        d.rewrite_source(Address('200.100.0.1'))
+        self.assertIs(d.payload(), payload)

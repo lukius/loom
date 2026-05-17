@@ -20,6 +20,12 @@ class Packet:
     def payload(self):
         return self._payload
 
+    def rewrite_source(self, addr):
+        self._src_addr = addr
+
+    def rewrite_destination(self, addr):
+        self._dst_addr = addr
+
 
 class Frame(Packet):
 
@@ -43,6 +49,9 @@ class Datagram(Packet):
 
 
 class Message:
+    # NAT multiplexing: request/reply subtypes that may run concurrently
+    # from a single private LAN should expose a `seq` attribute matching
+    # on request and reply. See entities/nat.py::flow_id().
 
     def __init__(self):
         self._id = uuid.uuid4()
