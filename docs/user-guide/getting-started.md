@@ -55,9 +55,10 @@ What happens, in order:
 
 1. The SPA serializes the current canvas to YAML and POSTs it to
    `/topology`.
-2. The server parses, validates, and constructs a fresh `AS`.
-3. POST `/sim/start` resumes the pause gate and starts every router's
-   keepalive thread.
+2. The server parses, validates, and constructs a fresh autonomous
+   system.
+3. POST `/sim/start` resumes the simulation and starts every router's
+   keepalive.
 4. Within a few hundred milliseconds, routing-protocol packets start
    flooding across the canvas — those are the small hollow dots
    ("chatter").

@@ -9,7 +9,7 @@ The topology is described in YAML. The same format is used by:
   `<source>.session.yaml`.
 
 There is exactly one schema. Every consumer goes through the same
-parser (`src/parser/parser.py`).
+parser.
 
 ## Top-level shape
 
@@ -53,8 +53,8 @@ networks:
 
 Rules:
 
-- The CIDR is parsed by `NetworkAddress` and **canonicalized** — host
-  bits are zeroed. `"10.1.2.3/24"` becomes `10.1.2.0/24`.
+- The CIDR is **canonicalized** at parse time — host bits are zeroed.
+  `"10.1.2.3/24"` becomes `10.1.2.0/24`.
 - Mask between 0 and 32 (in practice useful prefixes are `/8` through
   `/29`; for `/30` or `/31` use `links:` instead).
 - No two networks may share the same prefix.
@@ -247,7 +247,7 @@ Lifecycle:
 | Event | Effect on session file |
 |---|---|
 | First `/topology` call or `/sim/start` | Created (cloned from source) if missing |
-| `/sim/resume` with a patch | Re-dumped via `_dump_yaml` (atomic write) |
+| `/sim/resume` with a patch | Re-serialized to YAML (atomic write) |
 | `POST /topology` | Overwritten with the new YAML |
 | `POST /topology/reset` | Deleted and re-cloned from source |
 | `loom.py` exit | Untouched — persists across runs |
@@ -270,8 +270,8 @@ To **resume** a saved topology:
 
 For round-trip stability:
 
-- **The session file is canonical YAML.** `loom`'s `_dump_yaml` sorts
-  blocks predictably (`networks` → `hosts` → `routers`) but does not
+- **The session file is canonical YAML.** `loom` serializes blocks in
+  a predictable order (`networks` → `hosts` → `routers`) but does not
   preserve comments or unusual layouts.
 - **Coordinates are not persisted server-side.** Node `(x, y)` lives
   only in the SPA's `localStorage`. A YAML import on a fresh browser
@@ -280,11 +280,11 @@ For round-trip stability:
 
 ### YAML written by the SPA
 
-The SPA's `exportYaml()` produces the same shape as `_dump_yaml`. It
-emits hosts and routers with full interface blocks; it omits
-coordinate metadata. The two formats are byte-compatible round trip,
-so you can edit YAML offline, **Import**, and the canvas redraws
-without surprises.
+The SPA's **Export** produces the same shape as the server's
+serialized session file. It emits hosts and routers with full
+interface blocks and omits coordinate metadata. The two formats are
+byte-compatible round trip, so you can edit YAML offline, **Import**,
+and the canvas redraws without surprises.
 
 ### A note about quotation
 

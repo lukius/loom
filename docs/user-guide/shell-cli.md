@@ -58,7 +58,7 @@ first, if any).
 ```
 
 No success message — the next prompt is the only feedback. On error,
-the underlying `ParsingException` message is printed:
+the parser's error message is printed:
 
 ```
 # read /tmp/bad.yaml
@@ -92,9 +92,9 @@ Send a `UserMessage` from one host to another. The message is a
 # send h1 h2 hello
 ```
 
-For multi-word messages, use the per-device terminal in the web UI,
-which goes through `shlex.split`. The shell deliberately uses a
-3-tuple `split()` for simplicity.
+For multi-word messages, use the per-device terminal in the web UI —
+the shell deliberately requires the three arguments in a single
+whitespace-delimited token.
 
 ### `update_cost <router> <iface> <cost>`
 
@@ -154,8 +154,8 @@ List directly-connected router neighbors.
   r3     via lan3     (150.10.10.10) cost=5
 ```
 
-Reads from the router's protocol-local `_graph`. Empty until the first
-keepalive has been received.
+Reads from the router's local view of the network. Empty until the
+first keepalive has been received.
 
 ### `ping <src> <dst> [-W <seconds>]`
 
@@ -190,10 +190,10 @@ ping h1 -> h2: no route to host: no gateway configured
 
 ### `exit`
 
-Shut down the simulator (stops the AS, killing all worker threads) and
-exit. There is no graceful Ctrl-C handler — Ctrl-C raises
-`KeyboardInterrupt` and exits without `AS.stop()`, which is fine
-because daemon threads die with the process.
+Shut down the simulator (stops the simulation and its worker threads)
+and exit. There is no graceful Ctrl-C handler — Ctrl-C terminates the
+process without an orderly stop, which is fine because daemon threads
+die with the process.
 
 ## What's missing vs. the web UI
 
@@ -203,8 +203,8 @@ The shell does not have:
 - A way to add or remove devices after `read` (no `add_host`, no
   `add_router`). You can edit costs via `update_cost`.
 - Patch-while-paused workflow — the shell is "always running."
-- Packet animations (the events flow through `EventTracer`, but the
-  shell doesn't subscribe).
+- Packet animations (the shell doesn't subscribe to the simulator's
+  event stream).
 - Multiple simultaneous terminals (each `cmd.Cmd` invocation is a
   single REPL).
 

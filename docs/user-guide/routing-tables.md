@@ -38,7 +38,7 @@ tab to switch.
 
 Columns:
 
-- **Prefix** — the destination network (always a `NetworkAddress`).
+- **Prefix** — the destination network (an IPv4 CIDR).
 - **Next hop** — the IP of the next-hop router, or `0.0.0.0` if the
   destination is directly connected.
 - **Interface** — which of this router's interfaces forwards traffic
@@ -77,8 +77,8 @@ Same output format.
 
 ## What `0.0.0.0` means
 
-The simulator uses `0.0.0.0` as a sentinel — internally `NullAddress` —
-that means *"the destination is on a directly connected network."*
+The simulator uses `0.0.0.0` as a sentinel meaning *"the destination
+is on a directly connected network."*
 
 When a packet matches a rule whose next hop is `0.0.0.0`:
 
@@ -170,9 +170,9 @@ Each row is one **adjacency** — one shared fabric, one interface, one
 cost. A router may have multiple adjacencies with the same neighbor if
 they share more than one fabric.
 
-The neighbors command is a read-only view of the router's local graph
-(`_protocol._graph`). It updates as new routers join — but only after
-their first advertisement has arrived. If a router shows no neighbors,
+The neighbors command is a read-only view of the router's local view
+of the network. It updates as new routers join — but only after their
+first advertisement has arrived. If a router shows no neighbors,
 either:
 
 - It has no router peers (you wired it only to hosts), or

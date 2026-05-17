@@ -24,7 +24,7 @@ with min/max bounds.
 
 ## Toolbar
 
-From left to right (IDs in `web/index.html` for reference):
+From left to right:
 
 | Group | Control | What it does |
 |---|---|---|
@@ -185,7 +185,7 @@ current routing table. The routing table re-fetches via
 hop, interface.
 
 A directly-connected route shows `0.0.0.0` as the next hop — that's
-`NullAddress` serialized as a string, meaning "deliver to the packet's
+the simulator's sentinel value meaning "deliver to the packet's
 destination on this interface." See [Routing tables](routing-tables.md)
 for what to read into this.
 

@@ -39,10 +39,10 @@ Click **Start** (or press <kbd>Space</kbd>). The SPA does, in order:
 
 1. Serializes the current canvas to YAML.
 2. POSTs to `/topology` — the server validates and constructs a fresh
-   `AS`. On any validation error, the start is aborted and the toolbar
-   surfaces the error via toast.
-3. POSTs to `/sim/start` — the server resumes the `PauseGate` and starts
-   every router's keepalive thread.
+   autonomous system. On any validation error, the start is aborted
+   and the toolbar surfaces the error via toast.
+3. POSTs to `/sim/start` — the server starts the simulation and every
+   router's keepalive.
 
 If the topology was already loaded (e.g. you stopped and want to start
 again with the same topology), step 1+2 is a no-op overwrite of the
@@ -64,12 +64,11 @@ state, where threads are quiesced.
 ## Pause
 
 Click **Pause** (or press <kbd>P</kbd>). The SPA POSTs to `/sim/pause`;
-the server calls `PauseGate.pause()`.
+the server pauses every simulator thread at its next safe point.
 
 Effects, observable in the canvas:
 
-- Packet animations freeze (in-flight frames remain queued but workers
-  block on their next `wait_or_stop`).
+- Packet animations freeze (in-flight frames stay parked on the wire).
 - Routing-protocol keepalives stop ticking.
 - The **Pause** button becomes **Resume**.
 
@@ -82,8 +81,8 @@ Effects, observable in the canvas:
   enforced by the validator).
 
 Each mutation appears in the **Resume** button label as a counter:
-*Resume (3 edits)*. These ops accumulate in the SPA's `Sim.patch`
-list; nothing is applied to the server until you Resume.
+*Resume (3 edits)*. These ops accumulate in the SPA's pending-edits
+queue; nothing is applied to the server until you Resume.
 
 While paused, you cannot **Start** (already started) or **Stop** the sim
 through the toolbar without first stopping the underlying simulation
@@ -93,10 +92,10 @@ through the toolbar without first stopping the underlying simulation
 
 Click **Resume**. The SPA:
 
-1. Calls `reconcilePatch(Sim.patch)` to rewrite `add_*` ops with the
-   latest values from `state` (so a network you added and then renamed
-   is sent with its current name), and drops any op whose target was
-   deleted between Pause and Resume.
+1. Reconciles the pending-edits queue against the current canvas:
+   `add_*` ops are rewritten with the latest values (so a network you
+   added and then renamed is sent with its current name), and any op
+   whose target was deleted between Pause and Resume is dropped.
 2. POSTs the reconciled patch to `/sim/resume`.
 
 The server validates the entire patch atomically:
@@ -125,12 +124,12 @@ final shape you want.
 ## Stop
 
 Click **Stop** (or press <kbd>Space</kbd> again). The SPA POSTs to
-`/sim/stop`; the server's `SimState.stop()`:
+`/sim/stop`; the server tears the simulation down:
 
-- Calls `AS.stop()` — cascades through every network, link, router, and
-  interface. Each worker thread observes the stop signal and exits.
-- Discards the `AS` reference.
-- Returns to `idle`.
+- Every network, link, router, and interface receives the stop signal
+  and its worker threads exit cleanly.
+- The simulation is discarded.
+- The state returns to `idle`.
 
 What survives:
 
@@ -139,14 +138,14 @@ What survives:
 - The SPA's canvas state. Stop and Start without touching the topology
   and you're right back where you were.
 - The terminals on screen — they continue to refer to a no-longer-
-  existing AS. Commands sent to a stopped sim return `409 no topology
-  loaded`. Close and re-open the terminal after Start to get a clean
-  session.
+  existing simulation. Commands sent to a stopped sim return `409 no
+  topology loaded`. Close and re-open the terminal after Start to get
+  a clean session.
 
 If you've been editing the canvas while idle (after a stop, but before
 the next start), those edits **are not** on the server yet — they live
-in the SPA's `state` + `localStorage`. The next Start serializes them
-to YAML and pushes via `/topology`.
+in the SPA's local state and `localStorage`. The next Start serializes
+them to YAML and pushes via `/topology`.
 
 ## Reset
 
@@ -155,7 +154,7 @@ Click **Reset** (only enabled when idle). This:
 1. Deletes `<source>.session.yaml`.
 2. Re-clones from the source file (`samples/sample.yaml` by default, or
    whatever `LOOM_TOPOLOGY` points at).
-3. Re-parses the source into a fresh `AS`.
+3. Re-parses the source into a fresh autonomous system.
 4. The SPA fetches the new YAML and replaces the canvas.
 
 Use Reset when the session has drifted from the source and you want to
@@ -169,10 +168,10 @@ seconds, range `[1, 300]`. Lower = faster convergence, more chatter.
 Higher = slower convergence, quieter. The default is 10 s.
 
 The change is applied to **every router** the moment you change the
-field — `POST /sim/refresh_interval` calls
-`set_keepalive_interval(s)` on each `RoutingProtocol`. The next sleep
-boundary on each router's keepalive thread is when the new value takes
-effect, so the maximum lag is the *previous* interval's value.
+field — the server updates each router's keepalive interval via
+`POST /sim/refresh_interval`. The new value takes effect at the next
+sleep boundary on each router's keepalive loop, so the maximum lag
+is the *previous* interval's value.
 
 This is the right knob to reach for if you're watching convergence and
 the default 10 s feels too slow. Dropping it to 1 s makes the protocol
@@ -182,7 +181,7 @@ visibly chatter on the canvas at roughly one flood per second.
 
 | Action | Idle (sim not started) | Paused (sim is loaded) |
 |---|---|---|
-| Where the edit lives | SPA `state` + `localStorage` | SPA `state` + `Sim.patch` queue |
+| Where the edit lives | SPA local state + `localStorage` | SPA local state + pending-edits queue |
 | When the server sees it | On next **Start** (whole YAML) | On **Resume** (incremental patch) |
 | Validation | Full re-parse on start | Per-op validation on resume |
 | If it fails | Start aborts; topology stays unloaded | Resume rejected; patch preserved for editing |

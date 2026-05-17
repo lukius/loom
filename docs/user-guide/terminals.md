@@ -303,8 +303,7 @@ returns:
 ```
 
 The full per-device command set is in
-[`server-api.md`](../architecture/server-api.md#post-devicesnamecommand)
-and the implementation is in `src/server/command/`.
+[`server-api.md`](../architecture/server-api.md#post-devicesnamecommand).
 
 ## When the sim is idle or stopped
 

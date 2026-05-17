@@ -198,20 +198,21 @@ for examples.
 
 ### Why `/30` and `/31` only?
 
-Because a multi-access LAN has its own model in `loom` (the `Network`
-class with broadcast semantics). A point-to-point link is the
-**exception** that allows two devices to be wired without a LAN bus
-between them. Any prefix bigger than `/30` would be ambiguous: is it a
-LAN with two hosts, or a link? The parser settles the question by
-restricting links to the two prefixes that have a clean point-to-point
+A multi-access LAN already has its own model in `loom` — with
+broadcast semantics. A point-to-point link is the **exception** that
+allows two devices to be wired without a LAN bus between them. Any
+prefix bigger than `/30` would be ambiguous: is it a LAN with two
+hosts, or a link? The parser settles the question by restricting
+links to the two prefixes that have a clean point-to-point
 interpretation.
 
 ### Cross-link IP reuse
 
-Two parallel links may reuse the same `/30` without affecting delivery.
-The `Link` fabric resolves peers **structurally** (the interface whose
-address is not the frame's source), not by address lookup. This makes
-copy-pasting a small lab topology safe.
+Two parallel links may reuse the same `/30` without affecting
+delivery. A link delivers each frame to the endpoint that isn't the
+sender — it doesn't look the destination up by address — so collisions
+between unrelated links don't cross-talk. This makes copy-pasting a
+small lab topology safe.
 
 ---
 
