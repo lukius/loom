@@ -1,7 +1,7 @@
 // web/inspector.test.js
 // Tests for inspector.js: nav links section, link editor, CRUD ops,
 // fabric-type dropdowns, and context menu for p2p links.
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { state, bus } from './state.js';
 import {
   renderNav,
@@ -11,6 +11,9 @@ import {
   renderRouterInsp,
   renameLink,
   duplicateLink,
+  duplicateHost,
+  duplicateNetwork,
+  duplicateRouter,
   deleteSelected,
   openContextMenu,
   closeContextMenu,
@@ -588,6 +591,58 @@ describe('duplicateLink', () => {
     state.links = { p2p1: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
     duplicateLink('p2p1');
     expect(state.selection).toEqual({ kind: 'link', name: 'p2p1_1' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10b. duplicate-* must work while the sim is paused
+//
+// Regression: a stale `Sim.state === 'paused'` guard caused all four
+// duplicate-* fns to silently no-op in paused mode, even though the context
+// menu rendered the item as enabled (locked-check is `running`-only).
+// Mirrors addNew, which already records an `add_*` patch op for reconcile.
+// ---------------------------------------------------------------------------
+describe('duplicate-* in paused sim', () => {
+  beforeEach(() => {
+    Sim.state = 'paused';
+    Sim.patch = [];
+  });
+  afterEach(() => {
+    Sim.state = 'idle';
+    Sim.patch = [];
+  });
+
+  it('duplicateHost clones the host and records add_host', () => {
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    duplicateHost('h1');
+    expect(state.hosts['h1_1']).toBeDefined();
+    expect(Sim.patch.some(o => o.op === 'add_host' && o.name === 'h1_1')).toBe(true);
+  });
+
+  it('duplicateRouter clones the router and records add_router', () => {
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.0.0.1', cost: 5 } } },
+    };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    duplicateRouter('r1');
+    expect(state.routers['r1_1']).toBeDefined();
+    expect(Sim.patch.some(o => o.op === 'add_router' && o.name === 'r1_1')).toBe(true);
+  });
+
+  it('duplicateNetwork clones the LAN and records add_network', () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    duplicateNetwork('lan1');
+    expect(state.networks['lan1_1']).toBeDefined();
+    expect(Sim.patch.some(o => o.op === 'add_network' && o.name === 'lan1_1')).toBe(true);
+  });
+
+  it('duplicateLink clones the link (no patch op — add_link is unsupported)', () => {
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
+    duplicateLink('p2p1');
+    expect(state.links['p2p1_1']).toBeDefined();
+    // Mirrors addNew: link creation isn't a patch op (server has no add_link).
+    expect(Sim.patch.some(o => o.op && o.op.startsWith('add_link'))).toBe(false);
   });
 });
 
