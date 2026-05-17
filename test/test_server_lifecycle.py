@@ -102,7 +102,7 @@ def test_topology_endpoint_loads_yaml(tmp_path, monkeypatch):
 
     src = tmp_path / "src.yaml"
     src.write_text(SAMPLE)
-    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
 
     app = create_app()
     with TestClient(app) as c:
@@ -119,7 +119,7 @@ def test_lifecycle_via_rest(tmp_path, monkeypatch):
 
     src = tmp_path / "src.yaml"
     src.write_text(SAMPLE)
-    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
 
     app = create_app()
     with TestClient(app) as c:
@@ -137,7 +137,7 @@ def test_invalid_yaml_returns_400(tmp_path, monkeypatch):
 
     src = tmp_path / "src.yaml"
     src.write_text("not yaml :::")
-    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
     with TestClient(create_app()) as c:
         r = c.post("/topology", json={"yaml": "as:\n  rubbish"})
         assert r.status_code == 400
