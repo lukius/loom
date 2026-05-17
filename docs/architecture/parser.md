@@ -199,7 +199,7 @@ returns a `ValidationResult` (`ValidationSuccess` or
 `DeviceValidator._addr_already_used` walks every router and every host
 to check for duplicate addresses on the same fabric. That's `O(R · K + H)`
 per validation; the parser invokes it once per device, so the overall
-parse is `O(R · K · (R · K + H))`. Fine at the simulator's scale.
+parse is `O(R · K · (R · K + H))`.
 
 ## Errors and fixtures
 
