@@ -132,6 +132,14 @@ class ParserTest(unittest.TestCase):
         self.assertIn('r2', devices)
         self.assertEqual(devices['r2'], router2)
 
+    def test_duplicate_private_network_allowed(self):
+        # RFC 1918 prefixes may legally repeat — downstream NAT handles them.
+        system = Parser(f'{self.FILE_PATH}/duplicate_private_network.yaml').parse()
+        nets = system.networks()
+        self.assertIn('lan_a', nets)
+        self.assertIn('lan_b', nets)
+        self.assertEqual(nets['lan_a'].address(), nets['lan_b'].address())
+
     def test_duplicate_network_address(self):
         self._run_parsing_error_test('duplicate_network_address', 'network address already exists')
 

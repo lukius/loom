@@ -1,0 +1,27 @@
+as:
+  name: "test_as"
+  networks:
+    lan_a: "192.168.1.0/24"
+    lan_b: "192.168.1.0/24"
+  routers:
+    r1:
+        interfaces:
+            eth0:
+                network: "lan_a"
+                address: "192.168.1.1"
+                cost: 10
+    r2:
+        interfaces:
+            eth0:
+                network: "lan_b"
+                address: "192.168.1.1"
+                cost: 10
+  hosts:
+    h1:
+        network: "lan_a"
+        address: "192.168.1.10"
+        gateway: "192.168.1.1"
+    h2:
+        network: "lan_b"
+        address: "192.168.1.10"
+        gateway: "192.168.1.1"

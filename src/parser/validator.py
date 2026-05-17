@@ -95,7 +95,9 @@ class NetworkValidator(Validator):
                 return ValidationFailure(f'network already exists')
 
             if sys_net.address() == net.address():
-                return ValidationFailure(f'network address already exists')
+                if not net.address().is_private():
+                    return ValidationFailure(f'network address already exists')
+                # Private CIDRs are allowed to repeat; downstream NAT handles them.
 
         return ValidationSuccess()
 
