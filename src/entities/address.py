@@ -68,10 +68,10 @@ class NetworkAddress(BaseAddress):
     def mask(self) -> int:
         return self._mask
 
-    def matches(self, address: Address) -> bool:
+    def matches(self, address: BaseAddress) -> bool:
         return self._matches(address.octets())
 
-    def contains(self, address: Address) -> bool:
+    def contains(self, address: BaseAddress) -> bool:
         return self._matches(address.octets())
 
     def broadcast(self) -> Address:
@@ -104,8 +104,7 @@ class NetworkAddress(BaseAddress):
 
     def is_private(self) -> bool:
         """Return True if the network address falls within an RFC 1918 private range."""
-        net_addr = Address('.'.join(map(str, self._octets)))
-        return any(p.contains(net_addr) for p in _RFC1918_PREFIXES)
+        return any(p.contains(self) for p in _RFC1918_PREFIXES)
 
     def __str__(self) -> str:
         return '.'.join(map(str, self._octets)) + f'/{self._mask}'
