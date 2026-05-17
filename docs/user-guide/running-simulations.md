@@ -75,6 +75,7 @@ Effects, observable in the canvas:
 **While paused, you can edit:**
 
 - Add a LAN, host, or router.
+- Duplicate a LAN, host, router, or link.
 - Delete any of the above.
 - Update an interface cost.
 - Edit names and addresses (with the same uniqueness/validity rules

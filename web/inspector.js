@@ -860,19 +860,21 @@ export function renameRouter(oldName, newName) {
   markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
 }
 export function duplicateNetwork(name) {
-  if (isTopologyLocked() || (Sim && Sim.state === 'paused')) return;
+  if (isTopologyLocked()) return;
   const newName = uniqueName(name + '_', state.networks);
   const src = state.networks[name];
   state.networks[newName] = { ...src, x: src.x + 30, y: src.y + 30 };
   state.selection = { kind: 'network', name: newName };
+  recordPatchOp({ op: 'add_network', name: newName, address: src.cidr || '' });
   markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
 }
 export function duplicateHost(name) {
-  if (isTopologyLocked() || (Sim && Sim.state === 'paused')) return;
+  if (isTopologyLocked()) return;
   const newName = uniqueName(name + '_', state.hosts);
   const src = state.hosts[name];
   state.hosts[newName] = { ...src, x: src.x + 30, y: src.y + 30 };
   state.selection = { kind: 'host', name: newName };
+  recordPatchOp({ op: 'add_host', name: newName, network: src.network || '', address: src.address || '' });
   markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
 }
 export function renameLink(oldName, newName) {
@@ -887,7 +889,7 @@ export function renameLink(oldName, newName) {
   markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
 }
 export function duplicateLink(name) {
-  if (isTopologyLocked() || (Sim && Sim.state === 'paused')) return;
+  if (isTopologyLocked()) return;
   const newName = uniqueName(name + '_', state.links);
   const src = state.links[name];
   // Clone the link entry but NOT its endpoints — a newly duplicated link has
@@ -898,12 +900,13 @@ export function duplicateLink(name) {
   toast(`Link "${newName}" created (no endpoints — attach routers/hosts to use it)`, '', 'Duplicate');
 }
 export function duplicateRouter(name) {
-  if (isTopologyLocked() || (Sim && Sim.state === 'paused')) return;
+  if (isTopologyLocked()) return;
   const newName = uniqueName(name + '_', state.routers);
   const src = state.routers[name];
   state.routers[newName] = JSON.parse(JSON.stringify(src));
   state.routers[newName].x = src.x + 30; state.routers[newName].y = src.y + 30;
   state.selection = { kind: 'router', name: newName };
+  recordPatchOp({ op: 'add_router', name: newName, interfaces: [] });
   markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
 }
 export function deleteSelected() {
