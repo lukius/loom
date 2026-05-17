@@ -226,11 +226,14 @@ def send_to(self, datagram, dst_addr):
 The event dict includes both a **`payload_id`** (uniquely identifies one
 Message instance — one direction) and a **`flow`** key (the end-to-end
 conversation identifier reported by the payload via `Message.flow_key()`).
-The flow is keyed on the payload — not on the packet's address pair — so
-it stays stable across NAT rewrites of src/dst as the packet traverses
-private↔public boundaries. `PingReply` overrides `flow_key` to echo its
-originating `PingRequest`'s id, so a single ping (request + reply, even
-across NAT) reports one flow.
+The flow is a **stable conversation UUID** keyed on the payload — not
+on packet sequence numbers and not on the packet's address pair — so it
+survives NAT rewrites of src/dst as the packet crosses private↔public
+boundaries. `PingReply` overrides `flow_key` to echo its originating
+`PingRequest`'s id, so a single ping (request + reply, even across NAT)
+reports one flow. The same value is the NAT-table discriminator (see
+`entities/nat.py::flow_id`), so two private hosts with colliding
+sequence numbers each get their own NAT entry.
 
 Two fields are derived to keep `Frame.source()` valid for the fabric's
 peer-resolution code:

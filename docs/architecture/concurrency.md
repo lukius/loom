@@ -157,7 +157,10 @@ matches a recorded translation the destination is rewritten back to the
 original private host and the packet re-enters forwarding normally. The
 NAT table is per-router and protected by a single lock; when it reaches
 capacity, the least-recently-used entry is evicted — there is no
-time-based expiration.
+time-based expiration. The translation key uses the **conversation UUID**
+(not packet sequence numbers) so concurrent flows from two private hosts
+with colliding seqs don't collide on the NAT entry — see
+[nat.md](nat.md).
 
 **Pause behavior:** if the gate flips to paused between any two threads
 in this chain, the frame remains queued and the receiving thread blocks

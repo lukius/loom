@@ -93,7 +93,9 @@ still contains directly-connected rules for those interfaces — the
 filter applies only to what is advertised outward, not to the local
 graph. This is what makes overlapping private CIDRs safe across
 tenants: their address spaces remain invisible to every other
-router.
+router. Cross-tenant reachability for the public destinations they
+need is recovered at the egress router by source NAT — see
+[nat.md](nat.md).
 
 ---
 
