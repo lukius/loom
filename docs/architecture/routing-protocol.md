@@ -289,8 +289,7 @@ while len(costs) > 0:
 ```
 
 Complexity: **O((V + E) log V)** in the worst case (each edge can cause
-at most one heap push). The constant factor is fine for the simulator's
-scale — don't replace with a `fibonacci_heap`.
+at most one heap push).
 
 `shortest_paths(src)` post-processes the distance/`previous` maps into
 the explicit path list expected by `_recompute_if_dirty`:
