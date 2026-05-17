@@ -306,19 +306,6 @@ As topology size grows, the choke points appear in this order:
 4. **Raw thread count.** Linux pthread + CPython tolerate ~10k threads
    comfortably; beyond that, `pthread_create` itself slows down.
 
-### When to reach for asyncio
-
-The realistic ceiling on the current architecture is around 10–25
-sample-scale ASes (~30–75 routers total) plus a future BGP-like
-inter-AS speaker. That's plenty for the teaching scenarios `loom` was
-built for. If a future use case calls for "model the Internet" —
-hundreds of ASes, BGP convergence dynamics, route reflectors — that's
-the right moment to rewrite the core packet loops in asyncio. It
-composes naturally with the FastAPI event loop already present at the
-HTTP/WS boundary, but it's a substantial refactor (every `_pkt_loop`
-becomes a coroutine, `PauseGate` becomes an `asyncio.Event`, the
-queues become `asyncio.Queue`).
-
 Feature work that doesn't add threads — NAT tables, new packet types,
 link-cost dynamics, additional protocols layered on top of the
 existing keepalive — does **not** move the bottleneck. It scales on
