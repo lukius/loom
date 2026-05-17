@@ -28,10 +28,13 @@ Every router runs a `RoutingProtocol` instance, accessed as
 - A dirty flag (`_graph_updated`) that gates `_recompute_if_dirty`. The
   routing table is only rebuilt when the graph actually changed.
 
-The receiver state is **per-interface**, not per-router: a router
-originating from two interfaces is two distinct "sources" from a
-neighbor's perspective. Don't conflate `src_router` (used to add nodes
-to the graph) with `src_address` (used to dedup floods).
+The receiver-side dedup is keyed on the **source interface's IP**, not
+on the source router. When router R floods from each of its K interfaces,
+every peer keeps K separate `(last-seen-seq)` entries — one per source
+interface address — even though all K floods originate from the same
+router R. So don't conflate `src_router` (used to add a node to the
+graph) with `src_address` (used to dedup floods); the protocol uses
+both, for different purposes.
 
 ---
 
