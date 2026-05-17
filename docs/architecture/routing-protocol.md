@@ -88,8 +88,23 @@ Three subtleties:
 
 ## Receiving a flood
 
-`handle_incoming_message` runs on the inbound interface's packet thread,
-invoked by `Router._handle_routing_message`:
+`handle_incoming_message` runs on the **inbound interface's packet
+thread** — not on the protocol's own keepalive thread, despite living
+in `RoutingProtocol`. The class boundary doesn't match the thread
+boundary: only `_keepalive_loop` (and the `_handle_update` it calls)
+runs on the keepalive thread; everything else in `RoutingProtocol` is
+invoked synchronously from whichever thread happened to call it. The
+inbound call chain:
+
+```
+Interface._pkt_loop  (per-interface daemon)
+  → device.handle_packet
+    → Router._handle_message
+      → Router._handle_routing_message
+        → RoutingProtocol.handle_incoming_message  ← runs here
+```
+
+So in this sequence:
 
 ```mermaid
 sequenceDiagram
