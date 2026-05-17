@@ -305,8 +305,3 @@ As topology size grows, the choke points appear in this order:
    core.
 4. **Raw thread count.** Linux pthread + CPython tolerate ~10k threads
    comfortably; beyond that, `pthread_create` itself slows down.
-
-Feature work that doesn't add threads — NAT tables, new packet types,
-link-cost dynamics, additional protocols layered on top of the
-existing keepalive — does **not** move the bottleneck. It scales on
-the same curve as the current topology.
