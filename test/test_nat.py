@@ -1,7 +1,7 @@
 import threading
 import unittest
 
-from entities import Address
+from entities import Address, Router
 from entities.nat import NATTable, flow_id
 from entities.packet import PingReply, PingRequest, UserMessage
 
@@ -128,3 +128,14 @@ class FlowIdHelperTest(unittest.TestCase):
 
     def test_arbitrary_object_without_seq_returns_none(self):
         self.assertIsNone(flow_id(object()))
+
+
+class RouterNATWiringTest(unittest.TestCase):
+
+    def test_router_constructs_its_own_nat_table(self):
+        r = Router('r1')
+        self.assertIsInstance(r.nat_table(), NATTable)
+
+    def test_each_router_has_its_own_table(self):
+        a, b = Router('a'), Router('b')
+        self.assertIsNot(a.nat_table(), b.nat_table())

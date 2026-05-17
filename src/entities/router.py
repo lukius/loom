@@ -8,6 +8,7 @@ from .address import Address, NetworkAddress, NullAddress
 from .device import NetworkDevice
 from .event import EventTracer
 from .interface import Interface
+from .nat import NATTable
 from .packet import Datagram, RoutingMessage
 
 
@@ -132,6 +133,7 @@ class Router(NetworkDevice):
     def __init__(self, name):
         super().__init__(name)
         self._routing_table = RoutingTable()
+        self._nat_table = NATTable()
         self._protocol = RoutingProtocol(self)
         self._as_gate = None  # set by AS.add_router
 
@@ -140,6 +142,9 @@ class Router(NetworkDevice):
 
     def routing_table(self):
         return self._routing_table
+
+    def nat_table(self):
+        return self._nat_table
 
     def start(self):
         self._protocol.start()
