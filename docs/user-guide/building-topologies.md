@@ -1,8 +1,8 @@
 # Building Topologies
 
-A topology in `loom` is four kinds of thing: **networks** (multi-access
-LANs), **links** (point-to-point), **hosts**, and **routers**. This
-guide walks through each, on the canvas and in YAML.
+A `loom` topology is built from four kinds of entity: **networks**
+(multi-access LANs), **links** (point-to-point), **hosts**, and
+**routers**. This guide walks through each, on the canvas and in YAML.
 
 The sim must be **idle** or **paused** before you can add or remove
 devices. While running, the toolbar's **Add** buttons are disabled and
