@@ -69,7 +69,7 @@ def test_sim_state_event_emitted_on_transitions(tmp_path, monkeypatch):
     """)
     src = tmp_path / "src.yaml"
     src.write_text(yaml_text)
-    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
     EventTracer._subscribers.clear()
 
     app = create_app()
@@ -126,7 +126,7 @@ def test_packet_event_carries_flow_and_payload_id(tmp_path, monkeypatch):
     """)
     src = tmp_path / "src.yaml"
     src.write_text(yaml_text)
-    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
 
     from entities.event import EventTracer
     from server.app import create_app
@@ -191,7 +191,7 @@ def test_ws_streams_packet_events(tmp_path, monkeypatch):
     """)
     src = tmp_path / "src.yaml"
     src.write_text(yaml_text)
-    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
 
     from entities.event import EventTracer
 
