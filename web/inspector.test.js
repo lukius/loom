@@ -19,7 +19,7 @@ import {
   closeContextMenu,
   Inspector,
 } from './inspector.js';
-import { Sim } from './sim.js';
+import { Sim, RuntimeClient } from './sim.js';
 
 // ---------------------------------------------------------------------------
 // Minimal DOM environment — mirrors the subset that inspector.js touches.
@@ -1118,9 +1118,49 @@ describe('Inspector.refreshNAT', () => {
     state.natTables = {};
   });
 
-  it('hides the panel when there are no entries for the device', () => {
-    Inspector.refreshNAT('r_a');
+  it('hides the panel when there are no entries for the device', async () => {
+    // Server returns an empty table for r_a — panel stays hidden.
+    RuntimeClient._json = vi.fn(async () => ({ entries: [] }));
+    await Inspector.refreshNAT('r_a');
     expect(document.getElementById('insp-nat').hidden).toBe(true);
+  });
+
+  it('primes state.natTables from GET /devices/<n>/nat-table on first call, then renders', async () => {
+    // Simulates a page reload: the SPA bootstrap left state.natTables
+    // empty (no events fired since reload). Inspector must fetch the
+    // current snapshot so the panel doesn't stay empty until the next
+    // translation happens.
+    expect(state.natTables['r_a']).toBeUndefined();
+    RuntimeClient._json = vi.fn(async (method, path) => {
+      if (method === 'GET' && path === '/devices/r_a/nat-table') {
+        return { entries: [{
+          original_src: '192.168.1.10',
+          rewritten_src: '200.100.0.1',
+          dst: '8.8.8.8',
+          flow_id: 'abc-uuid-string',
+        }] };
+      }
+      return {};
+    });
+    await Inspector.refreshNAT('r_a');
+    expect(state.natTables['r_a']).toBeDefined();
+    expect(state.natTables['r_a'].length).toBe(1);
+    const sec = document.getElementById('insp-nat');
+    expect(sec.hidden).toBe(false);
+    expect(sec.innerHTML).toContain('192.168.1.10');
+  });
+
+  it('does NOT re-fetch when state.natTables already has the device cached', async () => {
+    // Avoids a race where an in-flight fetch overwrites a newer event-driven
+    // update. Events are the steady-state source of truth; the fetch is just
+    // a prime on cold start.
+    state.natTables['r_a'] = [{
+      original_src: '10.0.0.1', rewritten_src: '1.1.1.1', dst: '8.8.8.8', flow_id: null,
+    }];
+    const spy = vi.fn(async () => ({ entries: [] }));
+    RuntimeClient._json = spy;
+    await Inspector.refreshNAT('r_a');
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('hides the panel when Sim is idle', () => {

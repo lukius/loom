@@ -113,13 +113,27 @@ export const Inspector = {
     }
   },
 
-  refreshNAT(deviceName) {
+  async refreshNAT(deviceName) {
     const sec = document.getElementById('insp-nat');
     if (!sec) return;
     if (Sim.state === 'idle' || !deviceName) { sec.hidden = true; return; }
     // Hosts don't have a NAT table.
     if (state.hosts && state.hosts[deviceName]) { sec.hidden = true; return; }
-    const entries = (state.natTables && state.natTables[deviceName]) || [];
+    // Prime from the server on cold start. Events on the bus only carry
+    // *changes*, so a fresh subscriber (page reload, late inspector mount)
+    // would see an empty panel until the next translation. Once primed,
+    // subsequent updates ride the `sim:nat-table-changed` event stream,
+    // so we never re-fetch (avoids races where a stale fetch overwrites
+    // a newer event-driven update).
+    if (state.natTables[deviceName] === undefined) {
+      try {
+        const r = await RuntimeClient.deviceNatTable(deviceName);
+        state.natTables[deviceName] = r.entries || [];
+      } catch (e) {
+        state.natTables[deviceName] = [];
+      }
+    }
+    const entries = state.natTables[deviceName] || [];
     if (!entries.length) { sec.hidden = true; return; }
     sec.hidden = false;
     const rows = entries.map(e => {

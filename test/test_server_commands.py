@@ -48,6 +48,26 @@ def test_unknown_device_returns_404(client):
     assert r.status_code == 404
 
 
+def test_nat_table_endpoint(client):
+    # Routers expose their NAT-table snapshot — needed so the SPA can recover
+    # the current state after a page reload (events only carry incremental
+    # changes, so without a fetch the inspector panel would stay empty until
+    # the next translation happens).
+    r = client.get("/devices/r1/nat-table")
+    assert r.status_code == 200
+    body = r.json()
+    assert "entries" in body
+    assert isinstance(body["entries"], list)
+
+
+def test_nat_table_endpoint_returns_empty_for_host(client):
+    # Hosts have no NAT table. Return an empty list (so the client can treat
+    # the endpoint uniformly without special-casing host vs. router).
+    r = client.get("/devices/h1/nat-table")
+    assert r.status_code == 200
+    assert r.json() == {"entries": []}
+
+
 def test_command_ifconfig(client):
     r = client.post("/devices/h1/command", json={"cmd": "ifconfig"})
     assert r.status_code == 200

@@ -40,6 +40,7 @@ export const RuntimeClient = {
   deviceCommand(n, cmd)  { return this._json('POST', `/devices/${encodeURIComponent(n)}/command`, { cmd }); },
   deviceRoutes(n)        { return this._json('GET',  `/devices/${encodeURIComponent(n)}/routes`); },
   deviceInterfaces(n)    { return this._json('GET',  `/devices/${encodeURIComponent(n)}/interfaces`); },
+  deviceNatTable(n)      { return this._json('GET',  `/devices/${encodeURIComponent(n)}/nat-table`); },
 
   connectEvents(onEvent) {
     this._onEvent = onEvent;
