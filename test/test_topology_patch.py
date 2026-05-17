@@ -19,7 +19,7 @@ as:
 def client(tmp_path, monkeypatch):
     src = tmp_path / "src.yaml"
     src.write_text(SAMPLE)
-    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
     with TestClient(create_app()) as c:
         c.post("/topology", json={"yaml": SAMPLE})
         yield c
@@ -78,6 +78,104 @@ def test_update_cost_patch(client):
     assert r.status_code == 400
 
 
+# ---------------------------------------------------------------------------
+# address_in_use — patch validator must reject add_host / add_router whose
+# address is already used by an existing host or router interface on the same
+# network. (Duplicating an entity in the SPA clones the address verbatim, so
+# Resume must catch the collision rather than silently clobbering the LAN's
+# address-keyed interface map.)
+# ---------------------------------------------------------------------------
+def test_add_host_with_duplicate_address_rejected(client):
+    client.post("/sim/start")
+    client.post("/sim/pause")
+    r = client.post("/sim/resume", json={"patch": [
+        {"op": "add_host", "name": "h2", "network": "lan1", "address": "10.0.0.1"}
+    ]})
+    assert r.status_code == 400
+    assert "address_in_use" in r.json().get("detail", "")
+    # Atomic rejection: h2 should not exist.
+    assert client.get("/devices/h2/interfaces").status_code == 404
+
+
+def _two_lan_yaml() -> str:
+    return textwrap.dedent("""
+    as:
+      name: t
+      networks:
+        lan1: "10.0.0.0/24"
+        lan2: "10.0.1.0/24"
+      hosts:
+        h1: {network: lan1, address: "10.0.0.1"}
+        h2: {network: lan2, address: "10.0.1.1"}
+    """)
+
+
+@pytest.fixture
+def two_lan_client(tmp_path, monkeypatch):
+    yaml = _two_lan_yaml()
+    src = tmp_path / "src.yaml"
+    src.write_text(yaml)
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
+    with TestClient(create_app()) as c:
+        c.post("/topology", json={"yaml": yaml})
+        yield c
+
+
+def test_add_router_single_iface_with_duplicate_address_rejected(two_lan_client):
+    two_lan_client.post("/sim/start")
+    two_lan_client.post("/sim/pause")
+    r = two_lan_client.post("/sim/resume", json={"patch": [
+        {"op": "add_router", "name": "r1", "interfaces": [
+            {"name": "eth0", "network": "lan1", "address": "10.0.0.1", "cost": 1},
+        ]},
+    ]})
+    assert r.status_code == 400
+    assert "address_in_use" in r.json().get("detail", "")
+
+
+def test_add_router_multi_iface_one_address_collides(two_lan_client):
+    # Mirrors the SPA's duplicateRouter: the clone keeps every interface's
+    # address; if even one of those addresses is now in use, the whole patch
+    # must be rejected.
+    two_lan_client.post("/sim/start")
+    two_lan_client.post("/sim/pause")
+    r = two_lan_client.post("/sim/resume", json={"patch": [
+        {"op": "add_router", "name": "r1", "interfaces": [
+            {"name": "eth0", "network": "lan1", "address": "10.0.0.254", "cost": 1},
+            {"name": "eth1", "network": "lan2", "address": "10.0.1.1", "cost": 1},
+        ]},
+    ]})
+    assert r.status_code == 400
+    assert "address_in_use" in r.json().get("detail", "")
+
+
+def test_add_router_intra_collision_on_same_network_rejected(tmp_path, monkeypatch):
+    # Two of the new router's own interfaces sit on the same LAN with the same
+    # address — the validator must catch this even before any pre-existing
+    # device claims the address.
+    yaml = textwrap.dedent("""
+    as:
+      name: t
+      networks:
+        lan1: "10.0.0.0/24"
+    """)
+    src = tmp_path / "src.yaml"
+    src.write_text(yaml)
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
+    with TestClient(create_app()) as c:
+        c.post("/topology", json={"yaml": yaml})
+        c.post("/sim/start")
+        c.post("/sim/pause")
+        r = c.post("/sim/resume", json={"patch": [
+            {"op": "add_router", "name": "r1", "interfaces": [
+                {"name": "eth0", "network": "lan1", "address": "10.0.0.5", "cost": 1},
+                {"name": "eth1", "network": "lan1", "address": "10.0.0.5", "cost": 1},
+            ]},
+        ]})
+    assert r.status_code == 400
+    assert "address_in_use" in r.json().get("detail", "")
+
+
 def test_update_cost_invalid_value_returns_400(tmp_path, monkeypatch):
     yaml_with_router = textwrap.dedent("""
     as:
@@ -89,7 +187,7 @@ def test_update_cost_invalid_value_returns_400(tmp_path, monkeypatch):
     """)
     src = tmp_path / "src.yaml"
     src.write_text(yaml_with_router)
-    monkeypatch.setenv("NETROUTING_TOPOLOGY", str(src))
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
     with TestClient(create_app()) as c:
         c.post("/topology", json={"yaml": yaml_with_router})
         c.post("/sim/start")

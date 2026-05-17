@@ -950,6 +950,111 @@ describe('renderRouterInsp — inline IP validation for iface address', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 15b. Address-uniqueness — host + router interface inspectors flag a
+// duplicate address on the same fabric (network or link). Mirrors the
+// server-side `address_in_use` patch-validator check so the user catches
+// the collision before Resume rejects it.
+// ---------------------------------------------------------------------------
+describe('renderHostInsp — duplicate-address inline check', () => {
+  it('flags a host address already used by another host on the same LAN', () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.hosts = {
+      h1:   { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 },
+      h1_1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 },
+    };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1_1', elI);
+    const err = elI.querySelector('#f-addr-err');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toContain('already used by h1');
+  });
+
+  it('does NOT flag when the colliding host is on a different LAN', () => {
+    state.networks = {
+      lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 },
+      lan2: { cidr: '10.0.0.0/24', x: 0, y: 0 },
+    };
+    state.hosts = {
+      h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 },
+      h2: { network: 'lan2', address: '10.0.0.5', x: 0, y: 0 },
+    };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h2', elI);
+    expect(elI.querySelector('#f-addr-err').classList.contains('show')).toBe(false);
+  });
+
+  it('does NOT flag the host editing its own address (self-exclusion)', () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    expect(elI.querySelector('#f-addr-err').classList.contains('show')).toBe(false);
+  });
+
+  it('flags a host whose link-fabric address collides with another host on the same link', () => {
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
+    state.hosts = {
+      h1: { link: 'p2p1', address: '10.0.0.1', x: 0, y: 0 },
+      h2: { link: 'p2p1', address: '10.0.0.1', x: 0, y: 0 },
+    };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h2', elI);
+    const err = elI.querySelector('#f-addr-err');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toContain('already used by h1');
+  });
+});
+
+describe('renderRouterInsp — duplicate-address inline check', () => {
+  it("flags a router interface using an address that's already on a host on the same LAN", () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.0.0.5', cost: 5 } } },
+    };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const err = elI.querySelector('[data-iface-addr-err="eth0"]');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toContain('already used by h1');
+  });
+
+  it('flags intra-router collisions (two interfaces sharing an address on the same LAN)', () => {
+    // The first iface holds the address freely; the second is the collision.
+    // (Iteration order in JS objects is insertion order, so eth1 sees eth0 already there.)
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: {
+        eth0: { network: 'lan1', address: '10.0.0.5', cost: 5 },
+        eth1: { network: 'lan1', address: '10.0.0.5', cost: 5 },
+      } },
+    };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const eth1Err = elI.querySelector('[data-iface-addr-err="eth1"]');
+    expect(eth1Err.classList.contains('show')).toBe(true);
+    expect(eth1Err.textContent).toContain('already used by r1/eth0');
+  });
+
+  it('does NOT flag a router interface whose siblings sit on different LANs', () => {
+    state.networks = {
+      lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 },
+      lan2: { cidr: '10.0.1.0/24', x: 0, y: 0 },
+    };
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: {
+        eth0: { network: 'lan1', address: '10.0.0.5', cost: 5 },
+        eth1: { network: 'lan2', address: '10.0.0.5', cost: 5 },
+      } },
+    };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    expect(elI.querySelector('[data-iface-addr-err="eth0"]').classList.contains('show')).toBe(false);
+    expect(elI.querySelector('[data-iface-addr-err="eth1"]').classList.contains('show')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 16. Context menu — "New p2p link…" item for host and router targets
 // ---------------------------------------------------------------------------
 describe('openContextMenu — "New p2p link…" on host and router', () => {
