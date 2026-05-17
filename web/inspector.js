@@ -22,6 +22,42 @@ import { Sim, RuntimeClient, isTopologyLocked, recordPatchOp } from './sim.js';
  * input is neither valid-styled nor invalid-styled, matching the draft-state
  * convention where an empty field is deliberately allowed.
  */
+/**
+ * Find the host / router-interface that owns `addr` on the given fabric,
+ * excluding `selfRef` (the entity being edited, so its own current value
+ * doesn't false-positive). Returns the label to show the user
+ * (`<host>` or `<router>/<iface>`), or `''` if the address is free.
+ *
+ * Mirrors the server's `_address_owner` check at the patch-validator layer
+ * (`src/server/state.py`) — the SPA surfaces the same rule inline so the
+ * user catches the collision before Resume rejects it.
+ */
+function findAddressOwner(addr, fabricKind, fabricName, selfRef) {
+  if (!fabricKind || !fabricName) return '';
+  for (const [hname, h] of Object.entries(state.hosts)) {
+    if (selfRef && selfRef.kind === 'host' && selfRef.name === hname) continue;
+    const hf = fabricKind === 'link' ? h.link : h.network;
+    if (hf === fabricName && h.address === addr) return hname;
+  }
+  for (const [rname, r] of Object.entries(state.routers)) {
+    for (const [ifn, iff] of Object.entries(r.interfaces || {})) {
+      if (selfRef && selfRef.kind === 'router' && selfRef.name === rname && selfRef.ifaceName === ifn) continue;
+      const rf = fabricKind === 'link' ? iff.link : iff.network;
+      if (rf === fabricName && iff.address === addr) return `${rname}/${ifn}`;
+    }
+  }
+  return '';
+}
+
+function addressValidatorFor(fabricKind, fabricName, selfRef) {
+  return (v) => {
+    if (!isValidIpv4(v)) return { ok: false, reason: 'not a valid IPv4 address' };
+    const owner = findAddressOwner(v, fabricKind, fabricName, selfRef);
+    if (owner) return { ok: false, reason: `already used by ${owner}` };
+    return { ok: true };
+  };
+}
+
 function wireFieldValidation(input, errorEl, validateFn) {
   const update = (value) => {
     const v = (value ?? '').trim();
@@ -561,7 +597,7 @@ export function renderHostInsp(name, elI) {
   wireFieldValidation(
     elI.querySelector('#f-addr'),
     elI.querySelector('#f-addr-err'),
-    v => isValidIpv4(v) ? { ok: true } : { ok: false, reason: 'not a valid IPv4 address' },
+    addressValidatorFor(fabricType, host[fabricType], { kind: 'host', name }),
   );
   const gwInp = elI.querySelector('#f-gw');
   if (gwInp) {
@@ -801,12 +837,16 @@ export function renderRouterInsp(name, elI) {
       state.routers[name].interfaces[i.getAttribute('data-iface-addr')].address = i.value.trim();
       markDirty(); renderCanvas();
     });
-    const errEl = elI.querySelector(`[data-iface-addr-err="${cssEscape(i.getAttribute('data-iface-addr'))}"]`);
+    const ifn = i.getAttribute('data-iface-addr');
+    const errEl = elI.querySelector(`[data-iface-addr-err="${cssEscape(ifn)}"]`);
     if (errEl) {
+      const iff = state.routers[name].interfaces[ifn] || {};
+      const ifFabricKind = iff.link !== undefined ? 'link' : 'network';
+      const ifFabricName = iff[ifFabricKind];
       wireFieldValidation(
         i,
         errEl,
-        v => isValidIpv4(v) ? { ok: true } : { ok: false, reason: 'not a valid IPv4 address' },
+        addressValidatorFor(ifFabricKind, ifFabricName, { kind: 'router', name, ifaceName: ifn }),
       );
     }
   });

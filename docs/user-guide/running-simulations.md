@@ -113,6 +113,7 @@ Common patch-validation errors:
 | Error | Cause |
 |---|---|
 | `duplicate_name` | `add_*` with a name that's now taken. |
+| `address_in_use` | `add_host` / `add_router` carries an IP already held by another host or router interface on the same network. |
 | `network_in_use` | `remove_network` for a LAN still attached to a host or router. |
 | `network_not_found` | `add_host` / `add_router` references a non-existent network. |
 | `interface_not_found` | `update_cost` for a router that doesn't have that interface. |

@@ -129,6 +129,9 @@ class SimState:
                 raise InvalidStateTransition("network_not_found", op["network"])
             if op["name"] in self._as.hosts() or op["name"] in self._as.routers():
                 raise InvalidStateTransition("duplicate_name", op["name"])
+            owner = self._address_owner(op["network"], op["address"])
+            if owner:
+                raise InvalidStateTransition("address_in_use", owner)
         elif kind == "remove_host":
             if op.get("name") not in self._as.hosts():
                 raise InvalidStateTransition("host_not_found", op.get("name", ""))
@@ -137,11 +140,27 @@ class SimState:
                 raise InvalidStateTransition("invalid_patch", kind)
             if op["name"] in self._as.hosts() or op["name"] in self._as.routers():
                 raise InvalidStateTransition("duplicate_name", op["name"])
+            seen: dict[tuple[str, str], str] = {}
             for iface in op["interfaces"]:
-                if iface.get("network") not in self._as.networks():
+                net_name = iface.get("network")
+                if net_name not in self._as.networks():
                     raise InvalidStateTransition(
-                        "network_not_found", iface.get("network", "")
+                        "network_not_found", net_name or ""
                     )
+                addr = iface.get("address", "")
+                # Intra-router collision: two ifaces in this op on the same
+                # net with the same address.
+                key = (net_name, addr)
+                if key in seen:
+                    raise InvalidStateTransition(
+                        "address_in_use",
+                        f"{op['name']}/{iface.get('name', '')}",
+                    )
+                seen[key] = iface.get("name", "")
+                # Collision with an existing host or router interface.
+                owner = self._address_owner(net_name, addr)
+                if owner:
+                    raise InvalidStateTransition("address_in_use", owner)
         elif kind == "remove_router":
             if op.get("name") not in self._as.routers():
                 raise InvalidStateTransition("router_not_found", op.get("name", ""))
@@ -157,6 +176,22 @@ class SimState:
                 raise InvalidStateTransition("invalid_cost", str(op.get("cost", "")))
         else:
             raise InvalidStateTransition("unknown_op", str(kind))
+
+    def _address_owner(self, net_name: str, address: str) -> str:
+        """Return a label for the host/iface that owns `address` on `net_name`.
+
+        Empty string when the address is free. Used by the patch validator
+        to keep `Network._interfaces` (keyed by address) from being silently
+        clobbered when an add_host/add_router op carries a colliding address.
+        """
+        for h in self._as.hosts().values():
+            if h.network().name() == net_name and h.address() == address:
+                return h.name()
+        for r in self._as.routers().values():
+            for ifname, iface in r.interfaces().items():
+                if iface.network().name() == net_name and iface.address() == address:
+                    return f"{r.name()}/{ifname}"
+        return ""
 
     def _apply_op(self, op: dict) -> None:
         from entities import (  # noqa: PLC0415
