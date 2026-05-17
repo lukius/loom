@@ -107,6 +107,41 @@ Selection is shown by a highlight ring around the node.
 | **Reset view** button or <kbd>F</kbd> | Fit topology to canvas |
 | **+** / **−** buttons | Discrete zoom about canvas center |
 
+## Packet animations
+
+Every datagram that traverses a fabric is drawn as a small colored
+rectangle traveling between its endpoints. The color encodes the
+packet type — `user_datagram`, `routing_flood`, `ping_request`,
+`ping_reply` — and the toolbar's **Chatter** toggle filters out the
+routing-protocol packets when you want a quieter canvas.
+
+### Inspecting packet internals
+
+**Pause the simulation, then hover the mouse over any frozen packet
+dot — a tooltip pops up with the packet's internals.** Pausing freezes
+in-flight tweens in place (`packets.js` reads `Sim.state` and stops
+accumulating elapsed time while paused), so the canvas effectively
+becomes a step-through debugger.
+
+The tooltip shows:
+
+- The **packet type** (`user_datagram` / `routing_flood` /
+  `ping_request` / `ping_reply` / `unknown`).
+- The **original endpoints** of the conversation — the L3 source and
+  destination as they were when the packet was created.
+- A second **`hop:`** line, only when the current animation segment is
+  between addresses that differ from the original endpoints — i.e.
+  when a router is forwarding a datagram across a fabric. Single-hop
+  and broadcast packets don't show this line.
+
+![Hover a paused packet to inspect its endpoints](../images/40-packet-tooltip.png)
+
+This is the canonical debugging move when you're trying to trace where
+traffic is actually going: pause, hover each frozen dot in order, and
+read off the per-hop trail. While the simulation is running, packets
+move too fast for the tooltip to land on the dot reliably — pause
+first.
+
 ## Left pane (navigation)
 
 The left pane lists all entities grouped by type — networks, links,
