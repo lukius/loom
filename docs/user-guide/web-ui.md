@@ -119,9 +119,8 @@ routing-protocol packets when you want a quieter canvas.
 
 **Pause the simulation, then hover the mouse over any frozen packet
 dot — a tooltip pops up with the packet's internals.** Pausing freezes
-in-flight tweens in place (`packets.js` reads `Sim.state` and stops
-accumulating elapsed time while paused), so the canvas effectively
-becomes a step-through debugger.
+in-flight packet animations in place, so the canvas effectively becomes
+a step-through debugger.
 
 The tooltip shows:
 
