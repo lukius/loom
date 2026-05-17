@@ -58,8 +58,10 @@ flowchart TD
   G --> H[parse routers]
   H --> I[parse hosts]
   I --> J[post-pass: validate link endpoints + fill host gateways]
-  J --> K[router.start for each router]
-  K --> L[return AS]
+  J --> K{start_routing?}
+  K -- yes --> M[router.start for each router]
+  K -- no --> L
+  M --> L[return AS]
 ```
 
 A failure at any step raises `ParsingException` with a descriptive
@@ -70,12 +72,13 @@ There is no in-parser rollback.
 
 Three notes:
 
-1. **`Parser.parse()` calls `router.start()` on every router** before
-   returning. The shell relies on this — it just calls `Parser(...).parse()`
-   and the routing protocol comes up. The web layer is more nuanced:
-   `SimState.load_from_session` parses, then *immediately stops* the
-   routers, because `idle` semantics demand they wait for an explicit
-   `/sim/start`. See `state.py:60`.
+1. **`Parser.parse(start_routing=True)` starts each router's protocol** by
+   default. The shell relies on this — it just calls `Parser(...).parse()`
+   and the routing protocol comes up. The server layer opts out: it calls
+   `Parser(...).parse(start_routing=False)` because `idle` semantics demand
+   that routers wait for an explicit `/sim/start` before broadcasting their
+   first keepalive. Starting then stopping would race the initial tick and
+   leak `packet` events on the event bus while the sim is still `idle`.
 2. **Hosts on a link** are parsed *after* the link itself, but the link's
    peer may not be attached yet (in the case of two hosts on the same
    link). The parser collects `hosts_on_links = [(host, explicit_gw_or_None), ...]`

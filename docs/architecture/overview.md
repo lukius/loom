@@ -187,10 +187,9 @@ leave the state unchanged — see the rules below.)
 
 Rules enforced by `SimState`:
 
-- **`load_from_session`** stops the previous AS (if any), parses the
-  session file, and **stops the routers again** — `Parser.parse()` starts
-  routers itself, so the lifecycle layer wants them parked at `idle`
-  semantics until `start()`.
+- **`load_from_session`** stops the previous AS (if any) and parses the
+  session file with `start_routing=False`, so routers exist but their
+  keepalive threads are not started — they wait for `start()`.
 - **`start`** resumes the gate and starts every router's keepalive.
 - **`pause`** pauses the gate. In-flight frames remain queued; threads
   block on `wait_or_stop`. No frames are lost.

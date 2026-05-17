@@ -13,13 +13,13 @@ class Parser:
         self.filename = filename
         self._unnamed_count = 0
 
-    def parse(self) -> AS:
+    def parse(self, start_routing: bool = True) -> AS:
         with open(self.filename, 'r') as f:
             content = yaml.safe_load(f)
 
-        return self._parse(content)
+        return self._parse(content, start_routing=start_routing)
 
-    def _parse(self, content: dict):
+    def _parse(self, content: dict, start_routing: bool = True):
         if 'as' not in content:
             self._fail('missing "as" key')
 
@@ -47,8 +47,9 @@ class Parser:
         # Post-pass: validate link endpoint counts and fill host gateways.
         self._post_pass_links(system, hosts_on_links)
 
-        for router in system.routers().values():
-            router.start()
+        if start_routing:
+            for router in system.routers().values():
+                router.start()
 
         return system
 

@@ -56,10 +56,11 @@ class SimState:
         with self._lock:
             if self._as is not None:
                 self._as.stop()
-            self._as = Parser(str(self.session_path)).parse()
-            # Parser.parse() calls router.start() — stop them for "idle" semantics.
-            for r in self._as.routers().values():
-                r.stop()
+            # `start_routing=False`: build routers without starting their
+            # keepalive threads. Starting them here would let the initial
+            # routing tick fire — emitting packet events on a sim that is
+            # still 'idle' — before /sim/start has been called.
+            self._as = Parser(str(self.session_path)).parse(start_routing=False)
             self._state = "idle"
 
     def start(self):

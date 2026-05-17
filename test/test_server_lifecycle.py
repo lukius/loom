@@ -1,6 +1,10 @@
 import textwrap
+import time
 
 import pytest
+
+from entities.event import EventTracer
+from server.state import SimState
 
 SAMPLE = textwrap.dedent("""
 as:
@@ -128,6 +132,53 @@ def test_lifecycle_via_rest(tmp_path, monkeypatch):
         assert c.post("/sim/pause").json()["state"] == "paused"
         assert c.post("/sim/resume").json()["state"] == "running"
         assert c.post("/sim/stop").json()["state"] == "idle"
+
+
+def test_load_from_session_emits_no_packet_events(tmp_path):
+    """Loading a topology must not emit any `packet` events.
+
+    A sim in 'idle' state is silent on the event bus: no protocol traffic,
+    no user traffic. Routers exist but their keepalive threads are not
+    started until /sim/start.
+    """
+    # Unique network names so we can filter out leftover events from
+    # other tests' router threads that may still be alive when this runs.
+    yaml_with_router = textwrap.dedent("""
+    as:
+      name: load_session_isolation
+      networks:
+        loadsess_a: "10.99.0.0/24"
+        loadsess_b: "10.99.1.0/24"
+      routers:
+        loadsess_r1:
+          interfaces:
+            eth0: {network: loadsess_a, address: "10.99.0.1", cost: 1}
+            eth1: {network: loadsess_b, address: "10.99.1.1", cost: 1}
+    """)
+    src = tmp_path / "src.yaml"
+    src.write_text(yaml_with_router)
+
+    own_networks = {"loadsess_a", "loadsess_b"}
+    events = []
+    unsubscribe = EventTracer.subscribe(events.append)
+    s = None
+    try:
+        s = SimState(src)
+        s.load_from_session()
+        # Give any keepalive thread that snuck through a chance to tick.
+        time.sleep(0.2)
+        leaked = [
+            e for e in events
+            if e.get("kind") == "packet" and e.get("network") in own_networks
+        ]
+        assert leaked == [], f"load_from_session() leaked packet events: {leaked}"
+    finally:
+        if s is not None:
+            try:
+                s.stop()
+            except Exception:
+                pass
+        unsubscribe()
 
 
 def test_invalid_yaml_returns_400(tmp_path, monkeypatch):

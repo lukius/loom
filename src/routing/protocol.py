@@ -33,11 +33,10 @@ class RoutingProtocol:
         self._keepalive_interval = float(seconds)
 
     def start(self):
-        # Always clear the stop flag first. If a previous stop() set it while
-        # the keepalive thread was sleeping, the thread would otherwise exit
-        # on its next wake — silently halting all subsequent ticks. The
-        # SimState load/start cycle (Parser starts → load_from_session stops
-        # → /sim/start starts) hits this path every time.
+        # Always clear the stop flag first. A start() that follows a prior
+        # stop() on the same protocol instance (e.g. tests reusing a router,
+        # or the shell `read` re-loading a topology after pings stopped the
+        # threads) would otherwise see _stopped=True and exit on first wake.
         self._stopped = False
         self._stop_event.clear()
         if self._keepalive_thread is not None and self._keepalive_thread.is_alive():
