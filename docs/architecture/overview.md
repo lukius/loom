@@ -78,7 +78,7 @@ threads ≈ H                           (one Interface thread per host)
 ```
 
 For the sample topology (H=3, R=3, K=3, N=3, L=1): about 19 threads plus
-the asyncio loop. Fine.
+the asyncio loop.
 
 ## Data Flow: A Host Sends a Message
 
