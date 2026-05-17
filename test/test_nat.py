@@ -117,16 +117,34 @@ class NATTableTest(unittest.TestCase):
 
 class FlowIdHelperTest(unittest.TestCase):
 
-    def test_ping_request_uses_seq(self):
-        self.assertEqual(flow_id(PingRequest(seq=7)), 7)
+    def test_ping_request_uses_its_flow_key(self):
+        req = PingRequest(seq=7)
+        self.assertEqual(flow_id(req), req.flow_key())
 
-    def test_ping_reply_uses_seq(self):
-        self.assertEqual(flow_id(PingReply(seq=7, request_ts=0.0)), 7)
+    def test_ping_reply_echoes_originating_request_flow_key(self):
+        # The whole point: a reply's NAT discriminator must match its
+        # request's, so the reverse lookup at the NAT router finds the
+        # right original_src — even when two pings from different hosts
+        # collide on `seq`.
+        req = PingRequest(seq=7)
+        reply = PingReply(seq=7, request_ts=0.0, request_id=req.id())
+        self.assertEqual(flow_id(req), flow_id(reply))
 
-    def test_user_message_returns_none(self):
-        self.assertIsNone(flow_id(UserMessage('hi')))
+    def test_two_ping_requests_with_same_seq_have_distinct_flow_ids(self):
+        # Two private hosts behind one NAT router both start at seq=0; the
+        # NAT key must NOT collapse them into one entry.
+        a = PingRequest(seq=0)
+        b = PingRequest(seq=0)
+        self.assertNotEqual(flow_id(a), flow_id(b))
 
-    def test_arbitrary_object_without_seq_returns_none(self):
+    def test_user_message_has_a_flow_id(self):
+        # UserMessage gets a unique per-instance flow_id from its Message
+        # uuid; each user datagram is its own NAT slot. That's fine for
+        # one-shot, fire-and-forget messages with no reply.
+        msg = UserMessage('hi')
+        self.assertEqual(flow_id(msg), msg.flow_key())
+
+    def test_arbitrary_object_without_flow_key_returns_none(self):
         self.assertIsNone(flow_id(object()))
 
 

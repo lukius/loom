@@ -410,3 +410,55 @@ def test_nat_ping_packet_events_share_one_flow():
         system.stop()
         EventTracer._subscribers = []
         os.unlink(path)
+
+
+def test_two_private_hosts_keep_distinct_nat_entries_for_same_destination():
+    """Two hosts on the same private LAN pinging the same public destination
+    must each occupy their own NAT entry on the gateway router. The two
+    `PingRequest`s collide on `seq` (both start at 0 for fresh hosts), so
+    the NAT flow_id cannot be derived from `seq` alone — that would let the
+    second registration overwrite the first and the first host would lose
+    its reverse mapping.
+    """
+    topology = textwrap.dedent("""
+    as:
+      name: nat_two_clients
+      networks:
+        lan_priv: "192.168.1.0/24"
+        lan_pub: "200.100.0.0/24"
+      links:
+        uplink: "198.51.100.0/30"
+      hosts:
+        h_x: {network: lan_priv, address: "192.168.1.10", gateway: "192.168.1.1"}
+        h_y: {network: lan_priv, address: "192.168.1.20", gateway: "192.168.1.1"}
+        h_pub: {network: lan_pub, address: "200.100.0.10", gateway: "200.100.0.1"}
+      routers:
+        r_nat:
+          interfaces:
+            eth0: {network: lan_priv, address: "192.168.1.1", cost: 1}
+            eth1: {link: uplink, address: "198.51.100.1", cost: 1}
+        r_pub:
+          interfaces:
+            eth0: {link: uplink, address: "198.51.100.2", cost: 1}
+            eth1: {network: lan_pub, address: "200.100.0.1", cost: 1}
+    """)
+    path = _make_topology(topology)
+    system = Parser(path).parse()
+    try:
+        h_x = system.host("h_x")
+        h_y = system.host("h_y")
+        h_pub = system.host("h_pub")
+        r_nat = system.routers()["r_nat"]
+        assert _wait(lambda: _table_has_prefix(r_nat, "200.100.0.0/24"), timeout=5.0)
+        rtt_x = h_x.ping(h_pub.address(), timeout=2.0)
+        rtt_y = h_y.ping(h_pub.address(), timeout=2.0)
+        assert rtt_x is not None, "h_x → h_pub ping failed"
+        assert rtt_y is not None, "h_y → h_pub ping failed"
+        snap = r_nat.nat_table().snapshot()
+        original_srcs = {e['original_src'] for e in snap}
+        assert original_srcs == {'192.168.1.10', '192.168.1.20'}, (
+            f"NAT table should hold one entry per private host; got: {snap}"
+        )
+    finally:
+        system.stop()
+        os.unlink(path)

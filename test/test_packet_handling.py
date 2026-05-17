@@ -15,6 +15,7 @@ from entities import (
     RoutingMessage,
     UserMessage,
 )
+from entities.nat import flow_id
 from entities.packet import Frame
 
 
@@ -376,17 +377,19 @@ class InboundNATTest(unittest.TestCase):
             priv='192.168.1.1', priv_net='192.168.1.0/24',
             pub='200.100.0.1', pub_net='200.100.0.0/24',
         )
-        # Register what a prior outbound NAT would have left in the table.
+        # Use the same payload object for both the registered entry and the
+        # inbound reply so the conversation-keyed flow_id matches.
+        payload = UserMessage('hi')
         router.nat_table().register(
             rewritten_src=Address('200.100.0.1'),
             original_dst=Address('200.100.0.5'),
-            flow_id=None,
+            flow_id=flow_id(payload),
             original_src=Address('192.168.1.10'),
         )
         reply = Datagram(
             src_addr=Address('200.100.0.5'),
             dst_addr=Address('200.100.0.1'),
-            payload=UserMessage('hi'),
+            payload=payload,
         )
         router.handle_packet(reply, router.interface('eth_pub'))
 
@@ -479,17 +482,18 @@ class InboundNATEventTest(unittest.TestCase):
         iface_priv.send_to = lambda pkt, dst_addr: None
         iface_pub.send_to = lambda pkt, dst_addr: None
 
+        payload = UserMessage('hi')
         router.nat_table().register(
             rewritten_src=Address('200.100.0.1'),
             original_dst=Address('200.100.0.5'),
-            flow_id=None,
+            flow_id=flow_id(payload),
             original_src=Address('192.168.1.10'),
         )
 
         reply = Datagram(
             src_addr=Address('200.100.0.5'),
             dst_addr=Address('200.100.0.1'),
-            payload=UserMessage('hi'),
+            payload=payload,
         )
         router.handle_packet(reply, router.interface('eth_pub'))
 
@@ -501,6 +505,6 @@ class InboundNATEventTest(unittest.TestCase):
         self.assertEqual(ev['original_dst'], '192.168.1.10')
         self.assertEqual(ev['src'], '200.100.0.5')
         self.assertEqual(ev['router'], router.name())
-        self.assertIsNone(ev['flow_id'])
+        self.assertEqual(ev['flow_id'], flow_id(payload))
         self.assertIsInstance(ev['payload_id'], str)
         self.assertTrue(ev['payload_id'])

@@ -65,25 +65,18 @@ class NATTable:
 def flow_id(payload):
     """Return a NAT multiplex discriminator for this payload, or None.
 
-    Any payload exposing a `seq` attribute (or callable returning seq)
-    gets multiplexed by that value. Today this is the shared `seq` on
-    PingRequest and PingReply. RoutingMessage technically also has a
-    `seq()` method, but routing messages are broadcast-addressed and
-    never traverse the NAT path, so they never reach this helper in
-    practice.
+    Delegates to the payload's `flow_key()` — the same end-to-end
+    conversation identifier used to group hops in `packet` events.
+    Requests use their own Message id; replies echo their originating
+    request's id. This keys NAT on the conversation, so two private
+    hosts behind one NAT router pinging the same destination concurrently
+    get distinct NAT entries even when their per-host `seq` counters
+    happen to collide.
 
-    Payloads without `seq` (e.g. UserMessage) get flow_id=None and share
-    a single NAT slot per (rewritten_src, original_dst). That's fine for
-    one-shot, fire-and-forget messages with no reply.
-
-    The discriminator must match between a request and its corresponding
-    reply so the reply correctly reverse-translates. New request/reply
-    Message subtypes that may run concurrently from the same private LAN
-    should expose a `seq` attribute that the reply echoes back. When/if
-    a more general convention is needed, rename this helper to look for
-    an explicit `flow_id()` method on payloads instead.
+    Payloads without a `flow_key` (arbitrary objects) get flow_id=None
+    and share a single NAT slot per (rewritten_src, original_dst).
     """
-    seq = getattr(payload, 'seq', None)
-    if seq is None:
+    flow_key = getattr(payload, 'flow_key', None)
+    if flow_key is None:
         return None
-    return seq() if callable(seq) else seq
+    return flow_key() if callable(flow_key) else flow_key

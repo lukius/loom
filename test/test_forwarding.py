@@ -13,6 +13,7 @@ from entities import (
     Router,
     UserMessage,
 )
+from entities.nat import flow_id
 from entities.packet import Datagram
 
 
@@ -352,11 +353,12 @@ class OutboundNATTest(unittest.TestCase):
             router_priv='192.168.1.1', router_pub='200.100.0.1',
             router_pub_net='200.100.0.0/24', dest='200.100.0.5',
         )
+        expected_fid = flow_id(packet.payload())
         router._handle_forwarding(packet)
         self.assertEqual(packet.source(), Address('200.100.0.1'))
         self.assertEqual(
             router.nat_table().lookup(
-                Address('200.100.0.1'), Address('200.100.0.5'), flow_id=None,
+                Address('200.100.0.1'), Address('200.100.0.5'), flow_id=expected_fid,
             ),
             Address('192.168.1.10'),
         )
@@ -426,6 +428,7 @@ class OutboundNATEventTest(unittest.TestCase):
             router_priv='192.168.1.1', router_pub='200.100.0.1',
             router_pub_net='200.100.0.0/24', dest='200.100.0.5',
         )
+        expected_fid = flow_id(packet.payload())
         router._handle_forwarding(packet)
 
         nat_events = [e for e in self.events if e.get('kind') == 'nat']
@@ -436,7 +439,7 @@ class OutboundNATEventTest(unittest.TestCase):
         self.assertEqual(ev['rewritten_src'], '200.100.0.1')
         self.assertEqual(ev['dst'], '200.100.0.5')
         self.assertEqual(ev['router'], router.name())
-        self.assertIsNone(ev['flow_id'])
+        self.assertEqual(ev['flow_id'], expected_fid)
         self.assertIsInstance(ev['payload_id'], str)
         self.assertTrue(ev['payload_id'])
 
@@ -446,6 +449,7 @@ class OutboundNATEventTest(unittest.TestCase):
             router_priv='192.168.1.1', router_pub='200.100.0.1',
             router_pub_net='200.100.0.0/24', dest='200.100.0.5',
         )
+        expected_fid = flow_id(packet.payload())
         router._handle_forwarding(packet)
 
         snaps = [e for e in self.events if e.get('kind') == 'nat_table_changed']
@@ -455,6 +459,6 @@ class OutboundNATEventTest(unittest.TestCase):
         self.assertEqual(snap['entries'], [{
             'rewritten_src': '200.100.0.1',
             'dst': '200.100.0.5',
-            'flow_id': None,
+            'flow_id': expected_fid,
             'original_src': '192.168.1.10',
         }])
