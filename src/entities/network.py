@@ -42,7 +42,15 @@ class Network(_FabricBase):
         dst_interface.receive(packet)
 
     def _dispatch_broadcast(self, packet):
+        # Skip the sending interface: a real NIC filters out frames whose
+        # source matches its own address. Without this, a router broadcasting
+        # an LSP receives its own broadcast back, treats it as a new external
+        # message, and re-floods it out every other interface — amplifying
+        # LSP traffic by 2× on every shared LAN.
+        src = packet.source()
         for dst_iface in self._interfaces.values():
+            if dst_iface.address() == src:
+                continue
             dst_iface.receive(packet)
 
     def _interface_with_address(self, address):

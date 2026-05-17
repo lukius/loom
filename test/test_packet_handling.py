@@ -15,6 +15,7 @@ from entities import (
     RoutingMessage,
     UserMessage,
 )
+from entities.packet import Frame
 
 
 class PacketHandlingTest(unittest.TestCase):
@@ -249,6 +250,41 @@ class PacketHandlingTest(unittest.TestCase):
     def _routing_msg_datagram(self, interface, src, dst):
         msg = RoutingMessage(interface, 1)
         return Datagram(src, dst, msg)
+
+
+class NetworkBroadcastTest(unittest.TestCase):
+    """A multi-access Network must not echo a broadcast back to its sender.
+
+    Real NICs filter out frames whose source MAC matches their own; modelling
+    that here keeps the routing protocol from treating its own LSP as an
+    incoming external message and re-flooding it (which amplifies LSP
+    traffic on every shared LAN — once outbound, once "received from self"
+    and re-flooded out the other interfaces).
+    """
+
+    def test_broadcast_is_not_delivered_back_to_the_sending_interface(self):
+        net = Network('lan', NetworkAddress('10.0.0.0/24'))
+        sender = Interface('eth0', net, Address('10.0.0.1'))
+        peer_a = Interface('eth_a', net, Address('10.0.0.2'))
+        peer_b = Interface('eth_b', net, Address('10.0.0.3'))
+        net.add_interface(sender)
+        net.add_interface(peer_a)
+        net.add_interface(peer_b)
+
+        received_on = []
+        sender.receive = lambda pkt: received_on.append('sender')
+        peer_a.receive = lambda pkt: received_on.append('peer_a')
+        peer_b.receive = lambda pkt: received_on.append('peer_b')
+
+        frame = Frame(
+            src_addr=sender.address(),
+            dst_addr=net.broadcast_address(),
+            payload=UserMessage('hello LAN'),
+        )
+        net._dispatch_broadcast(frame)
+
+        self.assertNotIn('sender', received_on)
+        self.assertEqual(sorted(received_on), ['peer_a', 'peer_b'])
 
 
 class PacketRewriteTest(unittest.TestCase):
