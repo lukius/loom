@@ -173,14 +173,17 @@ The web layer adds a lifecycle on top of the simulator core. It lives in
 
 ```mermaid
 stateDiagram-v2
+  direction LR
   [*] --> idle
-  idle --> running: POST /sim/start
-  running --> paused: POST /sim/pause
-  paused --> running: POST /sim/resume<br/>(applies optional patch)
-  running --> idle: POST /sim/stop
-  paused --> idle: POST /sim/stop
-  idle --> idle: POST /topology<br/>POST /topology/reset
+  idle --> running: /sim/start
+  running --> paused: /sim/pause
+  paused --> running: /sim/resume
+  running --> idle: /sim/stop
+  paused --> idle: /sim/stop
 ```
+
+(`/topology` and `/topology/reset` are also accepted while idle and
+leave the state unchanged — see the rules below.)
 
 Rules enforced by `SimState`:
 
