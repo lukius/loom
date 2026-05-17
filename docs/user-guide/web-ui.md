@@ -141,6 +141,18 @@ read off the per-hop trail. While the simulation is running, packets
 move too fast for the tooltip to land on the dot reliably — pause
 first.
 
+### NAT annotations
+
+Packets that crossed a NAT hop show the translation in their tooltip.
+Pause the simulation and hover over the packet to see lines like
+`NAT @ r_a: 192.168.1.10 → 198.51.100.1`. Selecting the egress router
+in the inspector opens a NAT table panel listing live entries — each row
+shows the original private source, the rewritten public source, the
+destination, and the flow ID. The table grows as traffic flows; entries
+are LRU-bounded.
+
+<!-- TODO: screenshot -->
+
 ## Left pane (navigation)
 
 The left pane lists all entities grouped by type — networks, links,
