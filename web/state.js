@@ -94,7 +94,7 @@ export const SAMPLE = {
 
 /* ---------- layout (resizable panes) ---------- */
 export const LAYOUT_KEY = 'loom.layout';
-export const LAYOUT_DEF = { navW: 264, inspW: 332 };
+export const LAYOUT_DEF = { navW: 264, inspW: 350 };
 export const LAYOUT_LIMITS = {
   navW:  { min: 200, max: 520 },
   inspW: { min: 240, max: 600 },
