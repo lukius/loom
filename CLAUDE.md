@@ -89,6 +89,7 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 - After a code change, check whether `README.md`, this `CLAUDE.md`, the relevant page under `docs/architecture/` or `docs/user-guide/`, or any docstrings on the changed surface are now stale. If so, update them in the same commit — do not leave docs for "later".
 - Update **only when needed**: a small internal refactor with no observable behavior change typically requires no doc edits. Behavioral, interface, layout, or workflow changes usually do.
 - Surfaces that must stay accurate when touched: entry points and how to run them, shell + per-device command set + syntax, YAML schema, routing protocol wire format, project layout, dependencies, HTTP/WS API.
+- When touching `docs/user-guide/` for a user-visible change, follow the project-local **`user-guide-update`** skill (`.claude/skills/user-guide-update/SKILL.md`) — it covers page selection, action-level wording, and capturing the screenshot via `npm run screenshot` (tool at `tools/screenshot.mjs`).
 - `CONTRIBUTING.md` is the canonical dev guide; this file (`CLAUDE.md`) is the cheat sheet of non-obvious traps. Don't duplicate content — link from one to the other.
 - If a behavior is intentionally undocumented (e.g. an internal helper), say nothing — do not write speculative docs.
 
