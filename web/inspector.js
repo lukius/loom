@@ -126,7 +126,7 @@ export const Inspector = {
       `<tr><td>${escapeHtml(e.original_src)}</td><td>${escapeHtml(e.rewritten_src)}</td><td>${escapeHtml(e.dst)}</td><td>${e.flow_id === null ? '—' : escapeHtml(String(e.flow_id))}</td></tr>`
     ).join('');
     sec.innerHTML = `<h4 class="insp-h">NAT table — ${escapeHtml(deviceName)}</h4>` +
-      `<table class="insp-table"><thead><tr><th>Original src</th><th>Rewritten src</th><th>Destination</th><th>Flow ID</th></tr></thead><tbody>${rows}</tbody></table>`;
+      `<table class="insp-table"><thead><tr><th>Original</th><th>Rewritten</th><th>Destination</th><th>Flow ID</th></tr></thead><tbody>${rows}</tbody></table>`;
   },
 
   onNATChange(evt) {
