@@ -278,3 +278,88 @@ def test_ping_host_on_link():
     finally:
         system.stop()
         os.unlink(path)
+
+
+# ---------------------------------------------------------------------------
+# Multi-tenant NAT end-to-end test
+# ---------------------------------------------------------------------------
+
+MULTI_TENANT_NAT = textwrap.dedent("""
+as:
+  name: multi_tenant
+  networks:
+    lan_a: "192.168.1.0/24"
+    lan_b: "192.168.1.0/24"
+    lan_isp: "200.100.0.0/24"
+  links:
+    p2p_a: "198.51.100.0/30"
+    p2p_b: "198.51.100.4/30"
+  hosts:
+    h_a:
+      network: lan_a
+      address: "192.168.1.10"
+      gateway: "192.168.1.1"
+    h_b:
+      network: lan_b
+      address: "192.168.1.20"
+      gateway: "192.168.1.1"
+    h_pub:
+      network: lan_isp
+      address: "200.100.0.10"
+      gateway: "200.100.0.1"
+  routers:
+    r_a:
+      interfaces:
+        eth0: {network: lan_a, address: "192.168.1.1", cost: 1}
+        eth1: {link: p2p_a, address: "198.51.100.1", cost: 1}
+    r_b:
+      interfaces:
+        eth0: {network: lan_b, address: "192.168.1.1", cost: 1}
+        eth1: {link: p2p_b, address: "198.51.100.5", cost: 1}
+    r_core:
+      interfaces:
+        eth0: {link: p2p_a, address: "198.51.100.2", cost: 1}
+        eth1: {link: p2p_b, address: "198.51.100.6", cost: 1}
+        eth2: {network: lan_isp, address: "200.100.0.1", cost: 1}
+""")
+
+
+def test_multi_tenant_nat_e2e():
+    """Two tenants share 192.168.1.0/24 behind their own routers. Both
+    reach a shared public destination through r_core; each tenant's NAT
+    rewrites its source on the way out. Tenants cannot reach each other."""
+    path = _make_topology(MULTI_TENANT_NAT)
+    system = Parser(path).parse()
+    try:
+        h_a = system.host("h_a")
+        h_b = system.host("h_b")
+        h_pub = system.host("h_pub")
+
+        # Wait for routing convergence: r_a and r_b should learn the public
+        # LAN through r_core. (Public p2p links and lan_isp are advertised;
+        # private LANs are not.)
+        r_a = system.routers()["r_a"]
+        r_b = system.routers()["r_b"]
+        assert _wait(lambda: _table_has_prefix(r_a, "200.100.0.0/24"), timeout=5.0), \
+            "r_a did not converge on public LAN"
+        assert _wait(lambda: _table_has_prefix(r_b, "200.100.0.0/24"), timeout=5.0), \
+            "r_b did not converge on public LAN"
+
+        # Tenant A reaches the public host (NAT'd by r_a).
+        rtt_a = h_a.ping(h_pub.address(), timeout=2.0)
+        assert rtt_a is not None, "h_a -> h_pub ping failed (should be NAT'd via r_a)"
+        assert rtt_a < 1.0
+
+        # Tenant B reaches the public host (NAT'd by r_b).
+        rtt_b = h_b.ping(h_pub.address(), timeout=2.0)
+        assert rtt_b is not None, "h_b -> h_pub ping failed (should be NAT'd via r_b)"
+        assert rtt_b < 1.0
+
+        # Cross-tenant: h_a cannot reach h_b. h_a sends to 192.168.1.20
+        # which it sees as same-LAN delivery (lan_a doesn't have 192.168.1.20).
+        # The reply never arrives.
+        rtt_cross = h_a.ping(h_b.address(), timeout=0.3)
+        assert rtt_cross is None, "h_a should NOT reach h_b's address (CIDRs overlap)"
+    finally:
+        system.stop()
+        os.unlink(path)
