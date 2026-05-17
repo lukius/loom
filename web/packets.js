@@ -121,8 +121,28 @@ export const PacketAnim = {
     dot.addEventListener('mouseenter', () => showPacketTooltip(evt, dot));
     dot.addEventListener('mouseleave', hidePacketTooltip);
 
+    // Resolve the destination device once so the arrival signal can name it.
+    // Networks use address-on-fabric lookup; p2p links use the structural
+    // "other endpoint" since dst.address can collide with same-IP ifaces
+    // on a different link.
+    const srcName = evt.src && evt.src.device;
+    let dstDeviceName = null;
+    if (isLink) {
+      const peers = collectLinkEndpoints(evt.network).filter(ep => ep.device !== srcName);
+      dstDeviceName = peers.length === 1
+        ? peers[0].device
+        : deviceNameForEndpointOnFabric(evt.dst, evt.network);
+    } else {
+      dstDeviceName = deviceNameForEndpointOnFabric(evt.dst, evt.network);
+    }
+
     const finish = () => {
       if (dot.parentNode) layer.removeChild(dot);
+      if (dstDeviceName) {
+        bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
+          detail: { payloadId: evt.payload_id, device: dstDeviceName },
+        }));
+      }
       if (onDone) onDone();
     };
 
