@@ -821,3 +821,52 @@ def test_handle_update_omits_private_prefixes_from_outbound_message():
     finally:
         system.stop()
         os.unlink(path)
+
+
+def test_receiver_graph_never_learns_private_prefix():
+    """A router receiving a RoutingMessage from a neighbor with a private
+    LAN should NOT have the private prefix in its graph.
+
+    This is the receiver-side pin for the source-side filter: even if the
+    receiver wanted to learn about a private prefix, the sender never puts
+    it on the wire.
+    """
+    topology = textwrap.dedent("""
+    as:
+      name: test
+      networks:
+        lan_private: "10.0.0.0/24"
+      links:
+        p2p: "200.100.0.0/30"
+      hosts:
+        h_priv: {network: lan_private, address: "10.0.0.10", gateway: "10.0.0.1"}
+      routers:
+        r1:
+          interfaces:
+            eth0: {network: lan_private, address: "10.0.0.1", cost: 5}
+            eth1: {link: p2p, address: "200.100.0.1", cost: 1}
+        r2:
+          interfaces:
+            eth0: {link: p2p, address: "200.100.0.2", cost: 1}
+    """)
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(topology)
+        path = f.name
+    system = Parser(path).parse()
+    try:
+        r1 = system.routers()["r1"]
+        r2 = system.routers()["r2"]
+
+        # Wait for r2 to converge on what r1 advertises.
+        # r2 should know the p2p /30 (public) but never the private LAN.
+        assert _wait(
+            lambda: NetworkAddress('200.100.0.0/30') in r2._protocol._graph,
+            timeout=5.0,
+        ), "r2 did not converge on the public p2p prefix"
+
+        # The private prefix should never appear in r2's graph.
+        assert NetworkAddress('10.0.0.0/24') not in r2._protocol._graph, \
+            "r2 must not learn the private prefix from r1"
+    finally:
+        system.stop()
+        os.unlink(path)
