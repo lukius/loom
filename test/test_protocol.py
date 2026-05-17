@@ -763,3 +763,59 @@ def test_link_cost_propagates():
     finally:
         system.stop()
         os.unlink(path)
+
+
+def test_handle_update_omits_private_prefixes_from_outbound_message():
+    """A router with one public and one private interface advertises only
+    the public prefix on every interface's RoutingMessage.
+
+    Private (RFC 1918) prefixes are intentionally hidden from peers; only
+    the local router knows about its own private interfaces for installing
+    directly-connected rules.
+    """
+    topology = textwrap.dedent("""
+    as:
+      name: test
+      networks:
+        lan_public: "200.100.0.0/24"
+        lan_private: "192.168.1.0/24"
+      hosts:
+        h_pub: {network: lan_public, address: "200.100.0.10"}
+        h_priv: {network: lan_private, address: "192.168.1.10", gateway: "192.168.1.1"}
+      routers:
+        r1:
+          interfaces:
+            eth0: {network: lan_public, address: "200.100.0.1", cost: 10}
+            eth1: {network: lan_private, address: "192.168.1.1", cost: 5}
+    """)
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(topology)
+        path = f.name
+    system = Parser(path).parse()
+    try:
+        r1 = system.routers()["r1"]
+        captured: list[RoutingMessage] = []
+
+        original_send = Interface.send_to
+        def capturing_send(self, pkt, dst_addr):
+            if isinstance(pkt.payload(), RoutingMessage):
+                captured.append(pkt.payload())
+            return original_send(self, pkt, dst_addr)
+        Interface.send_to = capturing_send
+        try:
+            r1._protocol._handle_update()
+        finally:
+            Interface.send_to = original_send
+
+        assert len(captured) == 2, (
+            f"expected one RoutingMessage per interface, got {len(captured)}"
+        )
+        for msg in captured:
+            prefixes = list(msg.destinations().keys())
+            assert NetworkAddress('200.100.0.0/24') in prefixes, \
+                f"public prefix should be advertised, got {prefixes}"
+            assert NetworkAddress('192.168.1.0/24') not in prefixes, \
+                f"private prefix should NOT be advertised, got {prefixes}"
+    finally:
+        system.stop()
+        os.unlink(path)

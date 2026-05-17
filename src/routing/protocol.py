@@ -142,6 +142,8 @@ class RoutingProtocol:
 
             for name, iface in self._router.interfaces().items():
                 prefix = iface.network().address()
+                if prefix.is_private():
+                    continue
                 cost = iface.cost()
                 msg.add_destination(prefix, cost)
 
