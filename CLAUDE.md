@@ -95,7 +95,12 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 ### Linting & style
 - Run `ruff check src/ test/` before every commit; fix or `# noqa` (with reason) any reported issues. Do not commit a dirty lint.
 - Follow standard PEP practices: **PEP 8** (style), **PEP 257** (docstring conventions), **PEP 20** (Zen of Python — favor explicit, simple, readable code). Ruff enforces the mechanical PEP 8 rules by default; the rest is on the author.
+- **Imports at the top of the file** (PEP 8). Function-level imports are a code smell — only acceptable to break a circular import or to defer an expensive optional dep, and must carry `# noqa: PLC0415` with the reason. This applies to test files too: ruff's default `E402` only catches module-level placement, not in-function imports, so the discipline is on the author.
 - `ruff format src/ test/` is fine to run, but format-only churn should land in its own commit (`style:` or `chore:`), not mixed with behavioral changes.
+
+### Backend ↔ frontend decoupling
+- The Python backend (`src/`) MUST NOT mention the SPA, the web UI, animations, the canvas, tooltips, or any frontend rendering concern in code, comments, docstrings, or test docstrings. The HTTP/WS API and the EventTracer event shape are the public contract; describe events as broadcast facts (e.g. "emits a `packet` event"), not in terms of what the UI does with them. The SPA is one subscriber among many possible — shell tools, tests, future TUIs — and the backend must look the same to all of them.
+- The reverse direction (SPA referring to backend wire shapes by name) is fine and expected — the SPA is the consumer.
 
 ### Commits
 - [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`, `style:`, etc.
