@@ -17,8 +17,9 @@ parser.
 
 ## Networks (multi-access LANs)
 
-A **network** is a multi-access LAN. Any number of interfaces can
-attach; every interface gets a private IP from the network's prefix.
+A **network** is a multi-access LAN. Hosts and routers attach through
+their interfaces, and each interface is assigned an address from the
+network's prefix.
 
 ### Add one
 
