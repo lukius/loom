@@ -794,7 +794,9 @@ def test_handle_update_omits_private_prefixes_from_outbound_message():
     system = Parser(path).parse()
     try:
         r1 = system.routers()["r1"]
-        # quiesce keepalive thread before installing the capture patch
+        # Join r1's keepalive thread before patching so its initial tick
+        # (fired by Parser auto-start) can't race the explicit _handle_update
+        # below and double the captured-message count.
         r1._protocol.stop()
 
         captured: list[RoutingMessage] = []
