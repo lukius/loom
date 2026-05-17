@@ -57,7 +57,9 @@ Rules:
   `"10.1.2.3/24"` becomes `10.1.2.0/24`.
 - Mask between 0 and 32 (in practice useful prefixes are `/8` through
   `/29`; for `/30` or `/31` use `links:` instead).
-- No two networks may share the same prefix.
+- Two networks may share the same prefix only if it is an RFC 1918
+  private range (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`).
+  Public prefixes must remain unique.
 - No two networks may share the same name.
 
 ## Links
