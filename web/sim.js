@@ -259,4 +259,8 @@ export function _onEvent(evt) {
     bus.dispatchEvent(new CustomEvent('sim:routing-table-changed', { detail: { device: evt.device } }));
     return;
   }
+  if (evt.kind === 'nat') {
+    bus.dispatchEvent(new CustomEvent('sim:nat', { detail: evt }));
+    return;
+  }
 }

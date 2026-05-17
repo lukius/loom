@@ -129,11 +129,40 @@ describe('_onEvent (WS dispatcher)', () => {
     const status = captureEvents('sim:status-changed');
     const packet = captureEvents('sim:packet');
     const routing = captureEvents('sim:routing-table-changed');
-    listenerCleanups.push(status.stop, packet.stop, routing.stop);
+    const nat = captureEvents('sim:nat');
+    listenerCleanups.push(status.stop, packet.stop, routing.stop, nat.stop);
     _onEvent({ kind: 'unknown_event' });
     expect(status.events).toEqual([]);
     expect(packet.events).toEqual([]);
     expect(routing.events).toEqual([]);
+    expect(nat.events).toEqual([]);
+  });
+
+  it('routes kind:nat to sim:nat carrying the full event payload', () => {
+    const cap = captureEvents('sim:nat');
+    listenerCleanups.push(cap.stop);
+    const evt = {
+      kind: 'nat',
+      router: 'r_a',
+      direction: 'outbound',
+      original_src: '192.168.1.10',
+      rewritten_src: '200.100.0.1',
+      dst: '8.8.8.8',
+      flow_id: null,
+      payload_id: 'abc-123',
+    };
+    _onEvent(evt);
+    expect(cap.events).toEqual([evt]);
+  });
+
+  it('nat events do not touch Sim.state', () => {
+    Sim.state = 'running';
+    _onEvent({
+      kind: 'nat', router: 'r1', direction: 'outbound',
+      original_src: '10.0.0.1', rewritten_src: '1.2.3.4',
+      dst: '8.8.8.8', flow_id: null, payload_id: 'p',
+    });
+    expect(Sim.state).toBe('running');
   });
 });
 

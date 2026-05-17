@@ -438,3 +438,5 @@ class InboundNATEventTest(unittest.TestCase):
         self.assertEqual(ev['src'], '200.100.0.5')
         self.assertEqual(ev['router'], router.name())
         self.assertIsNone(ev['flow_id'])
+        self.assertIsInstance(ev['payload_id'], str)
+        self.assertTrue(ev['payload_id'])

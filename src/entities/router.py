@@ -163,6 +163,8 @@ class Router(NetworkDevice):
                 flow_id=fid,
             )
             if original_dst is not None:
+                payload = packet.payload()
+                payload_id = str(payload.id()) if hasattr(payload, 'id') else None
                 EventTracer._broadcast({
                     'kind': 'nat',
                     'router': self.name(),
@@ -171,6 +173,7 @@ class Router(NetworkDevice):
                     'original_dst': str(original_dst),
                     'src': str(packet.source()),
                     'flow_id': fid,
+                    'payload_id': payload_id,
                 })
                 packet.rewrite_destination(original_dst)
                 self._handle_forwarding(packet)
@@ -219,6 +222,8 @@ class Router(NetworkDevice):
                 flow_id=fid, original_src=original_src,
             )
             packet.rewrite_source(rewritten_src)
+            payload = packet.payload()
+            payload_id = str(payload.id()) if hasattr(payload, 'id') else None
             EventTracer._broadcast({
                 'kind': 'nat',
                 'router': self.name(),
@@ -227,6 +232,7 @@ class Router(NetworkDevice):
                 'rewritten_src': str(rewritten_src),
                 'dst': str(packet.destination()),
                 'flow_id': fid,
+                'payload_id': payload_id,
             })
             EventTracer._broadcast({
                 'kind': 'nat_table_changed',

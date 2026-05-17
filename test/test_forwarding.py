@@ -437,6 +437,8 @@ class OutboundNATEventTest(unittest.TestCase):
         self.assertEqual(ev['dst'], '200.100.0.5')
         self.assertEqual(ev['router'], router.name())
         self.assertIsNone(ev['flow_id'])
+        self.assertIsInstance(ev['payload_id'], str)
+        self.assertTrue(ev['payload_id'])
 
     def test_outbound_nat_emits_nat_table_changed_snapshot(self):
         router, _, packet = _outbound_setup(
