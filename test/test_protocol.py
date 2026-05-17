@@ -794,6 +794,8 @@ def test_handle_update_omits_private_prefixes_from_outbound_message():
     system = Parser(path).parse()
     try:
         r1 = system.routers()["r1"]
+        r1._protocol.stop()   # quiesce keepalive thread before installing the capture patch
+
         captured: list[RoutingMessage] = []
 
         original_send = Interface.send_to
