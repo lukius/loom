@@ -3,6 +3,19 @@
 This guide takes you from a fresh clone to a live simulation with a ping
 between two hosts. It assumes Python 3.11 or newer.
 
+## Scope
+
+`loom` is a routing-concepts simulator: it models L3 (IPv4 forwarding,
+addressing, routing tables, link-state convergence) and **only** L3.
+There is no L2 (no MAC addresses, ARP, STP, VLANs) and no L4 (no
+TCP/UDP, no ports, no retransmits, no congestion control). Frames are
+abstract envelopes; payloads are `Message` subclasses delivered intact.
+
+If you need higher-fidelity simulation — packet captures, real
+protocols, or a kernel network stack — look at [ns-3](https://www.nsnam.org/),
+[mininet](https://mininet.org/), [Containerlab](https://containerlab.dev/),
+or [GNS3](https://www.gns3.com/) instead.
+
 ## Install
 
 ```bash
