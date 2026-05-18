@@ -21,6 +21,9 @@ export const state = {
   view: { x: 0, y: 0, k: 1 }, // pan x,y and zoom factor
   /* visibility toggles for on-canvas annotations (persisted) */
   display: { showCosts: true, showIfaces: true },
+  /* transient sim state — NAT snapshots keyed by device name; populated by
+     the `nat_table_changed` WS event. Not persisted; reset on loadSample. */
+  natTables: {},
 };
 
 /* Defaults used when restoring a legacy session that didn't persist `display`. */
@@ -91,7 +94,7 @@ export const SAMPLE = {
 
 /* ---------- layout (resizable panes) ---------- */
 export const LAYOUT_KEY = 'loom.layout';
-export const LAYOUT_DEF = { navW: 264, inspW: 332 };
+export const LAYOUT_DEF = { navW: 264, inspW: 400 };
 export const LAYOUT_LIMITS = {
   navW:  { min: 200, max: 520 },
   inspW: { min: 240, max: 600 },
@@ -139,6 +142,7 @@ export function loadSample() {
   state.selection = null;
   state.view = { x: 0, y: 0, k: 1 };
   state.display = { ...DISPLAY_DEFAULTS };
+  state.natTables = {};
   const projName = document.getElementById('proj-name');
   if (projName) projName.value = state.asName;
   persist();

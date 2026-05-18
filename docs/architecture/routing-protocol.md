@@ -84,6 +84,19 @@ Three subtleties:
    `gate.sleep`. Neighbors learn about a new router immediately
    instead of waiting up to 10 seconds.
 
+When building the destination list, routers silently omit any
+directly-connected prefix that falls within the RFC 1918 private
+ranges (10.0.0.0/8, 172.16.0.0/12, and 192.168.0.0/16). Peers
+therefore never learn about another router's private LANs through
+the routing protocol. The originating router's own routing table
+still contains directly-connected rules for those interfaces — the
+filter applies only to what is advertised outward, not to the local
+graph. This is what makes overlapping private CIDRs safe across
+tenants: their address spaces remain invisible to every other
+router. Cross-tenant reachability for the public destinations they
+need is recovered at the egress router by source NAT — see
+[nat.md](nat.md).
+
 ---
 
 ## Receiving a flood

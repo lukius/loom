@@ -47,6 +47,25 @@ describe('state object', () => {
   it('defaults asName to "test_as"', () => {
     expect(state.asName).toBe('test_as');
   });
+
+  it('exposes state.natTables defaulting to {}', () => {
+    expect(state.natTables).toEqual({});
+  });
+});
+
+describe('state.natTables', () => {
+  it('is reset to {} by loadSample', () => {
+    state.natTables = { r1: [{ original_src: 'a', rewritten_src: 'b', dst: 'c', flow_id: null }] };
+    loadSample();
+    expect(state.natTables).toEqual({});
+  });
+
+  it('is NOT included in the persisted payload (transient sim state)', () => {
+    state.natTables = { r1: [{ original_src: 'a', rewritten_src: 'b', dst: 'c', flow_id: null }] };
+    persist();
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    expect(raw).not.toHaveProperty('natTables');
+  });
 });
 
 describe('persist / restore', () => {

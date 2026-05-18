@@ -24,21 +24,21 @@ SAMPLE_TOPOLOGY = textwrap.dedent("""
 as:
   name: t
   networks:
-    lan1: "10.0.1.0/24"
-    lan2: "10.0.2.0/24"
-    lan3: "10.0.3.0/24"
+    lan1: "200.0.1.0/24"
+    lan2: "200.0.2.0/24"
+    lan3: "200.0.3.0/24"
   hosts:
-    h1: {network: lan1, address: "10.0.1.10"}
-    h3: {network: lan3, address: "10.0.3.10"}
+    h1: {network: lan1, address: "200.0.1.10"}
+    h3: {network: lan3, address: "200.0.3.10"}
   routers:
     r1:
       interfaces:
-        eth0: {network: lan1, address: "10.0.1.1", cost: 1}
-        eth1: {network: lan2, address: "10.0.2.1", cost: 1}
+        eth0: {network: lan1, address: "200.0.1.1", cost: 1}
+        eth1: {network: lan2, address: "200.0.2.1", cost: 1}
     r2:
       interfaces:
-        eth0: {network: lan2, address: "10.0.2.2", cost: 1}
-        eth1: {network: lan3, address: "10.0.3.1", cost: 1}
+        eth0: {network: lan2, address: "200.0.2.2", cost: 1}
+        eth1: {network: lan3, address: "200.0.3.1", cost: 1}
 """)
 
 
@@ -515,38 +515,38 @@ TWO_ROUTERS_SLASH30 = textwrap.dedent("""
 as:
   name: t
   networks:
-    lan_r1: "10.0.1.0/24"
-    lan_r2: "10.0.2.0/24"
+    lan_r1: "200.0.1.0/24"
+    lan_r2: "200.0.2.0/24"
   links:
-    p2p1: "10.0.0.0/30"
+    p2p1: "200.0.0.0/30"
   routers:
     r1:
       interfaces:
-        eth0: {network: lan_r1, address: "10.0.1.1", cost: 1}
-        eth1: {link: p2p1, address: "10.0.0.1", cost: 5}
+        eth0: {network: lan_r1, address: "200.0.1.1", cost: 1}
+        eth1: {link: p2p1, address: "200.0.0.1", cost: 5}
     r2:
       interfaces:
-        eth0: {link: p2p1, address: "10.0.0.2", cost: 5}
-        eth1: {network: lan_r2, address: "10.0.2.1", cost: 1}
+        eth0: {link: p2p1, address: "200.0.0.2", cost: 5}
+        eth1: {network: lan_r2, address: "200.0.2.1", cost: 1}
 """)
 
 TWO_ROUTERS_SLASH31 = textwrap.dedent("""
 as:
   name: t
   networks:
-    lan_r1: "10.0.1.0/24"
-    lan_r2: "10.0.2.0/24"
+    lan_r1: "200.0.1.0/24"
+    lan_r2: "200.0.2.0/24"
   links:
-    p2p1: "10.0.0.0/31"
+    p2p1: "200.0.0.0/31"
   routers:
     r1:
       interfaces:
-        eth0: {network: lan_r1, address: "10.0.1.1", cost: 1}
-        eth1: {link: p2p1, address: "10.0.0.0", cost: 5}
+        eth0: {network: lan_r1, address: "200.0.1.1", cost: 1}
+        eth1: {link: p2p1, address: "200.0.0.0", cost: 5}
     r2:
       interfaces:
-        eth0: {link: p2p1, address: "10.0.0.1", cost: 5}
-        eth1: {network: lan_r2, address: "10.0.2.1", cost: 1}
+        eth0: {link: p2p1, address: "200.0.0.1", cost: 5}
+        eth1: {network: lan_r2, address: "200.0.2.1", cost: 1}
 """)
 
 # Three routers: r1<->r2 via /30 link (asymmetric cost), r1<->r3 via lan_mid,
@@ -557,27 +557,27 @@ TWO_ROUTERS_ASYMMETRIC_COST = textwrap.dedent("""
 as:
   name: t
   networks:
-    lan_r1: "10.0.1.0/24"
-    lan_r2: "10.0.2.0/24"
-    lan_mid: "10.0.10.0/24"
-    lan_mid2: "10.0.20.0/24"
+    lan_r1: "200.0.1.0/24"
+    lan_r2: "200.0.2.0/24"
+    lan_mid: "200.0.10.0/24"
+    lan_mid2: "200.0.20.0/24"
   links:
-    p2p1: "10.0.0.0/30"
+    p2p1: "200.0.0.0/30"
   routers:
     r1:
       interfaces:
-        eth0: {network: lan_r1, address: "10.0.1.1", cost: 1}
-        eth1: {link: p2p1, address: "10.0.0.1", cost: 5}
-        eth2: {network: lan_mid, address: "10.0.10.1", cost: 1}
+        eth0: {network: lan_r1, address: "200.0.1.1", cost: 1}
+        eth1: {link: p2p1, address: "200.0.0.1", cost: 5}
+        eth2: {network: lan_mid, address: "200.0.10.1", cost: 1}
     r2:
       interfaces:
-        eth0: {link: p2p1, address: "10.0.0.2", cost: 9}
-        eth1: {network: lan_r2, address: "10.0.2.1", cost: 1}
-        eth2: {network: lan_mid2, address: "10.0.20.1", cost: 1}
+        eth0: {link: p2p1, address: "200.0.0.2", cost: 9}
+        eth1: {network: lan_r2, address: "200.0.2.1", cost: 1}
+        eth2: {network: lan_mid2, address: "200.0.20.1", cost: 1}
     r3:
       interfaces:
-        eth0: {network: lan_mid, address: "10.0.10.2", cost: 1}
-        eth1: {network: lan_mid2, address: "10.0.20.2", cost: 1}
+        eth0: {network: lan_mid, address: "200.0.10.2", cost: 1}
+        eth1: {network: lan_mid2, address: "200.0.20.2", cost: 1}
 """)
 
 
@@ -604,48 +604,48 @@ def test_two_routers_one_link_converge():
 
         # Wait for full convergence on both sides.
         assert _wait(lambda: (
-            _table_has_prefix(r1, "10.0.0.0/30")
-            and _table_has_prefix(r1, "10.0.1.0/24")
-            and _table_has_prefix(r1, "10.0.2.0/24")
+            _table_has_prefix(r1, "200.0.0.0/30")
+            and _table_has_prefix(r1, "200.0.1.0/24")
+            and _table_has_prefix(r1, "200.0.2.0/24")
         )), "r1 did not converge in time"
 
         assert _wait(lambda: (
-            _table_has_prefix(r2, "10.0.0.0/30")
-            and _table_has_prefix(r2, "10.0.2.0/24")
-            and _table_has_prefix(r2, "10.0.1.0/24")
+            _table_has_prefix(r2, "200.0.0.0/30")
+            and _table_has_prefix(r2, "200.0.2.0/24")
+            and _table_has_prefix(r2, "200.0.1.0/24")
         )), "r2 did not converge in time"
 
         # r1: link prefix and own LAN are directly connected (NullAddress).
-        r1_link = r1.routing_table().match(Address("10.0.0.1"))
+        r1_link = r1.routing_table().match(Address("200.0.0.1"))
         assert r1_link.succeeded()
         assert r1_link.next_hop() == NullAddress
         assert r1_link.interface().name() == "eth1"
 
-        r1_own = r1.routing_table().match(Address("10.0.1.100"))
+        r1_own = r1.routing_table().match(Address("200.0.1.100"))
         assert r1_own.succeeded()
         assert r1_own.next_hop() == NullAddress
         assert r1_own.interface().name() == "eth0"
 
         # r1 reaches r2's LAN via r2's link address as next-hop.
-        r1_remote = r1.routing_table().match(Address("10.0.2.100"))
+        r1_remote = r1.routing_table().match(Address("200.0.2.100"))
         assert r1_remote.succeeded()
-        assert r1_remote.next_hop() == Address("10.0.0.2")
+        assert r1_remote.next_hop() == Address("200.0.0.2")
         assert r1_remote.interface().name() == "eth1"
 
         # r2: mirror assertions.
-        r2_link = r2.routing_table().match(Address("10.0.0.2"))
+        r2_link = r2.routing_table().match(Address("200.0.0.2"))
         assert r2_link.succeeded()
         assert r2_link.next_hop() == NullAddress
         assert r2_link.interface().name() == "eth0"
 
-        r2_own = r2.routing_table().match(Address("10.0.2.100"))
+        r2_own = r2.routing_table().match(Address("200.0.2.100"))
         assert r2_own.succeeded()
         assert r2_own.next_hop() == NullAddress
         assert r2_own.interface().name() == "eth1"
 
-        r2_remote = r2.routing_table().match(Address("10.0.1.100"))
+        r2_remote = r2.routing_table().match(Address("200.0.1.100"))
         assert r2_remote.succeeded()
-        assert r2_remote.next_hop() == Address("10.0.0.1")
+        assert r2_remote.next_hop() == Address("200.0.0.1")
         assert r2_remote.interface().name() == "eth0"
     finally:
         system.stop()
@@ -661,45 +661,45 @@ def test_link_slash31_converge():
         r2 = system.routers()["r2"]
 
         assert _wait(lambda: (
-            _table_has_prefix(r1, "10.0.0.0/31")
-            and _table_has_prefix(r1, "10.0.1.0/24")
-            and _table_has_prefix(r1, "10.0.2.0/24")
+            _table_has_prefix(r1, "200.0.0.0/31")
+            and _table_has_prefix(r1, "200.0.1.0/24")
+            and _table_has_prefix(r1, "200.0.2.0/24")
         )), "r1 did not converge in time (/31)"
 
         assert _wait(lambda: (
-            _table_has_prefix(r2, "10.0.0.0/31")
-            and _table_has_prefix(r2, "10.0.2.0/24")
-            and _table_has_prefix(r2, "10.0.1.0/24")
+            _table_has_prefix(r2, "200.0.0.0/31")
+            and _table_has_prefix(r2, "200.0.2.0/24")
+            and _table_has_prefix(r2, "200.0.1.0/24")
         )), "r2 did not converge in time (/31)"
 
         # r1's own LAN is directly connected.
-        r1_own = r1.routing_table().match(Address("10.0.1.100"))
+        r1_own = r1.routing_table().match(Address("200.0.1.100"))
         assert r1_own.succeeded()
         assert r1_own.next_hop() == NullAddress
         assert r1_own.interface().name() == "eth0"
 
         # r1's link prefix is directly connected.
-        r1_link = r1.routing_table().match(Address("10.0.0.0"))
+        r1_link = r1.routing_table().match(Address("200.0.0.0"))
         assert r1_link.succeeded()
         assert r1_link.next_hop() == NullAddress
         assert r1_link.interface().name() == "eth1"
 
         # r1 reaches r2's LAN via r2's link address.
-        r1_remote = r1.routing_table().match(Address("10.0.2.100"))
+        r1_remote = r1.routing_table().match(Address("200.0.2.100"))
         assert r1_remote.succeeded()
-        assert r1_remote.next_hop() == Address("10.0.0.1")
+        assert r1_remote.next_hop() == Address("200.0.0.1")
         assert r1_remote.interface().name() == "eth1"
 
         # r2's link prefix is directly connected.
-        r2_link = r2.routing_table().match(Address("10.0.0.1"))
+        r2_link = r2.routing_table().match(Address("200.0.0.1"))
         assert r2_link.succeeded()
         assert r2_link.next_hop() == NullAddress
         assert r2_link.interface().name() == "eth0"
 
         # r2 reaches r1's LAN via r1's link address.
-        r2_remote = r2.routing_table().match(Address("10.0.1.100"))
+        r2_remote = r2.routing_table().match(Address("200.0.1.100"))
         assert r2_remote.succeeded()
-        assert r2_remote.next_hop() == Address("10.0.0.0")
+        assert r2_remote.next_hop() == Address("200.0.0.0")
         assert r2_remote.interface().name() == "eth0"
     finally:
         system.stop()
@@ -724,10 +724,10 @@ def test_link_cost_propagates():
         r2 = system.routers()["r2"]
         r3 = system.routers()["r3"]
 
-        link_prefix = NetworkAddress("10.0.0.0/30")
+        link_prefix = NetworkAddress("200.0.0.0/30")
 
         def _r1_routes_lan_r2_via_eth2():
-            result = r1.routing_table().match(Address("10.0.2.100"))
+            result = r1.routing_table().match(Address("200.0.2.100"))
             return result.succeeded() and result.interface().name() == "eth2"
 
         # Wait for full convergence: every router must have every prefix AND r1
@@ -738,8 +738,8 @@ def test_link_cost_propagates():
         assert _wait(lambda: all(
             _table_has_prefix(r, p)
             for r in [r1, r2, r3]
-            for p in ["10.0.1.0/24", "10.0.2.0/24", "10.0.0.0/30",
-                      "10.0.10.0/24", "10.0.20.0/24"]
+            for p in ["200.0.1.0/24", "200.0.2.0/24", "200.0.0.0/30",
+                      "200.0.10.0/24", "200.0.20.0/24"]
         ) and _r1_routes_lan_r2_via_eth2()), \
             "routers did not converge in time (asymmetric-cost test)"
 
@@ -754,12 +754,124 @@ def test_link_cost_propagates():
         # r1 prefers r3's path (cost 1+1+1+1+1=5) over the direct link (cost
         # 5+9+1=15) to reach lan_r2; verified by _wait above.
         # Double-check the final routing table entry.
-        r1_to_lan_r2 = r1.routing_table().match(Address("10.0.2.100"))
+        r1_to_lan_r2 = r1.routing_table().match(Address("200.0.2.100"))
         assert r1_to_lan_r2.succeeded()
         assert r1_to_lan_r2.interface().name() == "eth2", (
             f"expected r1 to route via eth2 (cheaper via r3), "
             f"got {r1_to_lan_r2.interface().name()}"
         )
+    finally:
+        system.stop()
+        os.unlink(path)
+
+
+def test_handle_update_omits_private_prefixes_from_outbound_message():
+    """A router with one public and one private interface advertises only
+    the public prefix on every interface's RoutingMessage.
+
+    Private (RFC 1918) prefixes are intentionally hidden from peers; only
+    the local router knows about its own private interfaces for installing
+    directly-connected rules.
+    """
+    topology = textwrap.dedent("""
+    as:
+      name: test
+      networks:
+        lan_public: "200.100.0.0/24"
+        lan_private: "192.168.1.0/24"
+      hosts:
+        h_pub: {network: lan_public, address: "200.100.0.10"}
+        h_priv: {network: lan_private, address: "192.168.1.10", gateway: "192.168.1.1"}
+      routers:
+        r1:
+          interfaces:
+            eth0: {network: lan_public, address: "200.100.0.1", cost: 10}
+            eth1: {network: lan_private, address: "192.168.1.1", cost: 5}
+    """)
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(topology)
+        path = f.name
+    system = Parser(path).parse()
+    try:
+        r1 = system.routers()["r1"]
+        # Join r1's keepalive thread before patching so its initial tick
+        # (fired by Parser auto-start) can't race the explicit _handle_update
+        # below and double the captured-message count.
+        r1._protocol.stop()
+
+        captured: list[RoutingMessage] = []
+
+        original_send = Interface.send_to
+        def capturing_send(self, pkt, dst_addr):
+            if isinstance(pkt.payload(), RoutingMessage):
+                captured.append(pkt.payload())
+            return original_send(self, pkt, dst_addr)
+        Interface.send_to = capturing_send
+        try:
+            r1._protocol._handle_update()
+        finally:
+            Interface.send_to = original_send
+
+        assert len(captured) == 2, (
+            f"expected one RoutingMessage per interface, got {len(captured)}"
+        )
+        for msg in captured:
+            prefixes = list(msg.destinations().keys())
+            assert NetworkAddress('200.100.0.0/24') in prefixes, (
+                f"public prefix should be advertised, got {prefixes}"
+            )
+            assert NetworkAddress('192.168.1.0/24') not in prefixes, (
+                f"private prefix should NOT be advertised, got {prefixes}"
+            )
+    finally:
+        system.stop()
+        os.unlink(path)
+
+
+def test_receiver_graph_never_learns_private_prefix():
+    """A router receiving a RoutingMessage from a neighbor with a private
+    LAN should NOT have the private prefix in its graph.
+
+    This is the receiver-side pin for the source-side filter: even if the
+    receiver wanted to learn about a private prefix, the sender never puts
+    it on the wire.
+    """
+    topology = textwrap.dedent("""
+    as:
+      name: test
+      networks:
+        lan_private: "10.0.0.0/24"
+      links:
+        p2p: "200.100.0.0/30"
+      hosts:
+        h_priv: {network: lan_private, address: "10.0.0.10", gateway: "10.0.0.1"}
+      routers:
+        r1:
+          interfaces:
+            eth0: {network: lan_private, address: "10.0.0.1", cost: 5}
+            eth1: {link: p2p, address: "200.100.0.1", cost: 1}
+        r2:
+          interfaces:
+            eth0: {link: p2p, address: "200.100.0.2", cost: 1}
+    """)
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(topology)
+        path = f.name
+    system = Parser(path).parse()
+    try:
+        _r1 = system.routers()["r1"]
+        r2 = system.routers()["r2"]
+
+        # Wait for r2 to converge on what r1 advertises.
+        # r2 should know the p2p /30 (public) but never the private LAN.
+        assert _wait(
+            lambda: NetworkAddress('200.100.0.0/30') in r2._protocol._graph,
+            timeout=5.0,
+        ), "r2 did not converge on the public p2p prefix"
+
+        # The private prefix should never appear in r2's graph.
+        assert NetworkAddress('10.0.0.0/24') not in r2._protocol._graph, \
+            "r2 must not learn the private prefix from r1"
     finally:
         system.stop()
         os.unlink(path)

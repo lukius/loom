@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { PacketAnim } from './packets.js';
-import { state } from './state.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { PacketAnim, showPacketTooltip, hidePacketTooltip } from './packets.js';
+import { state, bus } from './state.js';
 
 // Sample one dimension of a cubic bezier at parameter t.
 function bez1d(p0, c1, c2, p3, t) {
@@ -210,5 +210,105 @@ describe('PacketAnim._bezBetween — packet curves match drawEdge', () => {
     // (mean of endpoints) — sanity: not far from the chord midpoint.
     expect(midX).toBeCloseTo(chordMid.x, 0);
     expect(midY).toBeCloseTo(chordMid.y, 0);
+  });
+});
+
+describe('Packet tooltip with NAT', () => {
+  let dot;
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    dot = document.createElement('div');
+    dot.getBoundingClientRect = () => ({ left: 0, top: 0, right: 10, bottom: 10 });
+    document.body.appendChild(dot);
+  });
+  afterEach(() => {
+    hidePacketTooltip();
+    document.querySelectorAll('#packet-tooltip').forEach(n => n.remove());
+  });
+
+  it('appends an outbound NAT line when sim:nat arrived for this payload', () => {
+    bus.dispatchEvent(new CustomEvent('sim:nat', { detail: {
+      kind: 'nat',
+      router: 'r_a',
+      direction: 'outbound',
+      original_src: '192.168.1.10',
+      rewritten_src: '200.100.0.1',
+      dst: '8.8.8.8',
+      payload_id: 'pid-out',
+    }}));
+    showPacketTooltip({
+      type: 'user_datagram',
+      payload_id: 'pid-out',
+      payload_src: '200.100.0.1',
+      payload_dst: '8.8.8.8',
+      src: { address: '200.100.0.1' },
+      dst: { address: '8.8.8.8' },
+    }, dot);
+    const tt = document.getElementById('packet-tooltip');
+    expect(tt.innerHTML).toContain('NAT @ r_a');
+    expect(tt.innerHTML).toContain('192.168.1.10');
+    expect(tt.innerHTML).toContain('200.100.0.1');
+  });
+
+  it('appends an inbound NAT line with rewritten_dst → original_dst', () => {
+    bus.dispatchEvent(new CustomEvent('sim:nat', { detail: {
+      kind: 'nat',
+      router: 'r_a',
+      direction: 'inbound',
+      rewritten_dst: '200.100.0.1',
+      original_dst: '192.168.1.10',
+      src: '8.8.8.8',
+      payload_id: 'pid-in',
+    }}));
+    showPacketTooltip({
+      type: 'user_datagram',
+      payload_id: 'pid-in',
+      payload_src: '8.8.8.8',
+      payload_dst: '192.168.1.10',
+      src: { address: '8.8.8.8' },
+      dst: { address: '192.168.1.10' },
+    }, dot);
+    const tt = document.getElementById('packet-tooltip');
+    expect(tt.innerHTML).toContain('NAT @ r_a');
+    // Inbound shape: rewritten_dst -> original_dst
+    expect(tt.innerHTML).toContain('200.100.0.1');
+    expect(tt.innerHTML).toContain('192.168.1.10');
+  });
+
+  it('renders no NAT line when the payload had none', () => {
+    showPacketTooltip({
+      type: 'user_datagram',
+      payload_id: 'pid-no-nat',
+      payload_src: '8.8.8.8',
+      payload_dst: '1.2.3.4',
+      src: { address: '8.8.8.8' },
+      dst: { address: '1.2.3.4' },
+    }, dot);
+    const tt = document.getElementById('packet-tooltip');
+    expect(tt.innerHTML).not.toContain('NAT');
+  });
+
+  it('renders multiple NAT lines when the payload was rewritten at multiple hops', () => {
+    bus.dispatchEvent(new CustomEvent('sim:nat', { detail: {
+      kind: 'nat', router: 'r_a', direction: 'outbound',
+      original_src: '192.168.1.10', rewritten_src: '200.100.0.1',
+      dst: '8.8.8.8', payload_id: 'pid-multi',
+    }}));
+    bus.dispatchEvent(new CustomEvent('sim:nat', { detail: {
+      kind: 'nat', router: 'r_b', direction: 'outbound',
+      original_src: '200.100.0.1', rewritten_src: '198.51.100.1',
+      dst: '8.8.8.8', payload_id: 'pid-multi',
+    }}));
+    showPacketTooltip({
+      type: 'user_datagram',
+      payload_id: 'pid-multi',
+      payload_src: '198.51.100.1',
+      payload_dst: '8.8.8.8',
+      src: { address: '198.51.100.1' },
+      dst: { address: '8.8.8.8' },
+    }, dot);
+    const tt = document.getElementById('packet-tooltip');
+    expect(tt.innerHTML).toContain('NAT @ r_a');
+    expect(tt.innerHTML).toContain('NAT @ r_b');
   });
 });

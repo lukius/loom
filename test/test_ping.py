@@ -7,6 +7,7 @@ import time
 import pytest
 
 from entities import NetworkAddress
+from entities.event import EventTracer
 from parser import Parser
 
 
@@ -153,44 +154,44 @@ H1_SLASH30_LINK = textwrap.dedent("""
 as:
   name: t
   networks:
-    lan_h1: "10.0.1.0/24"
-    lan_h2: "10.0.2.0/24"
+    lan_h1: "200.100.1.0/24"
+    lan_h2: "200.100.2.0/24"
   links:
-    p2p1: "10.0.0.0/30"
+    p2p1: "200.100.0.0/30"
   hosts:
-    h1: {network: lan_h1, address: "10.0.1.10", gateway: "10.0.1.1"}
-    h2: {network: lan_h2, address: "10.0.2.10", gateway: "10.0.2.1"}
+    h1: {network: lan_h1, address: "200.100.1.10", gateway: "200.100.1.1"}
+    h2: {network: lan_h2, address: "200.100.2.10", gateway: "200.100.2.1"}
   routers:
     r1:
       interfaces:
-        eth0: {network: lan_h1, address: "10.0.1.1", cost: 1}
-        eth1: {link: p2p1, address: "10.0.0.1", cost: 1}
+        eth0: {network: lan_h1, address: "200.100.1.1", cost: 1}
+        eth1: {link: p2p1, address: "200.100.0.1", cost: 1}
     r2:
       interfaces:
-        eth0: {link: p2p1, address: "10.0.0.2", cost: 1}
-        eth1: {network: lan_h2, address: "10.0.2.1", cost: 1}
+        eth0: {link: p2p1, address: "200.100.0.2", cost: 1}
+        eth1: {network: lan_h2, address: "200.100.2.1", cost: 1}
 """)
 
 H1_SLASH31_LINK = textwrap.dedent("""
 as:
   name: t
   networks:
-    lan_h1: "10.0.1.0/24"
-    lan_h2: "10.0.2.0/24"
+    lan_h1: "200.100.1.0/24"
+    lan_h2: "200.100.2.0/24"
   links:
-    p2p1: "10.0.0.0/31"
+    p2p1: "200.100.0.0/31"
   hosts:
-    h1: {network: lan_h1, address: "10.0.1.10", gateway: "10.0.1.1"}
-    h2: {network: lan_h2, address: "10.0.2.10", gateway: "10.0.2.1"}
+    h1: {network: lan_h1, address: "200.100.1.10", gateway: "200.100.1.1"}
+    h2: {network: lan_h2, address: "200.100.2.10", gateway: "200.100.2.1"}
   routers:
     r1:
       interfaces:
-        eth0: {network: lan_h1, address: "10.0.1.1", cost: 1}
-        eth1: {link: p2p1, address: "10.0.0.0", cost: 1}
+        eth0: {network: lan_h1, address: "200.100.1.1", cost: 1}
+        eth1: {link: p2p1, address: "200.100.0.0", cost: 1}
     r2:
       interfaces:
-        eth0: {link: p2p1, address: "10.0.0.1", cost: 1}
-        eth1: {network: lan_h2, address: "10.0.2.1", cost: 1}
+        eth0: {link: p2p1, address: "200.100.0.1", cost: 1}
+        eth1: {network: lan_h2, address: "200.100.2.1", cost: 1}
 """)
 
 HOST_ON_SLASH31_LINK = textwrap.dedent("""
@@ -222,8 +223,8 @@ def test_ping_host_behind_p2p_slash30_link():
         r2 = system.router("r2")
         # Wait for full routing convergence before pinging.
         assert _wait(lambda: (
-            _table_has_prefix(r1, "10.0.2.0/24")
-            and _table_has_prefix(r2, "10.0.1.0/24")
+            _table_has_prefix(r1, "200.100.2.0/24")
+            and _table_has_prefix(r2, "200.100.1.0/24")
         )), "routers did not converge before ping (/30)"
         rtt = h1.ping(h2.address(), timeout=3.0)
         assert rtt is not None, "ping across /30 link returned None (timeout)"
@@ -244,8 +245,8 @@ def test_ping_host_behind_p2p_slash31_link():
         r2 = system.router("r2")
         # Wait for full routing convergence before pinging.
         assert _wait(lambda: (
-            _table_has_prefix(r1, "10.0.2.0/24")
-            and _table_has_prefix(r2, "10.0.1.0/24")
+            _table_has_prefix(r1, "200.100.2.0/24")
+            and _table_has_prefix(r2, "200.100.1.0/24")
         )), "routers did not converge before ping (/31)"
         rtt = h1.ping(h2.address(), timeout=3.0)
         assert rtt is not None, "ping across /31 link returned None (timeout)"
@@ -275,6 +276,189 @@ def test_ping_host_on_link():
         rtt = h1.ping(h2.address(), timeout=3.0)
         assert rtt is not None, "ping from link-attached host returned None (timeout)"
         assert rtt < 1.0
+    finally:
+        system.stop()
+        os.unlink(path)
+
+
+# ---------------------------------------------------------------------------
+# Multi-tenant NAT end-to-end test
+# ---------------------------------------------------------------------------
+
+MULTI_TENANT_NAT = textwrap.dedent("""
+as:
+  name: multi_tenant
+  networks:
+    lan_a: "192.168.1.0/24"
+    lan_b: "192.168.1.0/24"
+    lan_isp: "200.100.0.0/24"
+  links:
+    p2p_a: "198.51.100.0/30"
+    p2p_b: "198.51.100.4/30"
+  hosts:
+    h_a:
+      network: lan_a
+      address: "192.168.1.10"
+      gateway: "192.168.1.1"
+    h_b:
+      network: lan_b
+      address: "192.168.1.20"
+      gateway: "192.168.1.1"
+    h_pub:
+      network: lan_isp
+      address: "200.100.0.10"
+      gateway: "200.100.0.1"
+  routers:
+    r_a:
+      interfaces:
+        eth0: {network: lan_a, address: "192.168.1.1", cost: 1}
+        eth1: {link: p2p_a, address: "198.51.100.1", cost: 1}
+    r_b:
+      interfaces:
+        eth0: {network: lan_b, address: "192.168.1.1", cost: 1}
+        eth1: {link: p2p_b, address: "198.51.100.5", cost: 1}
+    r_core:
+      interfaces:
+        eth0: {link: p2p_a, address: "198.51.100.2", cost: 1}
+        eth1: {link: p2p_b, address: "198.51.100.6", cost: 1}
+        eth2: {network: lan_isp, address: "200.100.0.1", cost: 1}
+""")
+
+
+def test_multi_tenant_nat_e2e():
+    """Two tenants share 192.168.1.0/24 behind their own routers. Both
+    reach a shared public destination through r_core; each tenant's NAT
+    rewrites its source on the way out. Tenants cannot reach each other."""
+    path = _make_topology(MULTI_TENANT_NAT)
+    system = Parser(path).parse()
+    try:
+        h_a = system.host("h_a")
+        h_b = system.host("h_b")
+        h_pub = system.host("h_pub")
+
+        # Wait for routing convergence: r_a and r_b should learn the public
+        # LAN through r_core. (Public p2p links and lan_isp are advertised;
+        # private LANs are not.)
+        r_a = system.routers()["r_a"]
+        r_b = system.routers()["r_b"]
+        assert _wait(lambda: _table_has_prefix(r_a, "200.100.0.0/24"), timeout=5.0), \
+            "r_a did not converge on public LAN"
+        assert _wait(lambda: _table_has_prefix(r_b, "200.100.0.0/24"), timeout=5.0), \
+            "r_b did not converge on public LAN"
+
+        # Tenant A reaches the public host (NAT'd by r_a).
+        rtt_a = h_a.ping(h_pub.address(), timeout=2.0)
+        assert rtt_a is not None, "h_a -> h_pub ping failed (should be NAT'd via r_a)"
+        assert rtt_a < 1.0
+
+        # Tenant B reaches the public host (NAT'd by r_b).
+        rtt_b = h_b.ping(h_pub.address(), timeout=2.0)
+        assert rtt_b is not None, "h_b -> h_pub ping failed (should be NAT'd via r_b)"
+        assert rtt_b < 1.0
+
+        # Cross-tenant: h_a cannot reach h_b. h_a sends to 192.168.1.20
+        # which it sees as same-LAN delivery (lan_a doesn't have 192.168.1.20).
+        # The reply never arrives.
+        rtt_cross = h_a.ping(h_b.address(), timeout=0.3)
+        assert rtt_cross is None, "h_a should NOT reach h_b's address (CIDRs overlap)"
+    finally:
+        system.stop()
+        os.unlink(path)
+
+
+def test_nat_ping_packet_events_share_one_flow():
+    """All packet events for one ping across NAT must share one flow key.
+
+    `flow` identifies the end-to-end conversation. A single ping — request
+    and reply, on both sides of a NAT boundary — is one conversation, so
+    every emitted `packet` event must carry the same `flow` even when NAT
+    rewrites the visible src/dst mid-path.
+    """
+    path = _make_topology(MULTI_TENANT_NAT)
+    EventTracer._subscribers = []
+    events = []
+    EventTracer.subscribe(events.append)
+    system = Parser(path).parse()
+    try:
+        h_a = system.host("h_a")
+        h_pub = system.host("h_pub")
+        r_a = system.routers()["r_a"]
+        r_b = system.routers()["r_b"]
+        assert _wait(lambda: _table_has_prefix(r_a, "200.100.0.0/24"), timeout=5.0)
+        assert _wait(lambda: _table_has_prefix(r_b, "200.100.0.0/24"), timeout=5.0)
+
+        # Clear out the routing-convergence chatter; we only want this ping's events.
+        events.clear()
+        rtt = h_a.ping(h_pub.address(), timeout=2.0)
+        assert rtt is not None, "h_a -> h_pub ping failed (NAT path)"
+
+        ping_kinds = ("ping_request", "ping_reply")
+        ping_packet_events = [
+            e for e in events
+            if e.get("kind") == "packet" and e.get("type") in ping_kinds
+        ]
+        assert len(ping_packet_events) >= 6, (
+            f"expected at least 6 hops (3 request + 3 reply), "
+            f"got {len(ping_packet_events)}: {ping_packet_events}"
+        )
+        flows = {e.get("flow") for e in ping_packet_events}
+        assert len(flows) == 1, (
+            f"all hops of one ping should share a flow; "
+            f"got {len(flows)} flows: {flows}"
+        )
+    finally:
+        system.stop()
+        EventTracer._subscribers = []
+        os.unlink(path)
+
+
+def test_two_private_hosts_keep_distinct_nat_entries_for_same_destination():
+    """Two hosts on the same private LAN pinging the same public destination
+    must each occupy their own NAT entry on the gateway router. The two
+    `PingRequest`s collide on `seq` (both start at 0 for fresh hosts), so
+    the NAT flow_id cannot be derived from `seq` alone — that would let the
+    second registration overwrite the first and the first host would lose
+    its reverse mapping.
+    """
+    topology = textwrap.dedent("""
+    as:
+      name: nat_two_clients
+      networks:
+        lan_priv: "192.168.1.0/24"
+        lan_pub: "200.100.0.0/24"
+      links:
+        uplink: "198.51.100.0/30"
+      hosts:
+        h_x: {network: lan_priv, address: "192.168.1.10", gateway: "192.168.1.1"}
+        h_y: {network: lan_priv, address: "192.168.1.20", gateway: "192.168.1.1"}
+        h_pub: {network: lan_pub, address: "200.100.0.10", gateway: "200.100.0.1"}
+      routers:
+        r_nat:
+          interfaces:
+            eth0: {network: lan_priv, address: "192.168.1.1", cost: 1}
+            eth1: {link: uplink, address: "198.51.100.1", cost: 1}
+        r_pub:
+          interfaces:
+            eth0: {link: uplink, address: "198.51.100.2", cost: 1}
+            eth1: {network: lan_pub, address: "200.100.0.1", cost: 1}
+    """)
+    path = _make_topology(topology)
+    system = Parser(path).parse()
+    try:
+        h_x = system.host("h_x")
+        h_y = system.host("h_y")
+        h_pub = system.host("h_pub")
+        r_nat = system.routers()["r_nat"]
+        assert _wait(lambda: _table_has_prefix(r_nat, "200.100.0.0/24"), timeout=5.0)
+        rtt_x = h_x.ping(h_pub.address(), timeout=2.0)
+        rtt_y = h_y.ping(h_pub.address(), timeout=2.0)
+        assert rtt_x is not None, "h_x → h_pub ping failed"
+        assert rtt_y is not None, "h_y → h_pub ping failed"
+        snap = r_nat.nat_table().snapshot()
+        original_srcs = {e['original_src'] for e in snap}
+        assert original_srcs == {'192.168.1.10', '192.168.1.20'}, (
+            f"NAT table should hold one entry per private host; got: {snap}"
+        )
     finally:
         system.stop()
         os.unlink(path)

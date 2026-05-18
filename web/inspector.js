@@ -112,6 +112,53 @@ export const Inspector = {
       this.refreshRoutes(evt.device);
     }
   },
+
+  async refreshNAT(deviceName) {
+    const sec = document.getElementById('insp-nat');
+    if (!sec) return;
+    if (Sim.state === 'idle' || !deviceName) { sec.hidden = true; return; }
+    // Hosts don't have a NAT table.
+    if (state.hosts && state.hosts[deviceName]) { sec.hidden = true; return; }
+    // Prime from the server on cold start. Events on the bus only carry
+    // *changes*, so a fresh subscriber (page reload, late inspector mount)
+    // would see an empty panel until the next translation. Once primed,
+    // subsequent updates ride the `sim:nat-table-changed` event stream,
+    // so we never re-fetch (avoids races where a stale fetch overwrites
+    // a newer event-driven update).
+    if (state.natTables[deviceName] === undefined) {
+      try {
+        const r = await RuntimeClient.deviceNatTable(deviceName);
+        state.natTables[deviceName] = r.entries || [];
+      } catch (e) {
+        state.natTables[deviceName] = [];
+      }
+    }
+    const entries = state.natTables[deviceName] || [];
+    if (!entries.length) { sec.hidden = true; return; }
+    sec.hidden = false;
+    const rows = entries.map(e => {
+      // Conversation-keyed flow_ids are UUIDs (~36 chars). Show a short
+      // prefix so the column stays single-line at the default pane width;
+      // keep the full id available on hover via `title`.
+      let fidCell;
+      if (e.flow_id === null || e.flow_id === undefined) {
+        fidCell = '<td>—</td>';
+      } else {
+        const s = String(e.flow_id);
+        const short = s.length > 10 ? s.slice(0, 8) + '…' : s;
+        fidCell = `<td title="${escapeHtml(s)}">${escapeHtml(short)}</td>`;
+      }
+      return `<tr><td>${escapeHtml(e.original_src)}</td><td>${escapeHtml(e.rewritten_src)}</td><td>${escapeHtml(e.dst)}</td>${fidCell}</tr>`;
+    }).join('');
+    sec.innerHTML = `<h4 class="insp-h">NAT table — ${escapeHtml(deviceName)}</h4>` +
+      `<table class="insp-table"><thead><tr><th>Original</th><th>Rewritten</th><th>Destination</th><th>Flow ID</th></tr></thead><tbody>${rows}</tbody></table>`;
+  },
+
+  onNATChange(evt) {
+    if (state && state.selection && state.selection.name === evt.device) {
+      this.refreshNAT(evt.device);
+    }
+  },
 };
 
 /* ---------- context menu ---------- */
@@ -726,6 +773,7 @@ export function renderRouterInsp(name, elI) {
       </div>
     </div>
     <div class="insp-routes" id="insp-routes" hidden></div>
+    <div class="insp-nat" id="insp-nat" hidden></div>
     <div class="insp-foot">
       <button class="dup" id="f-dup">Duplicate</button>
       <button class="del" id="f-del">Delete</button>
@@ -864,6 +912,7 @@ export function renderRouterInsp(name, elI) {
   elI.querySelector('#f-del').addEventListener('click', deleteSelected);
   elI.querySelector('#f-dup').addEventListener('click', () => duplicateRouter(name));
   Inspector.refreshRoutes(name);
+  Inspector.refreshNAT(name);
 }
 
 /* ---------- crud ---------- */
@@ -1035,9 +1084,15 @@ bus.addEventListener('sim:status-changed', () => {
   if (state.selection && (state.selection.kind === 'host' || state.selection.kind === 'router')) {
     Inspector.refreshRoutes(state.selection.name);
   }
+  if (state.selection && state.selection.kind === 'router') {
+    Inspector.refreshNAT(state.selection.name);
+  }
 });
 bus.addEventListener('sim:routing-table-changed', (e) => {
   Inspector.onRouteChange({ device: e.detail.device });
+});
+bus.addEventListener('sim:nat-table-changed', (e) => {
+  Inspector.onNATChange({ device: e.detail.device });
 });
 bus.addEventListener('canvas:contextmenu-requested', (e) => {
   openContextMenu(e.detail.clientX, e.detail.clientY, e.detail.target, e.detail.world);

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, deviceNameForEndpointOnFabric, lookupAddressNodeOnFabric, renderCanvas, lookupLinkMidpoint, lookupDeviceNode, shiftLinkLabelsForDeviceMove, startLinkWizard, cancelLinkWizard, finishLinkWizard, getLinkWizard } from './canvas.js';
+import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, deviceNameForEndpointOnFabric, lookupAddressNodeOnFabric, renderCanvas, lookupLinkMidpoint, lookupDeviceNode, shiftLinkLabelsForDeviceMove, startLinkWizard, cancelLinkWizard, finishLinkWizard, getLinkWizard, linkBezier } from './canvas.js';
 import {
   state, bus,
   RAIL_DEFAULT_WIDTH, RAIL_THICKNESS, RAIL_TICK_INSET,
@@ -329,6 +329,111 @@ function setupMinimalDOM() {
   `;
 }
 
+describe('linkBezier — per-link bow keeps parallel links visually distinct', () => {
+  // Two near-vertical links from the same column would otherwise overlap
+  // exactly, hiding the topology. The helper bows each link's bezier
+  // perpendicular to the chord by a name-keyed amount so they fan apart.
+
+  const p0 = { x: 200, y: 100 };
+  const p3 = { x: 200, y: 500 }; // straight vertical chord
+
+  it('preserves the chord endpoints exactly', () => {
+    const b = linkBezier('p2p_a', p0, p3);
+    expect(b.p0).toEqual(p0);
+    expect(b.p3).toEqual(p3);
+  });
+
+  it('is deterministic — same name → same control points', () => {
+    const a = linkBezier('p2p_a', p0, p3);
+    const b = linkBezier('p2p_a', p0, p3);
+    expect(a.c1).toEqual(b.c1);
+    expect(a.c2).toEqual(b.c2);
+  });
+
+  it('two distinct link names sharing a chord produce distinct control points', () => {
+    // The whole reason this helper exists: links sharing a column on the
+    // canvas should not render the same path.
+    const a = linkBezier('p2p_a', p0, p3);
+    const b = linkBezier('p2p_b', p0, p3);
+    const c1Diff = Math.hypot(a.c1.x - b.c1.x, a.c1.y - b.c1.y);
+    const c2Diff = Math.hypot(a.c2.x - b.c2.x, a.c2.y - b.c2.y);
+    expect(c1Diff).toBeGreaterThan(0);
+    expect(c2Diff).toBeGreaterThan(0);
+  });
+
+  it('produces the same curve regardless of input direction', () => {
+    // The visible link uses a stable endpoint order; the packet animation
+    // uses the sender's direction. If linkBezier weren't direction-symmetric,
+    // the two curves would mirror each other and the packet would visibly
+    // float off the wire on parallel links.
+    const forward = linkBezier('p2p_x', p0, p3);
+    const reverse = linkBezier('p2p_x', p3, p0);
+    // A bezier from p3→p0 with controls (c2, c1) traces the same curve as
+    // one from p0→p3 with (c1, c2). So the swap should produce exactly that.
+    expect(reverse.c1).toEqual(forward.c2);
+    expect(reverse.c2).toEqual(forward.c1);
+  });
+
+  it('the bow is bounded — does not overshoot the chord length', () => {
+    // A short link should not get a wildly oversized bow, and a long
+    // link should not bow off the canvas.
+    const short = linkBezier('whatever', { x: 0, y: 0 }, { x: 0, y: 40 });
+    const long  = linkBezier('whatever-else', { x: 0, y: 0 }, { x: 0, y: 4000 });
+    // Perpendicular offset of c1 from the chord (chord is x=0):
+    expect(Math.abs(short.c1.x)).toBeLessThanOrEqual(40);   // <= chord length
+    expect(Math.abs(long.c1.x)).toBeLessThanOrEqual(80);    // capped — not 10% of 4000
+  });
+});
+
+describe('private LAN visual hint', () => {
+  beforeEach(() => {
+    setupMinimalDOM();
+    state.hosts    = {};
+    state.routers  = {};
+    state.networks = {};
+    state.links    = {};
+    state.selection = null;
+    state.view     = { x: 0, y: 0, k: 1 };
+    state.display  = { showCosts: true, showIfaces: true };
+  });
+
+  it('tags a network node with class `private` when its CIDR is RFC1918', () => {
+    state.networks.lan_priv = { cidr: '192.168.1.0/24', x: 200, y: 200 };
+    state.networks.lan_pub  = { cidr: '200.100.0.0/24', x: 200, y: 400 };
+    renderCanvas();
+    const priv = document.querySelector('g.node.network[data-name="lan_priv"]');
+    const pub  = document.querySelector('g.node.network[data-name="lan_pub"]');
+    expect(priv.classList.contains('private')).toBe(true);
+    expect(pub.classList.contains('private')).toBe(false);
+  });
+
+  it('tags the router-side iface label with `private` when the edge lands on a private LAN', () => {
+    state.networks.lan_priv = { cidr: '192.168.1.0/24', x: 200, y: 200 };
+    state.networks.lan_pub  = { cidr: '200.100.0.0/24', x: 200, y: 400 };
+    state.routers.r1 = {
+      x: 400, y: 300,
+      interfaces: {
+        eth0: { network: 'lan_priv', address: '192.168.1.1', cost: 1 },
+        eth1: { network: 'lan_pub',  address: '200.100.0.1', cost: 1 },
+      },
+    };
+    renderCanvas();
+    const labels = Array.from(document.querySelectorAll('text.edge-iface'));
+    const eth0Label = labels.find(t => t.textContent === 'eth0');
+    const eth1Label = labels.find(t => t.textContent === 'eth1');
+    expect(eth0Label.classList.contains('private')).toBe(true);
+    expect(eth1Label.classList.contains('private')).toBe(false);
+  });
+
+  it('does not tag host nodes with `private` (hosts stay at full chroma)', () => {
+    state.networks.lan_priv = { cidr: '192.168.1.0/24', x: 200, y: 200 };
+    state.hosts.h_a = { network: 'lan_priv', address: '192.168.1.10', x: 100, y: 200 };
+    renderCanvas();
+    const node = document.querySelector('g.node.host[data-name="h_a"]');
+    expect(node.classList.contains('private')).toBe(false);
+  });
+});
+
 describe('p2p link rendering', () => {
   beforeEach(() => {
     setupMinimalDOM();
@@ -406,6 +511,52 @@ describe('p2p link rendering', () => {
     renderCanvas();
     const edge = document.querySelector('.edge.p2p');
     expect(edge.classList.contains('selected')).toBe(true);
+  });
+
+  it('edge has selected class when one of its router endpoints is selected', () => {
+    // LAN edges already get selected when their host/router endpoint is
+    // selected (see drawEdge). p2p edges should behave the same so users
+    // can see at a glance which links belong to the device they clicked.
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    state.selection = { kind: 'router', name: 'r1' };
+    renderCanvas();
+    const edge = document.querySelector('.edge.p2p');
+    expect(edge.classList.contains('selected')).toBe(true);
+  });
+
+  it('edge has selected class when its host endpoint is selected (host-to-router p2p)', () => {
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.hosts.h1 = { link: 'p2p1', address: '10.1.0.1', x: 200, y: 200 };
+    state.routers.r1 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    state.selection = { kind: 'host', name: 'h1' };
+    renderCanvas();
+    const edge = document.querySelector('.edge.p2p');
+    expect(edge.classList.contains('selected')).toBe(true);
+  });
+
+  it('edge does NOT get selected class for an unrelated device', () => {
+    // Sanity: selecting a router that's NOT on this link must leave the
+    // edge alone.
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 300, y: 200 };
+    state.routers.r1 = { x: 200, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 5 },
+    }};
+    state.routers.r2 = { x: 400, y: 200, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 5 },
+    }};
+    state.routers.r3 = { x: 600, y: 200, interfaces: {} };  // not on p2p1
+    state.selection = { kind: 'router', name: 'r3' };
+    renderCanvas();
+    const edge = document.querySelector('.edge.p2p');
+    expect(edge.classList.contains('selected')).toBe(false);
   });
 
   it('edge path has data-kind="link" and data-name on it', () => {

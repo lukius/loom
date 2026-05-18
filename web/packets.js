@@ -7,7 +7,7 @@ import { escapeHtml } from './utils.js';
 import {
   lookupDeviceNode, lookupAddressNodeOnFabric, lookupNetworkNode,
   getNodeCenter, railTapPoint, deviceNameForEndpointOnFabric,
-  collectLinkEndpoints, clipToRect,
+  collectLinkEndpoints, clipToRect, linkBezier,
 } from './canvas.js';
 import { Sim } from './sim.js';
 
@@ -15,6 +15,27 @@ import { Sim } from './sim.js';
 // "datagram" gliding along the wire (textbook convention).
 const PACKET_W = 18;
 const PACKET_H = 12;
+
+// payload_id -> [{router, direction, original_src, rewritten_src, ...}, ...]
+// A packet may traverse multiple NAT hops (e.g. outbound at egress, inbound at
+// egress on the way back), so the cache stores all hops keyed by message id.
+// The cache is bounded to keep memory steady over a long session.
+const _NAT_CACHE_LIMIT = 1024;
+const _natByPayloadId = new Map();
+
+bus.addEventListener('sim:nat', (e) => {
+  const evt = e.detail;
+  if (!evt || !evt.payload_id) return;
+  const list = _natByPayloadId.get(evt.payload_id) || [];
+  list.push(evt);
+  _natByPayloadId.set(evt.payload_id, list);
+  if (_natByPayloadId.size > _NAT_CACHE_LIMIT) {
+    // FIFO eviction — Maps iterate in insertion order, so the oldest key is
+    // first. Drops the entire hop list for one payload at a time.
+    const firstKey = _natByPayloadId.keys().next().value;
+    _natByPayloadId.delete(firstKey);
+  }
+});
 
 // Position a packet rect so its center is at world (cx, cy).
 function setPacketCenter(rect, cx, cy) {
@@ -100,8 +121,28 @@ export const PacketAnim = {
     dot.addEventListener('mouseenter', () => showPacketTooltip(evt, dot));
     dot.addEventListener('mouseleave', hidePacketTooltip);
 
+    // Resolve the destination device once so the arrival signal can name it.
+    // Networks use address-on-fabric lookup; p2p links use the structural
+    // "other endpoint" since dst.address can collide with same-IP ifaces
+    // on a different link.
+    const srcName = evt.src && evt.src.device;
+    let dstDeviceName = null;
+    if (isLink) {
+      const peers = collectLinkEndpoints(evt.network).filter(ep => ep.device !== srcName);
+      dstDeviceName = peers.length === 1
+        ? peers[0].device
+        : deviceNameForEndpointOnFabric(evt.dst, evt.network);
+    } else {
+      dstDeviceName = deviceNameForEndpointOnFabric(evt.dst, evt.network);
+    }
+
     const finish = () => {
       if (dot.parentNode) layer.removeChild(dot);
+      if (dstDeviceName) {
+        bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
+          detail: { payloadId: evt.payload_id, device: dstDeviceName },
+        }));
+      }
       if (onDone) onDone();
     };
 
@@ -186,7 +227,10 @@ export const PacketAnim = {
     const bSize = NODE[dstKind];
     const [ax, ay] = clipToRect(srcCenter.x, srcCenter.y, aSize.w, aSize.h, dstCenter.x, dstCenter.y);
     const [bx, by] = clipToRect(dstCenter.x, dstCenter.y, bSize.w, bSize.h, srcCenter.x, srcCenter.y);
-    return [{ kind: 'bez', ...this._bezBetween({ x: ax, y: ay }, { x: bx, y: by }) }];
+    // Use the same bowed bezier the canvas renders so the packet rides the
+    // visible wire (otherwise parallel-link packets would diverge from their
+    // edge paths).
+    return [{ kind: 'bez', ...linkBezier(evt.network, { x: ax, y: ay }, { x: bx, y: by }) }];
   },
 
   // Cubic bezier with horizontal tangents at both ends — same shape used by
@@ -290,9 +334,20 @@ export function showPacketTooltip(evt, dot) {
   const origDst = evt.payload_dst || hopDst;
   const sameAsHop = origSrc === hopSrc && origDst === hopDst;
   const headline = `${evt.type}: ${origSrc} → ${origDst}`;
-  tt.innerHTML = sameAsHop
+  const headHtml = sameAsHop
     ? escapeHtml(headline)
     : `${escapeHtml(headline)}<div class="hop">hop: ${escapeHtml(hopSrc)} → ${escapeHtml(hopDst)}</div>`;
+  // NAT correlation: the server's `nat` event carries the same `payload_id` as
+  // the `packet` event we're rendering for, so an exact match by id is reliable
+  // across reorderings and multi-hop paths.
+  const natList = (evt.payload_id && _natByPayloadId.get(evt.payload_id)) || [];
+  const natHtml = natList.map(n => {
+    if (n.direction === 'outbound') {
+      return `<div class="nat">NAT @ ${escapeHtml(n.router)}: ${escapeHtml(n.original_src)} → ${escapeHtml(n.rewritten_src)}</div>`;
+    }
+    return `<div class="nat">NAT @ ${escapeHtml(n.router)}: ${escapeHtml(n.rewritten_dst)} → ${escapeHtml(n.original_dst)}</div>`;
+  }).join('');
+  tt.innerHTML = headHtml + natHtml;
   tt.style.display = 'block';
   const bbox = dot.getBoundingClientRect();
   tt.style.left = (bbox.right + 8) + 'px';

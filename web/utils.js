@@ -98,6 +98,40 @@ export function addressInCidr(addr, cidr) {
   return ((toInt(addr) & maskInt) >>> 0) === ((toInt(addrPart) & maskInt) >>> 0);
 }
 
+// RFC1918 ranges. A CIDR is "private" iff *every* address it covers falls
+// inside one of these blocks — i.e. the CIDR's network range is wholly
+// contained in the private block (matches src/entities/address.is_private).
+const _PRIVATE_BLOCKS = [
+  { addr: '10.0.0.0',    mask: 8 },
+  { addr: '172.16.0.0',  mask: 12 },
+  { addr: '192.168.0.0', mask: 16 },
+];
+
+function _toInt(ip) {
+  const p = ip.split('.').map(Number);
+  return (p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3]) >>> 0;
+}
+
+export function isPrivateCidr(cidr) {
+  if (typeof cidr !== 'string' || !cidr) return false;
+  const slash = cidr.lastIndexOf('/');
+  if (slash === -1) return false;
+  const addr = cidr.slice(0, slash);
+  const prefix = Number(cidr.slice(slash + 1));
+  if (!isValidIpv4(addr) || !Number.isInteger(prefix)) return false;
+  if (prefix < 0 || prefix > 32) return false;
+
+  const net = _toInt(addr);
+  for (const blk of _PRIVATE_BLOCKS) {
+    if (prefix < blk.mask) continue;  // wider than the block — not fully private
+    const blkMask = blk.mask === 0 ? 0 : (~0 << (32 - blk.mask)) >>> 0;
+    if ((net & blkMask) >>> 0 === (_toInt(blk.addr) & blkMask) >>> 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function el(tag, attrs = {}, kids = null) {
   const e = document.createElementNS(SVG_NS, tag);
   for (const [k, v] of Object.entries(attrs)) {

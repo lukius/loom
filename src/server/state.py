@@ -4,6 +4,10 @@ import threading
 from pathlib import Path
 from typing import Optional
 
+import yaml
+
+from entities import Link
+
 from .persistence import prepare_session
 
 
@@ -56,10 +60,11 @@ class SimState:
         with self._lock:
             if self._as is not None:
                 self._as.stop()
-            self._as = Parser(str(self.session_path)).parse()
-            # Parser.parse() calls router.start() — stop them for "idle" semantics.
-            for r in self._as.routers().values():
-                r.stop()
+            # `start_routing=False`: build routers without starting their
+            # keepalive threads. Starting them here would let the initial
+            # routing tick fire — emitting packet events on a sim that is
+            # still 'idle' — before /sim/start has been called.
+            self._as = Parser(str(self.session_path)).parse(start_routing=False)
             self._state = "idle"
 
     def start(self):
@@ -257,39 +262,56 @@ class SimState:
         atomic_write(self.session_path, self._dump_yaml())
 
     def _dump_yaml(self) -> str:
-        import yaml  # noqa: PLC0415
+        def fabric_kv(fabric):
+            # Interface (and Host) fabric refs round-trip back to the same
+            # YAML key the parser accepted: `link:` for point-to-point Links,
+            # `network:` for multi-access Networks.
+            key = "link" if isinstance(fabric, Link) else "network"
+            return key, fabric.name()
 
-        out = {
-            "as": {
-                "name": self._as.name(),
-                "networks": {
-                    n.name(): str(n.address())
-                    for n in self._as.networks().values()
-                },
-                "hosts": {
-                    h.name(): {
-                        "network": h.network().name(),
-                        "address": str(h.address()),
-                        **({"gateway": str(h.gateway())} if h.gateway() else {}),
-                    }
-                    for h in self._as.hosts().values()
-                },
-                "routers": {
-                    r.name(): {
-                        "interfaces": {
-                            i.name(): {
-                                "network": i.network().name(),
-                                "address": str(i.address()),
-                                "cost": i.cost(),
-                            }
-                            for i in r.interfaces().values()
-                        }
-                    }
-                    for r in self._as.routers().values()
-                },
+        def iface_dict(iface):
+            key, name = fabric_kv(iface.network())
+            return {
+                key: name,
+                "address": str(iface.address()),
+                "cost": iface.cost(),
             }
+
+        def host_dict(host):
+            key, name = fabric_kv(host.network())
+            d = {key: name, "address": str(host.address())}
+            if host.gateway():
+                d["gateway"] = str(host.gateway())
+            return d
+
+        as_dict = {
+            "name": self._as.name(),
+            "networks": {
+                n.name(): str(n.address())
+                for n in self._as.networks().values()
+            },
         }
-        return yaml.safe_dump(out, sort_keys=False)
+        # Conventional order (matching the source schema): networks, then
+        # links (if any), then hosts, then routers. `links:` is omitted on
+        # link-free topologies to keep simple sample files clean.
+        if self._as.links():
+            as_dict["links"] = {
+                lnk.name(): str(lnk.address())
+                for lnk in self._as.links().values()
+            }
+        as_dict["hosts"] = {
+            h.name(): host_dict(h) for h in self._as.hosts().values()
+        }
+        as_dict["routers"] = {
+            r.name(): {
+                "interfaces": {
+                    i.name(): iface_dict(i)
+                    for i in r.interfaces().values()
+                }
+            }
+            for r in self._as.routers().values()
+        }
+        return yaml.safe_dump({"as": as_dict}, sort_keys=False)
 
     def stop(self):
         """Transition any state -> idle. No-op if already idle."""

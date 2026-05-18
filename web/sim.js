@@ -40,6 +40,7 @@ export const RuntimeClient = {
   deviceCommand(n, cmd)  { return this._json('POST', `/devices/${encodeURIComponent(n)}/command`, { cmd }); },
   deviceRoutes(n)        { return this._json('GET',  `/devices/${encodeURIComponent(n)}/routes`); },
   deviceInterfaces(n)    { return this._json('GET',  `/devices/${encodeURIComponent(n)}/interfaces`); },
+  deviceNatTable(n)      { return this._json('GET',  `/devices/${encodeURIComponent(n)}/nat-table`); },
 
   connectEvents(onEvent) {
     this._onEvent = onEvent;
@@ -236,6 +237,38 @@ export const Sim = {
   },
 };
 
+/* ---------- pending NAT-table updates ----------
+   The simulator does NAT (and emits `nat` + `nat_table_changed`) microseconds
+   after the sending host pushes the packet — about one animation-duration
+   before the packet visually arrives at the NAT router. Applying the table
+   change on receipt would make the inspector update one full hop early.
+   We defer the update until a matching `sim:packet-arrived` fires, so the
+   table mutation lines up with the visible arrival. */
+const _pendingNATEntries = new Map();  // device -> entries (the deferred snapshot)
+const _pendingNATPayload = new Map();  // device -> payload_id we are waiting for
+
+export function _resetPendingNAT() {
+  _pendingNATEntries.clear();
+  _pendingNATPayload.clear();
+}
+
+function _applyNATTableChange(device, entries) {
+  state.natTables[device] = entries;
+  bus.dispatchEvent(new CustomEvent('sim:nat-table-changed', { detail: { device } }));
+}
+
+bus.addEventListener('sim:packet-arrived', (e) => {
+  const detail = e.detail || {};
+  const { payloadId, device } = detail;
+  if (!device) return;
+  if (_pendingNATPayload.get(device) !== payloadId) return;
+  if (!_pendingNATEntries.has(device)) return;
+  const entries = _pendingNATEntries.get(device);
+  _pendingNATEntries.delete(device);
+  _pendingNATPayload.delete(device);
+  _applyNATTableChange(device, entries);
+});
+
 /* ---------- WS event router ----------
    Translates server WebSocket events into bus events so canvas.js,
    inspector.js, and packet-animation can subscribe without coupling to the
@@ -249,6 +282,9 @@ export function _onEvent(evt) {
     if (Sim.state !== prev) {
       bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: Sim.state } }));
     }
+    // Discard any deferred NAT state on reset, otherwise a late
+    // `sim:packet-arrived` from an in-flight tween would resurrect it.
+    if (Sim.state === 'idle') _resetPendingNAT();
     return;
   }
   if (evt.kind === 'packet') {
@@ -257,6 +293,24 @@ export function _onEvent(evt) {
   }
   if (evt.kind === 'routing_table_changed') {
     bus.dispatchEvent(new CustomEvent('sim:routing-table-changed', { detail: { device: evt.device } }));
+    return;
+  }
+  if (evt.kind === 'nat') {
+    // Only outbound NAT changes the table. Arm the deferral now so a
+    // subsequent `nat_table_changed` knows which packet animation to await.
+    if (evt.direction === 'outbound' && evt.router && evt.payload_id) {
+      _pendingNATPayload.set(evt.router, evt.payload_id);
+    }
+    bus.dispatchEvent(new CustomEvent('sim:nat', { detail: evt }));
+    return;
+  }
+  if (evt.kind === 'nat_table_changed') {
+    const entries = evt.entries || [];
+    if (_pendingNATPayload.has(evt.device)) {
+      _pendingNATEntries.set(evt.device, entries);
+    } else {
+      _applyNATTableChange(evt.device, entries);
+    }
     return;
   }
 }

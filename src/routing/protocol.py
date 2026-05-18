@@ -1,6 +1,5 @@
 import collections
 import threading
-import time
 import traceback
 
 from .graph import NetworkGraph
@@ -18,6 +17,7 @@ class RoutingProtocol:
         self._seqs = collections.defaultdict(lambda: 0)
 
         self._stopped = False
+        self._stop_event = threading.Event()
         self._keepalive_interval = self.KEEPALIVE_INTERVAL
         self._keepalive_thread = threading.Thread(target=self._keepalive_loop, daemon=True)
 
@@ -33,12 +33,12 @@ class RoutingProtocol:
         self._keepalive_interval = float(seconds)
 
     def start(self):
-        # Always clear the stop flag first. If a previous stop() set it while
-        # the keepalive thread was sleeping, the thread would otherwise exit
-        # on its next wake — silently halting all subsequent ticks. The
-        # SimState load/start cycle (Parser starts → load_from_session stops
-        # → /sim/start starts) hits this path every time.
+        # Always clear the stop flag first. A start() that follows a prior
+        # stop() on the same protocol instance (e.g. tests reusing a router,
+        # or the shell `read` re-loading a topology after pings stopped the
+        # threads) would otherwise see _stopped=True and exit on first wake.
         self._stopped = False
+        self._stop_event.clear()
         if self._keepalive_thread is not None and self._keepalive_thread.is_alive():
             return                                    # idempotent on running
         self._keepalive_thread = threading.Thread(
@@ -142,6 +142,8 @@ class RoutingProtocol:
 
             for name, iface in self._router.interfaces().items():
                 prefix = iface.network().address()
+                if prefix.is_private():
+                    continue
                 cost = iface.cost()
                 msg.add_destination(prefix, cost)
 
@@ -181,7 +183,15 @@ class RoutingProtocol:
         return self._graph_updated
 
     def stop(self):
+        # Synchronous shutdown: setting `_stop_event` wakes the keepalive
+        # thread out of its interval wait, then we join. Callers (tests,
+        # server session reloads) can rely on the thread being fully
+        # unwound when stop() returns, so a subsequent start() — or a
+        # neighbouring test — can't race a stale tick.
         self._stopped = True
+        self._stop_event.set()
+        if self._keepalive_thread is not None and self._keepalive_thread.is_alive():
+            self._keepalive_thread.join(timeout=2.0)
 
     def _keepalive_loop(self):
         gate = self._router.gate()
@@ -195,17 +205,19 @@ class RoutingProtocol:
         else:
             self._safe_tick()
         while not self._stopped:
+            # Sleep on the protocol's own stop event so that protocol.stop()
+            # (called e.g. by SimState.load_from_session without involving
+            # the AS-level gate) wakes the thread immediately. AS.stop() and
+            # protocol.stop() are paired by system.stop(), so AS-level
+            # shutdown still terminates promptly via the second call.
+            if self._stop_event.wait(timeout=self._keepalive_interval):
+                break
             if gate is not None:
-                timed_out, stopped = gate.sleep(self._keepalive_interval)
-                if stopped:
-                    break
                 running, stopped = gate.wait_or_stop()
                 if stopped:
                     break
                 if not running:
                     continue  # paused; loop again without ticking
-            else:
-                time.sleep(self._keepalive_interval)
             self._safe_tick()
 
     def _safe_tick(self):

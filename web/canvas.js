@@ -9,7 +9,7 @@ import {
   RAIL_THICKNESS, RAIL_ENDCAP_LEN, RAIL_HANDLE_LEN,
   RAIL_TICK_INSET, RAIL_TICK_LEN, RAIL_LABEL_GAP,
 } from './state.js';
-import { el, escapeHtml, cssEscape, uniqueIface, uniqueName, toast } from './utils.js';
+import { el, escapeHtml, cssEscape, uniqueIface, uniqueName, toast, isPrivateCidr } from './utils.js';
 import { isTopologyLocked } from './sim.js';
 
 export function lookupDeviceNode(name) {
@@ -366,12 +366,15 @@ export function drawEdge(a, b, kind, sel, info) {
       }, `c·${info.cost}`));
     }
     if (showIfaces && info.ifname) {
-      // ifname placed near "a" side
+      // ifname placed near "a" side. Iface labels on the router side of a
+      // private LAN get the same muted treatment as the LAN rail, so the
+      // NAT boundary reads at a glance from either end of the wire.
       const tn = 0.18;
       const ix = bezPoint(ax, c1x, c2x, bx, tn);
       const iy = bezPoint(ay, c1y, c2y, by, tn);
+      const isPrivIface = isPrivateCidr(b && b.cidr);
       edgesLayer().appendChild(el('text', {
-        class: 'edge-iface',
+        class: `edge-iface${isPrivIface ? ' private' : ''}`,
         x: ix, y: iy - 5,
         'text-anchor': 'middle',
       }, info.ifname));
@@ -381,6 +384,43 @@ export function drawEdge(a, b, kind, sel, info) {
 export function bezPoint(p0, p1, p2, p3, t) {
   const u = 1 - t;
   return u*u*u*p0 + 3*u*u*t*p1 + 3*u*t*t*p2 + t*t*t*p3;
+}
+
+// Per-link bow keyed off the link name. Parallel p2p links sharing an
+// endpoint (e.g. two links from r_core in a vertical column) would otherwise
+// render on top of each other and look like one wire. A small, deterministic
+// perpendicular offset on the bezier control points fans them apart.
+const _LINK_BOW_BINS = [0, 1, -1, 0.6, -0.6, 1.4, -1.4];
+function _linkBowFactor(linkName) {
+  if (!linkName) return 0;
+  let h = 5381;
+  for (let i = 0; i < linkName.length; i++) {
+    h = ((h * 33) ^ linkName.charCodeAt(i)) | 0;
+  }
+  return _LINK_BOW_BINS[Math.abs(h) % _LINK_BOW_BINS.length];
+}
+export function linkBezier(linkName, p0, p3) {
+  const dx = p3.x - p0.x;
+  const dy = p3.y - p0.y;
+  const len = Math.hypot(dx, dy) || 1;
+  // Perpendicular to the chord (rotate +90°: (dx,dy) → (-dy,dx)).
+  const perpX = -dy / len;
+  const perpY = dx / len;
+  // Bow magnitude: a fraction of the chord, capped so short links don't
+  // bulge and long links don't arc absurdly.
+  const magnitude = _linkBowFactor(linkName) * Math.min(len * 0.10, 36);
+  // Orientation sign canonicalizes the bow direction: when the caller flips
+  // p0 and p3, both `perp` and this sign flip, so `perp * bow` stays the
+  // same. Without it, drawLinkEdge (stable endpoint order) and the packet
+  // animation (sender→receiver order) would render mirror-image arcs.
+  const orientationSign = (dx > 0 || (dx === 0 && dy > 0)) ? 1 : -1;
+  const bow = magnitude * orientationSign;
+  // The bowless formula matches drawEdge's horizontal-tangent shape.
+  return {
+    p0, p3,
+    c1: { x: p0.x + dx * 0.55 + perpX * bow, y: p0.y + perpY * bow },
+    c2: { x: p3.x - dx * 0.55 + perpX * bow, y: p3.y + perpY * bow },
+  };
 }
 export function clipToRect(cx, cy, w, h, tx, ty) {
   const dx = tx - cx, dy = ty - cy;
@@ -453,15 +493,22 @@ export function drawLinkEdge(linkName, linkObj) {
   const [ax, ay] = clipToRect(a.x, a.y, aSize.w, aSize.h, b.x, b.y);
   const [bx, by] = clipToRect(b.x, b.y, bSize.w, bSize.h, a.x, a.y);
 
-  // Smooth bezier — horizontal bias (same approach as drawEdge)
-  const dx = bx - ax;
-  const c1x = ax + dx * 0.55, c1y = ay;
-  const c2x = bx - dx * 0.55, c2y = by;
+  // Bowed bezier — each link gets a per-name perpendicular offset so
+  // parallel links sharing an endpoint don't render on top of each other.
+  const bz = linkBezier(linkName, { x: ax, y: ay }, { x: bx, y: by });
+  const c1x = bz.c1.x, c1y = bz.c1.y;
+  const c2x = bz.c2.x, c2y = bz.c2.y;
   const d = `M ${ax} ${ay} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${bx} ${by}`;
 
-  const isSel = state.selection &&
-    state.selection.kind === 'link' &&
-    state.selection.name === linkName;
+  // Edge highlights when the link itself is selected OR either of its
+  // endpoint devices is selected — matches drawEdge's behavior for LAN
+  // rails, so the user can see at a glance which links belong to the
+  // host/router they clicked.
+  const isSel = !!state.selection && (
+    (state.selection.kind === 'link' && state.selection.name === linkName) ||
+    (state.selection.kind === ep1.deviceKind && state.selection.name === ep1.device) ||
+    (state.selection.kind === ep2.deviceKind && state.selection.name === ep2.device)
+  );
 
   const path = el('path', {
     class: `edge p2p${isSel ? ' selected' : ''}`,
@@ -655,10 +702,13 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 export function drawNode(kind, name, obj) {
   const isSel = state.selection && state.selection.kind === kind && state.selection.name === name;
   const pad = HIT_PAD[kind];
+  // RFC1918 LANs get a `private` modifier so the rail + its labels can
+  // render in a muted tone — a visual cue that the subnet sits behind NAT.
+  const isPrivate = kind === 'network' && isPrivateCidr(obj.cidr);
 
   // group is centered at obj.x, obj.y
   const g = el('g', {
-    class: `node ${kind}${isSel ? ' selected' : ''}`,
+    class: `node ${kind}${isPrivate ? ' private' : ''}${isSel ? ' selected' : ''}`,
     transform: `translate(${obj.x} ${obj.y})`,
     'data-kind': kind,
     'data-name': name,

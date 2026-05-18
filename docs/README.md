@@ -14,6 +14,7 @@ docs/
 │   ├── running-simulations.md
 │   ├── routing-tables.md
 │   ├── terminals.md
+│   ├── nat-and-private-lans.md
 │   ├── yaml-format.md
 │   └── shell-cli.md
 ├── architecture/          ← How the simulator is built
@@ -22,6 +23,7 @@ docs/
 │   ├── packets.md
 │   ├── routing-protocol.md
 │   ├── concurrency.md
+│   ├── nat.md
 │   ├── parser.md
 │   ├── web-spa.md
 │   └── server-api.md
@@ -46,9 +48,12 @@ and the repo cloned; no other prerequisites.
 6. [Terminals](user-guide/terminals.md) — Per-device commands: `ping`,
    `send`, `ifconfig`, `route`, `update_cost`, `set_gateway`,
    `neighbors`.
-7. [YAML format](user-guide/yaml-format.md) — Topology schema reference,
+7. [NAT and private LANs](user-guide/nat-and-private-lans.md) — How
+   traffic crosses the private↔public boundary, inspecting the NAT
+   table, overlap rules.
+8. [YAML format](user-guide/yaml-format.md) — Topology schema reference,
    save / resume workflow.
-8. [Shell CLI](user-guide/shell-cli.md) — The legacy `cmd.Cmd` REPL.
+9. [Shell CLI](user-guide/shell-cli.md) — The legacy `cmd.Cmd` REPL.
 
 ## Architecture / Technical Reference
 
@@ -67,11 +72,13 @@ undergraduate networking course.
    flooding, Dijkstra, the dirty-graph guard, and sequence diagrams.
 5. [Concurrency](architecture/concurrency.md) — Threads, queues,
    `PauseGate`, packet lifecycle from `send_to` to delivery.
-6. [Parser & validator](architecture/parser.md) — YAML loading, structural
+6. [NAT](architecture/nat.md) — Source-NAT at the private↔public boundary,
+   the per-router NAT table, the conversation-keyed `flow_id`.
+7. [Parser & validator](architecture/parser.md) — YAML loading, structural
    validation, link post-pass.
-7. [Web SPA](architecture/web-spa.md) — Module map, event-bus contract,
+8. [Web SPA](architecture/web-spa.md) — Module map, event-bus contract,
    state shape.
-8. [Server API](architecture/server-api.md) — REST and WebSocket endpoints.
+9. [Server API](architecture/server-api.md) — REST and WebSocket endpoints.
 
 ---
 

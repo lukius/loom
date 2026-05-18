@@ -89,13 +89,19 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 - After a code change, check whether `README.md`, this `CLAUDE.md`, the relevant page under `docs/architecture/` or `docs/user-guide/`, or any docstrings on the changed surface are now stale. If so, update them in the same commit — do not leave docs for "later".
 - Update **only when needed**: a small internal refactor with no observable behavior change typically requires no doc edits. Behavioral, interface, layout, or workflow changes usually do.
 - Surfaces that must stay accurate when touched: entry points and how to run them, shell + per-device command set + syntax, YAML schema, routing protocol wire format, project layout, dependencies, HTTP/WS API.
+- When touching `docs/user-guide/` for a user-visible change, follow the project-local **`user-guide-update`** skill (`.claude/skills/user-guide-update/SKILL.md`) — it covers page selection, action-level wording, and capturing the screenshot via `npm run screenshot` (tool at `tools/screenshot.mjs`).
 - `CONTRIBUTING.md` is the canonical dev guide; this file (`CLAUDE.md`) is the cheat sheet of non-obvious traps. Don't duplicate content — link from one to the other.
 - If a behavior is intentionally undocumented (e.g. an internal helper), say nothing — do not write speculative docs.
 
 ### Linting & style
 - Run `ruff check src/ test/` before every commit; fix or `# noqa` (with reason) any reported issues. Do not commit a dirty lint.
 - Follow standard PEP practices: **PEP 8** (style), **PEP 257** (docstring conventions), **PEP 20** (Zen of Python — favor explicit, simple, readable code). Ruff enforces the mechanical PEP 8 rules by default; the rest is on the author.
+- **Imports at the top of the file** (PEP 8). Function-level imports are a code smell — only acceptable to break a circular import or to defer an expensive optional dep, and must carry `# noqa: PLC0415` with the reason. This applies to test files too: ruff's default `E402` only catches module-level placement, not in-function imports, so the discipline is on the author.
 - `ruff format src/ test/` is fine to run, but format-only churn should land in its own commit (`style:` or `chore:`), not mixed with behavioral changes.
+
+### Backend ↔ frontend decoupling
+- The Python backend (`src/`) MUST NOT mention the SPA, the web UI, animations, the canvas, tooltips, or any frontend rendering concern in code, comments, docstrings, or test docstrings. The HTTP/WS API and the EventTracer event shape are the public contract; describe events as broadcast facts (e.g. "emits a `packet` event"), not in terms of what the UI does with them. The SPA is one subscriber among many possible — shell tools, tests, future TUIs — and the backend must look the same to all of them.
+- The reverse direction (SPA referring to backend wire shapes by name) is fine and expected — the SPA is the consumer.
 
 ### Commits
 - [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`, `style:`, etc.

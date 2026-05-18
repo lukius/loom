@@ -34,7 +34,15 @@ Click the rail to select; the inspector opens. Edit:
 - **Name** — must be unique among networks **and** links. Auto-saved.
 - **CIDR** — any valid IPv4 prefix. Canonicalized by the parser
   (`10.1.2.3/24` becomes `10.1.2.0/24`). Two LANs may not share the
-  same prefix.
+  same prefix unless it is an RFC 1918 private range (`10.0.0.0/8`,
+  `172.16.0.0/12`, or `192.168.0.0/16`); public prefixes must be
+  unique across the topology.
+
+Multiple tenants can declare overlapping private CIDRs — for example,
+two independent LAN segments may both use `192.168.1.0/24`. Traffic
+originating from a private LAN and destined for a public address is
+automatically source-NATed by the egress router, so the public side
+sees the router's own public IP rather than the private host's address.
 
 ### Attach a device
 

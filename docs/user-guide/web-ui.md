@@ -98,6 +98,24 @@ screen). You interact with it through three gestures:
 
 Selection is shown by a highlight ring around the node.
 
+### Private LANs
+
+Networks whose CIDR falls in an RFC1918 range (`10.0.0.0/8`, `172.16.0.0/12`,
+or `192.168.0.0/16`) render in a **muted neutral tone** instead of the
+default accent color. The same muting applies to the interface labels on
+the router side of those LANs. The visual cue lets you spot the NAT
+boundary at a glance: muted = behind NAT, in color = directly routed.
+
+![Private LANs render in a muted tone; the public LAN keeps the accent color](../images/50-private-lan-tone.png)
+
+Hosts, edges, and router icons stay at full chroma — only the LAN rail and
+its router-side iface labels change tone. Selection and hover styling
+still apply on top, so a selected private LAN is still clearly highlighted.
+
+See [NAT and private LANs](nat-and-private-lans.md) for how traffic
+actually crosses that boundary and how to inspect the gateway router's
+NAT table.
+
 ### Pan and zoom
 
 | Gesture | What |
@@ -140,6 +158,21 @@ traffic is actually going: pause, hover each frozen dot in order, and
 read off the per-hop trail. While the simulation is running, packets
 move too fast for the tooltip to land on the dot reliably — pause
 first.
+
+### NAT annotations
+
+Packets that crossed a NAT hop show the translation in their tooltip.
+Pause the simulation and hover over the packet to see lines like
+`NAT @ r_a: 192.168.1.10 → 198.51.100.1`. Selecting the egress router
+in the inspector opens a NAT table panel listing live entries — each row
+shows the original private source, the rewritten public source, the
+destination, and the flow ID. The table grows as traffic flows; entries
+are bounded by least-recent-use eviction.
+
+![Inspector panel for an egress router, showing one active NAT translation](../images/51-nat-panel.png)
+
+See [NAT and private LANs](nat-and-private-lans.md) for the broader
+workflow.
 
 ## Left pane (navigation)
 

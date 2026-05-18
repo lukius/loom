@@ -13,6 +13,8 @@ from entities import (
     Router,
     UserMessage,
 )
+from entities.nat import flow_id
+from entities.packet import Datagram
 
 
 class ForwardingTest(unittest.TestCase):
@@ -304,3 +306,159 @@ class ForwardingTest(unittest.TestCase):
             self.assertEqual(ttls, [63, 62, 61])
         finally:
             self._stop_chain(lan_r1, link, lan_mid, lan_r3, r1, r2, r3)
+
+
+def _outbound_setup(host_src, host_net, router_priv, router_pub, router_pub_net, dest):
+    """Build a router with two interfaces and a Datagram ready for forwarding.
+
+    Returns (router, public_iface, packet). The router has:
+      - eth_in on host_net with address router_priv
+      - eth_out on router_pub_net with address router_pub
+    A routing-table rule for router_pub_net (directly connected) is installed.
+    A packet from host_src to dest is created, ready to forward.
+
+    interface.send_to is replaced with a no-op so the test doesn't enqueue
+    onto any fabric. Restore via cleanup if needed.
+    """
+    net_in = Network('lan_in', NetworkAddress(host_net))
+    net_out = Network('lan_out', NetworkAddress(router_pub_net))
+    router = Router('r')
+    iface_in = Interface('eth_in', net_in, Address(router_priv))
+    iface_out = Interface('eth_out', net_out, Address(router_pub))
+    router.add_interface(iface_in)
+    router.add_interface(iface_out)
+    net_in.add_interface(iface_in)
+    net_out.add_interface(iface_out)
+
+    table = router.routing_table()
+    table.add_rule(prefix=net_in.address(), next_hop=NullAddress, interface=iface_in)
+    table.add_rule(prefix=net_out.address(), next_hop=NullAddress, interface=iface_out)
+
+    # No-op send so we don't actually enqueue.
+    iface_in.send_to = lambda pkt, dst_addr: None
+    iface_out.send_to = lambda pkt, dst_addr: None
+
+    packet = Datagram(
+        src_addr=Address(host_src), dst_addr=Address(dest),
+        payload=UserMessage('hello'),
+    )
+    return router, iface_out, packet
+
+
+class OutboundNATTest(unittest.TestCase):
+
+    def test_private_to_public_rewrites_source(self):
+        router, _, packet = _outbound_setup(
+            host_src='192.168.1.10', host_net='192.168.1.0/24',
+            router_priv='192.168.1.1', router_pub='200.100.0.1',
+            router_pub_net='200.100.0.0/24', dest='200.100.0.5',
+        )
+        expected_fid = flow_id(packet.payload())
+        router._handle_forwarding(packet)
+        self.assertEqual(packet.source(), Address('200.100.0.1'))
+        self.assertEqual(
+            router.nat_table().lookup(
+                Address('200.100.0.1'), Address('200.100.0.5'), flow_id=expected_fid,
+            ),
+            Address('192.168.1.10'),
+        )
+
+    def test_private_to_private_does_not_rewrite(self):
+        # eth_in 192.168.1.1/24 (private), eth_out 10.0.0.1/24 (also private).
+        router, _, packet = _outbound_setup(
+            host_src='192.168.1.10', host_net='192.168.1.0/24',
+            router_priv='192.168.1.1', router_pub='10.0.0.1',
+            router_pub_net='10.0.0.0/24', dest='10.0.0.20',
+        )
+        router._handle_forwarding(packet)
+        self.assertEqual(packet.source(), Address('192.168.1.10'))
+        self.assertIsNone(
+            router.nat_table().lookup(
+                Address('10.0.0.1'), Address('10.0.0.20'), flow_id=None,
+            )
+        )
+
+    def test_public_source_never_rewritten(self):
+        router, _, packet = _outbound_setup(
+            host_src='8.8.8.8', host_net='200.100.0.0/24',
+            router_priv='200.100.0.1', router_pub='198.51.100.1',
+            router_pub_net='198.51.100.0/24', dest='198.51.100.50',
+        )
+        router._handle_forwarding(packet)
+        self.assertEqual(packet.source(), Address('8.8.8.8'))
+
+    def test_no_public_egress_raises_clear_error(self):
+        # Router has only private interfaces. Private packet wants to leave.
+        # No matching route exists; the error should mention NAT.
+        net_in = Network('lan_in', NetworkAddress('192.168.1.0/24'))
+        router = Router('r_priv_only')
+        iface_in = Interface('eth_in', net_in, Address('192.168.1.1'))
+        router.add_interface(iface_in)
+        net_in.add_interface(iface_in)
+        # Only the directly-connected rule, no public route.
+        router.routing_table().add_rule(
+            prefix=net_in.address(), next_hop=NullAddress, interface=iface_in,
+        )
+        iface_in.send_to = lambda pkt, dst_addr: None
+
+        pkt = Datagram(
+            src_addr=Address('192.168.1.10'),
+            dst_addr=Address('8.8.8.8'),
+            payload=UserMessage('hello'),
+        )
+        with self.assertRaises(Exception) as ctx:
+            router._handle_forwarding(pkt)
+        self.assertIn('NAT egress', str(ctx.exception))
+
+
+class OutboundNATEventTest(unittest.TestCase):
+
+    def setUp(self):
+        self.events = []
+        self._unsubscribe = EventTracer.subscribe(
+            lambda ev: self.events.append(ev)
+        )
+
+    def tearDown(self):
+        self._unsubscribe()
+
+    def test_outbound_nat_emits_nat_event(self):
+        router, _, packet = _outbound_setup(
+            host_src='192.168.1.10', host_net='192.168.1.0/24',
+            router_priv='192.168.1.1', router_pub='200.100.0.1',
+            router_pub_net='200.100.0.0/24', dest='200.100.0.5',
+        )
+        expected_fid = flow_id(packet.payload())
+        router._handle_forwarding(packet)
+
+        nat_events = [e for e in self.events if e.get('kind') == 'nat']
+        self.assertEqual(len(nat_events), 1)
+        ev = nat_events[0]
+        self.assertEqual(ev['direction'], 'outbound')
+        self.assertEqual(ev['original_src'], '192.168.1.10')
+        self.assertEqual(ev['rewritten_src'], '200.100.0.1')
+        self.assertEqual(ev['dst'], '200.100.0.5')
+        self.assertEqual(ev['router'], router.name())
+        self.assertEqual(ev['flow_id'], expected_fid)
+        self.assertIsInstance(ev['payload_id'], str)
+        self.assertTrue(ev['payload_id'])
+
+    def test_outbound_nat_emits_nat_table_changed_snapshot(self):
+        router, _, packet = _outbound_setup(
+            host_src='192.168.1.10', host_net='192.168.1.0/24',
+            router_priv='192.168.1.1', router_pub='200.100.0.1',
+            router_pub_net='200.100.0.0/24', dest='200.100.0.5',
+        )
+        expected_fid = flow_id(packet.payload())
+        router._handle_forwarding(packet)
+
+        snaps = [e for e in self.events if e.get('kind') == 'nat_table_changed']
+        self.assertEqual(len(snaps), 1)
+        snap = snaps[0]
+        self.assertEqual(snap['device'], router.name())
+        self.assertEqual(snap['entries'], [{
+            'rewritten_src': '200.100.0.1',
+            'dst': '200.100.0.5',
+            'flow_id': expected_fid,
+            'original_src': '192.168.1.10',
+        }])

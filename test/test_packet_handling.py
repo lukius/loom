@@ -10,10 +10,13 @@ from entities import (
     Interface,
     Network,
     NetworkAddress,
+    NullAddress,
     Router,
     RoutingMessage,
     UserMessage,
 )
+from entities.nat import flow_id
+from entities.packet import Frame
 
 
 class PacketHandlingTest(unittest.TestCase):
@@ -248,3 +251,260 @@ class PacketHandlingTest(unittest.TestCase):
     def _routing_msg_datagram(self, interface, src, dst):
         msg = RoutingMessage(interface, 1)
         return Datagram(src, dst, msg)
+
+
+class NetworkBroadcastTest(unittest.TestCase):
+    """A multi-access Network must not echo a broadcast back to its sender.
+
+    Real NICs filter out frames whose source matches their own, regardless
+    of the upper-layer payload. This filter happens on the wire, so it must
+    apply to every kind of broadcast: routing updates, user datagrams, or
+    anything else a future caller pushes through the fabric.
+    """
+
+    def _build_lan(self):
+        net = Network('lan', NetworkAddress('10.0.0.0/24'))
+        sender = Interface('eth0', net, Address('10.0.0.1'))
+        peer_a = Interface('eth_a', net, Address('10.0.0.2'))
+        peer_b = Interface('eth_b', net, Address('10.0.0.3'))
+        net.add_interface(sender)
+        net.add_interface(peer_a)
+        net.add_interface(peer_b)
+        received_on = []
+        sender.receive = lambda pkt: received_on.append('sender')
+        peer_a.receive = lambda pkt: received_on.append('peer_a')
+        peer_b.receive = lambda pkt: received_on.append('peer_b')
+        return net, sender, received_on
+
+    def _routing_msg_for(self, interface):
+        return RoutingMessage(interface, 1)
+
+    def test_broadcast_never_returns_to_sender_regardless_of_payload(self):
+        # Same source-filtering invariant must hold for every payload kind.
+        # If a new payload type ever sneaks through with the filter bypassed,
+        # this loop catches it.
+        net, sender, _ = self._build_lan()
+        cases = [
+            ('UserMessage',    UserMessage('hello LAN')),
+            ('RoutingMessage', self._routing_msg_for(sender)),
+            ('raw payload',    'opaque-bytes-no-message-type'),
+        ]
+        for label, payload in cases:
+            with self.subTest(payload=label):
+                net2, sender2, received_on = self._build_lan()
+                frame = Frame(
+                    src_addr=sender2.address(),
+                    dst_addr=net2.broadcast_address(),
+                    payload=payload,
+                )
+                net2._dispatch_broadcast(frame)
+                self.assertNotIn('sender', received_on)
+                self.assertEqual(sorted(received_on), ['peer_a', 'peer_b'])
+
+    def test_broadcast_from_an_unattached_source_reaches_every_interface(self):
+        # If no interface on the LAN claims the source address, nothing is
+        # filtered out — every interface receives the frame. Guards against
+        # over-eager filtering that would silently drop traffic from a peer
+        # we don't know about yet (mid-attach race, manually injected frames).
+        net, _, received_on = self._build_lan()
+        frame = Frame(
+            src_addr=Address('10.0.0.99'),  # not on this LAN
+            dst_addr=net.broadcast_address(),
+            payload=UserMessage('from outside'),
+        )
+        net._dispatch_broadcast(frame)
+        self.assertEqual(sorted(received_on), ['peer_a', 'peer_b', 'sender'])
+
+
+class PacketRewriteTest(unittest.TestCase):
+
+    def test_rewrite_source_changes_source_only(self):
+        d = Datagram(Address('192.168.1.10'), Address('8.8.8.8'), payload='x')
+        d.rewrite_source(Address('200.100.0.1'))
+        self.assertEqual(d.source(), Address('200.100.0.1'))
+        self.assertEqual(d.destination(), Address('8.8.8.8'))
+
+    def test_rewrite_destination_changes_destination_only(self):
+        d = Datagram(Address('192.168.1.10'), Address('200.100.0.1'), payload='x')
+        d.rewrite_destination(Address('192.168.1.10'))
+        self.assertEqual(d.destination(), Address('192.168.1.10'))
+        self.assertEqual(d.source(), Address('192.168.1.10'))
+
+    def test_rewrite_preserves_payload_identity(self):
+        payload = object()
+        d = Datagram(Address('192.168.1.10'), Address('8.8.8.8'), payload)
+        d.rewrite_source(Address('200.100.0.1'))
+        self.assertIs(d.payload(), payload)
+
+
+class InboundNATTest(unittest.TestCase):
+
+    def _build_two_iface_router(self, priv, priv_net, pub, pub_net):
+        """Build a router with one private and one public interface.
+
+        Returns the router. The router has eth_priv on priv_net at priv,
+        and eth_pub on pub_net at pub. Both networks have add_interface
+        called. interface.send_to is replaced with a no-op stub that
+        records into router._sent_list.
+        """
+        net_priv = Network('lan_priv', NetworkAddress(priv_net))
+        net_pub = Network('lan_pub', NetworkAddress(pub_net))
+        router = Router('r')
+        iface_priv = Interface('eth_priv', net_priv, Address(priv))
+        iface_pub = Interface('eth_pub', net_pub, Address(pub))
+        router.add_interface(iface_priv)
+        router.add_interface(iface_pub)
+        net_priv.add_interface(iface_priv)
+        net_pub.add_interface(iface_pub)
+
+        table = router.routing_table()
+        table.add_rule(
+            prefix=net_priv.address(), next_hop=NullAddress, interface=iface_priv,
+        )
+        table.add_rule(
+            prefix=net_pub.address(), next_hop=NullAddress, interface=iface_pub,
+        )
+
+        router._sent_list = []
+        def capturing_send(pkt, dst_addr):
+            router._sent_list.append((pkt, dst_addr))
+        iface_priv.send_to = capturing_send
+        iface_pub.send_to = capturing_send
+        return router
+
+    def test_inbound_reply_rewrites_destination_to_original_private(self):
+        router = self._build_two_iface_router(
+            priv='192.168.1.1', priv_net='192.168.1.0/24',
+            pub='200.100.0.1', pub_net='200.100.0.0/24',
+        )
+        # Use the same payload object for both the registered entry and the
+        # inbound reply so the conversation-keyed flow_id matches.
+        payload = UserMessage('hi')
+        router.nat_table().register(
+            rewritten_src=Address('200.100.0.1'),
+            original_dst=Address('200.100.0.5'),
+            flow_id=flow_id(payload),
+            original_src=Address('192.168.1.10'),
+        )
+        reply = Datagram(
+            src_addr=Address('200.100.0.5'),
+            dst_addr=Address('200.100.0.1'),
+            payload=payload,
+        )
+        router.handle_packet(reply, router.interface('eth_pub'))
+
+        # After reverse-translation + re-entry into _handle_forwarding,
+        # the packet should leave on eth_priv addressed to the original host.
+        self.assertTrue(len(router._sent_list) >= 1)
+        out_pkt, out_dst = router._sent_list[-1]
+        self.assertEqual(out_pkt.destination(), Address('192.168.1.10'))
+
+    def test_inbound_to_router_with_no_nat_entry_falls_through(self):
+        # No NAT entry registered. Packet addressed to router's public IP
+        # must reach _handle_message (we capture by replacing it).
+        router = self._build_two_iface_router(
+            priv='192.168.1.1', priv_net='192.168.1.0/24',
+            pub='200.100.0.1', pub_net='200.100.0.0/24',
+        )
+        msg_calls = []
+        def stub_handle_message(msg, iface, packet):
+            msg_calls.append((msg, iface, packet))
+        router._handle_message = stub_handle_message
+
+        pkt = Datagram(
+            src_addr=Address('200.100.0.99'),
+            dst_addr=Address('200.100.0.1'),
+            payload=UserMessage('hello'),
+        )
+        router.handle_packet(pkt, router.interface('eth_pub'))
+        self.assertEqual(len(msg_calls), 1)
+
+    def test_inbound_on_private_interface_does_not_trigger_nat(self):
+        # Even if a (rewritten_src, original_dst, flow_id) tuple happens
+        # to match an entry, arrival on a private interface must skip
+        # the NAT lookup entirely.
+        router = self._build_two_iface_router(
+            priv='192.168.1.1', priv_net='192.168.1.0/24',
+            pub='200.100.0.1', pub_net='200.100.0.0/24',
+        )
+        router.nat_table().register(
+            rewritten_src=Address('192.168.1.1'),
+            original_dst=Address('192.168.1.50'),
+            flow_id=None,
+            original_src=Address('10.0.0.1'),
+        )
+
+        msg_calls = []
+        def stub_handle_message(msg, iface, packet):
+            msg_calls.append((msg, iface, packet))
+        router._handle_message = stub_handle_message
+
+        pkt = Datagram(
+            src_addr=Address('192.168.1.50'),
+            dst_addr=Address('192.168.1.1'),
+            payload=UserMessage('internal'),
+        )
+        router.handle_packet(pkt, router.interface('eth_priv'))
+
+        # Must NOT have been rewritten. Should have reached _handle_message.
+        self.assertEqual(len(msg_calls), 1)
+        self.assertEqual(pkt.destination(), Address('192.168.1.1'))
+
+
+class InboundNATEventTest(unittest.TestCase):
+
+    def setUp(self):
+        self.events = []
+        self._handler = lambda ev: self.events.append(ev)
+        self._unsub = EventTracer.subscribe(self._handler)
+
+    def tearDown(self):
+        if callable(self._unsub):
+            self._unsub()
+
+    def test_inbound_nat_emits_nat_event(self):
+        # Mirror InboundNATTest's _build_two_iface_router shape.
+        net_priv = Network('lan_priv', NetworkAddress('192.168.1.0/24'))
+        net_pub = Network('lan_pub', NetworkAddress('200.100.0.0/24'))
+        router = Router('r')
+        iface_priv = Interface('eth_priv', net_priv, Address('192.168.1.1'))
+        iface_pub = Interface('eth_pub', net_pub, Address('200.100.0.1'))
+        router.add_interface(iface_priv)
+        router.add_interface(iface_pub)
+        net_priv.add_interface(iface_priv)
+        net_pub.add_interface(iface_pub)
+        router.routing_table().add_rule(
+            prefix=net_priv.address(), next_hop=NullAddress, interface=iface_priv,
+        )
+        router.routing_table().add_rule(
+            prefix=net_pub.address(), next_hop=NullAddress, interface=iface_pub,
+        )
+        iface_priv.send_to = lambda pkt, dst_addr: None
+        iface_pub.send_to = lambda pkt, dst_addr: None
+
+        payload = UserMessage('hi')
+        router.nat_table().register(
+            rewritten_src=Address('200.100.0.1'),
+            original_dst=Address('200.100.0.5'),
+            flow_id=flow_id(payload),
+            original_src=Address('192.168.1.10'),
+        )
+
+        reply = Datagram(
+            src_addr=Address('200.100.0.5'),
+            dst_addr=Address('200.100.0.1'),
+            payload=payload,
+        )
+        router.handle_packet(reply, router.interface('eth_pub'))
+
+        inbound = [e for e in self.events
+                   if e.get('kind') == 'nat' and e.get('direction') == 'inbound']
+        self.assertEqual(len(inbound), 1)
+        ev = inbound[0]
+        self.assertEqual(ev['rewritten_dst'], '200.100.0.1')
+        self.assertEqual(ev['original_dst'], '192.168.1.10')
+        self.assertEqual(ev['src'], '200.100.0.5')
+        self.assertEqual(ev['router'], router.name())
+        self.assertEqual(ev['flow_id'], flow_id(payload))
+        self.assertIsInstance(ev['payload_id'], str)
+        self.assertTrue(ev['payload_id'])

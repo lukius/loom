@@ -3,7 +3,7 @@ import { state, bus } from './state.js';
 import {
   Sim, RuntimeClient,
   setConnectionStatus, isTopologyLocked, recordPatchOp, updatePatchIndicator, reconcilePatch,
-  _onEvent,
+  _onEvent, _resetPendingNAT,
 } from './sim.js';
 
 // ---------- bus helpers ----------
@@ -25,7 +25,10 @@ beforeEach(() => {
   state.networks = {};
   state.hosts = {};
   state.routers = {};
+  state.natTables = {};
   state.selection = null;
+  // Reset NAT deferral state (module-level Maps in sim.js).
+  _resetPendingNAT();
   // Toolbar + banner DOM that _renderToolbar and other helpers touch.
   // #toasts is the parent for error toasts emitted by onPrimary/onSecondary/onReset.
   document.body.innerHTML = `
@@ -129,11 +132,154 @@ describe('_onEvent (WS dispatcher)', () => {
     const status = captureEvents('sim:status-changed');
     const packet = captureEvents('sim:packet');
     const routing = captureEvents('sim:routing-table-changed');
-    listenerCleanups.push(status.stop, packet.stop, routing.stop);
+    const nat = captureEvents('sim:nat');
+    listenerCleanups.push(status.stop, packet.stop, routing.stop, nat.stop);
     _onEvent({ kind: 'unknown_event' });
     expect(status.events).toEqual([]);
     expect(packet.events).toEqual([]);
     expect(routing.events).toEqual([]);
+    expect(nat.events).toEqual([]);
+  });
+
+  it('routes kind:nat to sim:nat carrying the full event payload', () => {
+    const cap = captureEvents('sim:nat');
+    listenerCleanups.push(cap.stop);
+    const evt = {
+      kind: 'nat',
+      router: 'r_a',
+      direction: 'outbound',
+      original_src: '192.168.1.10',
+      rewritten_src: '200.100.0.1',
+      dst: '8.8.8.8',
+      flow_id: null,
+      payload_id: 'abc-123',
+    };
+    _onEvent(evt);
+    expect(cap.events).toEqual([evt]);
+  });
+
+  it('nat events do not touch Sim.state', () => {
+    Sim.state = 'running';
+    _onEvent({
+      kind: 'nat', router: 'r1', direction: 'outbound',
+      original_src: '10.0.0.1', rewritten_src: '1.2.3.4',
+      dst: '8.8.8.8', flow_id: null, payload_id: 'p',
+    });
+    expect(Sim.state).toBe('running');
+  });
+
+  it('routes kind:nat_table_changed to sim:nat-table-changed and updates state.natTables', () => {
+    const cap = captureEvents('sim:nat-table-changed');
+    listenerCleanups.push(cap.stop);
+    state.natTables = {};
+    _onEvent({
+      kind: 'nat_table_changed',
+      device: 'r_a',
+      entries: [{
+        original_src: '192.168.1.10',
+        rewritten_src: '200.100.0.1',
+        dst: '8.8.8.8',
+        flow_id: 7,
+      }],
+    });
+    expect(state.natTables['r_a']).toBeDefined();
+    expect(state.natTables['r_a'].length).toBe(1);
+    expect(state.natTables['r_a'][0].rewritten_src).toBe('200.100.0.1');
+    expect(cap.events).toEqual([{ device: 'r_a' }]);
+  });
+
+  it('nat_table_changed with missing entries defaults to an empty list', () => {
+    state.natTables = { r1: [{ original_src: 'x', rewritten_src: 'y', dst: 'z', flow_id: null }] };
+    _onEvent({ kind: 'nat_table_changed', device: 'r1' });
+    expect(state.natTables['r1']).toEqual([]);
+  });
+
+  it('nat_table_changed events do not touch Sim.state', () => {
+    Sim.state = 'running';
+    _onEvent({ kind: 'nat_table_changed', device: 'r1', entries: [] });
+    expect(Sim.state).toBe('running');
+  });
+
+  it('defers nat_table_changed until the matching packet arrives at the router', () => {
+    // An outbound NAT happens at r_a for payload p1. The simulator emits the
+    // `nat` event microseconds after the host pushes the packet, so the table
+    // would update before the packet visually arrives at r_a if applied
+    // immediately. Defer until sim:packet-arrived matches.
+    const cap = captureEvents('sim:nat-table-changed');
+    listenerCleanups.push(cap.stop);
+    _onEvent({
+      kind: 'nat', router: 'r_a', direction: 'outbound',
+      original_src: '192.168.1.10', rewritten_src: '200.100.0.1',
+      dst: '8.8.8.8', flow_id: null, payload_id: 'p1',
+    });
+    _onEvent({
+      kind: 'nat_table_changed', device: 'r_a',
+      entries: [{
+        original_src: '192.168.1.10', rewritten_src: '200.100.0.1',
+        dst: '8.8.8.8', flow_id: null,
+      }],
+    });
+    expect(state.natTables['r_a']).toBeUndefined();
+    expect(cap.events).toEqual([]);
+
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
+      detail: { payloadId: 'p1', device: 'r_a' },
+    }));
+    expect(state.natTables['r_a']).toBeDefined();
+    expect(state.natTables['r_a'].length).toBe(1);
+    expect(cap.events).toEqual([{ device: 'r_a' }]);
+  });
+
+  it('ignores sim:packet-arrived for unrelated payloads while NAT is pending', () => {
+    _onEvent({
+      kind: 'nat', router: 'r_a', direction: 'outbound',
+      original_src: 'x', rewritten_src: 'y', dst: 'z',
+      flow_id: null, payload_id: 'p1',
+    });
+    _onEvent({
+      kind: 'nat_table_changed', device: 'r_a',
+      entries: [{ original_src: 'x', rewritten_src: 'y', dst: 'z', flow_id: null }],
+    });
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
+      detail: { payloadId: 'p2-other', device: 'r_a' },
+    }));
+    expect(state.natTables['r_a']).toBeUndefined();
+  });
+
+  it('only inbound NAT events do not arm deferral (router never emits table change for inbound, but be safe)', () => {
+    // An inbound `nat` arrives without a paired `nat_table_changed`. A later
+    // standalone `nat_table_changed` (without a prior outbound nat) must
+    // apply immediately — deferral should not trigger on inbound NAT alone.
+    _onEvent({
+      kind: 'nat', router: 'r_a', direction: 'inbound',
+      rewritten_dst: '200.100.0.1', original_dst: '192.168.1.10',
+      src: '8.8.8.8', flow_id: null, payload_id: 'p_reply',
+    });
+    _onEvent({
+      kind: 'nat_table_changed', device: 'r_a',
+      entries: [{ original_src: 'x', rewritten_src: 'y', dst: 'z', flow_id: null }],
+    });
+    expect(state.natTables['r_a']).toBeDefined();
+    expect(state.natTables['r_a'].length).toBe(1);
+  });
+
+  it('clears pending NAT state when the sim returns to idle (so a reset starts clean)', () => {
+    _onEvent({
+      kind: 'nat', router: 'r_a', direction: 'outbound',
+      original_src: 'x', rewritten_src: 'y', dst: 'z',
+      flow_id: null, payload_id: 'p1',
+    });
+    _onEvent({
+      kind: 'nat_table_changed', device: 'r_a',
+      entries: [{ original_src: 'x', rewritten_src: 'y', dst: 'z', flow_id: null }],
+    });
+    _onEvent({ kind: 'sim_state', state: 'idle' });
+    // A late-arriving packet event for the now-discarded ping must not
+    // resurrect the pending table.
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
+      detail: { payloadId: 'p1', device: 'r_a' },
+    }));
+    expect(state.natTables['r_a']).toBeUndefined();
   });
 });
 

@@ -59,3 +59,18 @@ def routes(name: str, request: Request):
             }
         )
     return {"rules": rules}
+
+
+@router.get("/{name}/nat-table")
+def nat_table(name: str, request: Request):
+    """Return the NAT-table snapshot for a router (empty list for hosts).
+
+    Events on the bus carry incremental changes only, so a fresh subscriber
+    (e.g. the SPA after a page reload) has no way to recover the current
+    table without this read endpoint.
+    """
+    device = _device_or_404(request, name)
+    table = getattr(device, "nat_table", None)
+    if table is None:
+        return {"entries": []}
+    return {"entries": table().snapshot()}

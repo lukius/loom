@@ -238,3 +238,41 @@ Two correlation ids accompany every packet event:
 
 `packets.js` uses `flow` to chain hops; the chatter toggle filters by
 `type === "routing_flood"`.
+
+### `kind: "nat"`
+
+Emitted by a router on every hop where NAT rewrites the datagram's
+addresses. Two directions:
+
+- **`outbound`** — source NAT on an egress hop. Carries `router`,
+  `direction`, `original_src`, `rewritten_src`, `dst`, `flow_id`, and
+  `payload_id` (the inner message's UUID).
+- **`inbound`** — destination NAT on an ingress hop. Carries `router`,
+  `direction`, `rewritten_dst`, `original_dst`, `src`, `flow_id`, and
+  `payload_id`.
+
+### `kind: "nat_table_changed"`
+
+Emitted by a router after each NAT table registration. Carries `device`
+and `entries` — a list of `{rewritten_src, dst, flow_id, original_src}`
+dicts in LRU order, oldest first.
+
+## NAT entry lifetime
+
+NAT entries persist until LRU-evicted at capacity (default 1024 per
+router). There is no time-based expiration and no clearing on inbound
+match. Without a transport layer there is no notion of a "connection" or
+"idle" the simulator could time out against; LRU at the configured cap
+keeps memory bounded while remaining predictable. Restart the simulation
+to clear all entries.
+
+## Flow multiplexing
+
+Concurrent flows from multiple private hosts to the same public
+destination are multiplexed by a per-payload flow ID — currently the
+shared `seq` on ping requests and replies. Message types without a flow
+identity (such as one-off `UserMessage` sends) share a single slot per
+(router, destination); since they have no reply, this is harmless. New
+request/reply message subtypes should expose a `seq` attribute (or, when
+a more general convention is needed, a `flow_id()` method) so the NAT
+table can disambiguate concurrent flows correctly.

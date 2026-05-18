@@ -5,6 +5,7 @@ from .exception import *
 from .host import *
 from .interface import *
 from .link import Link  # noqa: F401
+from .nat import NATTable  # noqa: F401
 from .network import *
 from .packet import PingReply, PingRequest  # noqa: F401
 from .router import *

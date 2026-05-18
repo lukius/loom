@@ -4,6 +4,7 @@ import traceback
 
 from .address import Address
 from .base import Entity
+from .event import EventTracer
 from .packet import Datagram, Frame
 
 _PACKET_KIND = {
@@ -57,20 +58,17 @@ class Interface(Entity):
         self._pkt_thread.join()
 
     def send_to(self, datagram: Datagram, dst_addr: Address):
-        from .event import EventTracer
-
         frame = Frame(src_addr=self._address, dst_addr=dst_addr, payload=datagram)
         self._out_queue.put(frame)
-        # `payload_id` identifies a single Message (one direction of a flow);
-        # `flow` identifies an end-to-end conversation between two endpoints
-        # (e.g. a ping request and its reply share the same flow). The UI
-        # uses `flow` to animate hops sequentially across both directions.
+        # `payload_id` identifies a single Message instance (one direction);
+        # `flow` is the conversation key the payload reports — stable across
+        # NAT rewrites of src/dst and shared between request and reply when
+        # the payload supports it (see Message.flow_key).
         payload = datagram.payload()
         payload_id = str(payload.id()) if hasattr(payload, "id") else None
+        flow = payload.flow_key() if hasattr(payload, "flow_key") else None
         payload_src = str(datagram.source())
         payload_dst = str(datagram.destination())
-        endpoints = sorted([payload_src, payload_dst])
-        flow = f"{endpoints[0]}<->{endpoints[1]}"
         EventTracer._broadcast(
             {
                 "kind": "packet",
