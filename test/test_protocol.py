@@ -7,7 +7,7 @@ import time
 import unittest
 
 from parser import Parser
-from entities import Interface, RoutingProtocol, Router, Network, NetworkAddress, Address, NullAddress, RoutingMessage
+from entities import Interface, Router, Network, NetworkAddress, Address, NullAddress, RoutingMessage
 from routing import LinkStateProtocol
 
 
