@@ -43,7 +43,7 @@ class Address(BaseAddress):
         return self._address == other._address
 
     def __hash__(self) -> int:
-        return hash(self._address)
+        return hash(tuple(self._octets))
 
 
 class NetworkAddress(BaseAddress):

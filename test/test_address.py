@@ -161,6 +161,23 @@ class NetworkAddressIsPrivateTest(unittest.TestCase):
         self.assertFalse(NetworkAddress('100.64.0.0/10').is_private())
 
 
+def test_address_hash_matches_equality_on_octet_value():
+    """Equal Addresses must hash equal regardless of constructor input form.
+
+    Today the parser canonicalises before constructing so this never bites,
+    but any future programmatic construction path could create two equal
+    Addresses with different `_address` strings — they must still hash
+    equal to be safely usable as dict keys / set members.
+    """
+    a = Address('10.0.0.1')
+    b = Address('10.0.0.1')
+    assert a == b
+    assert hash(a) == hash(b)
+
+    # Pin: hash is on the canonical octet tuple, not the input string.
+    assert hash(a) == hash(tuple(a.octets()))
+
+
 def test_network_matches_does_not_mutate_caller():
     """Address._matches must not write into the caller's octets list.
 
