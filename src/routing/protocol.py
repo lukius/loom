@@ -134,7 +134,14 @@ class RoutingProtocol:
         self._recompute_if_dirty(changed)
 
         for _, interface in self._router.interfaces().items():
-            # TODO: same seq
+            # NB: per-interface sequence is wrong for LSP semantics. Real
+            # LSP protocols use a single per-origin sequence so all
+            # neighbours converge on one canonical view. Fixing this
+            # needs the link-state extension work (single-sequence-per-
+            # origin) which is deferred until the BGP work makes the
+            # layering meaningful — see
+            # docs/superpowers/specs/2026-05-18-pre-external-routing-prep-design.md
+            # section 2.1.
             self._seqs[interface.name()] += 1
             seq = self._seqs[interface.name()]
 
