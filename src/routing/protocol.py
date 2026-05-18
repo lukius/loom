@@ -9,6 +9,7 @@ from entities.event import EventTracer
 
 from .graph import NetworkGraph
 from .messages import Datagram, RoutingMessage
+from .policy import RFC1918_OUTBOUND
 
 
 class RoutingProtocol(ABC):
@@ -46,9 +47,12 @@ class LinkStateProtocol(RoutingProtocol):
 
     KEEPALIVE_INTERVAL = 10
 
-    def __init__(self, router):
+    def __init__(self, router, outbound_policy=None):
         self._router = router
         self._lock = threading.Lock()
+        self._outbound_policy = (
+            outbound_policy if outbound_policy is not None else RFC1918_OUTBOUND
+        )
 
         self._seqs_by_address = collections.defaultdict(lambda: -1)
         self._seqs = collections.defaultdict(lambda: 0)
@@ -199,10 +203,11 @@ class LinkStateProtocol(RoutingProtocol):
 
             for name, iface in self._router.interfaces().items():
                 prefix = iface.network().address()
-                if prefix.is_private():
+                decision = self._outbound_policy.apply(prefix)
+                if decision.is_denied():
                     continue
                 cost = iface.cost()
-                msg.add_destination(prefix, cost)
+                msg.add_destination(decision.prefix(), cost)
 
             net_broadcast = interface.network().broadcast_address()
             datagram = Datagram(

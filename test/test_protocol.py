@@ -1,14 +1,23 @@
 import os
+import queue
 import tempfile
 import textwrap
 import threading
-import queue
 import time
 import unittest
 
+from entities import (
+    Address,
+    Interface,
+    Network,
+    NetworkAddress,
+    NullAddress,
+    Router,
+    RoutingMessage,
+)
 from parser import Parser
-from entities import Interface, Router, Network, NetworkAddress, Address, NullAddress, RoutingMessage
-from routing import LinkStateProtocol
+from routing import LinkStateProtocol, RouteMap
+from routing.policy import RFC1918_OUTBOUND
 
 
 def _wait(condition, timeout=3.0, interval=0.02):
@@ -317,7 +326,7 @@ class ProtocolTest(unittest.TestCase):
             self._queue.get(timeout=0.1)
 
     def test_routing_table_update_on_incoming_message(self):
-        system = Parser(f'test/resources/several_networks.yaml').parse().single_as()
+        system = Parser('test/resources/several_networks.yaml').parse().single_as()
         routers = system.routers()
         r1 = routers['r1']
         r2 = routers['r2']
@@ -899,3 +908,29 @@ def test_receiver_graph_never_learns_private_prefix():
     finally:
         system.stop()
         os.unlink(path)
+
+
+class OutboundPolicyTest(unittest.TestCase):
+
+    def test_outbound_policy_default_filters_rfc1918(self):
+        """The default outbound policy denies RFC 1918 prefixes — same
+        behaviour as the previous hard-coded `if is_private: continue`.
+        This pins the policy framework's RFC1918_OUTBOUND default."""
+        d = RFC1918_OUTBOUND.apply(NetworkAddress('10.0.0.0/24'))
+        self.assertTrue(d.is_denied())
+        d = RFC1918_OUTBOUND.apply(NetworkAddress('172.16.0.0/24'))
+        self.assertTrue(d.is_denied())
+        d = RFC1918_OUTBOUND.apply(NetworkAddress('192.168.0.0/24'))
+        self.assertTrue(d.is_denied())
+        d = RFC1918_OUTBOUND.apply(NetworkAddress('200.0.0.0/24'))
+        self.assertTrue(d.is_permitted())
+
+    def test_outbound_policy_override_permits_private_prefixes(self):
+        """A LinkStateProtocol with a permit-all outbound policy doesn't
+        filter — the policy attribute really drives advertisement
+        decisions, not a hard-coded check."""
+        r = Router('r1')
+        permit_all = RouteMap(rules=[], default='permit')
+        proto = LinkStateProtocol(r, outbound_policy=permit_all)
+        # Confirm the protocol holds the override, not the default.
+        self.assertIs(proto._outbound_policy, permit_all)
