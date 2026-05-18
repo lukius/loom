@@ -13,9 +13,9 @@ from entities import (
     Router,
     UserMessage,
 )
-from routing import NoNATEgressException
 from entities.nat import flow_id
 from entities.packet import Datagram
+from routing import NoNATEgressException
 
 
 class ForwardingTest(unittest.TestCase):

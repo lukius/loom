@@ -16,9 +16,9 @@ from entities import (
     RoutingMessage,
     UserMessage,
 )
-from routing import NoRouteToHostException
 from entities.nat import flow_id
 from entities.packet import Frame
+from routing import NoRouteToHostException
 
 
 class PacketHandlingTest(unittest.TestCase):

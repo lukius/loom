@@ -1,12 +1,22 @@
 import yaml
 
+from entities import (
+    AS,
+    Address,
+    Host,
+    Interface,
+    Internet,
+    Link,
+    LinkNotFoundException,
+    Network,
+    NetworkAddress,
+    NetworkNotFoundException,
+    Router,
+)
+from entities.exception import TooManyEndpointsException
+
 from .exception import ParsingException
 from .validator import SystemValidator
-from entities import (
-    AS, Address, Host, Interface, Internet, Link, Network, NetworkAddress, Router
-)
-from entities import NetworkNotFoundException, LinkNotFoundException
-from entities.exception import TooManyEndpointsException
 
 
 class Parser:

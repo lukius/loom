@@ -1,5 +1,7 @@
 import unittest
+
 from parser import Parser, ParsingException
+
 
 class ParserTest(unittest.TestCase):
 
