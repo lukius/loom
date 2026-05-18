@@ -143,7 +143,9 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(nets['lan_a'].address(), nets['lan_b'].address())
 
     def test_duplicate_network_address(self):
-        self._run_parsing_error_test('duplicate_network_address', 'network address already exists')
+        self._run_parsing_error_test(
+            'duplicate_network_address', 'network address already exists'
+        )
 
     def test_duplicate_address(self):
         self._run_parsing_error_test('duplicate_address', 'address already in use')
@@ -164,7 +166,9 @@ class ParserTest(unittest.TestCase):
         self._run_parsing_error_test('invalid_netmask', 'invalid netmask')
 
     def test_router_without_interfaces(self):
-        self._run_parsing_error_test('router_without_interfaces', 'no interfaces declared')
+        self._run_parsing_error_test(
+            'router_without_interfaces', 'no interfaces declared'
+        )
 
     def test_missing_network(self):
         self._run_parsing_error_test('missing_network', 'network not found')
@@ -197,7 +201,9 @@ class ParserTest(unittest.TestCase):
         self._run_parsing_error_test('missing_host_address', 'no address assigned')
 
     def test_invalid_host_gateway(self):
-        self._run_parsing_error_test('invalid_gateway', 'gateway address not in host network')
+        self._run_parsing_error_test(
+            'invalid_gateway', 'gateway address not in host network'
+        )
 
     # ------------------------------------------------------------------ links --
 
@@ -283,7 +289,9 @@ class ParserTest(unittest.TestCase):
         )
 
     def test_link_addr_outside_cidr(self):
-        self._run_parsing_error_test('link_addr_outside_cidr', 'invalid address for network')
+        self._run_parsing_error_test(
+            'link_addr_outside_cidr', 'invalid address for network'
+        )
 
     def test_link_addr_is_network_or_broadcast(self):
         self._run_parsing_error_test(

@@ -230,7 +230,9 @@ class ProtocolTest(unittest.TestCase):
         threading.Thread = lambda *args, **kwargs: MockThread()
 
         self._interface_send_to = Interface.send_to
-        Interface.send_to = lambda _self, pkt, dst_addr: self._queue.put((pkt, dst_addr))
+        Interface.send_to = (
+            lambda _self, pkt, dst_addr: self._queue.put((pkt, dst_addr))
+        )
 
     def tearDown(self):
         threading.Thread = self._thread_class
@@ -424,7 +426,8 @@ class ProtocolTest(unittest.TestCase):
             result = r1_table.match(unreachable_host.address())
             self.assertFalse(result.is_matched())
 
-        # Third message from r4; new connectivity to lan6 and routing improvements to some hosts
+        # Third message from r4; new connectivity to lan6 and routing improvements
+        # to some hosts
         r4_eth0 = r4.interface('eth0')
         r4_eth1 = r4.interface('eth1')
         r4_eth2 = r4.interface('eth2')
