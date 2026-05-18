@@ -350,23 +350,23 @@ class ProtocolTest(unittest.TestCase):
         r1_table = r1.routing_table()
 
         result = r1_table.match(h5.address())
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), r3_eth0.address())
         self.assertEqual(result.interface().name(), 'eth1')
 
         result = r1_table.match(h1.address())
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), NullAddress)
         self.assertEqual(result.interface().name(), 'eth0')
 
         result = r1_table.match(h4.address())
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), NullAddress)
         self.assertEqual(result.interface().name(), 'eth1')
 
         for unreachable_host in [h2, h3, h6]:
             result = r1_table.match(unreachable_host.address())
-            self.assertFalse(result.succeeded())
+            self.assertFalse(result.is_matched())
 
         # Second message from r2; new connectivity to lan2 and lan3
         r2_eth0 = r2.interface('eth0')
@@ -381,34 +381,34 @@ class ProtocolTest(unittest.TestCase):
         proto.handle_incoming_message(msg, r1_eth0)
 
         result = r1_table.match(h2.address())
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), r2_eth1.address())
         self.assertEqual(result.interface().name(), 'eth0')
 
         result = r1_table.match(h3.address())
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), r2_eth1.address())
         self.assertEqual(result.interface().name(), 'eth0')
 
         # No routing changes for h1, h4 and h5 addresses
         result = r1_table.match(h5.address())
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), r3_eth0.address())
         self.assertEqual(result.interface().name(), 'eth1')
 
         result = r1_table.match(h1.address())
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), NullAddress)
         self.assertEqual(result.interface().name(), 'eth0')
 
         result = r1_table.match(h4.address())
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), NullAddress)
         self.assertEqual(result.interface().name(), 'eth1')
 
         for unreachable_host in [h6]:
             result = r1_table.match(unreachable_host.address())
-            self.assertFalse(result.succeeded())
+            self.assertFalse(result.is_matched())
 
         # Third message from r4; new connectivity to lan6 and routing improvements to some hosts
         r4_eth0 = r4.interface('eth0')
@@ -423,35 +423,35 @@ class ProtocolTest(unittest.TestCase):
 
         # No routing changes for h1, h3, h4 and h5 addresses
         result = r1_table.match(h5.address())
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), r3_eth0.address())
         self.assertEqual(result.interface().name(), 'eth1')
 
         result = r1_table.match(h1.address())
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), NullAddress)
         self.assertEqual(result.interface().name(), 'eth0')
 
         result = r1_table.match(h4.address())
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), NullAddress)
         self.assertEqual(result.interface().name(), 'eth1')
 
         # h2 is now better reached through r1.eth1 via r3
         result = r1_table.match(h2.address())
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), r3_eth0.address())
         self.assertEqual(result.interface().name(), 'eth1')
 
         # Same for h3
         result = r1_table.match(h3.address())
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), r3_eth0.address())
         self.assertEqual(result.interface().name(), 'eth1')
 
         # New connectivity to h6
         result = r1_table.match(h6.address())
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), r3_eth0.address())
         self.assertEqual(result.interface().name(), 'eth1')
 
@@ -495,7 +495,7 @@ class ProtocolTest(unittest.TestCase):
         proto.handle_incoming_message(msg_r3, r1_eth2)
 
         result = r1.routing_table().match(Address('10.0.4.100'))
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.interface().name(), 'eth1')
 
         r1_eth1.set_cost(100)
@@ -503,7 +503,7 @@ class ProtocolTest(unittest.TestCase):
         proto._handle_update()
 
         result = r1.routing_table().match(Address('10.0.4.100'))
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.interface().name(), 'eth2')
 
 
@@ -617,34 +617,34 @@ def test_two_routers_one_link_converge():
 
         # r1: link prefix and own LAN are directly connected (NullAddress).
         r1_link = r1.routing_table().match(Address("200.0.0.1"))
-        assert r1_link.succeeded()
+        assert r1_link.is_matched()
         assert r1_link.next_hop() == NullAddress
         assert r1_link.interface().name() == "eth1"
 
         r1_own = r1.routing_table().match(Address("200.0.1.100"))
-        assert r1_own.succeeded()
+        assert r1_own.is_matched()
         assert r1_own.next_hop() == NullAddress
         assert r1_own.interface().name() == "eth0"
 
         # r1 reaches r2's LAN via r2's link address as next-hop.
         r1_remote = r1.routing_table().match(Address("200.0.2.100"))
-        assert r1_remote.succeeded()
+        assert r1_remote.is_matched()
         assert r1_remote.next_hop() == Address("200.0.0.2")
         assert r1_remote.interface().name() == "eth1"
 
         # r2: mirror assertions.
         r2_link = r2.routing_table().match(Address("200.0.0.2"))
-        assert r2_link.succeeded()
+        assert r2_link.is_matched()
         assert r2_link.next_hop() == NullAddress
         assert r2_link.interface().name() == "eth0"
 
         r2_own = r2.routing_table().match(Address("200.0.2.100"))
-        assert r2_own.succeeded()
+        assert r2_own.is_matched()
         assert r2_own.next_hop() == NullAddress
         assert r2_own.interface().name() == "eth1"
 
         r2_remote = r2.routing_table().match(Address("200.0.1.100"))
-        assert r2_remote.succeeded()
+        assert r2_remote.is_matched()
         assert r2_remote.next_hop() == Address("200.0.0.1")
         assert r2_remote.interface().name() == "eth0"
     finally:
@@ -674,31 +674,31 @@ def test_link_slash31_converge():
 
         # r1's own LAN is directly connected.
         r1_own = r1.routing_table().match(Address("200.0.1.100"))
-        assert r1_own.succeeded()
+        assert r1_own.is_matched()
         assert r1_own.next_hop() == NullAddress
         assert r1_own.interface().name() == "eth0"
 
         # r1's link prefix is directly connected.
         r1_link = r1.routing_table().match(Address("200.0.0.0"))
-        assert r1_link.succeeded()
+        assert r1_link.is_matched()
         assert r1_link.next_hop() == NullAddress
         assert r1_link.interface().name() == "eth1"
 
         # r1 reaches r2's LAN via r2's link address.
         r1_remote = r1.routing_table().match(Address("200.0.2.100"))
-        assert r1_remote.succeeded()
+        assert r1_remote.is_matched()
         assert r1_remote.next_hop() == Address("200.0.0.1")
         assert r1_remote.interface().name() == "eth1"
 
         # r2's link prefix is directly connected.
         r2_link = r2.routing_table().match(Address("200.0.0.1"))
-        assert r2_link.succeeded()
+        assert r2_link.is_matched()
         assert r2_link.next_hop() == NullAddress
         assert r2_link.interface().name() == "eth0"
 
         # r2 reaches r1's LAN via r1's link address.
         r2_remote = r2.routing_table().match(Address("200.0.1.100"))
-        assert r2_remote.succeeded()
+        assert r2_remote.is_matched()
         assert r2_remote.next_hop() == Address("200.0.0.0")
         assert r2_remote.interface().name() == "eth0"
     finally:
@@ -728,7 +728,7 @@ def test_link_cost_propagates():
 
         def _r1_routes_lan_r2_via_eth2():
             result = r1.routing_table().match(Address("200.0.2.100"))
-            return result.succeeded() and result.interface().name() == "eth2"
+            return result.is_matched() and result.interface().name() == "eth2"
 
         # Wait for full convergence: every router must have every prefix AND r1
         # must have settled on the cheaper path via r3 (eth2).  Checking only
@@ -755,7 +755,7 @@ def test_link_cost_propagates():
         # 5+9+1=15) to reach lan_r2; verified by _wait above.
         # Double-check the final routing table entry.
         r1_to_lan_r2 = r1.routing_table().match(Address("200.0.2.100"))
-        assert r1_to_lan_r2.succeeded()
+        assert r1_to_lan_r2.is_matched()
         assert r1_to_lan_r2.interface().name() == "eth2", (
             f"expected r1 to route via eth2 (cheaper via r3), "
             f"got {r1_to_lan_r2.interface().name()}"

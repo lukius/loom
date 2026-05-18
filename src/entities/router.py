@@ -37,27 +37,33 @@ class RoutingRule:
 
 
 class MatchingResult:
+    """Outcome of a longest-prefix lookup on a RoutingTable.
 
-    def succeeded(self) -> bool:
-        raise NotImplementedError
+    Constructed via `MatchingResult.matched(next_hop, interface)` for a hit and
+    `MatchingResult.not_matched()` for a miss; query via `is_matched()`.
+    Accessors (`next_hop()`, `interface()`) return `None` on a miss.
+    """
 
+    @classmethod
+    def matched(cls, next_hop, interface) -> 'MatchingResult':
+        result = cls.__new__(cls)
+        result._matched = True
+        result._next_hop = next_hop
+        result._interface = interface
+        return result
 
-class MatchingFailure(MatchingResult):
+    @classmethod
+    def not_matched(cls) -> 'MatchingResult':
+        result = cls.__new__(cls)
+        result._matched = False
+        result._next_hop = None
+        result._interface = None
+        return result
 
-    def succeeded(self) -> bool:
-        return False
+    def is_matched(self) -> bool:
+        return self._matched
 
-
-class MatchingSuccess(MatchingResult):
-
-    def __init__(self, next_hop, interface):
-        self._next_hop = next_hop
-        self._interface = interface
-
-    def succeeded(self) -> bool:
-        return True
-
-    def next_hop(self) -> NetworkAddress:
+    def next_hop(self):
         return self._next_hop
 
     def interface(self):
@@ -120,10 +126,10 @@ class RoutingTable:
                 longest_prefix_idx = i
 
         if longest_prefix_idx < 0:
-            return MatchingFailure()
+            return MatchingResult.not_matched()
 
         rule = self._rules[longest_prefix_idx]
-        return MatchingSuccess(rule.next_hop(), rule.interface())
+        return MatchingResult.matched(rule.next_hop(), rule.interface())
 
     with_lock = staticmethod(with_lock)
 
@@ -199,7 +205,7 @@ class Router(NetworkDevice):
 
         dest = packet.destination()
         result = self._routing_table.match(dest)
-        if not result.succeeded():
+        if not result.is_matched():
             if packet.source().is_private() and not self._has_public_interface():
                 raise Exception(
                     f'no NAT egress: router {self.name()} has no public interface '

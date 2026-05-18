@@ -1,33 +1,31 @@
 from collections import defaultdict
 
-from entities import Network, Router, Host, NetworkDevice, Link
+from entities import Host, Link, Network, NetworkDevice, Router
 
 
 class ValidationResult:
+    """Outcome of a validator run. `ok()` is the predicate; `reason()`
+    returns the failure reason (empty string on success)."""
 
-    def ok(self):
-        raise NotImplementedError
+    @classmethod
+    def valid(cls) -> 'ValidationResult':
+        result = cls.__new__(cls)
+        result._ok = True
+        result._reason = ''
+        return result
 
-    def reason(self):
-        raise NotImplementedError
+    @classmethod
+    def invalid(cls, reason: str) -> 'ValidationResult':
+        result = cls.__new__(cls)
+        result._ok = False
+        result._reason = reason
+        return result
 
+    def ok(self) -> bool:
+        return self._ok
 
-class ValidationFailure(ValidationResult):
-
-    def __init__(self, reason):
-        self._reason = reason
-
-    def ok(self):
-        return False
-
-    def reason(self):
+    def reason(self) -> str:
         return self._reason
-
-
-class ValidationSuccess(ValidationResult):
-
-    def ok(self):
-        return True
 
 
 class SystemValidator:
@@ -70,7 +68,7 @@ class AddressValidator(Validator):
         octets = address.split('.')
         msg = f'invalid address {address}'
         if len(octets) != 4:
-            return ValidationFailure(msg)
+            return ValidationResult.invalid(msg)
 
         try:
             octets[0] = int(octets[0])
@@ -78,13 +76,13 @@ class AddressValidator(Validator):
             octets[2] = int(octets[2])
             octets[3] = int(octets[3])
         except ValueError:
-            return ValidationFailure(msg)
+            return ValidationResult.invalid(msg)
 
         for i in range(4):
             if octets[i] < 0 or octets[i] > 255:
-                return ValidationFailure(msg)
+                return ValidationResult.invalid(msg)
 
-        return ValidationSuccess()
+        return ValidationResult.valid()
 
 
 class NetworkValidator(Validator):
@@ -92,14 +90,14 @@ class NetworkValidator(Validator):
     def validate(self, net: Network) -> ValidationResult:
         for _, sys_net in self._system.networks().items():
             if sys_net.name() == net.name():
-                return ValidationFailure(f'network already exists')
+                return ValidationResult.invalid('network already exists')
 
             if sys_net.address() == net.address():
                 if not net.address().is_private():
-                    return ValidationFailure(f'network address already exists')
+                    return ValidationResult.invalid('network address already exists')
                 # Private CIDRs are allowed to repeat; downstream NAT handles them.
 
-        return ValidationSuccess()
+        return ValidationResult.valid()
 
 
 class LinkValidator(Validator):
@@ -107,18 +105,18 @@ class LinkValidator(Validator):
     def validate(self, link) -> ValidationResult:
         mask = link.address().mask()
         if mask not in (30, 31):
-            return ValidationFailure(
+            return ValidationResult.invalid(
                 f'link CIDR must be /30 or /31, got /{mask}'
             )
 
         name = link.name()
         if name in self._system.networks():
-            return ValidationFailure('already exists as a network')
+            return ValidationResult.invalid('already exists as a network')
 
         if name in self._system.links():
-            return ValidationFailure('link already exists')
+            return ValidationResult.invalid('link already exists')
 
-        return ValidationSuccess()
+        return ValidationResult.valid()
 
 
 class DeviceValidator(Validator):
@@ -136,23 +134,31 @@ class DeviceValidator(Validator):
                 else net.contains_address(addr)
             )
             if not valid:
-                return ValidationFailure(f'invalid address for network {net.name()}')
+                return ValidationResult.invalid(
+                    f'invalid address for network {net.name()}'
+                )
 
             if self._addr_already_used(addrs_by_net, iface):
-                return ValidationFailure(f'address already in use by {iface.name()}')
+                return ValidationResult.invalid(
+                    f'address already in use by {iface.name()}'
+                )
 
             addrs_by_net[iface.network().name()].add(iface.address())
 
         for other in self._system.routers().values():
             for iface in other.interfaces().values():
                 if self._addr_already_used(addrs_by_net, iface):
-                    return ValidationFailure(f'address already in use by {other.name()}')
+                    return ValidationResult.invalid(
+                        f'address already in use by {other.name()}'
+                    )
 
         for host in self._system.hosts().values():
             if self._addr_already_used(addrs_by_net, host):
-                return ValidationFailure(f'address already in use by {host.name()}')
+                return ValidationResult.invalid(
+                    f'address already in use by {host.name()}'
+                )
 
-        return ValidationSuccess()
+        return ValidationResult.valid()
 
     def _addr_already_used(self, addrs_by_net, entity):
         net_name = entity.network().name()
@@ -170,6 +176,6 @@ class HostValidator(DeviceValidator):
         network = host.network()
         gw_address = host.gateway()
         if gw_address is not None and not network.contains_address(gw_address):
-            return ValidationFailure(f'gateway address not in host network')
+            return ValidationResult.invalid('gateway address not in host network')
 
-        return ValidationSuccess()
+        return ValidationResult.valid()

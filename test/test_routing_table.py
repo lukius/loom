@@ -25,20 +25,20 @@ class RoutingTableTest(unittest.TestCase):
         )
 
         result = table.match(Address('100.0.100.75'))
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), '200.200.10.35')
         self.assertEqual(result.interface().name(), 'eth0')
 
         result = table.match(Address('100.0.101.25'))
-        self.assertFalse(result.succeeded())
+        self.assertFalse(result.is_matched())
 
         table.remove_rule(prefix=NetworkAddress('100.0.100.0/24'))
 
         result = table.match(Address('100.0.100.75'))
-        self.assertFalse(result.succeeded())
+        self.assertFalse(result.is_matched())
 
         result = table.match(Address('100.0.101.25'))
-        self.assertFalse(result.succeeded())
+        self.assertFalse(result.is_matched())
 
     def test_matching_default_rule(self):
         table = RoutingTable()
@@ -59,24 +59,24 @@ class RoutingTableTest(unittest.TestCase):
         )
 
         result = table.match(Address('100.0.100.75'))
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), '200.200.10.35')
         self.assertEqual(result.interface().name(), 'eth0')
 
         result = table.match(Address('100.0.101.25'))
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), '125.101.13.10')
         self.assertEqual(result.interface().name(), 'eth1')
 
         table.remove_rule(prefix=NetworkAddress('100.0.100.0/24'))
 
         result = table.match(Address('100.0.100.75'))
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), '125.101.13.10')
         self.assertEqual(result.interface().name(), 'eth1')
 
         result = table.match(Address('100.0.101.25'))
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), '125.101.13.10')
         self.assertEqual(result.interface().name(), 'eth1')
 
@@ -106,34 +106,34 @@ class RoutingTableTest(unittest.TestCase):
         )
 
         result = table.match(Address('100.0.100.75'))
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), '200.200.10.35')
         self.assertEqual(result.interface().name(), 'eth1')
 
         result = table.match(Address('25.35.101.3'))
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), '125.101.12.2')
         self.assertEqual(result.interface().name(), 'eth2')
 
         result = table.match(Address('100.0.103.75'))
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), '125.101.13.10')
         self.assertEqual(result.interface().name(), 'eth0')
 
         table.remove_rule(prefix=NetworkAddress("100.0.100.0/24"))
 
         result = table.match(Address('100.0.100.75'))
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), '125.101.13.10')
         self.assertEqual(result.interface().name(), 'eth0')
 
         result = table.match(Address('100.0.103.75'))
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), '125.101.13.10')
         self.assertEqual(result.interface().name(), 'eth0')
 
         result = table.match(Address('25.35.101.3'))
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), '125.101.12.2')
         self.assertEqual(result.interface().name(), 'eth2')
 
@@ -157,7 +157,7 @@ class RoutingTableTest(unittest.TestCase):
 
         self.assertEqual(len(table.rules()), 1)
         result = table.match(Address('10.0.0.100'))
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), '10.0.0.2')
 
     def test_routing_rule_for_directly_connected_link(self):
@@ -176,13 +176,13 @@ class RoutingTableTest(unittest.TestCase):
 
         # An address inside the /30 block matches.
         result = table.match(Address('10.0.0.2'))
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), NullAddress)
         self.assertEqual(result.interface().name(), 'eth1')
 
         # An address outside the /30 block does not match.
         result = table.match(Address('10.0.1.1'))
-        self.assertFalse(result.succeeded())
+        self.assertFalse(result.is_matched())
 
         link.stop()
 
@@ -207,7 +207,7 @@ class RoutingTableTest(unittest.TestCase):
         )
 
         result = table.match(Address('10.0.2.100'))
-        self.assertTrue(result.succeeded())
+        self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), peer_addr)
         self.assertEqual(result.interface().name(), 'eth1')
 
