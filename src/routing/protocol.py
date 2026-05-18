@@ -9,7 +9,7 @@ from .graph import NetworkGraph
 from .messages import Datagram, RoutingMessage
 
 
-class RoutingProtocol:
+class LinkStateProtocol:
 
     KEEPALIVE_INTERVAL = 10
 
@@ -228,3 +228,7 @@ class RoutingProtocol:
             self._handle_update()
         except Exception:
             traceback.print_exc()
+
+
+# Transitional alias; replaced with an abstract base in D.1.b.
+RoutingProtocol = LinkStateProtocol

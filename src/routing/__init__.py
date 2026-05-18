@@ -7,4 +7,8 @@ from .exception import (
 from .exception import (
     NoRouteToHostException as NoRouteToHostException,
 )
-from .protocol import *
+from .graph import NetworkGraph as NetworkGraph
+from .protocol import LinkStateProtocol as LinkStateProtocol
+
+# Transitional alias; replaced with an abstract base in D.1.b.
+RoutingProtocol = LinkStateProtocol

@@ -130,10 +130,10 @@ class Router(NetworkDevice):
         self._routing_table = RoutingTable()
         self._nat_table = NATTable()
         # Deferred import: entities ↔ routing cycle. entities/__init__.py loads
-        # this module before routing/__init__.py finishes binding RoutingProtocol.
+        # this module before routing/__init__.py finishes binding LinkStateProtocol.
         # Importing at call time ensures both packages are fully loaded.
-        from routing import RoutingProtocol  # noqa: PLC0415
-        self._protocol = RoutingProtocol(self)
+        from routing import LinkStateProtocol  # noqa: PLC0415
+        self._protocol = LinkStateProtocol(self)
         self._as_gate = None  # set by AS.add_router
 
     def gate(self):
