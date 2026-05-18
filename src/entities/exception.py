@@ -63,3 +63,12 @@ class HostsCannotForwardException(EntityException):
     def __init__(self, message: str):
         super().__init__(message)
 
+
+class ASNotFoundException(EntityException):
+    """Raised when Internet.autonomous_system(name) is called with an
+    unknown AS name."""
+
+    def __init__(self, message: str):
+        message = f'AS not found: {message}'
+        super().__init__(message)
+

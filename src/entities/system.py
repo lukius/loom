@@ -2,6 +2,7 @@ from .base import Entity
 from .clock import PauseGate
 from .device import NetworkDevice
 from .exception import (
+    ASNotFoundException,
     HostNotFoundException,
     LinkNotFoundException,
     NetworkNotFoundException,
@@ -13,13 +14,13 @@ from .router import Router
 
 class AS(Entity):
 
-    def __init__(self, name):
+    def __init__(self, name, gate=None):
         super().__init__(name)
         self._networks = dict()
         self._links = dict()
         self._routers = dict()
         self._hosts = dict()
-        self._gate = PauseGate()
+        self._gate = gate if gate is not None else PauseGate()
 
     def gate(self) -> PauseGate:
         return self._gate
@@ -87,3 +88,55 @@ class AS(Entity):
             link.stop()
         for router in self._routers.values():
             router.stop()
+
+
+class Internet(Entity):
+    """Top-level container for an entire `loom` simulation.
+
+    Holds one or more `AS` instances and owns the shared `PauseGate`
+    (and, after D.2.c, the shared `EventTracer`). Today every
+    simulation has exactly one `AS`, so single-AS files are wrapped
+    in an `Internet` with that one member. When external routing
+    lands, `Internet` will also own the inter-AS link registry.
+    """
+
+    def __init__(self, name='loom'):
+        super().__init__(name)
+        self._ases = dict()
+        self._gate = PauseGate()
+        # EventTracer migration follows in D.2.c. For now the
+        # class-level EventTracer singleton (from entities.event)
+        # continues to handle broadcasts; Internet will get an
+        # instance reference once that work lands.
+
+    def gate(self) -> PauseGate:
+        return self._gate
+
+    def ases(self) -> dict:
+        return self._ases
+
+    def autonomous_system(self, name: str) -> 'AS':
+        if name not in self._ases:
+            raise ASNotFoundException(name)
+        return self._ases[name]
+
+    def add_as(self, as_) -> None:
+        as_._gate = self._gate     # AS shares the Internet's gate
+        self._ases[as_.name()] = as_
+
+    def single_as(self):
+        """Return the only AS in this Internet. Raises if there are
+        zero or multiple ASes. Used by single-AS consumers (the SPA's
+        server, the legacy shell) during the multi-AS transition.
+        """
+        ases = list(self._ases.values())
+        if len(ases) != 1:
+            raise ValueError(
+                f'single_as() requires exactly one AS, found {len(ases)}'
+            )
+        return ases[0]
+
+    def stop(self):
+        self._gate.stop()
+        for as_ in self._ases.values():
+            as_.stop()
