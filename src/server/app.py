@@ -6,6 +6,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from entities.event import EventTracer
+
 from .events import EventBus
 from .routes import devices as device_routes
 from .routes import sim as sim_routes
@@ -18,8 +20,6 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         app.state.event_bus.attach_loop(asyncio.get_running_loop())
-        from entities.event import EventTracer  # noqa: PLC0415
-
         EventTracer.subscribe(app.state.event_bus.emit)
         yield
 

@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Body, HTTPException, Request
 
+from server.state import InvalidStateTransition
+
 router = APIRouter(prefix="/sim", tags=["sim"])
 
 
@@ -47,8 +49,6 @@ def resume(request: Request, body: dict | None = Body(default=None)):
         msg = str(e)
         # 409 only for true state-machine violations (wrong sim state for transition).
         # Patch validation errors use pseudo-state names and map to 400.
-        from server.state import InvalidStateTransition  # noqa: PLC0415
-
         status = (
             409
             if isinstance(e, InvalidStateTransition) and e.from_state in _SIM_STATES
