@@ -1,5 +1,10 @@
 # Architecture Overview
 
+> **Scope:** loom is deliberately L3-only. There is no L2 (MAC/ARP/STP)
+> and no L4 (TCP/UDP/ports). The simulator exists to make routing
+> convergence and forwarding observable, not to model a full network
+> stack.
+
 `loom` is split into four cooperating layers, each with a clear
 responsibility and a narrow seam to its neighbors.
 
