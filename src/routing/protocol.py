@@ -2,7 +2,11 @@ import collections
 import threading
 import traceback
 
+from entities.address import NullAddress
+from entities.event import EventTracer
+
 from .graph import NetworkGraph
+from .messages import Datagram, RoutingMessage
 
 
 class RoutingProtocol:
@@ -84,8 +88,6 @@ class RoutingProtocol:
             return self._graph_updated
 
     def _recompute_if_dirty(self, changed: bool):
-        from entities.address import NullAddress
-
         if not changed:
             return
 
@@ -110,8 +112,6 @@ class RoutingProtocol:
                     routing_table.add_rule(prefix, next_hop_address, iface)
                     break
 
-        from entities.event import EventTracer
-
         EventTracer._broadcast(
             {
                 "kind": "routing_table_changed",
@@ -128,8 +128,6 @@ class RoutingProtocol:
         )
 
     def _handle_update(self):
-        from entities import Datagram, RoutingMessage
-
         changed = self.update_state()
         self._recompute_if_dirty(changed)
 
@@ -159,8 +157,6 @@ class RoutingProtocol:
             interface.send_to(datagram, dst_addr=net_broadcast)
 
     def _flood_msg(self, msg, interface):
-        from entities import Datagram
-
         for name, iface in self._router.interfaces().items():
             if name == interface.name():
                 continue

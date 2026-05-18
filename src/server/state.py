@@ -6,9 +6,10 @@ from typing import Optional
 
 import yaml
 
-from entities import Link
+from entities import Address, Host, Interface, Link, Network, NetworkAddress, Router
+from parser import Parser
 
-from .persistence import prepare_session
+from .persistence import atomic_write, prepare_session
 
 
 class InvalidStateTransition(Exception):
@@ -55,8 +56,6 @@ class SimState:
 
     def load_from_session(self):
         """Parse the session file into an AS. Routers are built but not started."""
-        from parser import Parser  # noqa: PLC0415 (parser is a local package)
-
         with self._lock:
             if self._as is not None:
                 self._as.stop()
@@ -199,15 +198,6 @@ class SimState:
         return ""
 
     def _apply_op(self, op: dict) -> None:
-        from entities import (  # noqa: PLC0415
-            Address,
-            Host,
-            Interface,
-            Network,
-            NetworkAddress,
-            Router,
-        )
-
         kind = op["op"]
         if kind == "add_network":
             net = Network(
@@ -257,8 +247,6 @@ class SimState:
             raise InvalidStateTransition("unknown_op", kind)
 
     def _persist(self) -> None:
-        from .persistence import atomic_write  # noqa: PLC0415
-
         atomic_write(self.session_path, self._dump_yaml())
 
     def _dump_yaml(self) -> str:
