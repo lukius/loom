@@ -46,7 +46,7 @@ as:
 
 def test_ping_happy_path():
     path = _make_topology(TWO_HOSTS)
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         h1, h2 = system.host("h1"), system.host("h2")
         rtt = h1.ping(h2.address(), timeout=1.0)
@@ -59,7 +59,7 @@ def test_ping_happy_path():
 
 def test_ping_unreachable_returns_none():
     path = _make_topology(TWO_HOSTS)
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         from entities import Address
 
@@ -78,7 +78,7 @@ def test_ping_unreachable_returns_none():
 
 def test_concurrent_pings_independent():
     path = _make_topology(TWO_HOSTS)
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         h1, h2 = system.host("h1"), system.host("h2")
         results = [None] * 5
@@ -118,7 +118,7 @@ as:
 
 def test_ping_off_lan_with_no_gateway_raises():
     path = _make_topology(TWO_LANS_NO_GATEWAY)
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         h1 = system.host("h1")
         h2 = system.host("h2")
@@ -132,7 +132,7 @@ def test_ping_off_lan_with_no_gateway_raises():
 def test_no_thread_leak_after_pings():
     path = _make_topology(TWO_HOSTS)
     before = {t.ident for t in threading.enumerate()}
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         h1, h2 = system.host("h1"), system.host("h2")
         for _ in range(10):
@@ -215,7 +215,7 @@ as:
 def test_ping_host_behind_p2p_slash30_link():
     """h1 pings h2 across a /30 p2p link; expect non-None RTT."""
     path = _make_topology(H1_SLASH30_LINK)
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         h1 = system.host("h1")
         h2 = system.host("h2")
@@ -237,7 +237,7 @@ def test_ping_host_behind_p2p_slash30_link():
 def test_ping_host_behind_p2p_slash31_link():
     """h1 pings h2 across a /31 p2p link; expect non-None RTT."""
     path = _make_topology(H1_SLASH31_LINK)
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         h1 = system.host("h1")
         h2 = system.host("h2")
@@ -263,7 +263,7 @@ def test_ping_host_on_link():
     h1 pings h2 (off-link, through the gateway); expect non-None RTT.
     """
     path = _make_topology(HOST_ON_SLASH31_LINK)
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         h1 = system.host("h1")
         h2 = system.host("h2")
@@ -330,7 +330,7 @@ def test_multi_tenant_nat_e2e():
     reach a shared public destination through r_core; each tenant's NAT
     rewrites its source on the way out. Tenants cannot reach each other."""
     path = _make_topology(MULTI_TENANT_NAT)
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         h_a = system.host("h_a")
         h_b = system.host("h_b")
@@ -378,7 +378,7 @@ def test_nat_ping_packet_events_share_one_flow():
     EventTracer._subscribers = []
     events = []
     EventTracer.subscribe(events.append)
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         h_a = system.host("h_a")
         h_pub = system.host("h_pub")
@@ -443,7 +443,7 @@ def test_two_private_hosts_keep_distinct_nat_entries_for_same_destination():
             eth1: {network: lan_pub, address: "200.100.0.1", cost: 1}
     """)
     path = _make_topology(topology)
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         h_x = system.host("h_x")
         h_y = system.host("h_y")

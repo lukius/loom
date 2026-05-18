@@ -6,7 +6,7 @@ class ParserTest(unittest.TestCase):
     FILE_PATH = 'test/resources'
 
     def test_simple_network(self):
-        system = Parser(f'{self.FILE_PATH}/simple_network.yaml').parse()
+        system = Parser(f'{self.FILE_PATH}/simple_network.yaml').parse().single_as()
         self.assertEqual(system.name(), 'test_as')
 
         # Router assertions
@@ -55,7 +55,7 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(devices['r1'], router)
 
     def test_two_networks(self):
-        system = Parser(f'{self.FILE_PATH}/two_networks.yaml').parse()
+        system = Parser(f'{self.FILE_PATH}/two_networks.yaml').parse().single_as()
         self.assertEqual(system.name(), 'test_as')
 
         # Router assertions
@@ -134,7 +134,9 @@ class ParserTest(unittest.TestCase):
 
     def test_duplicate_private_network_allowed(self):
         # RFC 1918 prefixes may legally repeat — downstream NAT handles them.
-        system = Parser(f'{self.FILE_PATH}/duplicate_private_network.yaml').parse()
+        system = Parser(
+            f'{self.FILE_PATH}/duplicate_private_network.yaml'
+        ).parse().single_as()
         nets = system.networks()
         self.assertIn('lan_a', nets)
         self.assertIn('lan_b', nets)
@@ -198,7 +200,9 @@ class ParserTest(unittest.TestCase):
     # ------------------------------------------------------------------ links --
 
     def test_two_routers_one_link(self):
-        system = Parser(f'{self.FILE_PATH}/two_routers_one_link.yaml').parse()
+        system = Parser(
+            f'{self.FILE_PATH}/two_routers_one_link.yaml'
+        ).parse().single_as()
 
         links = system.links()
         self.assertEqual(len(links), 1)
@@ -228,7 +232,7 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(r1_eth0.network().name(), 'lan1')
 
     def test_host_on_link(self):
-        system = Parser(f'{self.FILE_PATH}/host_on_link.yaml').parse()
+        system = Parser(f'{self.FILE_PATH}/host_on_link.yaml').parse().single_as()
 
         hosts = system.hosts()
         h3 = hosts['h3']
@@ -238,7 +242,7 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(h3.gateway(), Address('10.0.1.1'))
 
     def test_host_to_host_link(self):
-        system = Parser(f'{self.FILE_PATH}/host_to_host_link.yaml').parse()
+        system = Parser(f'{self.FILE_PATH}/host_to_host_link.yaml').parse().single_as()
 
         from entities import Address
         h1 = system.hosts()['h1']
@@ -250,7 +254,7 @@ class ParserTest(unittest.TestCase):
     def test_host_on_link_explicit_correct_gateway(self):
         system = Parser(
             f'{self.FILE_PATH}/host_on_link_explicit_correct_gateway.yaml'
-        ).parse()
+        ).parse().single_as()
 
         from entities import Address
         h3 = system.hosts()['h3']

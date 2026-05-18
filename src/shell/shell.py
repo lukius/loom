@@ -185,7 +185,7 @@ class Shell(cmd.Cmd):
     def do_read(self, arg):
         'Read the given YAML file with the network description'
         try:
-            system = Parser(arg).parse()
+            system = Parser(arg).parse().single_as()
         except Exception as e:
             print(str(e))
         else:

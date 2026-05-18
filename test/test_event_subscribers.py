@@ -87,7 +87,7 @@ def test_egress_broadcast_fires_for_user_datagram():
         EventTracer._subscribers = []
         EventTracer.subscribe(events.append)
 
-        system = Parser(path).parse()
+        system = Parser(path).parse().single_as()
         h1, h2 = system.host("h1"), system.host("h2")
         h1.send_message_to(UserMessage("hi"), h2.address())
         time.sleep(0.2)
@@ -124,7 +124,7 @@ def test_routing_table_changed_event_fires():
         EventTracer._subscribers = []
         EventTracer.subscribe(events.append)
 
-        system = Parser(path).parse()
+        system = Parser(path).parse().single_as()
         # First keepalive within ~KEEPALIVE_INTERVAL; for a test, manually update.
         system.router("r1").update_interface("eth0", 99)
         # nudge protocol to recompute by faking a keepalive call:

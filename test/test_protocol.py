@@ -47,7 +47,7 @@ def test_set_keepalive_interval_updates_protocol():
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(SAMPLE_TOPOLOGY)
         path = f.name
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         r1 = system.routers()["r1"]
         assert r1.protocol().keepalive_interval() == 10
@@ -62,7 +62,7 @@ def test_set_keepalive_interval_rejects_non_positive():
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(SAMPLE_TOPOLOGY)
         path = f.name
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         r1 = system.routers()["r1"]
         import pytest as _pt
@@ -108,7 +108,7 @@ def test_routers_with_shared_iface_names_all_receive_lsas():
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(SAMPLE_THREE_ROUTERS_SHARED_NAMES)
         path = f.name
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         time.sleep(1.5)
         routers = system.routers()
@@ -147,7 +147,7 @@ def test_stop_then_start_resumes_periodic_ticks():
 
         LinkStateProtocol._safe_tick = counting_tick
         try:
-            system = Parser(path).parse()
+            system = Parser(path).parse().single_as()
             for r in system.routers().values():
                 r.stop()
             tick_counts.clear()  # ignore the parser-time initial tick
@@ -174,7 +174,7 @@ def test_initial_broadcast_propagates_before_keepalive_interval():
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(SAMPLE_TOPOLOGY)
         path = f.name
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         time.sleep(1.0)  # well under KEEPALIVE_INTERVAL=10
         routers = system.routers()
@@ -311,7 +311,7 @@ class ProtocolTest(unittest.TestCase):
             self._queue.get(timeout=0.1)
 
     def test_routing_table_update_on_incoming_message(self):
-        system = Parser(f'test/resources/several_networks.yaml').parse()
+        system = Parser(f'test/resources/several_networks.yaml').parse().single_as()
         routers = system.routers()
         r1 = routers['r1']
         r2 = routers['r2']
@@ -596,7 +596,7 @@ def test_two_routers_one_link_converge():
     """Two routers on a /30 link converge: each learns the peer's LAN and the
     link prefix as directly connected."""
     path = _make_tmp_topology(TWO_ROUTERS_SLASH30)
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         r1 = system.routers()["r1"]
         r2 = system.routers()["r2"]
@@ -654,7 +654,7 @@ def test_two_routers_one_link_converge():
 def test_link_slash31_converge():
     """/31 link topology converges with identical table structure to /30."""
     path = _make_tmp_topology(TWO_ROUTERS_SLASH31)
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         r1 = system.routers()["r1"]
         r2 = system.routers()["r2"]
@@ -717,7 +717,7 @@ def test_link_cost_propagates():
         at 5, p2p1→r2 at r2's announced cost 9, r2→lan_r2 at 1).
     """
     path = _make_tmp_topology(TWO_ROUTERS_ASYMMETRIC_COST)
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         r1 = system.routers()["r1"]
         r2 = system.routers()["r2"]
@@ -790,7 +790,7 @@ def test_handle_update_omits_private_prefixes_from_outbound_message():
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(topology)
         path = f.name
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         r1 = system.routers()["r1"]
         # Join r1's keepalive thread before patching so its initial tick
@@ -856,7 +856,7 @@ def test_receiver_graph_never_learns_private_prefix():
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(topology)
         path = f.name
-    system = Parser(path).parse()
+    system = Parser(path).parse().single_as()
     try:
         _r1 = system.routers()["r1"]
         r2 = system.routers()["r2"]

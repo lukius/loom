@@ -2,7 +2,9 @@ import yaml
 
 from .exception import ParsingException
 from .validator import SystemValidator
-from entities import AS, Network, Link, Router, Host, Interface, NetworkAddress, Address
+from entities import (
+    AS, Address, Host, Interface, Internet, Link, Network, NetworkAddress, Router
+)
 from entities import NetworkNotFoundException, LinkNotFoundException
 from entities.exception import TooManyEndpointsException
 
@@ -13,7 +15,7 @@ class Parser:
         self.filename = filename
         self._unnamed_count = 0
 
-    def parse(self, start_routing: bool = True) -> AS:
+    def parse(self, start_routing: bool = True) -> Internet:
         with open(self.filename, 'r') as f:
             content = yaml.safe_load(f)
 
@@ -24,8 +26,10 @@ class Parser:
             self._fail('missing "as" key')
 
         system_dict = content['as']
-        name = self._get_name(system_dict)
-        system = AS(name)
+        internet = Internet(name='loom')
+        as_name = self._get_name(system_dict)
+        system = AS(as_name, gate=internet.gate())
+        internet.add_as(system)
         validator = SystemValidator(system)
 
         if 'networks' not in system_dict:
@@ -51,7 +55,7 @@ class Parser:
             for router in system.routers().values():
                 router.start()
 
-        return system
+        return internet
 
     def _parse_networks(self, system, validator, network_dict):
         for name, addr in network_dict.items():

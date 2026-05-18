@@ -123,7 +123,7 @@ def test_paused_interface_does_not_dispatch():
         f.write(yaml_text)
         path = f.name
     try:
-        system = Parser(path).parse()
+        system = Parser(path).parse().single_as()
         system.gate().pause()
 
         h1 = system.host("h1")

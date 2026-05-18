@@ -28,6 +28,7 @@ class SimState:
     def __init__(self, source: Path):
         self._source = Path(source)
         self._session: Optional[Path] = None
+        self._internet = None
         self._as = None
         self._state = "idle"
         self._lock = threading.RLock()
@@ -57,13 +58,15 @@ class SimState:
     def load_from_session(self):
         """Parse the session file into an AS. Routers are built but not started."""
         with self._lock:
-            if self._as is not None:
-                self._as.stop()
+            if self._internet is not None:
+                self._internet.stop()
             # `start_routing=False`: build routers without starting their
             # keepalive threads. Starting them here would let the initial
             # routing tick fire — emitting packet events on a sim that is
             # still 'idle' — before /sim/start has been called.
-            self._as = Parser(str(self.session_path)).parse(start_routing=False)
+            internet = Parser(str(self.session_path)).parse(start_routing=False)
+            self._internet = internet
+            self._as = internet.single_as()
             self._state = "idle"
 
     def start(self):
@@ -306,7 +309,8 @@ class SimState:
         with self._lock:
             if self._state == "idle":
                 return
-            if self._as is not None:
-                self._as.stop()
+            if self._internet is not None:
+                self._internet.stop()
+                self._internet = None
                 self._as = None
             self._state = "idle"
