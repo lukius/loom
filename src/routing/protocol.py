@@ -1,6 +1,8 @@
 import collections
 import threading
 import traceback
+from abc import ABC, abstractmethod
+from typing import Iterable
 
 from entities.address import NullAddress
 from entities.event import EventTracer
@@ -9,7 +11,38 @@ from .graph import NetworkGraph
 from .messages import Datagram, RoutingMessage
 
 
-class LinkStateProtocol:
+class RoutingProtocol(ABC):
+    """Abstract interface every routing protocol must implement.
+
+    Today there's only one concrete subclass (LinkStateProtocol). The
+    interface exists so a second protocol (e.g. simplified BGP) can be
+    added to a Router without redesigning Router's protocol-holding shape.
+
+    Each concrete protocol owns its own keepalive lifecycle and produces
+    routes via `installed_rules()`; the Router's RIB merges across all
+    its protocols (see D.1.c).
+    """
+
+    @abstractmethod
+    def start(self) -> None: ...
+
+    @abstractmethod
+    def stop(self) -> None: ...
+
+    @abstractmethod
+    def handle_incoming_message(self, msg, interface) -> None: ...
+
+    @abstractmethod
+    def installed_rules(self) -> Iterable:
+        """Yield this protocol's contributions to the RIB.
+
+        Each rule carries `(prefix, next_hop, interface)` (today's
+        `RoutingRule` shape). Administrative distance ordering is the
+        RIB's responsibility, not the protocol's.
+        """
+
+
+class LinkStateProtocol(RoutingProtocol):
 
     KEEPALIVE_INTERVAL = 10
 
@@ -23,7 +56,9 @@ class LinkStateProtocol:
         self._stopped = False
         self._stop_event = threading.Event()
         self._keepalive_interval = self.KEEPALIVE_INTERVAL
-        self._keepalive_thread = threading.Thread(target=self._keepalive_loop, daemon=True)
+        self._keepalive_thread = threading.Thread(
+            target=self._keepalive_loop, daemon=True
+        )
 
         self._init_graph()
         self._graph_updated = True
@@ -153,7 +188,9 @@ class LinkStateProtocol:
                 msg.add_destination(prefix, cost)
 
             net_broadcast = interface.network().broadcast_address()
-            datagram = Datagram(src_addr=interface.address(), dst_addr=net_broadcast, payload=msg)
+            datagram = Datagram(
+                src_addr=interface.address(), dst_addr=net_broadcast, payload=msg
+            )
             interface.send_to(datagram, dst_addr=net_broadcast)
 
     def _flood_msg(self, msg, interface):
@@ -162,7 +199,9 @@ class LinkStateProtocol:
                 continue
 
             net_broadcast = iface.network().broadcast_address()
-            datagram = Datagram(src_addr=iface.address(), dst_addr=net_broadcast, payload=msg)
+            datagram = Datagram(
+                src_addr=iface.address(), dst_addr=net_broadcast, payload=msg
+            )
             iface.send_to(datagram, dst_addr=net_broadcast)
 
     def _update_graph(self, msg):
@@ -223,12 +262,19 @@ class LinkStateProtocol:
                     continue  # paused; loop again without ticking
             self._safe_tick()
 
+    def installed_rules(self):
+        """Yield rules currently installed by this protocol.
+
+        Today LinkStateProtocol writes directly into the router's
+        RoutingTable via _recompute_if_dirty. This accessor returns
+        those rules so the Router-level RIB merge (introduced in D.1.c)
+        can see what each protocol contributes without changing the
+        current write path.
+        """
+        return list(self._router.routing_table().rules())
+
     def _safe_tick(self):
         try:
             self._handle_update()
         except Exception:
             traceback.print_exc()
-
-
-# Transitional alias; replaced with an abstract base in D.1.b.
-RoutingProtocol = LinkStateProtocol

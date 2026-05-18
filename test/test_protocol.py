@@ -8,6 +8,7 @@ import unittest
 
 from parser import Parser
 from entities import Interface, RoutingProtocol, Router, Network, NetworkAddress, Address, NullAddress, RoutingMessage
+from routing import LinkStateProtocol
 
 
 def _wait(condition, timeout=3.0, interval=0.02):
@@ -129,24 +130,22 @@ def test_stop_then_start_resumes_periodic_ticks():
 
     Count ticks per router instead of events: more deterministic.
     """
-    from routing.protocol import RoutingProtocol
-
-    original = RoutingProtocol.KEEPALIVE_INTERVAL
-    RoutingProtocol.KEEPALIVE_INTERVAL = 0.4
+    original = LinkStateProtocol.KEEPALIVE_INTERVAL
+    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.4
     try:
         with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
             f.write(SAMPLE_TOPOLOGY)
             path = f.name
         # Wrap _safe_tick to count ticks per router instance.
         tick_counts = {}
-        original_tick = RoutingProtocol._safe_tick
+        original_tick = LinkStateProtocol._safe_tick
 
         def counting_tick(self):
             name = self._router.name()
             tick_counts[name] = tick_counts.get(name, 0) + 1
             original_tick(self)
 
-        RoutingProtocol._safe_tick = counting_tick
+        LinkStateProtocol._safe_tick = counting_tick
         try:
             system = Parser(path).parse()
             for r in system.routers().values():
@@ -165,9 +164,9 @@ def test_stop_then_start_resumes_periodic_ticks():
                 system.stop()
                 os.unlink(path)
         finally:
-            RoutingProtocol._safe_tick = original_tick
+            LinkStateProtocol._safe_tick = original_tick
     finally:
-        RoutingProtocol.KEEPALIVE_INTERVAL = original
+        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_initial_broadcast_propagates_before_keepalive_interval():
@@ -232,7 +231,7 @@ class ProtocolTest(unittest.TestCase):
         router.add_interface(iface1)
         router.add_interface(iface2)
 
-        proto = RoutingProtocol(router)
+        proto = LinkStateProtocol(router)
         proto._handle_update()
 
         result = self._queue.get(timeout=0.1)
@@ -281,7 +280,7 @@ class ProtocolTest(unittest.TestCase):
         msg.add_destination(prefix=net2.address(), cost=iface4.cost())
         msg.add_destination(prefix=net3.address(), cost=iface5.cost())
 
-        proto = RoutingProtocol(r1)
+        proto = LinkStateProtocol(r1)
         proto.handle_incoming_message(msg, iface2)
 
         datagram1, dst_addr1 = self._queue.get(timeout=0.1)
@@ -341,7 +340,7 @@ class ProtocolTest(unittest.TestCase):
         msg.add_destination(prefix=lan4.address(), cost=r3_eth0.cost())
         msg.add_destination(prefix=lan5.address(), cost=r3_eth1.cost())
 
-        proto = RoutingProtocol(r1)
+        proto = LinkStateProtocol(r1)
         r1_eth1 = r1.interface('eth1')
 
         # First message from r3; new connectivity to lan5
@@ -482,7 +481,7 @@ class ProtocolTest(unittest.TestCase):
         r3.add_interface(r3_eth0)
         r3.add_interface(r3_eth1)
 
-        proto = RoutingProtocol(r1)
+        proto = LinkStateProtocol(r1)
 
         msg_r2 = RoutingMessage(src=r2_eth0, seq=1)
         msg_r2.add_destination(prefix=net2.address(), cost=r2_eth0.cost())
