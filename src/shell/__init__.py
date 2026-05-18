@@ -1,1 +1,1 @@
-from .shell import *
+from .shell import Shell as Shell

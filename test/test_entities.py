@@ -1,6 +1,6 @@
 import unittest
 
-from entities import *
+from entities import Address, Host, Interface, Network, NetworkAddress, Router
 
 class EntitiesTest(unittest.TestCase):
 
