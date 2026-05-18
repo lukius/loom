@@ -91,9 +91,9 @@ class NetworkAddress(BaseAddress):
         idx, bits = divmod(self._mask, 8)
         bitmask = 0xff - (1 << (8 - bits)) + 1
 
-        octets[idx] &= bitmask
+        masked = octets[idx] & bitmask
         net_octet = self._octets[idx] & bitmask
-        if octets[idx] != net_octet:
+        if masked != net_octet:
             return False
 
         for i in range(idx):

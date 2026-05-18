@@ -159,3 +159,30 @@ class NetworkAddressIsPrivateTest(unittest.TestCase):
 
     def test_cgnat_not_private(self):
         self.assertFalse(NetworkAddress('100.64.0.0/10').is_private())
+
+
+def test_network_matches_does_not_mutate_caller():
+    """Address._matches must not write into the caller's octets list.
+
+    Regression: prior implementation did `octets[idx] &= bitmask`, so a
+    caller that obtained `octets` and reused it afterwards would observe
+    silent corruption. octets() returns a copy today, which made the bug
+    invisible — this test pins down the property directly.
+    """
+    from entities.address import Address, NetworkAddress
+
+    net = NetworkAddress('10.0.5.0/24')
+    addr = Address('10.0.5.42')
+    octets_in = addr.octets()
+    snapshot = list(octets_in)
+
+    assert net.matches(addr) is True
+
+    # The list the user obtained must be untouched.
+    octets_after_first = addr.octets()
+    assert octets_after_first == snapshot
+
+    # Directly verify _matches doesn't write into its argument.
+    local = list(snapshot)
+    net._matches(local)
+    assert local == snapshot
