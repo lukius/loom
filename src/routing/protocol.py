@@ -147,18 +147,35 @@ class LinkStateProtocol(RoutingProtocol):
                     routing_table.add_rule(prefix, next_hop_address, iface)
                     break
 
+        rules_payload = [
+            {
+                "prefix": str(r.prefix()),
+                "next_hop": str(r.next_hop()),
+                "iface": r.interface().name(),
+            }
+            for r in routing_table.rules()
+        ]
+
+        # LS-protocol-level: the link-state graph dictated a new set of
+        # rules. Emitted whenever LinkStateProtocol writes into the
+        # routing table; downstream tooling that wants to know "the LS
+        # protocol changed its view" subscribes to lsdb_changed.
+        EventTracer._broadcast(
+            {
+                "kind": "lsdb_changed",
+                "device": self._router.name(),
+                "rules": rules_payload,
+            }
+        )
+
+        # RIB-level: the device's forwarding table changed. With one
+        # protocol this fires on the same condition; once a second
+        # protocol exists, the RIB merge step owns this event.
         EventTracer._broadcast(
             {
                 "kind": "routing_table_changed",
                 "device": self._router.name(),
-                "rules": [
-                    {
-                        "prefix": str(r.prefix()),
-                        "next_hop": str(r.next_hop()),
-                        "iface": r.interface().name(),
-                    }
-                    for r in routing_table.rules()
-                ],
+                "rules": rules_payload,
             }
         )
 
