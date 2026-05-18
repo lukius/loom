@@ -101,3 +101,30 @@ router-side iface label on the private side of the boundary is muted
 to match. See [the user-guide page](../user-guide/nat-and-private-lans.md)
 for the user-facing description. The detection logic lives in
 `web/utils.js::isPrivateCidr` and mirrors `entities/address.py::is_private`.
+
+## Deliberate omissions
+
+`loom`'s NAT models address-translation mechanics — the rewrite, the
+flow table, and the public/private boundary detection. It deliberately
+omits behaviour whose role is operational rather than conceptual:
+
+- **Time-based ageing.** Real NAT applies per-protocol idle timeouts
+  (TCP much longer than UDP — typical defaults are 24h vs 30s) so
+  that abandoned or half-open flows free their table entries on their
+  own. `loom`'s `NATTable` evicts only via LRU at the
+  `max_entries` boundary. Ageing is the most operationally consequential
+  part of real NAT behaviour and is what every NAT troubleshooting
+  story starts from; it's omitted here because the simulator's scale
+  (handfuls of flows for seconds-to-minutes) makes the cap-based
+  policy indistinguishable.
+- **Per-protocol awareness.** Real NAT applies different policies to
+  TCP, UDP, ICMP, and so on. `loom` keys all flows by `flow_id` (a
+  conversation UUID) regardless of payload type. The same omission
+  reason as above: the simulator doesn't model L4 at all.
+- **Hairpinning / NAT-loopback.** Traffic from a private host to its
+  own NAT's public address is not specially handled. Not relevant
+  for the topologies `loom` targets.
+
+If you need to teach or troubleshoot NAT-ageing behaviour, ns-3 or a
+real router are the right tools — see the
+[scope statement](../user-guide/getting-started.md#scope).
