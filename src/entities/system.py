@@ -114,6 +114,11 @@ class Internet(Entity):
     def event_tracer(self) -> EventTracer:
         return self._event_tracer
 
+    # BGP-FOLLOWUP: rename to `autonomous_systems()` to match the YAML key
+    # `autonomous_systems:` introduced in D.2.d. Deferred to BGP work because
+    # the BGP agent will be touching all `ases()` call sites anyway when
+    # migrating from `single_as()` (see marker above) — one sweep instead of
+    # two.
     def ases(self) -> dict:
         return self._ases
 
@@ -126,6 +131,11 @@ class Internet(Entity):
         as_._gate = self._gate     # AS shares the Internet's gate
         self._ases[as_.name()] = as_
 
+    # BGP-FOLLOWUP: remove this single-AS unwrap once the codebase supports
+    # multi-AS topologies. 34 call sites today (tests, shell, server/state.py)
+    # all assume one AS; migrate each to either iterate `autonomous_systems()`
+    # (after the rename below) or look up by name via
+    # `internet.autonomous_system(name)`.
     def single_as(self):
         """Return the only AS in this Internet. Raises if there are
         zero or multiple ASes. Used by single-AS consumers (the SPA's
