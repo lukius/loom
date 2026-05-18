@@ -5,6 +5,7 @@ import time
 from .address import Address
 from .device import NetworkDevice
 from .event import EventTracer
+from .exception import HostsCannotForwardException
 from .interface import Interface  # noqa: F401
 from .packet import Datagram, PingReply, PingRequest, UserMessage
 
@@ -113,5 +114,4 @@ class Host(NetworkDevice):
             return EventTracer.message_received(src=self.address(), msg=msg)
 
     def _handle_forwarding(self, packet):
-        # TODO
-        raise Exception(f'{self._name}: cannot forward datagrams')
+        raise HostsCannotForwardException(f'{self._name}: cannot forward datagrams')

@@ -7,6 +7,7 @@ from entities import (
     Datagram,
     EventTracer,
     Host,
+    HostsCannotForwardException,
     Interface,
     Network,
     NetworkAddress,
@@ -116,7 +117,7 @@ class PacketHandlingTest(unittest.TestCase):
             on_received=lambda *args, **kwargs: self.fail()
         )
 
-        with self.assertRaises(Exception) as context:
+        with self.assertRaises(HostsCannotForwardException) as context:
             self.host.handle_packet(datagram, self.host.interface())
         self.assertIn('cannot forward datagrams', str(context.exception))
 

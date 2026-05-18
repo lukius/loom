@@ -52,3 +52,14 @@ class TooManyEndpointsException(EntityException):
         )
         super().__init__(message)
 
+
+class HostsCannotForwardException(EntityException):
+    """Raised when something tries to invoke L3 forwarding on a Host.
+
+    Hosts have a single interface and do not participate in routing.
+    See docs/architecture/entities.md for the host vs router split.
+    """
+
+    def __init__(self, message: str):
+        super().__init__(message)
+
