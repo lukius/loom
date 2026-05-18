@@ -1,8 +1,6 @@
 import time as _time
 import uuid
 
-from routing.messages import Datagram, RoutingMessage  # noqa: F401
-
 
 class Packet:
 
@@ -108,3 +106,9 @@ class PingReply(Message):
         if self._request_id is None:
             return super().flow_key()
         return str(self._request_id)
+
+
+# Re-exported so `from entities.packet import Datagram, RoutingMessage` and
+# `from entities import Datagram, RoutingMessage` still resolve. Canonical
+# home for these wire-format classes is routing.messages.
+from routing.messages import Datagram, RoutingMessage  # noqa: E402, F401

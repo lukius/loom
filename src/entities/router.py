@@ -2,8 +2,6 @@ import sys
 from threading import Lock
 from typing import List, Optional
 
-from routing import RoutingProtocol
-
 from .address import Address, NetworkAddress, NullAddress
 from .device import NetworkDevice
 from .event import EventTracer
@@ -129,6 +127,10 @@ class Router(NetworkDevice):
         super().__init__(name)
         self._routing_table = RoutingTable()
         self._nat_table = NATTable()
+        # Deferred import: entities ↔ routing cycle. entities/__init__.py loads
+        # this module before routing/__init__.py finishes binding RoutingProtocol.
+        # Importing at call time ensures both packages are fully loaded.
+        from routing import RoutingProtocol  # noqa: PLC0415
         self._protocol = RoutingProtocol(self)
         self._as_gate = None  # set by AS.add_router
 
