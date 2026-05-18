@@ -47,7 +47,11 @@ class Parser:
         for as_short_name, as_block in ases_dict.items():
             self._parse_single_as(as_short_name, as_block, internet)
 
-        # Future: a wiring pass for inter-AS external links lives here.
+        # BGP-FOLLOWUP: inter-AS wiring pass — when BGP lands, the YAML grows
+        # an `external_links:` block under `internet:` that names router/iface
+        # endpoints across ASes. Parse and wire those links here, after every
+        # AS has been built. The current single-AS topologies have no external
+        # links so this pass is a no-op today.
 
         if start_routing:
             for system in internet.ases().values():

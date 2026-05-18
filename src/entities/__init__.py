@@ -37,6 +37,10 @@ from .system import AS as AS
 from .system import Internet as Internet
 
 
+# BGP-FOLLOWUP: this PEP 562 lazy lookup is paired with the deferred import
+# in entities/router.py's Router.__init__. Remove both together once protocol
+# construction moves out of Router.__init__ — see entities/router.py for the
+# fix plan.
 def __getattr__(name):
     # Lazily re-export symbols from the routing package so that
     # `from entities import RoutingProtocol` works without creating a

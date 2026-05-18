@@ -129,10 +129,24 @@ class Router(NetworkDevice):
         super().__init__(name)
         self._routing_table = RoutingTable()
         self._nat_table = NATTable()
+        # BGP-FOLLOWUP: this deferred import + the paired __getattr__ in
+        # entities/__init__.py exist solely to break the entities ↔ routing
+        # cycle. When BGP lands, externalize protocol construction (have
+        # the parser inject protocols into Router via add_protocol() rather
+        # than Router.__init__ constructing LinkStateProtocol itself). At
+        # that point the cycle disappears and both the noqa here and the
+        # __getattr__ hook can go.
         # Deferred import: entities ↔ routing cycle. entities/__init__.py loads
         # this module before routing/__init__.py finishes binding LinkStateProtocol.
         # Importing at call time ensures both packages are fully loaded.
         from routing import LinkStateProtocol  # noqa: PLC0415
+        # BGP-FOLLOWUP: today LinkStateProtocol writes rules directly into
+        # self._routing_table via _recompute_if_dirty. When BGP becomes the
+        # second protocol, introduce a RIB-level merge that walks
+        # `self.protocols()`, collects each protocol's `installed_rules()`,
+        # and applies administrative-distance ordering before writing to the
+        # routing table. Today's accessor returns the table's rules as a
+        # passthrough; tomorrow it should be the protocol's own contribution.
         self._protocols: list = [LinkStateProtocol(self)]
         self._as_gate = None  # set by AS.add_router
 
@@ -149,6 +163,10 @@ class Router(NetworkDevice):
         """
         return list(self._protocols)
 
+    # BGP-FOLLOWUP: remove this single-protocol accessor once a second
+    # protocol exists. Migrate the ~16 callers (tests, shell, server commands)
+    # to either `protocols()` for multi-protocol operations or named accessors
+    # (`link_state()`, `bgp()`) for protocol-specific queries.
     def protocol(self):
         """Back-compat: return the (single) link-state protocol.
 

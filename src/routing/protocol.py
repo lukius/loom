@@ -172,9 +172,11 @@ class LinkStateProtocol(RoutingProtocol):
             }
         )
 
-        # RIB-level: the device's forwarding table changed. With one
-        # protocol this fires on the same condition; once a second
-        # protocol exists, the RIB merge step owns this event.
+        # BGP-FOLLOWUP: today LinkStateProtocol fires routing_table_changed
+        # itself because it owns the write into the routing table. When BGP
+        # arrives and the Router-level RIB merge takes over the write path,
+        # move this broadcast out of here and into the merge step. lsdb_changed
+        # above is correctly per-protocol and stays.
         EventTracer._broadcast(
             {
                 "kind": "routing_table_changed",
@@ -285,6 +287,10 @@ class LinkStateProtocol(RoutingProtocol):
             self._safe_tick()
 
     def installed_rules(self):
+        # BGP-FOLLOWUP: today this returns the full routing table because LS
+        # writes there directly. Once BGP is the second protocol, this should
+        # return only the rules THIS protocol contributed (so the Router-level
+        # RIB merge can apply administrative distance correctly).
         """Yield rules currently installed by this protocol.
 
         Today LinkStateProtocol writes directly into the router's
