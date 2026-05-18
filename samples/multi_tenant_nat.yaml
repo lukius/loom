@@ -1,57 +1,60 @@
-as:
-  name: "multi_tenant_nat"
-  networks:
-    lan_tenant_a: "192.168.1.0/24"
-    lan_tenant_b: "192.168.1.0/24"
-    lan_isp: "200.100.0.0/24"
-  links:
-    p2p_a: "198.51.100.0/30"
-    p2p_b: "198.51.100.4/30"
-  hosts:
-    h_a:
-      network: "lan_tenant_a"
-      address: "192.168.1.10"
-      gateway: "192.168.1.1"
-    h_b:
-      network: "lan_tenant_b"
-      address: "192.168.1.20"
-      gateway: "192.168.1.1"
-    h_public:
-      network: "lan_isp"
-      address: "200.100.0.10"
-      gateway: "200.100.0.1"
-  routers:
-    r_a:
-      interfaces:
-        eth0:
-          network: "lan_tenant_a"
-          address: "192.168.1.1"
-          cost: 1
-        eth1:
-          link: "p2p_a"
-          address: "198.51.100.1"
-          cost: 1
-    r_b:
-      interfaces:
-        eth0:
-          network: "lan_tenant_b"
-          address: "192.168.1.1"
-          cost: 1
-        eth1:
-          link: "p2p_b"
-          address: "198.51.100.5"
-          cost: 1
-    r_core:
-      interfaces:
-        eth0:
-          link: "p2p_a"
-          address: "198.51.100.2"
-          cost: 1
-        eth1:
-          link: "p2p_b"
-          address: "198.51.100.6"
-          cost: 1
-        eth2:
-          network: "lan_isp"
-          address: "200.100.0.1"
-          cost: 1
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan_tenant_a: 192.168.1.0/24
+        lan_tenant_b: 192.168.1.0/24
+        lan_isp: 200.100.0.0/24
+      links:
+        p2p_a: 198.51.100.0/30
+        p2p_b: 198.51.100.4/30
+      hosts:
+        h_a:
+          network: lan_tenant_a
+          address: 192.168.1.10
+          gateway: 192.168.1.1
+        h_b:
+          network: lan_tenant_b
+          address: 192.168.1.20
+          gateway: 192.168.1.1
+        h_public:
+          network: lan_isp
+          address: 200.100.0.10
+          gateway: 200.100.0.1
+      routers:
+        r_a:
+          interfaces:
+            eth0:
+              network: lan_tenant_a
+              address: 192.168.1.1
+              cost: 1
+            eth1:
+              link: p2p_a
+              address: 198.51.100.1
+              cost: 1
+        r_b:
+          interfaces:
+            eth0:
+              network: lan_tenant_b
+              address: 192.168.1.1
+              cost: 1
+            eth1:
+              link: p2p_b
+              address: 198.51.100.5
+              cost: 1
+        r_core:
+          interfaces:
+            eth0:
+              link: p2p_a
+              address: 198.51.100.2
+              cost: 1
+            eth1:
+              link: p2p_b
+              address: 198.51.100.6
+              cost: 1
+            eth2:
+              network: lan_isp
+              address: 200.100.0.1
+              cost: 1

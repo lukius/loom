@@ -9,15 +9,18 @@ import pytest
 from shell import Shell
 
 SAMPLE = textwrap.dedent("""
-as:
-  name: t
-  networks:
-    lan1: "10.0.0.0/24"
-  hosts:
-    h1: {network: lan1, address: "10.0.0.1"}
-    h2: {network: lan1, address: "10.0.0.2"}
-  routers:
-    r1: {interfaces: {eth0: {network: lan1, address: "10.0.0.254", cost: 1}}}
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: "10.0.0.0/24"
+      hosts:
+        h1: {network: lan1, address: "10.0.0.1"}
+        h2: {network: lan1, address: "10.0.0.2"}
+      routers:
+        r1: {interfaces: {eth0: {network: lan1, address: "10.0.0.254", cost: 1}}}
 """)
 
 

@@ -275,8 +275,8 @@ class SimState:
                 d["gateway"] = str(host.gateway())
             return d
 
-        as_dict = {
-            "name": self._as.name(),
+        as_block = {
+            "asn": getattr(self._as, "_asn", 65000),
             "networks": {
                 n.name(): str(n.address())
                 for n in self._as.networks().values()
@@ -286,14 +286,14 @@ class SimState:
         # links (if any), then hosts, then routers. `links:` is omitted on
         # link-free topologies to keep simple sample files clean.
         if self._as.links():
-            as_dict["links"] = {
+            as_block["links"] = {
                 lnk.name(): str(lnk.address())
                 for lnk in self._as.links().values()
             }
-        as_dict["hosts"] = {
+        as_block["hosts"] = {
             h.name(): host_dict(h) for h in self._as.hosts().values()
         }
-        as_dict["routers"] = {
+        as_block["routers"] = {
             r.name(): {
                 "interfaces": {
                     i.name(): iface_dict(i)
@@ -302,7 +302,15 @@ class SimState:
             }
             for r in self._as.routers().values()
         }
-        return yaml.safe_dump({"as": as_dict}, sort_keys=False)
+        root = {
+            "internet": {
+                "name": self._internet.name() if self._internet else "loom",
+                "autonomous_systems": {
+                    self._as.name(): as_block,
+                },
+            }
+        }
+        return yaml.safe_dump(root, sort_keys=False)
 
     def stop(self):
         """Transition any state -> idle. No-op if already idle."""

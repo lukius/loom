@@ -8,12 +8,15 @@ from entities.event import EventTracer
 from server.state import SimState
 
 SAMPLE = textwrap.dedent("""
-as:
-  name: t
-  networks:
-    lan1: "10.0.0.0/24"
-  hosts:
-    h1: {network: lan1, address: "10.0.0.1"}
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: "10.0.0.0/24"
+      hosts:
+        h1: {network: lan1, address: "10.0.0.1"}
 """)
 
 
@@ -114,7 +117,7 @@ def test_topology_endpoint_loads_yaml(tmp_path, monkeypatch):
         r = c.post("/topology", json={"yaml": SAMPLE})
         assert r.status_code == 200
         body = r.json()
-        assert body["ok"] and body["as_name"] == "t"
+        assert body["ok"] and body["as_name"] == "main"
 
 
 def test_lifecycle_via_rest(tmp_path, monkeypatch):
@@ -145,16 +148,19 @@ def test_load_from_session_emits_no_packet_events(tmp_path):
     # Unique network names so we can filter out leftover events from
     # other tests' router threads that may still be alive when this runs.
     yaml_with_router = textwrap.dedent("""
-    as:
-      name: load_session_isolation
-      networks:
-        loadsess_a: "10.99.0.0/24"
-        loadsess_b: "10.99.1.0/24"
-      routers:
-        loadsess_r1:
-          interfaces:
-            eth0: {network: loadsess_a, address: "10.99.0.1", cost: 1}
-            eth1: {network: loadsess_b, address: "10.99.1.1", cost: 1}
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            loadsess_a: "10.99.0.0/24"
+            loadsess_b: "10.99.1.0/24"
+          routers:
+            loadsess_r1:
+              interfaces:
+                eth0: {network: loadsess_a, address: "10.99.0.1", cost: 1}
+                eth1: {network: loadsess_b, address: "10.99.1.1", cost: 1}
     """)
     src = tmp_path / "src.yaml"
     src.write_text(yaml_with_router)
@@ -192,22 +198,25 @@ def test_persisted_yaml_preserves_links_for_round_trip(tmp_path):
     via GET /topology) sees a degenerate view with the wiring deleted.
     """
     yaml_with_link = textwrap.dedent("""
-    as:
-      name: rt
-      networks:
-        lan1: "10.0.0.0/24"
-      links:
-        p2p: "10.1.0.0/30"
-      hosts:
-        h1: {network: lan1, address: "10.0.0.1"}
-      routers:
-        r1:
-          interfaces:
-            eth0: {network: lan1, address: "10.0.0.254", cost: 1}
-            eth1: {link: p2p, address: "10.1.0.1", cost: 1}
-        r2:
-          interfaces:
-            eth0: {link: p2p, address: "10.1.0.2", cost: 1}
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan1: "10.0.0.0/24"
+          links:
+            p2p: "10.1.0.0/30"
+          hosts:
+            h1: {network: lan1, address: "10.0.0.1"}
+          routers:
+            r1:
+              interfaces:
+                eth0: {network: lan1, address: "10.0.0.254", cost: 1}
+                eth1: {link: p2p, address: "10.1.0.1", cost: 1}
+            r2:
+              interfaces:
+                eth0: {link: p2p, address: "10.1.0.2", cost: 1}
     """)
     src = tmp_path / "src.yaml"
     src.write_text(yaml_with_link)
@@ -223,7 +232,7 @@ def test_persisted_yaml_preserves_links_for_round_trip(tmp_path):
 
     # Structural assertions on the dumped YAML.
     dumped = _yaml.safe_load(persisted)
-    as_ = dumped["as"]
+    as_ = dumped["internet"]["autonomous_systems"]["main"]
     assert as_.get("links") == {"p2p": "10.1.0.0/30"}, (
         f"links section missing or wrong: {as_.get('links')!r}"
     )

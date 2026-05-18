@@ -13,7 +13,6 @@ class Parser:
 
     def __init__(self, filename: any):
         self.filename = filename
-        self._unnamed_count = 0
 
     def parse(self, start_routing: bool = True) -> Internet:
         with open(self.filename, 'r') as f:
@@ -22,24 +21,43 @@ class Parser:
         return self._parse(content, start_routing=start_routing)
 
     def _parse(self, content: dict, start_routing: bool = True):
-        if 'as' not in content:
-            self._fail('missing "as" key')
+        if 'internet' not in content:
+            self._fail('missing "internet" key at YAML root')
 
-        system_dict = content['as']
-        internet = Internet(name='loom')
-        as_name = self._get_name(system_dict)
-        system = AS(as_name, gate=internet.gate())
+        internet_dict = content['internet']
+        internet_name = internet_dict.get('name', 'loom')
+        internet = Internet(name=internet_name)
+
+        if 'autonomous_systems' not in internet_dict:
+            self._fail('missing "autonomous_systems" in internet block')
+        ases_dict = internet_dict['autonomous_systems']
+        if not ases_dict:
+            self._fail('"autonomous_systems" must contain at least one AS')
+
+        for as_short_name, as_block in ases_dict.items():
+            self._parse_single_as(as_short_name, as_block, internet)
+
+        # Future: a wiring pass for inter-AS external links lives here.
+
+        if start_routing:
+            for system in internet.ases().values():
+                for router in system.routers().values():
+                    router.start()
+
+        return internet
+
+    def _parse_single_as(self, short_name, system_dict, internet):
+        system = AS(short_name, gate=internet.gate())
         internet.add_as(system)
         validator = SystemValidator(system)
 
         if 'networks' not in system_dict:
-            self._fail('no networks in AS')
+            self._fail(f'{short_name}: no networks in AS')
         self._parse_networks(system, validator, system_dict['networks'])
 
         if 'links' in system_dict:
             self._parse_links(system, validator, system_dict['links'])
 
-        # Track hosts-on-links for gateway post-pass: (host, explicit_gw_str or None)
         hosts_on_links = []
 
         if 'routers' in system_dict:
@@ -48,14 +66,8 @@ class Parser:
         if 'hosts' in system_dict:
             self._parse_hosts(system, validator, system_dict['hosts'], hosts_on_links)
 
-        # Post-pass: validate link endpoint counts and fill host gateways.
         self._post_pass_links(system, hosts_on_links)
-
-        if start_routing:
-            for router in system.routers().values():
-                router.start()
-
-        return internet
+        return system
 
     def _parse_networks(self, system, validator, network_dict):
         for name, addr in network_dict.items():
@@ -251,14 +263,6 @@ class Parser:
             self._fail(f'{name}: {result.reason()}')
 
         return NetworkAddress(addr)
-
-    def _get_name(self, obj: dict) -> str:
-        if 'name' in obj:
-            return obj['name']
-
-        idx = self._unnamed_count
-        self._unnamed_count += 1
-        return f'unnamed_entity_{idx}'
 
     def _fail(self, msg):
         raise ParsingException(msg)

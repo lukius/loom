@@ -111,13 +111,16 @@ def test_paused_interface_does_not_dispatch():
     from parser import Parser
 
     yaml_text = textwrap.dedent("""
-    as:
-      name: t
-      networks:
-        lan1: "10.0.0.0/24"
-      hosts:
-        h1: {network: lan1, address: "10.0.0.1"}
-        h2: {network: lan1, address: "10.0.0.2"}
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan1: "10.0.0.0/24"
+          hosts:
+            h1: {network: lan1, address: "10.0.0.1"}
+            h2: {network: lan1, address: "10.0.0.2"}
     """)
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(yaml_text)

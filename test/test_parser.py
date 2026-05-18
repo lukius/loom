@@ -7,7 +7,7 @@ class ParserTest(unittest.TestCase):
 
     def test_simple_network(self):
         system = Parser(f'{self.FILE_PATH}/simple_network.yaml').parse().single_as()
-        self.assertEqual(system.name(), 'test_as')
+        self.assertEqual(system.name(), 'main')
 
         # Router assertions
         routers = system.routers()
@@ -56,7 +56,7 @@ class ParserTest(unittest.TestCase):
 
     def test_two_networks(self):
         system = Parser(f'{self.FILE_PATH}/two_networks.yaml').parse().single_as()
-        self.assertEqual(system.name(), 'test_as')
+        self.assertEqual(system.name(), 'main')
 
         # Router assertions
         routers = system.routers()
@@ -170,7 +170,9 @@ class ParserTest(unittest.TestCase):
         self._run_parsing_error_test('missing_network', 'network not found')
 
     def test_missing_as(self):
-        self._run_parsing_error_test('missing_as', 'missing "as" key')
+        self._run_parsing_error_test(
+            'missing_as', 'missing "internet" key at YAML root'
+        )
 
     def test_no_networks(self):
         self._run_parsing_error_test('no_networks', 'no networks')

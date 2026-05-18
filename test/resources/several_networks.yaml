@@ -1,93 +1,96 @@
-as:
-  name: "test_as"
-  networks:
-    lan1: "100.100.100.0/24"
-    lan2: "100.100.200.0/22"
-    lan3: "76.28.10.0/24"
-    lan4: "15.50.75.0/24"
-    lan5: "10.10.10.0/24"
-    lan6: "21.56.78.0/24"
-  routers:
-    r1:
-        interfaces:
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: 100.100.100.0/24
+        lan2: 100.100.200.0/22
+        lan3: 76.28.10.0/24
+        lan4: 15.50.75.0/24
+        lan5: 10.10.10.0/24
+        lan6: 21.56.78.0/24
+      routers:
+        r1:
+          interfaces:
             eth0:
-                network: "lan1"
-                address: "100.100.100.1"
-                cost: 10
+              network: lan1
+              address: 100.100.100.1
+              cost: 10
             eth1:
-                network: "lan4"
-                address: "15.50.75.254"
-                cost: 2
-    r2:
-        interfaces:
+              network: lan4
+              address: 15.50.75.254
+              cost: 2
+        r2:
+          interfaces:
             eth0:
-                network: "lan2"
-                address: "100.100.200.1"
-                cost: 1
+              network: lan2
+              address: 100.100.200.1
+              cost: 1
             eth1:
-                network: "lan1"
-                address: "100.100.100.2"
-                cost: 5
+              network: lan1
+              address: 100.100.100.2
+              cost: 5
             eth2:
-                network: "lan3"
-                address: "76.28.10.1"
-                cost: 2
-    r3:
-        interfaces:
+              network: lan3
+              address: 76.28.10.1
+              cost: 2
+        r3:
+          interfaces:
             eth0:
-                network: "lan4"
-                address: "15.50.75.10"
-                cost: 3
+              network: lan4
+              address: 15.50.75.10
+              cost: 3
             eth1:
-                network: "lan5"
-                address: "10.10.10.1"
-                cost: 5
-    r4:
-        interfaces:
+              network: lan5
+              address: 10.10.10.1
+              cost: 5
+        r4:
+          interfaces:
             eth0:
-                network: "lan5"
-                address: "10.10.10.2"
-                cost: 1
+              network: lan5
+              address: 10.10.10.2
+              cost: 1
             eth1:
-                network: "lan6"
-                address: "21.56.78.1"
-                cost: 4
+              network: lan6
+              address: 21.56.78.1
+              cost: 4
             eth2:
-                network: "lan2"
-                address: "100.100.200.10"
-                cost: 2
-    r5:
-        interfaces:
+              network: lan2
+              address: 100.100.200.10
+              cost: 2
+        r5:
+          interfaces:
             eth0:
-                network: "lan3"
-                address: "76.28.10.10"
-                cost: 1
+              network: lan3
+              address: 76.28.10.10
+              cost: 1
             eth1:
-                network: "lan6"
-                address: "21.56.78.2"
-                cost: 1
-  hosts:
-    h1:
-        network: "lan1"
-        address: "100.100.100.10"
-        gateway: "100.100.100.2"
-    h2:
-        network: "lan2"
-        address: "100.100.200.35"
-        gateway: "100.100.200.1"
-    h3:
-        network: "lan3"
-        address: "76.28.10.20"
-        gateway: "76.28.10.1"
-    h4:
-        network: "lan4"
-        address: "15.50.75.78"
-        gateway: "15.50.75.10"
-    h5:
-        network: "lan5"
-        address: "10.10.10.97"
-        gateway: "10.10.10.1"
-    h6:
-        network: "lan6"
-        address: "21.56.78.59"
-        gateway: "21.56.78.2"
+              network: lan6
+              address: 21.56.78.2
+              cost: 1
+      hosts:
+        h1:
+          network: lan1
+          address: 100.100.100.10
+          gateway: 100.100.100.2
+        h2:
+          network: lan2
+          address: 100.100.200.35
+          gateway: 100.100.200.1
+        h3:
+          network: lan3
+          address: 76.28.10.20
+          gateway: 76.28.10.1
+        h4:
+          network: lan4
+          address: 15.50.75.78
+          gateway: 15.50.75.10
+        h5:
+          network: lan5
+          address: 10.10.10.97
+          gateway: 10.10.10.1
+        h6:
+          network: lan6
+          address: 21.56.78.59
+          gateway: 21.56.78.2

@@ -22,24 +22,27 @@ def _wait(condition, timeout=3.0, interval=0.02):
 
 
 SAMPLE_TOPOLOGY = textwrap.dedent("""
-as:
-  name: t
-  networks:
-    lan1: "200.0.1.0/24"
-    lan2: "200.0.2.0/24"
-    lan3: "200.0.3.0/24"
-  hosts:
-    h1: {network: lan1, address: "200.0.1.10"}
-    h3: {network: lan3, address: "200.0.3.10"}
-  routers:
-    r1:
-      interfaces:
-        eth0: {network: lan1, address: "200.0.1.1", cost: 1}
-        eth1: {network: lan2, address: "200.0.2.1", cost: 1}
-    r2:
-      interfaces:
-        eth0: {network: lan2, address: "200.0.2.2", cost: 1}
-        eth1: {network: lan3, address: "200.0.3.1", cost: 1}
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: "200.0.1.0/24"
+        lan2: "200.0.2.0/24"
+        lan3: "200.0.3.0/24"
+      hosts:
+        h1: {network: lan1, address: "200.0.1.10"}
+        h3: {network: lan3, address: "200.0.3.10"}
+      routers:
+        r1:
+          interfaces:
+            eth0: {network: lan1, address: "200.0.1.1", cost: 1}
+            eth1: {network: lan2, address: "200.0.2.1", cost: 1}
+        r2:
+          interfaces:
+            eth0: {network: lan2, address: "200.0.2.2", cost: 1}
+            eth1: {network: lan3, address: "200.0.3.1", cost: 1}
 """)
 
 
@@ -76,28 +79,31 @@ def test_set_keepalive_interval_rejects_non_positive():
 
 
 SAMPLE_THREE_ROUTERS_SHARED_NAMES = textwrap.dedent("""
-as:
-  name: t
-  networks:
-    lan1: "10.0.1.0/24"
-    lan2: "10.0.2.0/24"
-    lan3: "10.0.3.0/24"
-  hosts:
-    h1: {network: lan1, address: "10.0.1.10"}
-  routers:
-    r1:
-      interfaces:
-        eth0: {network: lan1, address: "10.0.1.1", cost: 1}
-        eth1: {network: lan2, address: "10.0.2.1", cost: 1}
-    r2:
-      interfaces:
-        eth0: {network: lan1, address: "10.0.1.2", cost: 1}
-        eth1: {network: lan2, address: "10.0.2.2", cost: 1}
-        eth2: {network: lan3, address: "10.0.3.1", cost: 1}
-    r3:
-      interfaces:
-        eth0: {network: lan2, address: "10.0.2.3", cost: 1}
-        eth1: {network: lan3, address: "10.0.3.2", cost: 1}
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: "10.0.1.0/24"
+        lan2: "10.0.2.0/24"
+        lan3: "10.0.3.0/24"
+      hosts:
+        h1: {network: lan1, address: "10.0.1.10"}
+      routers:
+        r1:
+          interfaces:
+            eth0: {network: lan1, address: "10.0.1.1", cost: 1}
+            eth1: {network: lan2, address: "10.0.2.1", cost: 1}
+        r2:
+          interfaces:
+            eth0: {network: lan1, address: "10.0.1.2", cost: 1}
+            eth1: {network: lan2, address: "10.0.2.2", cost: 1}
+            eth2: {network: lan3, address: "10.0.3.1", cost: 1}
+        r3:
+          interfaces:
+            eth0: {network: lan2, address: "10.0.2.3", cost: 1}
+            eth1: {network: lan3, address: "10.0.3.2", cost: 1}
 """)
 
 
@@ -511,41 +517,47 @@ class ProtocolTest(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 TWO_ROUTERS_SLASH30 = textwrap.dedent("""
-as:
-  name: t
-  networks:
-    lan_r1: "200.0.1.0/24"
-    lan_r2: "200.0.2.0/24"
-  links:
-    p2p1: "200.0.0.0/30"
-  routers:
-    r1:
-      interfaces:
-        eth0: {network: lan_r1, address: "200.0.1.1", cost: 1}
-        eth1: {link: p2p1, address: "200.0.0.1", cost: 5}
-    r2:
-      interfaces:
-        eth0: {link: p2p1, address: "200.0.0.2", cost: 5}
-        eth1: {network: lan_r2, address: "200.0.2.1", cost: 1}
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan_r1: "200.0.1.0/24"
+        lan_r2: "200.0.2.0/24"
+      links:
+        p2p1: "200.0.0.0/30"
+      routers:
+        r1:
+          interfaces:
+            eth0: {network: lan_r1, address: "200.0.1.1", cost: 1}
+            eth1: {link: p2p1, address: "200.0.0.1", cost: 5}
+        r2:
+          interfaces:
+            eth0: {link: p2p1, address: "200.0.0.2", cost: 5}
+            eth1: {network: lan_r2, address: "200.0.2.1", cost: 1}
 """)
 
 TWO_ROUTERS_SLASH31 = textwrap.dedent("""
-as:
-  name: t
-  networks:
-    lan_r1: "200.0.1.0/24"
-    lan_r2: "200.0.2.0/24"
-  links:
-    p2p1: "200.0.0.0/31"
-  routers:
-    r1:
-      interfaces:
-        eth0: {network: lan_r1, address: "200.0.1.1", cost: 1}
-        eth1: {link: p2p1, address: "200.0.0.0", cost: 5}
-    r2:
-      interfaces:
-        eth0: {link: p2p1, address: "200.0.0.1", cost: 5}
-        eth1: {network: lan_r2, address: "200.0.2.1", cost: 1}
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan_r1: "200.0.1.0/24"
+        lan_r2: "200.0.2.0/24"
+      links:
+        p2p1: "200.0.0.0/31"
+      routers:
+        r1:
+          interfaces:
+            eth0: {network: lan_r1, address: "200.0.1.1", cost: 1}
+            eth1: {link: p2p1, address: "200.0.0.0", cost: 5}
+        r2:
+          interfaces:
+            eth0: {link: p2p1, address: "200.0.0.1", cost: 5}
+            eth1: {network: lan_r2, address: "200.0.2.1", cost: 1}
 """)
 
 # Three routers: r1<->r2 via /30 link (asymmetric cost), r1<->r3 via lan_mid,
@@ -553,30 +565,33 @@ as:
 # only if it is cheaper; with asymmetric link costs 5+5 < alternate we verify
 # graph weights, not route selection, here.
 TWO_ROUTERS_ASYMMETRIC_COST = textwrap.dedent("""
-as:
-  name: t
-  networks:
-    lan_r1: "200.0.1.0/24"
-    lan_r2: "200.0.2.0/24"
-    lan_mid: "200.0.10.0/24"
-    lan_mid2: "200.0.20.0/24"
-  links:
-    p2p1: "200.0.0.0/30"
-  routers:
-    r1:
-      interfaces:
-        eth0: {network: lan_r1, address: "200.0.1.1", cost: 1}
-        eth1: {link: p2p1, address: "200.0.0.1", cost: 5}
-        eth2: {network: lan_mid, address: "200.0.10.1", cost: 1}
-    r2:
-      interfaces:
-        eth0: {link: p2p1, address: "200.0.0.2", cost: 9}
-        eth1: {network: lan_r2, address: "200.0.2.1", cost: 1}
-        eth2: {network: lan_mid2, address: "200.0.20.1", cost: 1}
-    r3:
-      interfaces:
-        eth0: {network: lan_mid, address: "200.0.10.2", cost: 1}
-        eth1: {network: lan_mid2, address: "200.0.20.2", cost: 1}
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan_r1: "200.0.1.0/24"
+        lan_r2: "200.0.2.0/24"
+        lan_mid: "200.0.10.0/24"
+        lan_mid2: "200.0.20.0/24"
+      links:
+        p2p1: "200.0.0.0/30"
+      routers:
+        r1:
+          interfaces:
+            eth0: {network: lan_r1, address: "200.0.1.1", cost: 1}
+            eth1: {link: p2p1, address: "200.0.0.1", cost: 5}
+            eth2: {network: lan_mid, address: "200.0.10.1", cost: 1}
+        r2:
+          interfaces:
+            eth0: {link: p2p1, address: "200.0.0.2", cost: 9}
+            eth1: {network: lan_r2, address: "200.0.2.1", cost: 1}
+            eth2: {network: lan_mid2, address: "200.0.20.1", cost: 1}
+        r3:
+          interfaces:
+            eth0: {network: lan_mid, address: "200.0.10.2", cost: 1}
+            eth1: {network: lan_mid2, address: "200.0.20.2", cost: 1}
 """)
 
 
@@ -773,19 +788,25 @@ def test_handle_update_omits_private_prefixes_from_outbound_message():
     directly-connected rules.
     """
     topology = textwrap.dedent("""
-    as:
-      name: test
-      networks:
-        lan_public: "200.100.0.0/24"
-        lan_private: "192.168.1.0/24"
-      hosts:
-        h_pub: {network: lan_public, address: "200.100.0.10"}
-        h_priv: {network: lan_private, address: "192.168.1.10", gateway: "192.168.1.1"}
-      routers:
-        r1:
-          interfaces:
-            eth0: {network: lan_public, address: "200.100.0.1", cost: 10}
-            eth1: {network: lan_private, address: "192.168.1.1", cost: 5}
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan_public: "200.100.0.0/24"
+            lan_private: "192.168.1.0/24"
+          hosts:
+            h_pub: {network: lan_public, address: "200.100.0.10"}
+            h_priv:
+              network: lan_private
+              address: "192.168.1.10"
+              gateway: "192.168.1.1"
+          routers:
+            r1:
+              interfaces:
+                eth0: {network: lan_public, address: "200.100.0.1", cost: 10}
+                eth1: {network: lan_private, address: "192.168.1.1", cost: 5}
     """)
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(topology)
@@ -836,22 +857,25 @@ def test_receiver_graph_never_learns_private_prefix():
     it on the wire.
     """
     topology = textwrap.dedent("""
-    as:
-      name: test
-      networks:
-        lan_private: "10.0.0.0/24"
-      links:
-        p2p: "200.100.0.0/30"
-      hosts:
-        h_priv: {network: lan_private, address: "10.0.0.10", gateway: "10.0.0.1"}
-      routers:
-        r1:
-          interfaces:
-            eth0: {network: lan_private, address: "10.0.0.1", cost: 5}
-            eth1: {link: p2p, address: "200.100.0.1", cost: 1}
-        r2:
-          interfaces:
-            eth0: {link: p2p, address: "200.100.0.2", cost: 1}
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan_private: "10.0.0.0/24"
+          links:
+            p2p: "200.100.0.0/30"
+          hosts:
+            h_priv: {network: lan_private, address: "10.0.0.10", gateway: "10.0.0.1"}
+          routers:
+            r1:
+              interfaces:
+                eth0: {network: lan_private, address: "10.0.0.1", cost: 5}
+                eth1: {link: p2p, address: "200.100.0.1", cost: 1}
+            r2:
+              interfaces:
+                eth0: {link: p2p, address: "200.100.0.2", cost: 1}
     """)
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(topology)

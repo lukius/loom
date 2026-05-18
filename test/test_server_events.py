@@ -59,12 +59,15 @@ def test_sim_state_event_emitted_on_transitions(tmp_path, monkeypatch):
     from server.app import create_app
 
     yaml_text = textwrap.dedent("""
-    as:
-      name: t
-      networks:
-        lan1: "10.0.0.0/24"
-      hosts:
-        h1: {network: lan1, address: "10.0.0.1"}
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan1: "10.0.0.0/24"
+          hosts:
+            h1: {network: lan1, address: "10.0.0.1"}
     """)
     src = tmp_path / "src.yaml"
     src.write_text(yaml_text)
@@ -113,19 +116,22 @@ def test_packet_event_carries_flow_and_payload_id(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
     yaml_text = textwrap.dedent("""
-    as:
-      name: t
-      networks:
-        lan1: "10.0.0.0/24"
-        lan2: "10.0.1.0/24"
-      hosts:
-        h1: {network: lan1, address: "10.0.0.1", gateway: "10.0.0.254"}
-        h2: {network: lan2, address: "10.0.1.1", gateway: "10.0.1.254"}
-      routers:
-        r1:
-          interfaces:
-            eth0: {network: lan1, address: "10.0.0.254", cost: 1}
-            eth1: {network: lan2, address: "10.0.1.254", cost: 1}
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan1: "10.0.0.0/24"
+            lan2: "10.0.1.0/24"
+          hosts:
+            h1: {network: lan1, address: "10.0.0.1", gateway: "10.0.0.254"}
+            h2: {network: lan2, address: "10.0.1.1", gateway: "10.0.1.254"}
+          routers:
+            r1:
+              interfaces:
+                eth0: {network: lan1, address: "10.0.0.254", cost: 1}
+                eth1: {network: lan2, address: "10.0.1.254", cost: 1}
     """)
     src = tmp_path / "src.yaml"
     src.write_text(yaml_text)
@@ -182,13 +188,16 @@ def test_ws_streams_packet_events(tmp_path, monkeypatch):
     from server.app import create_app
 
     yaml_text = textwrap.dedent("""
-    as:
-      name: t
-      networks:
-        lan1: "10.0.0.0/24"
-      hosts:
-        h1: {network: lan1, address: "10.0.0.1"}
-        h2: {network: lan1, address: "10.0.0.2"}
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan1: "10.0.0.0/24"
+          hosts:
+            h1: {network: lan1, address: "10.0.0.1"}
+            h2: {network: lan1, address: "10.0.0.2"}
     """)
     src = tmp_path / "src.yaml"
     src.write_text(yaml_text)

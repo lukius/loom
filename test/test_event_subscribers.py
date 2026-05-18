@@ -66,13 +66,16 @@ def test_egress_broadcast_fires_for_user_datagram():
     from parser import Parser
 
     yaml_text = textwrap.dedent("""
-    as:
-      name: t
-      networks:
-        lan1: "10.0.0.0/24"
-      hosts:
-        h1: {network: lan1, address: "10.0.0.1"}
-        h2: {network: lan1, address: "10.0.0.2"}
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan1: "10.0.0.0/24"
+          hosts:
+            h1: {network: lan1, address: "10.0.0.1"}
+            h2: {network: lan1, address: "10.0.0.2"}
     """)
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(yaml_text)
@@ -100,14 +103,17 @@ def test_routing_table_changed_event_fires():
     from parser import Parser
 
     yaml_text = textwrap.dedent("""
-    as:
-      name: t
-      networks:
-        lan1: "10.0.0.0/24"
-        lan2: "10.0.1.0/24"
-      routers:
-        r1: {interfaces: {eth0: {network: lan1, address: "10.0.0.1", cost: 5},
-                          eth1: {network: lan2, address: "10.0.1.1", cost: 5}}}
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan1: "10.0.0.0/24"
+            lan2: "10.0.1.0/24"
+          routers:
+            r1: {interfaces: {eth0: {network: lan1, address: "10.0.0.1", cost: 5},
+                              eth1: {network: lan2, address: "10.0.1.1", cost: 5}}}
     """)
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(yaml_text)

@@ -1,10 +1,16 @@
-as:
-  name: "test_as"
-  networks:
-    foo: "200.100.0.0/24"
-  links:
-    foo: "10.0.0.0/30"
-  routers:
-    r1:
-      interfaces:
-        eth0: { network: foo, address: "200.100.0.1", cost: 10 }
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        foo: 200.100.0.0/24
+      links:
+        foo: 10.0.0.0/30
+      routers:
+        r1:
+          interfaces:
+            eth0:
+              network: foo
+              address: 200.100.0.1
+              cost: 10

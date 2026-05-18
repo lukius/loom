@@ -34,13 +34,16 @@ def _table_has_prefix(router, prefix_str):
 
 
 TWO_HOSTS = textwrap.dedent("""
-as:
-  name: t
-  networks:
-    lan1: "10.0.0.0/24"
-  hosts:
-    h1: {network: lan1, address: "10.0.0.1"}
-    h2: {network: lan1, address: "10.0.0.2"}
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: "10.0.0.0/24"
+      hosts:
+        h1: {network: lan1, address: "10.0.0.1"}
+        h2: {network: lan1, address: "10.0.0.2"}
 """)
 
 
@@ -100,19 +103,22 @@ def test_concurrent_pings_independent():
 
 
 TWO_LANS_NO_GATEWAY = textwrap.dedent("""
-as:
-  name: t
-  networks:
-    lan1: "10.0.0.0/24"
-    lan2: "10.0.1.0/24"
-  hosts:
-    h1: {network: lan1, address: "10.0.0.1"}
-    h2: {network: lan2, address: "10.0.1.1"}
-  routers:
-    r1:
-      interfaces:
-        eth0: {network: lan1, address: "10.0.0.254", cost: 1}
-        eth1: {network: lan2, address: "10.0.1.254", cost: 1}
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: "10.0.0.0/24"
+        lan2: "10.0.1.0/24"
+      hosts:
+        h1: {network: lan1, address: "10.0.0.1"}
+        h2: {network: lan2, address: "10.0.1.1"}
+      routers:
+        r1:
+          interfaces:
+            eth0: {network: lan1, address: "10.0.0.254", cost: 1}
+            eth1: {network: lan2, address: "10.0.1.254", cost: 1}
 """)
 
 
@@ -151,64 +157,73 @@ def test_no_thread_leak_after_pings():
 # ---------------------------------------------------------------------------
 
 H1_SLASH30_LINK = textwrap.dedent("""
-as:
-  name: t
-  networks:
-    lan_h1: "200.100.1.0/24"
-    lan_h2: "200.100.2.0/24"
-  links:
-    p2p1: "200.100.0.0/30"
-  hosts:
-    h1: {network: lan_h1, address: "200.100.1.10", gateway: "200.100.1.1"}
-    h2: {network: lan_h2, address: "200.100.2.10", gateway: "200.100.2.1"}
-  routers:
-    r1:
-      interfaces:
-        eth0: {network: lan_h1, address: "200.100.1.1", cost: 1}
-        eth1: {link: p2p1, address: "200.100.0.1", cost: 1}
-    r2:
-      interfaces:
-        eth0: {link: p2p1, address: "200.100.0.2", cost: 1}
-        eth1: {network: lan_h2, address: "200.100.2.1", cost: 1}
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan_h1: "200.100.1.0/24"
+        lan_h2: "200.100.2.0/24"
+      links:
+        p2p1: "200.100.0.0/30"
+      hosts:
+        h1: {network: lan_h1, address: "200.100.1.10", gateway: "200.100.1.1"}
+        h2: {network: lan_h2, address: "200.100.2.10", gateway: "200.100.2.1"}
+      routers:
+        r1:
+          interfaces:
+            eth0: {network: lan_h1, address: "200.100.1.1", cost: 1}
+            eth1: {link: p2p1, address: "200.100.0.1", cost: 1}
+        r2:
+          interfaces:
+            eth0: {link: p2p1, address: "200.100.0.2", cost: 1}
+            eth1: {network: lan_h2, address: "200.100.2.1", cost: 1}
 """)
 
 H1_SLASH31_LINK = textwrap.dedent("""
-as:
-  name: t
-  networks:
-    lan_h1: "200.100.1.0/24"
-    lan_h2: "200.100.2.0/24"
-  links:
-    p2p1: "200.100.0.0/31"
-  hosts:
-    h1: {network: lan_h1, address: "200.100.1.10", gateway: "200.100.1.1"}
-    h2: {network: lan_h2, address: "200.100.2.10", gateway: "200.100.2.1"}
-  routers:
-    r1:
-      interfaces:
-        eth0: {network: lan_h1, address: "200.100.1.1", cost: 1}
-        eth1: {link: p2p1, address: "200.100.0.0", cost: 1}
-    r2:
-      interfaces:
-        eth0: {link: p2p1, address: "200.100.0.1", cost: 1}
-        eth1: {network: lan_h2, address: "200.100.2.1", cost: 1}
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan_h1: "200.100.1.0/24"
+        lan_h2: "200.100.2.0/24"
+      links:
+        p2p1: "200.100.0.0/31"
+      hosts:
+        h1: {network: lan_h1, address: "200.100.1.10", gateway: "200.100.1.1"}
+        h2: {network: lan_h2, address: "200.100.2.10", gateway: "200.100.2.1"}
+      routers:
+        r1:
+          interfaces:
+            eth0: {network: lan_h1, address: "200.100.1.1", cost: 1}
+            eth1: {link: p2p1, address: "200.100.0.0", cost: 1}
+        r2:
+          interfaces:
+            eth0: {link: p2p1, address: "200.100.0.1", cost: 1}
+            eth1: {network: lan_h2, address: "200.100.2.1", cost: 1}
 """)
 
 HOST_ON_SLASH31_LINK = textwrap.dedent("""
-as:
-  name: t
-  networks:
-    lan_h2: "10.0.2.0/24"
-  links:
-    p2p1: "10.0.0.0/31"
-  hosts:
-    h1: {link: p2p1, address: "10.0.0.0"}
-    h2: {network: lan_h2, address: "10.0.2.10", gateway: "10.0.2.1"}
-  routers:
-    r1:
-      interfaces:
-        eth0: {link: p2p1, address: "10.0.0.1", cost: 1}
-        eth1: {network: lan_h2, address: "10.0.2.1", cost: 1}
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan_h2: "10.0.2.0/24"
+      links:
+        p2p1: "10.0.0.0/31"
+      hosts:
+        h1: {link: p2p1, address: "10.0.0.0"}
+        h2: {network: lan_h2, address: "10.0.2.10", gateway: "10.0.2.1"}
+      routers:
+        r1:
+          interfaces:
+            eth0: {link: p2p1, address: "10.0.0.1", cost: 1}
+            eth1: {network: lan_h2, address: "10.0.2.1", cost: 1}
 """)
 
 
@@ -286,42 +301,45 @@ def test_ping_host_on_link():
 # ---------------------------------------------------------------------------
 
 MULTI_TENANT_NAT = textwrap.dedent("""
-as:
-  name: multi_tenant
-  networks:
-    lan_a: "192.168.1.0/24"
-    lan_b: "192.168.1.0/24"
-    lan_isp: "200.100.0.0/24"
-  links:
-    p2p_a: "198.51.100.0/30"
-    p2p_b: "198.51.100.4/30"
-  hosts:
-    h_a:
-      network: lan_a
-      address: "192.168.1.10"
-      gateway: "192.168.1.1"
-    h_b:
-      network: lan_b
-      address: "192.168.1.20"
-      gateway: "192.168.1.1"
-    h_pub:
-      network: lan_isp
-      address: "200.100.0.10"
-      gateway: "200.100.0.1"
-  routers:
-    r_a:
-      interfaces:
-        eth0: {network: lan_a, address: "192.168.1.1", cost: 1}
-        eth1: {link: p2p_a, address: "198.51.100.1", cost: 1}
-    r_b:
-      interfaces:
-        eth0: {network: lan_b, address: "192.168.1.1", cost: 1}
-        eth1: {link: p2p_b, address: "198.51.100.5", cost: 1}
-    r_core:
-      interfaces:
-        eth0: {link: p2p_a, address: "198.51.100.2", cost: 1}
-        eth1: {link: p2p_b, address: "198.51.100.6", cost: 1}
-        eth2: {network: lan_isp, address: "200.100.0.1", cost: 1}
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan_a: "192.168.1.0/24"
+        lan_b: "192.168.1.0/24"
+        lan_isp: "200.100.0.0/24"
+      links:
+        p2p_a: "198.51.100.0/30"
+        p2p_b: "198.51.100.4/30"
+      hosts:
+        h_a:
+          network: lan_a
+          address: "192.168.1.10"
+          gateway: "192.168.1.1"
+        h_b:
+          network: lan_b
+          address: "192.168.1.20"
+          gateway: "192.168.1.1"
+        h_pub:
+          network: lan_isp
+          address: "200.100.0.10"
+          gateway: "200.100.0.1"
+      routers:
+        r_a:
+          interfaces:
+            eth0: {network: lan_a, address: "192.168.1.1", cost: 1}
+            eth1: {link: p2p_a, address: "198.51.100.1", cost: 1}
+        r_b:
+          interfaces:
+            eth0: {network: lan_b, address: "192.168.1.1", cost: 1}
+            eth1: {link: p2p_b, address: "198.51.100.5", cost: 1}
+        r_core:
+          interfaces:
+            eth0: {link: p2p_a, address: "198.51.100.2", cost: 1}
+            eth1: {link: p2p_b, address: "198.51.100.6", cost: 1}
+            eth2: {network: lan_isp, address: "200.100.0.1", cost: 1}
 """)
 
 
@@ -419,26 +437,29 @@ def test_two_private_hosts_keep_distinct_nat_entries_for_same_destination():
     its reverse mapping.
     """
     topology = textwrap.dedent("""
-    as:
-      name: nat_two_clients
-      networks:
-        lan_priv: "192.168.1.0/24"
-        lan_pub: "200.100.0.0/24"
-      links:
-        uplink: "198.51.100.0/30"
-      hosts:
-        h_x: {network: lan_priv, address: "192.168.1.10", gateway: "192.168.1.1"}
-        h_y: {network: lan_priv, address: "192.168.1.20", gateway: "192.168.1.1"}
-        h_pub: {network: lan_pub, address: "200.100.0.10", gateway: "200.100.0.1"}
-      routers:
-        r_nat:
-          interfaces:
-            eth0: {network: lan_priv, address: "192.168.1.1", cost: 1}
-            eth1: {link: uplink, address: "198.51.100.1", cost: 1}
-        r_pub:
-          interfaces:
-            eth0: {link: uplink, address: "198.51.100.2", cost: 1}
-            eth1: {network: lan_pub, address: "200.100.0.1", cost: 1}
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan_priv: "192.168.1.0/24"
+            lan_pub: "200.100.0.0/24"
+          links:
+            uplink: "198.51.100.0/30"
+          hosts:
+            h_x: {network: lan_priv, address: "192.168.1.10", gateway: "192.168.1.1"}
+            h_y: {network: lan_priv, address: "192.168.1.20", gateway: "192.168.1.1"}
+            h_pub: {network: lan_pub, address: "200.100.0.10", gateway: "200.100.0.1"}
+          routers:
+            r_nat:
+              interfaces:
+                eth0: {network: lan_priv, address: "192.168.1.1", cost: 1}
+                eth1: {link: uplink, address: "198.51.100.1", cost: 1}
+            r_pub:
+              interfaces:
+                eth0: {link: uplink, address: "198.51.100.2", cost: 1}
+                eth1: {network: lan_pub, address: "200.100.0.1", cost: 1}
     """)
     path = _make_topology(topology)
     system = Parser(path).parse().single_as()

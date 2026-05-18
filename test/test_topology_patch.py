@@ -6,12 +6,15 @@ from fastapi.testclient import TestClient
 from server.app import create_app
 
 SAMPLE = textwrap.dedent("""
-as:
-  name: t
-  networks:
-    lan1: "10.0.0.0/24"
-  hosts:
-    h1: {network: lan1, address: "10.0.0.1"}
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: "10.0.0.0/24"
+      hosts:
+        h1: {network: lan1, address: "10.0.0.1"}
 """)
 
 
@@ -99,14 +102,17 @@ def test_add_host_with_duplicate_address_rejected(client):
 
 def _two_lan_yaml() -> str:
     return textwrap.dedent("""
-    as:
-      name: t
-      networks:
-        lan1: "10.0.0.0/24"
-        lan2: "10.0.1.0/24"
-      hosts:
-        h1: {network: lan1, address: "10.0.0.1"}
-        h2: {network: lan2, address: "10.0.1.1"}
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan1: "10.0.0.0/24"
+            lan2: "10.0.1.0/24"
+          hosts:
+            h1: {network: lan1, address: "10.0.0.1"}
+            h2: {network: lan2, address: "10.0.1.1"}
     """)
 
 
@@ -154,10 +160,13 @@ def test_add_router_intra_collision_on_same_network_rejected(tmp_path, monkeypat
     # address — the validator must catch this even before any pre-existing
     # device claims the address.
     yaml = textwrap.dedent("""
-    as:
-      name: t
-      networks:
-        lan1: "10.0.0.0/24"
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan1: "10.0.0.0/24"
     """)
     src = tmp_path / "src.yaml"
     src.write_text(yaml)
@@ -178,12 +187,15 @@ def test_add_router_intra_collision_on_same_network_rejected(tmp_path, monkeypat
 
 def test_update_cost_invalid_value_returns_400(tmp_path, monkeypatch):
     yaml_with_router = textwrap.dedent("""
-    as:
-      name: t
-      networks:
-        lan1: "10.0.0.0/24"
-      routers:
-        r1: {interfaces: {eth0: {network: lan1, address: "10.0.0.254", cost: 1}}}
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan1: "10.0.0.0/24"
+          routers:
+            r1: {interfaces: {eth0: {network: lan1, address: "10.0.0.254", cost: 1}}}
     """)
     src = tmp_path / "src.yaml"
     src.write_text(yaml_with_router)
