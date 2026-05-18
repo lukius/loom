@@ -1,7 +1,6 @@
 from ._fabric import _FabricBase
 from .address import Address, NetworkAddress
 from .device import NetworkDevice
-from .exception import TooManyEndpointsException
 
 
 class Link(_FabricBase):
@@ -59,11 +58,6 @@ class Link(_FabricBase):
             if iface.device() == device:
                 return True
         return False
-
-    def add_interface(self, interface):
-        if len(self._interfaces) >= self.MAX_ENDPOINTS:
-            raise TooManyEndpointsException(self._name, interface)
-        super().add_interface(interface)
 
     def peer_of(self, interface):
         """Return the other endpoint Interface, or None if it hasn't joined yet."""

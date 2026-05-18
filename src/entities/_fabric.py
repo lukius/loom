@@ -1,8 +1,10 @@
 import queue
 import threading
 import traceback
+from typing import Optional
 
 from .base import Entity
+from .exception import TooManyEndpointsException
 
 
 class _FabricBase(Entity):
@@ -13,6 +15,8 @@ class _FabricBase(Entity):
     fabric types (e.g. Link).  Subclasses must implement
     _dispatch_packet(packet).
     """
+
+    MAX_ENDPOINTS: Optional[int] = None
 
     def __init__(self, name, gate=None):
         super().__init__(name)
@@ -28,6 +32,9 @@ class _FabricBase(Entity):
         self._pkt_thread.start()
 
     def add_interface(self, interface):
+        cap = self.MAX_ENDPOINTS
+        if cap is not None and len(self._interfaces) >= cap:
+            raise TooManyEndpointsException(self._name, interface)
         self._interfaces[interface.address()] = interface
         interface._set_out_queue(self._in_queue)
 

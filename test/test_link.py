@@ -363,3 +363,22 @@ class LinkSelfDispatchGuardTest(unittest.TestCase):
             _wait(lambda: len(a_delivered) > 0, timeout=0.5),
             "iface_a should NOT receive the frame (no echo to sender)",
         )
+
+
+class NetworkUnlimitedEndpointsTest(unittest.TestCase):
+    """Test 11 — Network.MAX_ENDPOINTS is None (inherited from _FabricBase), so
+    more than two interfaces can be added without error."""
+
+    def setUp(self):
+        self.net = Network("lan", NetworkAddress("10.0.0.0/24"))
+
+    def tearDown(self):
+        self.net.stop()
+
+    def test_network_admits_more_than_two_endpoints(self):
+        """MAX_ENDPOINTS=None on Network means no cap — regression for the
+        asymmetry once present between Link and Network capacity rules."""
+        for i in range(5):
+            iface = Interface(f"eth{i}", self.net, Address(f"10.0.0.{i + 1}"))
+            self.net.add_interface(iface)
+        self.assertEqual(len(self.net._interfaces), 5)
