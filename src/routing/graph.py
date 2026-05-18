@@ -1,6 +1,8 @@
 import collections
 import heapq
 
+from .exception import GraphConsistencyException
+
 
 class HeapItem:
 
@@ -45,8 +47,9 @@ class NetworkGraph:
 
     def add_edge(self, src, dst, weight):
         if src not in self._costs or dst not in self._costs:
-            # TODO
-            raise Exception('missing src or dst in graph')
+            raise GraphConsistencyException(
+                f'add_edge: missing endpoint(s) src={src} dst={dst}'
+            )
 
         self._costs[src][dst] = weight
         self._costs[dst][src] = weight
@@ -75,7 +78,7 @@ class NetworkGraph:
 
     def _shortest_paths(self, src):
         if src not in self._costs:
-            raise Exception('missing src in graph')
+            raise GraphConsistencyException(f'shortest_paths: missing src {src}')
 
         costs = list()
         distances = {}

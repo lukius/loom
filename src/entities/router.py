@@ -2,6 +2,8 @@ import sys
 from threading import Lock
 from typing import List, Optional
 
+from routing import NoNATEgressException, NoRouteToHostException
+
 from .address import Address, NetworkAddress, NullAddress
 from .device import NetworkDevice
 from .event import EventTracer
@@ -198,11 +200,11 @@ class Router(NetworkDevice):
         result = self._routing_table.match(dest)
         if not result.is_matched():
             if packet.source().is_private() and not self._has_public_interface():
-                raise Exception(
-                    f'no NAT egress: router {self.name()} has no public interface '
+                raise NoNATEgressException(
+                    f'router {self.name()} has no public interface '
                     f'for private source {packet.source()}'
                 )
-            raise Exception(f'no route to host {dest}')
+            raise NoRouteToHostException(f'no route to host {dest}')
 
         out_iface = result.interface()
         next_hop = result.next_hop()

@@ -16,6 +16,7 @@ from entities import (
     RoutingMessage,
     UserMessage,
 )
+from routing import NoRouteToHostException
 from entities.nat import flow_id
 from entities.packet import Frame
 
@@ -162,7 +163,7 @@ class PacketHandlingTest(unittest.TestCase):
             on_received=lambda *args, **kwargs: self.fail()
         )
 
-        with self.assertRaises(Exception) as context:
+        with self.assertRaises(NoRouteToHostException) as context:
             self.router.handle_packet(datagram, self.iface1)
         self.assertIn('no route to host', str(context.exception))
 

@@ -13,6 +13,7 @@ from entities import (
     Router,
     UserMessage,
 )
+from routing import NoNATEgressException
 from entities.nat import flow_id
 from entities.packet import Datagram
 
@@ -406,9 +407,9 @@ class OutboundNATTest(unittest.TestCase):
             dst_addr=Address('8.8.8.8'),
             payload=UserMessage('hello'),
         )
-        with self.assertRaises(Exception) as ctx:
+        with self.assertRaises(NoNATEgressException) as ctx:
             router._handle_forwarding(pkt)
-        self.assertIn('NAT egress', str(ctx.exception))
+        self.assertIn('no public interface', str(ctx.exception))
 
 
 class OutboundNATEventTest(unittest.TestCase):
