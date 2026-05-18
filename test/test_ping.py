@@ -375,10 +375,9 @@ def test_nat_ping_packet_events_share_one_flow():
     rewrites the visible src/dst mid-path.
     """
     path = _make_topology(MULTI_TENANT_NAT)
-    EventTracer._subscribers = []
     events = []
-    EventTracer.subscribe(events.append)
     system = Parser(path).parse().single_as()
+    EventTracer.subscribe(events.append)
     try:
         h_a = system.host("h_a")
         h_pub = system.host("h_pub")
@@ -408,7 +407,6 @@ def test_nat_ping_packet_events_share_one_flow():
         )
     finally:
         system.stop()
-        EventTracer._subscribers = []
         os.unlink(path)
 
 

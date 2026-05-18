@@ -161,11 +161,14 @@ def test_load_from_session_emits_no_packet_events(tmp_path):
 
     own_networks = {"loadsess_a", "loadsess_b"}
     events = []
-    unsubscribe = EventTracer.subscribe(events.append)
     s = None
+    unsubscribe = None
     try:
         s = SimState(src)
         s.load_from_session()
+        # Subscribe on the Internet's tracer after load; then wait to catch
+        # any keepalive thread that snuck through.
+        unsubscribe = EventTracer.subscribe(events.append)
         # Give any keepalive thread that snuck through a chance to tick.
         time.sleep(0.2)
         leaked = [
@@ -174,12 +177,13 @@ def test_load_from_session_emits_no_packet_events(tmp_path):
         ]
         assert leaked == [], f"load_from_session() leaked packet events: {leaked}"
     finally:
+        if unsubscribe is not None:
+            unsubscribe()
         if s is not None:
             try:
                 s.stop()
             except Exception:
                 pass
-        unsubscribe()
 
 
 def test_persisted_yaml_preserves_links_for_round_trip(tmp_path):

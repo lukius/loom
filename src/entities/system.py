@@ -1,6 +1,7 @@
 from .base import Entity
 from .clock import PauseGate
 from .device import NetworkDevice
+from .event import EventTracer
 from .exception import (
     ASNotFoundException,
     HostNotFoundException,
@@ -104,13 +105,14 @@ class Internet(Entity):
         super().__init__(name)
         self._ases = dict()
         self._gate = PauseGate()
-        # EventTracer migration follows in D.2.c. For now the
-        # class-level EventTracer singleton (from entities.event)
-        # continues to handle broadcasts; Internet will get an
-        # instance reference once that work lands.
+        self._event_tracer = EventTracer()
+        EventTracer.set_current(self._event_tracer)
 
     def gate(self) -> PauseGate:
         return self._gate
+
+    def event_tracer(self) -> EventTracer:
+        return self._event_tracer
 
     def ases(self) -> dict:
         return self._ases

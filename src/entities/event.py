@@ -74,70 +74,121 @@ class EventLog:
 
 
 class EventTracer:
+    """Per-Internet event bus.
 
-    _events = dict()
-    _lock = Lock()
+    Instances own their own subscribers and event log. The class-level
+    methods (``EventTracer._broadcast(...)`` etc.) delegate to the
+    currently-active instance set via ``set_current()``. With one
+    ``Internet`` per process today, behavior is identical to the previous
+    class-level singleton, but the seam exists for per-``Internet``
+    isolation in tests and for a multi-``Internet`` future.
+    """
 
-    _subscribers: list = []
-    _sub_lock = Lock()
+    _current: 'EventTracer | None' = None
+    _current_lock = Lock()
+
+    def __init__(self):
+        self._events = dict()
+        self._lock = Lock()
+        self._subscribers = []
+        self._sub_lock = Lock()
+
+    # ---- class-level API (delegates to current) ----
+
+    @classmethod
+    def set_current(cls, tracer: 'EventTracer | None') -> None:
+        with cls._current_lock:
+            cls._current = tracer
+
+    @classmethod
+    def current(cls) -> 'EventTracer':
+        with cls._current_lock:
+            if cls._current is None:
+                cls._current = EventTracer()
+            return cls._current
 
     @classmethod
     def subscribe(cls, fn):
+        return cls.current().subscribe_instance(fn)
+
+    @classmethod
+    def _broadcast(cls, event: dict) -> None:
+        cls.current()._broadcast_instance(event)
+
+    @classmethod
+    def register_message_event(
+        cls, message, on_sent=None, on_received=None, on_forwarded=None
+    ):
+        return cls.current().register_message_event_instance(
+            message, on_sent=on_sent, on_received=on_received, on_forwarded=on_forwarded
+        )
+
+    @classmethod
+    def message_sent(cls, src, dst, msg):
+        return cls.current().message_sent_instance(src, dst, msg)
+
+    @classmethod
+    def message_received(cls, src, msg):
+        return cls.current().message_received_instance(src, msg)
+
+    @classmethod
+    def datagram_forwarded(cls, src, dst, datagram):
+        return cls.current().datagram_forwarded_instance(src, dst, datagram)
+
+    # ---- instance-level API ----
+
+    def subscribe_instance(self, fn):
         """Register *fn* as a subscriber; return a callable that unsubscribes it."""
-        with cls._sub_lock:
-            cls._subscribers.append(fn)
+        with self._sub_lock:
+            self._subscribers.append(fn)
 
         def unsubscribe():
-            with cls._sub_lock:
+            with self._sub_lock:
                 try:
-                    cls._subscribers.remove(fn)
+                    self._subscribers.remove(fn)
                 except ValueError:
                     pass
 
         return unsubscribe
 
-    @classmethod
-    def _broadcast(cls, event: dict) -> None:
+    def _broadcast_instance(self, event: dict) -> None:
         """Deliver *event* to all current subscribers.
 
         Exceptions raised by individual subscribers are logged and swallowed
         so that one bad subscriber cannot prevent others from receiving events.
         """
-        with cls._sub_lock:
-            snapshot = list(cls._subscribers)
+        with self._sub_lock:
+            snapshot = list(self._subscribers)
         for fn in snapshot:
             try:
                 fn(event)
             except Exception:
                 _logger.exception("subscriber raised in EventTracer._broadcast")
 
-    @classmethod
-    def register_message_event(cls, message, on_sent=None, on_received=None, on_forwarded=None):
-        event = MessageEvent(message, on_sent=on_sent, on_received=on_received, on_forwarded=on_forwarded)
-        with cls._lock:
-            cls._events[message] = event
+    def register_message_event_instance(
+        self, message, on_sent=None, on_received=None, on_forwarded=None
+    ):
+        event = MessageEvent(
+            message, on_sent=on_sent, on_received=on_received, on_forwarded=on_forwarded
+        )
+        with self._lock:
+            self._events[message] = event
         return event
 
-    @classmethod
-    def message_sent(cls, src, dst, msg):
-        with cls._lock:
-            event = cls._events.get(msg)
-
+    def message_sent_instance(self, src, dst, msg):
+        with self._lock:
+            event = self._events.get(msg)
         if event is not None:
             return event.on_sent(src, dst, msg)
 
-    @classmethod
-    def message_received(cls, src, msg):
-        with cls._lock:
-            event = cls._events.get(msg)
-
+    def message_received_instance(self, src, msg):
+        with self._lock:
+            event = self._events.get(msg)
         if event is not None:
             return event.on_received(src, msg)
 
-    @classmethod
-    def datagram_forwarded(cls, src, dst, datagram):
-        with cls._lock:
-            event = cls._events.get(datagram.payload())
-
+    def datagram_forwarded_instance(self, src, dst, datagram):
+        with self._lock:
+            event = self._events.get(datagram.payload())
         if event is not None:
             return event.on_forwarded(src, dst, datagram)

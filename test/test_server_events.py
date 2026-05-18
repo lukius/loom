@@ -56,7 +56,6 @@ def test_sim_state_event_emitted_on_transitions(tmp_path, monkeypatch):
 
     from fastapi.testclient import TestClient
 
-    from entities.event import EventTracer
     from server.app import create_app
 
     yaml_text = textwrap.dedent("""
@@ -70,7 +69,6 @@ def test_sim_state_event_emitted_on_transitions(tmp_path, monkeypatch):
     src = tmp_path / "src.yaml"
     src.write_text(yaml_text)
     monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
-    EventTracer._subscribers.clear()
 
     app = create_app()
     with TestClient(app) as c:
@@ -133,10 +131,8 @@ def test_packet_event_carries_flow_and_payload_id(tmp_path, monkeypatch):
     src.write_text(yaml_text)
     monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
 
-    from entities.event import EventTracer
     from server.app import create_app
 
-    EventTracer._subscribers.clear()
     app = create_app()
     with TestClient(app) as c:
         c.post("/topology", json={"yaml": yaml_text})
@@ -197,10 +193,6 @@ def test_ws_streams_packet_events(tmp_path, monkeypatch):
     src = tmp_path / "src.yaml"
     src.write_text(yaml_text)
     monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
-
-    from entities.event import EventTracer
-
-    EventTracer._subscribers.clear()
 
     app = create_app()
     with TestClient(app) as c:
