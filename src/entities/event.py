@@ -82,6 +82,11 @@ class EventTracer:
     ``Internet`` per process today, behavior is identical to the previous
     class-level singleton, but the seam exists for per-``Internet``
     isolation in tests and for a multi-``Internet`` future.
+
+    When ``set_current()`` replaces one tracer with another, any subscribers
+    registered on the previous tracer are carried over to the new one, so
+    long-lived subscribers (e.g. a server-side event bridge registered at
+    startup) remain active across topology reloads.
     """
 
     _current: 'EventTracer | None' = None
@@ -96,9 +101,32 @@ class EventTracer:
     # ---- class-level API (delegates to current) ----
 
     @classmethod
-    def set_current(cls, tracer: 'EventTracer | None') -> None:
+    def set_current(cls, tracer: 'EventTracer') -> None:
+        """Make `tracer` the current process-wide tracer.
+
+        Subscribers registered on the previous current tracer are
+        carried over to the new one. This preserves long-lived
+        subscribers (e.g. the server's EventBus bridge registered at
+        lifespan startup) across `Internet` reloads, while still
+        allowing tests to isolate by setting `_current = None` first.
+        """
         with cls._current_lock:
+            previous = cls._current
             cls._current = tracer
+
+        if previous is None or tracer is None or previous is tracer:
+            return
+
+        # Snapshot the previous tracer's subscribers, then append them
+        # to the new one's subscriber list.
+        with previous._sub_lock:
+            carried = list(previous._subscribers)
+        if not carried:
+            return
+        with tracer._sub_lock:
+            for fn in carried:
+                if fn not in tracer._subscribers:
+                    tracer._subscribers.append(fn)
 
     @classmethod
     def current(cls) -> 'EventTracer':
