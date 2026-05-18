@@ -169,8 +169,6 @@ def test_network_matches_does_not_mutate_caller():
     silent corruption. octets() returns a copy today, which made the bug
     invisible — this test pins down the property directly.
     """
-    from entities.address import Address, NetworkAddress
-
     net = NetworkAddress('10.0.5.0/24')
     addr = Address('10.0.5.42')
     octets_in = addr.octets()
