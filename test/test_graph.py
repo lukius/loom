@@ -101,6 +101,34 @@ class GraphTest(unittest.TestCase):
         self.assertEqual(paths['t'], ['s', 'b', 'a', 't'])
 
 
+class IdempotentAddTest(unittest.TestCase):
+
+    def test_add_router_is_idempotent(self):
+        """Re-adding the same router must not duplicate it in _routers or
+        clobber its existing edges."""
+        g = NetworkGraph()
+        g.add_router('r1')
+        g.add_network('n1')
+        g.add_edge('r1', 'n1', weight=5)
+
+        g.add_router('r1')
+
+        self.assertEqual(g._routers.count('r1'), 1)
+        # Existing edge must still be there.
+        self.assertEqual(g.weight('r1', 'n1'), 5)
+
+    def test_add_network_is_idempotent(self):
+        g = NetworkGraph()
+        g.add_router('r1')
+        g.add_network('n1')
+        g.add_edge('r1', 'n1', weight=5)
+
+        g.add_network('n1')
+
+        self.assertEqual(g._networks.count('n1'), 1)
+        self.assertEqual(g.weight('r1', 'n1'), 5)
+
+
 class DisconnectedGraphTest(unittest.TestCase):
 
     def test_shortest_paths_returns_none_for_disconnected_components(self):

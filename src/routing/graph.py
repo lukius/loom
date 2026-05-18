@@ -29,10 +29,14 @@ class NetworkGraph:
         self._costs = dict()
 
     def add_router(self, router_name):
+        if router_name in self._costs:
+            return
         self._routers.append(router_name)
         self._add_node(router_name)
 
     def add_network(self, prefix):
+        if prefix in self._costs:
+            return
         self._networks.append(prefix)
         self._add_node(prefix)
 
