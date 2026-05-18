@@ -14,54 +14,62 @@ parser/
 
 ## Top-level shape
 
-The parser expects a YAML document with one mandatory key, `as:`, and an
-inner `name:` field for the AS name. The literal layout:
+The parser expects a YAML document with one mandatory key, `internet:`.
+Inside it, an optional `name:` field labels the internet instance, and
+`autonomous_systems:` is a mapping where each key is the AS short name.
+The literal layout:
 
 ```yaml
-as:
-  name: my_as          # optional; falls back to "unnamed_entity_N"
-  networks:            # required, may be empty {} (but rarely is)
-    lan1: "10.0.0.0/24"
-  links:               # optional
-    p2p1: "10.0.0.0/30"
-  routers:             # optional (no routers = no routing)
-    r1:
-      interfaces:
-        eth0:
+internet:
+  name: loom                 # optional; defaults to 'loom'
+  autonomous_systems:
+    main:                    # AS short name — the mapping key
+      asn: 65000             # optional; reserved for BGP, ignored today
+      networks:              # required, may be empty {} (but rarely is)
+        lan1: "10.0.0.0/24"
+      links:                 # optional
+        p2p1: "10.0.0.0/30"
+      routers:               # optional (no routers = no routing)
+        r1:
+          interfaces:
+            eth0:
+              network: lan1
+              address: "10.0.0.1"
+              cost: 5
+      hosts:                 # optional
+        h1:
           network: lan1
-          address: "10.0.0.1"
-          cost: 5
-  hosts:               # optional
-    h1:
-      network: lan1
-      address: "10.0.0.10"
-      gateway: "10.0.0.1"
+          address: "10.0.0.10"
+          gateway: "10.0.0.1"
 ```
 
-The `as:` wrapper exists so YAML files for the simulator are immediately
-distinguishable from arbitrary YAML and so future extensions can add new
-top-level siblings without breaking parsers. The SPA and any future
-emitter must produce the same shape.
+The `internet:` wrapper exists so YAML files for the simulator are
+immediately distinguishable from arbitrary YAML and so future extensions
+(inter-AS links, BGP peering) can add new top-level siblings without
+breaking parsers. The AS short name is the mapping key under
+`autonomous_systems:` — there is no separate `name:` field inside each
+AS block. Any future emitter must produce the same shape.
 
 ## `Parser.parse()` flow
 
 ```mermaid
 flowchart TD
   A[open file] --> B[yaml.safe_load]
-  B --> C{has 'as' key?}
-  C -- no --> X[ParsingException: missing &quot;as&quot; key]
-  C -- yes --> D[create AS]
-  D --> E[parse networks]
-  E --> F{has 'links'?}
-  F -- yes --> G[parse links]
-  F -- no --> H
-  G --> H[parse routers]
-  H --> I[parse hosts]
-  I --> J[post-pass: validate link endpoints + fill host gateways]
-  J --> K{start_routing?}
-  K -- yes --> M[router.start for each router]
-  K -- no --> L
-  M --> L[return AS]
+  B --> C{has 'internet' key?}
+  C -- no --> X[ParsingException: missing &quot;internet&quot; key]
+  C -- yes --> D[iterate 'autonomous_systems' mapping]
+  D --> E[create AS from short-name key]
+  E --> F[parse networks]
+  F --> G{has 'links'?}
+  G -- yes --> H[parse links]
+  G -- no --> I
+  H --> I[parse routers]
+  I --> J[parse hosts]
+  J --> K[post-pass: validate link endpoints + fill host gateways]
+  K --> L{start_routing?}
+  L -- yes --> N[router.start for each router]
+  L -- no --> M
+  N --> M[return AS]
 ```
 
 A failure at any step raises `ParsingException` with a descriptive

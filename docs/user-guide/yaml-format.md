@@ -14,26 +14,56 @@ parser.
 ## Top-level shape
 
 ```yaml
-as:
-  name: my_as          # optional; falls back to "unnamed_entity_N"
-  networks: { ... }    # required (may be empty, in theory)
-  links:    { ... }    # optional
-  routers:  { ... }    # optional
-  hosts:    { ... }    # optional
+internet:
+  name: loom              # optional; defaults to 'loom'
+  autonomous_systems:
+    main:
+      asn: 65000          # reserved for BGP; defaults to 65000
+      networks:
+        lan1: "200.100.0.0/24"
+        ...
+      links:
+        p2p1: "10.0.0.0/30"
+        ...
+      hosts:
+        h1:
+          network: "lan1"
+          address: "200.100.0.10"
+          gateway: "200.100.0.1"
+        ...
+      routers:
+        r1:
+          interfaces:
+            eth0:
+              network: "lan1"
+              address: "200.100.0.1"
+              cost: 10
+            ...
 ```
 
-The `as:` key is mandatory at the top level. Inside it, `name:` and
-each entity block (`networks`, `links`, `routers`, `hosts`) are
-mappings keyed by entity name. Names must be unique across the kinds
+The `internet:` key is mandatory at the top level. Inside it, an
+optional `name:` field labels the internet instance, and
+`autonomous_systems:` is a mapping where each key is the AS short name
+and each value holds that AS's entity blocks (`networks`, `links`,
+`routers`, `hosts`). Names within an AS must be unique across the kinds
 they collide with — see [Naming rules](#naming-rules) below.
+
+Single-AS topologies put one entry under `autonomous_systems:`,
+conventionally named `main`. Multiple ASes are reserved for the future
+BGP work.
+
+The `asn:` field is reserved for the eventual BGP work; it is ignored
+by the link-state protocol today. Pick something in the private
+64512–65535 range.
 
 A minimal valid topology with no devices:
 
 ```yaml
-as:
-  name: empty
-  networks:
-    lan1: "10.0.0.0/24"
+internet:
+  autonomous_systems:
+    main:
+      networks:
+        lan1: "10.0.0.0/24"
 ```
 
 This loads but does nothing useful — no traffic to forward, no routers
@@ -194,34 +224,35 @@ that hasn't been declared yet in its own block.
 ## A complete example
 
 ```yaml
-as:
-  name: test_as
-  networks:
-    lan1: "200.100.0.0/24"
-    lan2: "100.200.0.0/24"
-    lan3: "150.10.10.0/24"
-  links:
-    p2p1: "10.0.0.0/30"
-  hosts:
-    h1: { network: "lan1", address: "200.100.0.10", gateway: "200.100.0.1" }
-    h2: { network: "lan2", address: "100.200.0.20", gateway: "100.200.0.2" }
-    h3: { network: "lan3", address: "150.10.10.30", gateway: "150.10.10.1" }
-  routers:
-    r1:
-      interfaces:
-        eth0: { network: "lan1", address: "200.100.0.1",   cost: 10 }
-        eth1: { network: "lan2", address: "100.200.0.1",   cost: 15 }
-        eth2: { link:    "p2p1", address: "10.0.0.1",       cost: 5  }
-    r2:
-      interfaces:
-        eth0: { network: "lan1", address: "200.100.0.254", cost: 5  }
-        eth1: { network: "lan2", address: "100.200.0.2",   cost: 8  }
-        eth2: { network: "lan3", address: "150.10.10.1",   cost: 15 }
-    r3:
-      interfaces:
-        eth0: { network: "lan2", address: "100.200.0.10",  cost: 20 }
-        eth1: { network: "lan3", address: "150.10.10.10",  cost: 5  }
-        eth2: { link:    "p2p1", address: "10.0.0.2",      cost: 5  }
+internet:
+  autonomous_systems:
+    main:
+      networks:
+        lan1: "200.100.0.0/24"
+        lan2: "100.200.0.0/24"
+        lan3: "150.10.10.0/24"
+      links:
+        p2p1: "10.0.0.0/30"
+      hosts:
+        h1: { network: "lan1", address: "200.100.0.10", gateway: "200.100.0.1" }
+        h2: { network: "lan2", address: "100.200.0.20", gateway: "100.200.0.2" }
+        h3: { network: "lan3", address: "150.10.10.30", gateway: "150.10.10.1" }
+      routers:
+        r1:
+          interfaces:
+            eth0: { network: "lan1", address: "200.100.0.1",   cost: 10 }
+            eth1: { network: "lan2", address: "100.200.0.1",   cost: 15 }
+            eth2: { link:    "p2p1", address: "10.0.0.1",       cost: 5  }
+        r2:
+          interfaces:
+            eth0: { network: "lan1", address: "200.100.0.254", cost: 5  }
+            eth1: { network: "lan2", address: "100.200.0.2",   cost: 8  }
+            eth2: { network: "lan3", address: "150.10.10.1",   cost: 15 }
+        r3:
+          interfaces:
+            eth0: { network: "lan2", address: "100.200.0.10",  cost: 20 }
+            eth1: { network: "lan3", address: "150.10.10.10",  cost: 5  }
+            eth2: { link:    "p2p1", address: "10.0.0.2",      cost: 5  }
 ```
 
 This is the bundled `samples/sample.yaml`. Click **Load sample** in
