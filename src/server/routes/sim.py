@@ -88,5 +88,5 @@ def set_refresh_interval(request: Request, body: dict = Body(...)):
     if s.as_obj is None:
         raise HTTPException(409, "simulation not started")
     for r in s.as_obj.routers().values():
-        r._protocol.set_keepalive_interval(seconds)
+        r.protocol().set_keepalive_interval(seconds)
     return {"seconds": seconds}

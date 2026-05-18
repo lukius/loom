@@ -133,11 +133,30 @@ class Router(NetworkDevice):
         # this module before routing/__init__.py finishes binding LinkStateProtocol.
         # Importing at call time ensures both packages are fully loaded.
         from routing import LinkStateProtocol  # noqa: PLC0415
-        self._protocol = LinkStateProtocol(self)
+        self._protocols: list = [LinkStateProtocol(self)]
         self._as_gate = None  # set by AS.add_router
 
     def gate(self):
         return self._as_gate
+
+    def protocols(self):
+        """Routing protocols active on this router.
+
+        Today this is ``[LinkStateProtocol(self)]``. When a second protocol
+        is added (e.g. BGP at AS edges), it goes here; per-protocol
+        lifecycle calls (start/stop) and the routing-message dispatch
+        walk this list.
+        """
+        return list(self._protocols)
+
+    def protocol(self):
+        """Back-compat: return the (single) link-state protocol.
+
+        Transitional accessor for code that still wants the single
+        protocol object; new code should iterate ``protocols()``. Will be
+        removed once all consumers are migrated.
+        """
+        return self._protocols[0]
 
     def routing_table(self):
         return self._routing_table
@@ -146,10 +165,12 @@ class Router(NetworkDevice):
         return self._nat_table
 
     def start(self):
-        self._protocol.start()
+        for proto in self._protocols:
+            proto.start()
 
     def stop(self):
-        self._protocol.stop()
+        for proto in self._protocols:
+            proto.stop()
 
     def handle_packet(self, packet, interface):
         dst = packet.destination()
@@ -186,7 +207,8 @@ class Router(NetworkDevice):
         # PingRequest/PingReply silently dropped
 
     def _handle_routing_message(self, msg: RoutingMessage, interface: Interface):
-        self._protocol.handle_incoming_message(msg, interface)
+        for proto in self._protocols:
+            proto.handle_incoming_message(msg, interface)
         return EventTracer.message_received(src=interface.address(), msg=msg)
 
     def _handle_forwarding(self, packet: Datagram):

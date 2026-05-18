@@ -33,7 +33,7 @@ def cmd_update_cost(router, args, as_obj=None):
 
 def cmd_neighbors(router, args, as_obj=None):
     """Show directly-connected neighbor routers."""
-    graph = router._protocol._graph  # noqa: SLF001
+    graph = router.protocol()._graph  # noqa: SLF001
     my_nets = {iface.network().address() for iface in router.interfaces().values()}
     lines = []
     for node in graph._routers:  # noqa: SLF001

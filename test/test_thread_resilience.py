@@ -129,7 +129,7 @@ class RoutingProtocolThreadResilienceTest(unittest.TestCase):
         self._net.stop()
 
     def test_thread_survives_handle_update_exception(self):
-        protocol = self._router._protocol
+        protocol = self._router.protocol()
         call_count = 0
         completed = threading.Event()
 

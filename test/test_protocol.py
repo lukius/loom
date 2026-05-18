@@ -50,9 +50,9 @@ def test_set_keepalive_interval_updates_protocol():
     system = Parser(path).parse()
     try:
         r1 = system.routers()["r1"]
-        assert r1._protocol.keepalive_interval() == 10
-        r1._protocol.set_keepalive_interval(3)
-        assert r1._protocol.keepalive_interval() == 3
+        assert r1.protocol().keepalive_interval() == 10
+        r1.protocol().set_keepalive_interval(3)
+        assert r1.protocol().keepalive_interval() == 3
     finally:
         system.stop()
         os.unlink(path)
@@ -67,9 +67,9 @@ def test_set_keepalive_interval_rejects_non_positive():
         r1 = system.routers()["r1"]
         import pytest as _pt
         with _pt.raises(ValueError):
-            r1._protocol.set_keepalive_interval(0)
+            r1.protocol().set_keepalive_interval(0)
         with _pt.raises(ValueError):
-            r1._protocol.set_keepalive_interval(-1)
+            r1.protocol().set_keepalive_interval(-1)
     finally:
         system.stop()
         os.unlink(path)
@@ -114,7 +114,7 @@ def test_routers_with_shared_iface_names_all_receive_lsas():
         routers = system.routers()
         # every router's graph should know about every other router
         for name, r in routers.items():
-            graph_routers = {x.name() for x in r._protocol._graph._routers}
+            graph_routers = {x.name() for x in r.protocol()._graph._routers}  # noqa: SLF001
             for other in routers:
                 assert other in graph_routers, (
                     f"{name}'s graph missing {other}; has {graph_routers}"
@@ -184,12 +184,12 @@ def test_initial_broadcast_propagates_before_keepalive_interval():
             for iface in r.interfaces().values()
         }
         for name, r in routers.items():
-            graph_prefixes = set(r._protocol._graph.networks())
+            graph_prefixes = set(r.protocol()._graph.networks())  # noqa: SLF001
             missing = prefixes - graph_prefixes
             assert not missing, (
                 f"{name} missing prefixes {missing}; saw {graph_prefixes}"
             )
-            graph_routers = set(r._protocol._graph._routers)
+            graph_routers = set(r.protocol()._graph._routers)  # noqa: SLF001
             assert routers["r1"] in graph_routers, f"{name} graph missing r1"
             assert routers["r2"] in graph_routers, f"{name} graph missing r2"
     finally:
@@ -743,11 +743,11 @@ def test_link_cost_propagates():
             "routers did not converge in time (asymmetric-cost test)"
 
         # r1's graph: edge r1→link_prefix has cost 5 (r1's own cost).
-        r1_link_cost = r1._protocol._graph.weight(r1, link_prefix)
+        r1_link_cost = r1.protocol()._graph.weight(r1, link_prefix)  # noqa: SLF001
         assert r1_link_cost == 5, f"expected r1→link cost 5, got {r1_link_cost}"
 
         # r2's graph: edge r2→link_prefix has cost 9 (r2's own cost).
-        r2_link_cost = r2._protocol._graph.weight(r2, link_prefix)
+        r2_link_cost = r2.protocol()._graph.weight(r2, link_prefix)  # noqa: SLF001
         assert r2_link_cost == 9, f"expected r2→link cost 9, got {r2_link_cost}"
 
         # r1 prefers r3's path (cost 1+1+1+1+1=5) over the direct link (cost
@@ -796,7 +796,7 @@ def test_handle_update_omits_private_prefixes_from_outbound_message():
         # Join r1's keepalive thread before patching so its initial tick
         # (fired by Parser auto-start) can't race the explicit _handle_update
         # below and double the captured-message count.
-        r1._protocol.stop()
+        r1.protocol().stop()
 
         captured: list[RoutingMessage] = []
 
@@ -807,7 +807,7 @@ def test_handle_update_omits_private_prefixes_from_outbound_message():
             return original_send(self, pkt, dst_addr)
         Interface.send_to = capturing_send
         try:
-            r1._protocol._handle_update()
+            r1.protocol()._handle_update()  # noqa: SLF001
         finally:
             Interface.send_to = original_send
 
@@ -864,13 +864,14 @@ def test_receiver_graph_never_learns_private_prefix():
         # Wait for r2 to converge on what r1 advertises.
         # r2 should know the p2p /30 (public) but never the private LAN.
         assert _wait(
-            lambda: NetworkAddress('200.100.0.0/30') in r2._protocol._graph,
+            lambda: NetworkAddress('200.100.0.0/30') in r2.protocol()._graph,  # noqa: SLF001
             timeout=5.0,
         ), "r2 did not converge on the public p2p prefix"
 
         # The private prefix should never appear in r2's graph.
-        assert NetworkAddress('10.0.0.0/24') not in r2._protocol._graph, \
+        assert NetworkAddress('10.0.0.0/24') not in r2.protocol()._graph, (  # noqa: SLF001
             "r2 must not learn the private prefix from r1"
+        )
     finally:
         system.stop()
         os.unlink(path)

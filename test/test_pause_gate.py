@@ -159,7 +159,7 @@ def test_paused_keepalive_does_not_tick():
     # Instance-level patching avoids contaminating other RoutingProtocol objects
     # (e.g., those leaked by test_parser tests that never call system.stop()).
     tick_count = [0]
-    proto = r1._protocol
+    proto = r1.protocol()
     proto.KEEPALIVE_INTERVAL = 0.05  # instance attribute overrides class attribute
 
     original_handle_update = proto._handle_update

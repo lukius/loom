@@ -128,7 +128,7 @@ def test_routing_table_changed_event_fires():
         # First keepalive within ~KEEPALIVE_INTERVAL; for a test, manually update.
         system.router("r1").update_interface("eth0", 99)
         # nudge protocol to recompute by faking a keepalive call:
-        system.router("r1")._protocol._handle_update()
+        system.router("r1").protocol()._handle_update()  # noqa: SLF001
         kinds = [e.get("kind") for e in events]
         assert "routing_table_changed" in kinds
         system.stop()

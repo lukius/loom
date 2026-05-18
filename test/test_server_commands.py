@@ -131,7 +131,7 @@ def test_refresh_interval_endpoint_updates_all_routers(client):
     # confirm via server state
     state = client.app.state.sim_state
     for router in state.as_obj.routers().values():
-        assert router._protocol.keepalive_interval() == 3
+        assert router.protocol().keepalive_interval() == 3
 
 
 def test_refresh_interval_rejects_invalid_values(client):

@@ -119,7 +119,7 @@ class Shell(cmd.Cmd):
             print('syntax: neighbors <router>')
             return
         router = self._system.router(name)
-        graph = router._protocol._graph
+        graph = router.protocol()._graph  # noqa: SLF001
         my_nets = {iface.network().address() for iface in router.interfaces().values()}
         seen = set()
         for node in graph._routers:
