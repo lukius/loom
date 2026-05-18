@@ -72,3 +72,27 @@ class ASNotFoundException(EntityException):
         message = f'AS not found: {message}'
         super().__init__(message)
 
+
+class AddressNotInNetworkException(EntityException):
+    """Raised when a lookup for an interface by address fails inside a Network.
+
+    Indicates an invariant violation: the caller expected the address to be
+    attached to this network but it is not registered.
+    """
+
+    def __init__(self, address, network_name):
+        message = f'{address} not in {network_name}'
+        super().__init__(message)
+
+
+class InterfaceNotReadyException(EntityException):
+    """Raised when an Interface tries to dispatch a frame but its device
+    has not been attached yet (device is None).
+
+    Indicates an invariant violation: frames should not arrive before the
+    interface is fully wired to a device.
+    """
+
+    def __init__(self):
+        super().__init__('interface not ready')
+

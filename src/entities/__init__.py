@@ -7,10 +7,12 @@ from .event import Event as Event
 from .event import EventLog as EventLog
 from .event import EventTracer as EventTracer
 from .event import MessageEvent as MessageEvent
+from .exception import AddressNotInNetworkException as AddressNotInNetworkException
 from .exception import ASNotFoundException as ASNotFoundException
 from .exception import EntityException as EntityException
 from .exception import HostNotFoundException as HostNotFoundException
 from .exception import HostsCannotForwardException as HostsCannotForwardException
+from .exception import InterfaceNotReadyException as InterfaceNotReadyException
 from .exception import LinkNotFoundException as LinkNotFoundException
 from .exception import NetworkNotFoundException as NetworkNotFoundException
 from .exception import RouterNotFoundException as RouterNotFoundException

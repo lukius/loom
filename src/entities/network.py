@@ -1,6 +1,7 @@
 from ._fabric import _FabricBase
 from .address import Address
 from .device import NetworkDevice
+from .exception import AddressNotInNetworkException
 
 
 class Network(_FabricBase):
@@ -56,5 +57,5 @@ class Network(_FabricBase):
     def _interface_with_address(self, address):
         iface = self._interfaces.get(address)
         if iface is None:
-            raise Exception(f'{address} not in {self._name}')
+            raise AddressNotInNetworkException(address, self._name)
         return iface

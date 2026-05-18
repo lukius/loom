@@ -5,6 +5,7 @@ import traceback
 from .address import Address
 from .base import Entity
 from .event import EventTracer
+from .exception import InterfaceNotReadyException
 from .packet import Datagram, Frame
 
 _PACKET_KIND = {
@@ -109,7 +110,7 @@ class Interface(Entity):
                     continue
             try:
                 if self._device is None:
-                    raise Exception('interface not ready')
+                    raise InterfaceNotReadyException()
                 self._device.handle_packet(frame.payload(), self)
             except Exception:
                 traceback.print_exc()
