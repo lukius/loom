@@ -78,60 +78,49 @@ class RoutingTable:
         self._rules = list()
         self._lock = Lock()
 
-    def with_lock(func):
-        def func_with_lock(self, *args, **kwargs):
-            with self._lock:
-                return func(self, *args, **kwargs)
-
-        return func_with_lock
-
-    @with_lock
     def rules(self):
-        return self._rules
+        with self._lock:
+            return list(self._rules)
 
-    @with_lock
     def add_rule(self, prefix, next_hop, interface):
         new_rule = RoutingRule(prefix, next_hop, interface)
+        with self._lock:
+            for i, rule in enumerate(self._rules):
+                if prefix == rule.prefix():
+                    self._rules[i] = new_rule
+                    return
+            self._rules.append(new_rule)
 
-        for i, rule in enumerate(self._rules):
-            if prefix == rule.prefix():
-                self._rules[i] = new_rule
-                return
-
-        self._rules.append(new_rule)
-
-    @with_lock
     def clear(self):
-        self._rules = list()
+        with self._lock:
+            self._rules = list()
 
-    @with_lock
     def remove_rule(self, prefix):
-        for i, rule in enumerate(self._rules):
-            if prefix == rule.prefix():
-                del self._rules[i]
-                break
+        with self._lock:
+            for i, rule in enumerate(self._rules):
+                if prefix == rule.prefix():
+                    del self._rules[i]
+                    break
 
-    @with_lock
     def match(self, address: Address) -> MatchingResult:
-        longest_prefix = -1
-        longest_prefix_idx = -1
+        with self._lock:
+            longest_prefix = -1
+            longest_prefix_idx = -1
 
-        for i, rule in enumerate(self._rules):
-            if not rule.matches(address):
-                continue
+            for i, rule in enumerate(self._rules):
+                if not rule.matches(address):
+                    continue
 
-            prefix_length = rule.prefix().mask()
-            if prefix_length > longest_prefix:
-                longest_prefix = prefix_length
-                longest_prefix_idx = i
+                prefix_length = rule.prefix().mask()
+                if prefix_length > longest_prefix:
+                    longest_prefix = prefix_length
+                    longest_prefix_idx = i
 
-        if longest_prefix_idx < 0:
-            return MatchingResult.not_matched()
+            if longest_prefix_idx < 0:
+                return MatchingResult.not_matched()
 
-        rule = self._rules[longest_prefix_idx]
-        return MatchingResult.matched(rule.next_hop(), rule.interface())
-
-    with_lock = staticmethod(with_lock)
+            rule = self._rules[longest_prefix_idx]
+            return MatchingResult.matched(rule.next_hop(), rule.interface())
 
 
 class Router(NetworkDevice):
