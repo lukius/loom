@@ -14,6 +14,15 @@ protocol converge, datagrams hop across routers, and routing tables update
 in real time. The codebase is small, threaded, and dependency-light by
 design.
 
+## Scope
+
+`loom` is deliberately L3-only. There is no L2 (no MAC, no ARP, no STP —
+frames are abstract envelopes) and no L4 (no TCP/UDP, no ports, no
+transport state). The goal is to make routing convergence and forwarding
+observable, not to model a full network stack. For richer-fidelity work,
+see [ns-3](https://www.nsnam.org/), [mininet](https://mininet.org/),
+[Containerlab](https://containerlab.dev/), or [GNS3](https://www.gns3.com/).
+
 ## Features
 
 - **Multi-router IPv4 simulation** — Hosts, routers, multi-access LANs,
