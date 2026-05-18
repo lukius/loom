@@ -52,12 +52,17 @@ class NetworkGraph:
         paths = dict()
 
         for node in self._costs.keys():
+            if node == src:
+                paths[node] = [src]
+                continue
+            if node not in previous:
+                # Disconnected component — distinguish from "src == node"
+                # by returning None rather than a single-element list.
+                paths[node] = None
+                continue
             path = [node]
             current = node
             while current != src:
-                # TODO: el grafo no es conexo
-                if current not in previous:
-                    break
                 current = previous[current]
                 path.insert(0, current)
             paths[node] = path

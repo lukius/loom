@@ -93,8 +93,8 @@ class RoutingProtocol:
         routing_table.clear()
         paths = self._graph.shortest_paths(self._router)
         for prefix in self._graph.networks():
-            path = paths.get(prefix, list())
-            if len(path) < 2:
+            path = paths.get(prefix)
+            if path is None or len(path) < 2:
                 continue
             next_hop_network = path[1]
             next_hop_address = NullAddress

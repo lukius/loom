@@ -99,3 +99,21 @@ class GraphTest(unittest.TestCase):
         paths = graph.shortest_paths('s')
         self.assertEqual(paths['a'], ['s', 'b', 'a'])
         self.assertEqual(paths['t'], ['s', 'b', 'a', 't'])
+
+
+class DisconnectedGraphTest(unittest.TestCase):
+
+    def test_shortest_paths_returns_none_for_disconnected_components(self):
+        """When src and dst live in different connected components, the
+        reconstructed path must not silently appear as a single-element
+        list (which a careless caller could mistake for 'src == dst')."""
+        g = NetworkGraph()
+        g.add_router('r1')
+        g.add_router('r2')
+        g.add_network('n1')
+        g.add_edge('r1', 'n1', weight=1)
+        # r2 is isolated.
+
+        paths = g.shortest_paths('r1')
+        self.assertEqual(paths['n1'], ['r1', 'n1'])     # reachable
+        self.assertIsNone(paths['r2'])                  # unreachable → None
