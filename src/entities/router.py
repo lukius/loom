@@ -1,6 +1,6 @@
 import sys
 from threading import Lock
-from typing import List
+from typing import List, Optional
 
 from routing import RoutingProtocol
 
@@ -63,10 +63,10 @@ class MatchingResult:
     def is_matched(self) -> bool:
         return self._matched
 
-    def next_hop(self):
+    def next_hop(self) -> Optional[NetworkAddress]:
         return self._next_hop
 
-    def interface(self):
+    def interface(self) -> Optional[Interface]:
         return self._interface
 
 
