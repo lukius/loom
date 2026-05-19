@@ -545,17 +545,20 @@ describe('YAML round-trip (yaml-io.js)', () => {
 
   it('import — link block present populates state.links and router interface', () => {
     const yaml = `
-as:
-  name: test_as
-  networks: {}
-  links:
-    p2p1: "10.0.0.0/30"
-  hosts: {}
-  routers:
-    r1:
-      interfaces:
-        eth0: { network: lan1, address: "200.100.0.1", cost: 10 }
-        eth1: { link: p2p1, address: "10.0.0.1", cost: 5 }
+internet:
+  name: loom
+  autonomous_systems:
+    test_as:
+      asn: 65000
+      networks: {}
+      links:
+        p2p1: "10.0.0.0/30"
+      hosts: {}
+      routers:
+        r1:
+          interfaces:
+            eth0: { network: lan1, address: "200.100.0.1", cost: 10 }
+            eth1: { link: p2p1, address: "10.0.0.1", cost: 5 }
 `;
     importYaml(yaml);
     expect(state.links.p2p1.cidr).toBe('10.0.0.0/30');
@@ -565,15 +568,18 @@ as:
 
   it('import — network interface unchanged when no link key', () => {
     const yaml = `
-as:
-  name: test_as
-  networks:
-    lan1: "200.100.0.0/24"
-  hosts: {}
-  routers:
-    r1:
-      interfaces:
-        eth0: { network: lan1, address: "200.100.0.1", cost: 10 }
+internet:
+  name: loom
+  autonomous_systems:
+    test_as:
+      asn: 65000
+      networks:
+        lan1: "200.100.0.0/24"
+      hosts: {}
+      routers:
+        r1:
+          interfaces:
+            eth0: { network: lan1, address: "200.100.0.1", cost: 10 }
 `;
     importYaml(yaml);
     expect(state.routers.r1.interfaces.eth0.network).toBe('lan1');
@@ -582,14 +588,17 @@ as:
 
   it('import — host on link sets h.link (no network field)', () => {
     const yaml = `
-as:
-  name: test_as
-  networks: {}
-  links:
-    p2p1: "10.0.0.0/30"
-  hosts:
-    h1: { link: p2p1, address: "10.0.0.1" }
-  routers: {}
+internet:
+  name: loom
+  autonomous_systems:
+    test_as:
+      asn: 65000
+      networks: {}
+      links:
+        p2p1: "10.0.0.0/30"
+      hosts:
+        h1: { link: p2p1, address: "10.0.0.1" }
+      routers: {}
 `;
     importYaml(yaml);
     expect(state.hosts.h1.link).toBe('p2p1');
@@ -598,19 +607,22 @@ as:
 
   it('import — link gets default x and y coords (numbers)', () => {
     const yaml = `
-as:
-  name: test_as
-  networks: {}
-  links:
-    p2p1: "10.0.0.0/30"
-  hosts: {}
-  routers:
-    r1:
-      interfaces:
-        eth1: { link: p2p1, address: "10.0.0.1", cost: 5 }
-    r2:
-      interfaces:
-        eth0: { link: p2p1, address: "10.0.0.2", cost: 5 }
+internet:
+  name: loom
+  autonomous_systems:
+    test_as:
+      asn: 65000
+      networks: {}
+      links:
+        p2p1: "10.0.0.0/30"
+      hosts: {}
+      routers:
+        r1:
+          interfaces:
+            eth1: { link: p2p1, address: "10.0.0.1", cost: 5 }
+        r2:
+          interfaces:
+            eth0: { link: p2p1, address: "10.0.0.2", cost: 5 }
 `;
     importYaml(yaml);
     expect(typeof state.links.p2p1.x).toBe('number');
@@ -619,12 +631,15 @@ as:
 
   it('import — missing links block results in state.links = {}', () => {
     const yaml = `
-as:
-  name: test_as
-  networks:
-    lan1: "200.100.0.0/24"
-  hosts: {}
-  routers: {}
+internet:
+  name: loom
+  autonomous_systems:
+    test_as:
+      asn: 65000
+      networks:
+        lan1: "200.100.0.0/24"
+      hosts: {}
+      routers: {}
 `;
     importYaml(yaml);
     expect(state.links).toEqual({});
@@ -641,6 +656,9 @@ as:
     };
     state.links = { p2p1: { cidr: '10.0.0.0/30', x: 100, y: 100 } };
     const yaml = exportYaml();
+    expect(yaml).toContain('internet:');
+    expect(yaml).toContain('autonomous_systems:');
+    expect(yaml).toContain('export_as:');
     expect(yaml).toContain('links:');
     expect(yaml).toContain('p2p1');
     expect(yaml).toContain('10.0.0.0/30');
@@ -687,19 +705,22 @@ as:
 
   it('round-trip: import → export → import preserves links', () => {
     const yaml = `
-as:
-  name: test_as
-  networks: {}
-  links:
-    p2p1: "10.0.0.0/30"
-  hosts: {}
-  routers:
-    r1:
-      interfaces:
-        eth1: { link: p2p1, address: "10.0.0.1", cost: 5 }
-    r2:
-      interfaces:
-        eth0: { link: p2p1, address: "10.0.0.2", cost: 5 }
+internet:
+  name: loom
+  autonomous_systems:
+    test_as:
+      asn: 65000
+      networks: {}
+      links:
+        p2p1: "10.0.0.0/30"
+      hosts: {}
+      routers:
+        r1:
+          interfaces:
+            eth1: { link: p2p1, address: "10.0.0.1", cost: 5 }
+        r2:
+          interfaces:
+            eth0: { link: p2p1, address: "10.0.0.2", cost: 5 }
 `;
     importYaml(yaml);
     const exported = exportYaml();
@@ -709,5 +730,23 @@ as:
     importYaml(exported);
     expect(state.links.p2p1.cidr).toBe('10.0.0.0/30');
     expect(state.routers.r1.interfaces.eth1.link).toBe('p2p1');
+  });
+
+  it('clears state.natTables on import', () => {
+    state.natTables = { r_a: [{ original_src: 'x', rewritten_src: 'y', dst: 'z', flow_id: null }] };
+    const yaml = `
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: "10.0.0.0/24"
+      hosts: {}
+      routers: {}
+`;
+    const ok = importYaml(yaml);
+    expect(ok).not.toBe(false);
+    expect(state.natTables).toEqual({});
   });
 });

@@ -59,12 +59,13 @@ function ensureLinkPositions() {
 
 /* ---------- exportYaml ---------------------------------------------------
    Serialises state into a YAML string that the Python parser accepts.
+   Envelope: internet: / autonomous_systems: / <asName>: per the D.2.d schema.
    Links: emitted as a top-level `links:` block when state.links is non-empty.
    Interfaces: emit `link: <name>` if iff.link is set; otherwise `network: <name>`.
    -------------------------------------------------------------------------- */
 export function exportYaml() {
   const asBlock = {
-    name: state.asName || 'topology',
+    asn: 65000,
   };
 
   // networks block (only when non-empty)
@@ -114,12 +115,20 @@ export function exportYaml() {
     })),
   }]));
 
-  const out = { as: asBlock };
+  const out = {
+    internet: {
+      name: 'loom',
+      autonomous_systems: {
+        [state.asName || 'main']: asBlock,
+      },
+    },
+  };
   return jsyaml().dump(out, { quotingType: '"', forceQuotes: true, lineWidth: -1, indent: 2 });
 }
 
 /* ---------- importYaml ---------------------------------------------------
    Parses a YAML string and loads it into state.
+   Envelope: internet: / autonomous_systems: / <asName>: per the D.2.d schema.
    Links: reads top-level `links:` into state.links.
    Interfaces: if iff.link is present, stores { link, address, cost };
                otherwise stores { network, address, cost } as before.
@@ -133,10 +142,22 @@ export function importYaml(text, { ensurePositions, fitView, renderAll } = {}) {
   try { parsed = jsyaml().load(text); } catch (e) {
     toast(e.message || 'Failed to parse YAML', 'error', 'Parse error'); return false;
   }
-  if (!parsed || !parsed.as) { toast('YAML root must be "as:"', 'error', 'Parse error'); return false; }
-  const node = parsed.as;
-  state.asName = node.name || 'unnamed_as';
+  if (!parsed || !parsed.internet) {
+    toast('YAML root must be "internet:"', 'error', 'Parse error'); return false;
+  }
+  const ases = parsed.internet.autonomous_systems;
+  if (!ases || typeof ases !== 'object') {
+    toast('Missing "autonomous_systems" in internet block', 'error', 'Parse error'); return false;
+  }
+  const keys = Object.keys(ases);
+  if (keys.length === 0) {
+    toast('"autonomous_systems" must contain at least one AS', 'error', 'Parse error'); return false;
+  }
+  const asShortName = keys[0];
+  const node = ases[asShortName];
+  state.asName = asShortName;
   state.networks = {}; state.hosts = {}; state.routers = {}; state.links = {};
+  state.natTables = {};
 
   if (node.networks && typeof node.networks === 'object') {
     for (const [n, cidr] of Object.entries(node.networks)) {
