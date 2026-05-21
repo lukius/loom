@@ -31,7 +31,7 @@ test.describe('loom SPA - smoke', () => {
     await page.waitForSelector('#nodes-layer g.node', { timeout: 5000 });
   });
 
-  test('serves index, styles, and all eight JS modules', async ({ page }) => {
+  test('serves index, styles, and all JS modules', async ({ page }) => {
     // Reload and collect every response, then assert that every module the
     // SPA depends on returned 200. If app.js silently fails to import a
     // module, the page still loads but the suite goes red here.
@@ -43,6 +43,7 @@ test.describe('loom SPA - smoke', () => {
     const modules = [
       'app.js', 'state.js', 'utils.js', 'sim.js',
       'canvas.js', 'inspector.js', 'terminals.js', 'packets.js',
+      'yaml-io.js', 'file-picker.js',
     ];
     for (const m of modules) {
       const r = responses.find((x) => x.url.endsWith(`/${m}`));
@@ -138,18 +139,29 @@ test.describe('loom SPA - smoke', () => {
     await expect(menu.locator('button[data-act="detach-host"]')).toBeVisible();
   });
 
-  test('Load Sample button reloads the bundled topology with no console errors', async ({ page }) => {
+  test('header no longer has a Sample button', async ({ page }) => {
+    await expect(page.locator('#btn-sample')).toHaveCount(0);
+    // The Import + Export pair is still present.
+    await expect(page.locator('#btn-import')).toBeVisible();
+    await expect(page.locator('#btn-export')).toBeVisible();
+  });
+
+  test('Import opens a picker listing samples/, and loading sample.yaml repopulates the canvas', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
-    // Wipe topology in-page to simulate an empty state, then click Sample.
-    await page.evaluate(() => {
-      try { localStorage.clear(); } catch (_) {}
-    });
-    await page.locator('#btn-sample').click();
+    await page.locator('#btn-import').click();
+    const modal = page.locator('.modal-picker');
+    await expect(modal).toBeVisible();
 
-    // Sample should give us the canonical 3+3+3 set.
+    // Sample list comes from GET /samples — sample.yaml is guaranteed to be there.
+    const item = modal.locator('.picker-item', { hasText: 'sample.yaml' });
+    await expect(item).toBeVisible();
+    await item.click();
+
+    // Picker dismisses itself; sample's canonical 3+3+3 nodes appear.
+    await expect(modal).toHaveCount(0);
     await expect(page.locator('#nodes-layer g.node.host')).toHaveCount(3);
     await expect(page.locator('#nodes-layer g.node.router')).toHaveCount(3);
     await expect(page.locator('#nodes-layer g.node.network')).toHaveCount(3);

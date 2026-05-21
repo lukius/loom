@@ -2,7 +2,7 @@
 // Right-pane inspector, left-pane nav, add/rename/duplicate/delete ops, and
 // the canvas right-click context menu. Listens on the shared bus for topology
 // and selection changes, and re-renders accordingly.
-import { state, bus, markDirty, loadSample } from './state.js';
+import { state, bus, markDirty } from './state.js';
 import { escapeHtml, uniqueName, uniqueIface, pad2, toast, cssEscape, isValidIpv4, isValidNetworkCidr, addressInCidr } from './utils.js';
 import {
   canvasEl, applyView, clientToWorld, fitView,
@@ -184,7 +184,7 @@ export function openContextMenu(clientX, clientY, target, world) {
       <button class="ctx-item" ${mut('new-router')}><svg class="ico"><use href="#ui-router"/></svg>New router<span class="meta">R</span></button>
       <div class="ctx-sep"></div>
       <button class="ctx-item" data-act="fit">Fit to view</button>
-      <button class="ctx-item" ${mut('sample')}>Load sample</button>
+      <button class="ctx-item" ${mut('import')}>Import topology…</button>
     `;
   } else {
     html += `<div class="ctx-head">${escapeHtml(target.kind)} · ${escapeHtml(target.name)}</div>`;
@@ -266,7 +266,7 @@ export function handleCtxAction(act, target, world, arg) {
     case 'new-host':   addNew('host', world); break;
     case 'new-router': addNew('router', world); break;
     case 'fit':        fitView(); break;
-    case 'sample':     loadSample(); break;
+    case 'import':     bus.dispatchEvent(new CustomEvent('ui:import-requested')); break;
     case 'edit':
       state.selection = { kind: target.kind, name: target.name };
       bus.dispatchEvent(new CustomEvent('state:topology-changed'));

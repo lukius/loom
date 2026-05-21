@@ -184,7 +184,8 @@ There is no toolbar button for links: they're created **implicitly** by
 attaching two interfaces to a fabric whose YAML is declared under
 `links:`. The most common way to add a link via the canvas:
 
-1. Add the link via **Import YAML** with a small snippet, or
+1. Write the link into a YAML file on your computer and load it via
+   **Import → Browse local file…**, or
 2. Edit a router interface's network/link membership in the inspector.
 
 The dedicated **Add link** affordance is on the roadmap; for now, the
@@ -243,14 +244,15 @@ To build the sample topology from scratch:
      (`100.200.0.2`, cost 8), eth2 on `lan3` (`150.10.10.1`, cost 15).
    - `r3`: eth0 on `lan2` (`100.200.0.10`, cost 20), eth1 on `lan3`
      (`150.10.10.10`, cost 5).
-4. Add the link `p2p1: "10.0.0.0/30"` via Import YAML (the simplest
-   way today), then assign:
+4. Add the link `p2p1: "10.0.0.0/30"` by saving the snippet to a local
+   YAML file and loading it via **Import → Browse local file…** (the
+   simplest way today), then assign:
    - `r1.eth2` on `p2p1` (`10.0.0.1`, cost 5)
    - `r3.eth2` on `p2p1` (`10.0.0.2`, cost 5)
 
-Click **Export** and you should get back exactly the contents of
-`samples/sample.yaml` (modulo coordinate metadata, which the SPA stores
-locally).
+Click **Export**, pick a folder and filename in the save dialog, and
+the saved file should be the contents of `samples/sample.yaml` (modulo
+coordinate metadata, which the SPA stores locally).
 
 ---
 

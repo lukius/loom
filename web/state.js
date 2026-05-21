@@ -24,6 +24,10 @@ export const state = {
   /* transient sim state — NAT snapshots keyed by device name; populated by
      the `nat_table_changed` WS event. Not persisted; reset on loadSample. */
   natTables: {},
+  /* basename of the YAML file the topology was last loaded from (via Import
+     or, on first boot, via the server's LOOM_TOPOLOGY). Used to derive the
+     default Export filename. Persisted; null until set. */
+  sourceName: null,
 };
 
 /* Defaults used when restoring a legacy session that didn't persist `display`. */
@@ -114,6 +118,7 @@ export function persist() {
       links: state.links,
       view: state.view,
       display: state.display,
+      sourceName: state.sourceName,
     }));
     setSave('autosaved');
   } catch (_) {}
@@ -130,8 +135,22 @@ export function restore() {
     state.links = (d.links && typeof d.links === 'object' && !Array.isArray(d.links)) ? d.links : {};
     if (d.view) state.view = d.view;
     state.display = { ...DISPLAY_DEFAULTS, ...(d.display || {}) };
+    state.sourceName = (typeof d.sourceName === 'string' && d.sourceName) ? d.sourceName : null;
     return true;
   } catch (_) { return false; }
+}
+
+/* ---------- export filename ---------- */
+/* Derive the default filename for an Export from the basename of the YAML
+   the topology was last loaded from. Mirrors the server's session-file naming:
+   "foo.yaml" -> "foo.session.yaml". Idempotent on names that already carry
+   the suffix. Falls back to "topology.session.yaml" when nothing is loaded. */
+export function defaultExportFilename(sourceName) {
+  if (!sourceName) return 'topology.session.yaml';
+  const m = /^(.+?)(\.ya?ml)$/i.exec(sourceName);
+  if (!m) return `${sourceName}.session.yaml`;
+  const stem = m[1].replace(/\.session$/i, '');
+  return `${stem}.session${m[2]}`;
 }
 export function loadSample() {
   state.asName = SAMPLE.asName;

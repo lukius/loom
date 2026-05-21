@@ -10,6 +10,7 @@ from entities.event import EventTracer
 
 from .events import EventBus
 from .routes import devices as device_routes
+from .routes import files as files_routes
 from .routes import sim as sim_routes
 from .routes import topology as topology_routes
 from .routes import ws as ws_routes
@@ -32,9 +33,13 @@ def create_app() -> FastAPI:
     ).resolve()
     app.state.sim_state = SimState(source)
     app.state.event_bus = EventBus()
+    app.state.samples_dir = Path(
+        os.environ.get("LOOM_SAMPLES", _repo_root / "samples")
+    ).resolve()
 
     app.include_router(sim_routes.router)
     app.include_router(topology_routes.router)
+    app.include_router(files_routes.router)
     app.include_router(device_routes.router)
     app.include_router(ws_routes.router)
 

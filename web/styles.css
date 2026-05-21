@@ -1390,6 +1390,51 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slide-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
+/* import-topology picker (modal variant: file list + local-file button) */
+.modal-picker .modal-body { display: flex; flex-direction: column; gap: 18px; }
+.picker-section { display: flex; flex-direction: column; gap: 8px; }
+.picker-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+.picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.picker-list li { padding: 0; }
+.picker-list li + li { margin-top: 2px; }
+.picker-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 12.5px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background .1s, color .1s;
+}
+.picker-item:hover { background: var(--accent-bg); color: var(--accent); }
+.picker-empty {
+  padding: 16px 12px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.picker-browse { align-self: flex-start; }
+
 /* ============================================================
    toasts
    ============================================================ */

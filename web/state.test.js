@@ -4,6 +4,7 @@ import {
   STORAGE_KEY, THEME_KEY, LAYOUT_KEY, LAYOUT_DEF, LAYOUT_LIMITS, SAMPLE,
   NODE, HIT_PAD,
   persist, restore, loadSample, markDirty, setSave,
+  defaultExportFilename,
 } from './state.js';
 import { importYaml, exportYaml } from './yaml-io.js';
 
@@ -461,6 +462,43 @@ describe('constants', () => {
     expect(SAMPLE).toHaveProperty('links');
     expect(SAMPLE.links).toHaveProperty('p2p1');
     expect(SAMPLE.links.p2p1.cidr).toBe('10.0.0.0/30');
+  });
+});
+
+describe('sourceName / defaultExportFilename', () => {
+  it('state has a sourceName field, default null', () => {
+    expect(state).toHaveProperty('sourceName');
+    expect(state.sourceName).toBeNull();
+  });
+
+  it('persist/restore round-trips sourceName', () => {
+    state.sourceName = 'alpha.yaml';
+    persist();
+    resetState();
+    expect(state.sourceName).toBeNull();
+    restore();
+    expect(state.sourceName).toBe('alpha.yaml');
+  });
+
+  it('appends .session before the extension', () => {
+    expect(defaultExportFilename('sample.yaml')).toBe('sample.session.yaml');
+    expect(defaultExportFilename('sample.yml')).toBe('sample.session.yml');
+  });
+
+  it('falls back to topology.session.yaml when sourceName is empty', () => {
+    expect(defaultExportFilename(null)).toBe('topology.session.yaml');
+    expect(defaultExportFilename('')).toBe('topology.session.yaml');
+    expect(defaultExportFilename(undefined)).toBe('topology.session.yaml');
+  });
+
+  it('does not double-session a name that already carries the suffix', () => {
+    // If someone exported once with the suggested name, then re-imported it,
+    // the next export should still be `<stem>.session.yaml`, not `<stem>.session.session.yaml`.
+    expect(defaultExportFilename('sample.session.yaml')).toBe('sample.session.yaml');
+  });
+
+  it('appends a yaml extension when the source has none', () => {
+    expect(defaultExportFilename('weird')).toBe('weird.session.yaml');
   });
 });
 

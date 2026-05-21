@@ -29,9 +29,8 @@ From left to right:
 | Group | Control | What it does |
 |---|---|---|
 | Project | **Project name** | Editable AS name. Persisted; round-trips to/from YAML. |
-| Project | **Load sample** | Reset the canvas to the bundled sample topology. |
-| Project | **Import** | Open a modal to paste YAML; **Parse & load** replaces the canvas. |
-| Project | **Export** | Open a modal showing the current YAML; **Copy to clipboard** copies it. |
+| Project | **Import** | Open a picker listing the YAML topologies in `samples/`; click one to load it, or use **Browse local file…** to pick any `.yaml` on your computer. |
+| Project | **Export** | Open the browser's save dialog so you can pick a folder and filename for the current topology. The suggested name is the loaded source filename with a `.session` suffix (e.g. `sample.session.yaml`). |
 | Build | **LAN** (<kbd>N</kbd>) | Add a network rail at the canvas center. Disabled while running. |
 | Build | **Host** (<kbd>H</kbd>) | Add a host. Disabled while running. |
 | Build | **Router** (<kbd>R</kbd>) | Add a router. Disabled while running. |
