@@ -17,6 +17,7 @@ import {
   deleteSelected,
   openContextMenu,
   closeContextMenu,
+  handleCtxAction,
   Inspector,
 } from './inspector.js';
 import { Sim, RuntimeClient } from './sim.js';
@@ -643,6 +644,80 @@ describe('duplicate-* in paused sim', () => {
     expect(state.links['p2p1_1']).toBeDefined();
     // Mirrors addNew: link creation isn't a patch op (server has no add_link).
     expect(Sim.patch.some(o => o.op && o.op.startsWith('add_link'))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Right-click "Add host / router here" on a LAN must queue a patch op while
+// paused, mirroring the toolbar's addNew() — otherwise the new device exists
+// only in the SPA and Resume sees nothing to ship to the server.
+// ---------------------------------------------------------------------------
+describe('add-host-here / add-router-here in paused sim', () => {
+  beforeEach(() => {
+    Sim.state = 'paused';
+    Sim.patch = [];
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+  });
+  afterEach(() => {
+    Sim.state = 'idle';
+    Sim.patch = [];
+  });
+
+  it('add-host-here on lan1 records an add_host op attached to lan1', () => {
+    handleCtxAction('add-host-here', { kind: 'network', name: 'lan1' }, { x: 0, y: 0 });
+    const newName = Object.keys(state.hosts)[0];
+    expect(newName).toBeDefined();
+    expect(state.hosts[newName].network).toBe('lan1');
+    const op = Sim.patch.find(o => o.op === 'add_host' && o.name === newName);
+    expect(op).toBeDefined();
+    expect(op.network).toBe('lan1');
+  });
+
+  it('add-router-here on lan1 records an add_router op', () => {
+    handleCtxAction('add-router-here', { kind: 'network', name: 'lan1' }, { x: 0, y: 0 });
+    const newName = Object.keys(state.routers)[0];
+    expect(newName).toBeDefined();
+    const op = Sim.patch.find(o => o.op === 'add_router' && o.name === newName);
+    expect(op).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Editing the gateway of a host that was added during the current pause
+// window (i.e. has a pending add_host in Sim.patch) must NOT hit the server
+// via deviceCommand — the host doesn't exist there yet. The gateway must
+// land in local state and be carried by reconcilePatch on Resume.
+// ---------------------------------------------------------------------------
+describe('host gateway edit while host has a pending add_host', () => {
+  beforeEach(() => {
+    Sim.state = 'paused';
+    Sim.patch = [];
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+  });
+  afterEach(() => {
+    Sim.state = 'idle';
+    Sim.patch = [];
+    vi.restoreAllMocks();
+  });
+
+  it('skips RuntimeClient.deviceCommand and updates state locally', async () => {
+    // Drop in a host the way the right-click context menu would.
+    handleCtxAction('add-host-here', { kind: 'network', name: 'lan1' }, { x: 0, y: 0 });
+    const name = Object.keys(state.hosts)[0];
+    state.hosts[name].address = '10.0.0.5';
+    state.selection = { kind: 'host', name };
+    const spy = vi.spyOn(RuntimeClient, 'deviceCommand').mockResolvedValue({ ok: true, output: '' });
+
+    renderHostInsp(name, document.getElementById('inspector'));
+    const gw = document.getElementById('f-gw');
+    gw.value = '10.0.0.1';
+    gw.dispatchEvent(new Event('change'));
+    // The handler is async — drain microtasks before checking.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(state.hosts[name].gateway).toBe('10.0.0.1');
   });
 });
 

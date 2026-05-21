@@ -168,6 +168,50 @@ test.describe('loom SPA - smoke', () => {
     expect(errors, errors.join('\n')).toEqual([]);
   });
 
+  test('right-click "Add host here" on a LAN while paused: gateway edit + resume ships the host to the server', async ({ page, request }) => {
+    // Regression: the right-click "Add host here" used to skip recording an
+    // add_host patch op, so the server never learned about the new host. The
+    // gateway editor then tried to push a set_gateway shell command at a host
+    // the server didn't know existed, raising an error toast.
+
+    // Cycle through start → pause so the sim is in 'paused' state.
+    await page.locator('#tb-play').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
+    await page.locator('#tb-pause').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/paused/, { timeout: 8000 });
+
+    // Right-click on lan1 and pick "Add host here".
+    await page.locator('#nodes-layer g.node.network[data-name="lan1"]').click({ button: 'right' });
+    const menu = page.locator('div.ctx');
+    await expect(menu.locator('button[data-act="add-host-here"]')).toBeVisible();
+    await menu.locator('button[data-act="add-host-here"]').click();
+
+    // A fresh host is now selected in the inspector. Fill in IP + gateway.
+    const ip = page.locator('#inspector #f-addr');
+    await expect(ip).toBeVisible();
+    await ip.fill('200.100.0.99');
+    await ip.dispatchEvent('change');
+
+    // The bug: setting the gateway used to produce an error toast because
+    // the server didn't know about this host yet. After the fix it must not.
+    const gw = page.locator('#inspector #f-gw');
+    await gw.fill('200.100.0.1');
+    await gw.dispatchEvent('change');
+    // Microtasks need to settle; give the (async) handler a tick.
+    await page.waitForTimeout(150);
+    // No error-flavoured toast for Gateway should have appeared.
+    await expect(page.locator('.toast.error', { hasText: 'Gateway' })).toHaveCount(0);
+
+    // Resume — the pending add_host op carries the gateway to the server.
+    await page.locator('#tb-pause').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
+
+    // The host now exists on the server's session.
+    const topo = await (await request.get('/topology')).json();
+    expect(topo.yaml).toContain('200.100.0.99');
+    expect(topo.yaml).toContain('200.100.0.1');
+  });
+
   test('sim play -> pause -> resume -> stop toggles toolbar state', async ({ page }) => {
     const play = page.locator('#tb-play');
     const pause = page.locator('#tb-pause');

@@ -278,6 +278,7 @@ export function handleCtxAction(act, target, world, arg) {
       const name = uniqueName('h', state.hosts);
       state.hosts[name] = { network: target.name, address: '', x: net.x - 280, y: net.y };
       state.selection = { kind:'host', name };
+      recordPatchOp({ op: 'add_host', name, network: target.name, address: '' });
       markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
       break;
     }
@@ -289,6 +290,7 @@ export function handleCtxAction(act, target, world, arg) {
         interfaces: { eth0: { network: target.name, address: '', cost: 10 } },
       };
       state.selection = { kind:'router', name };
+      recordPatchOp({ op: 'add_router', name, interfaces: [] });
       markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
       break;
     }
@@ -650,8 +652,14 @@ export function renderHostInsp(name, elI) {
   if (gwInp) {
     gwInp.addEventListener('change', async (e) => {
       const v = e.target.value.trim();
+      // A host added during the current pause window doesn't exist on the
+      // server yet (its add_host is still in Sim.patch). Skip the live shell
+      // command in that case — reconcilePatch will fold the latest gateway
+      // into the add_host op on Resume.
+      const isPendingAdd = Sim.state === 'paused'
+        && Sim.patch.some(op => op.op === 'add_host' && op.name === name);
       // While the sim is running, push the new gateway live so routes update immediately.
-      if (Sim.state === 'running' || Sim.state === 'paused') {
+      if (!isPendingAdd && (Sim.state === 'running' || Sim.state === 'paused')) {
         if (!v) {
           toast('Clearing the gateway requires stopping the simulation', 'info', 'Gateway');
           e.target.value = state.hosts[name].gateway || '';
