@@ -1194,12 +1194,14 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 .iface .ihead {
   display: flex; align-items: center; justify-content: space-between;
 }
+/* Summary line is supporting context — fade it next to the bold iface pill. */
 .iface .iface-summary {
   font-family: 'Geist Mono', ui-monospace, monospace;
   font-size: 10.5px;
   color: var(--text-3);
-  margin-left: 4px;
+  margin-left: 6px;
   font-weight: 400;
+  opacity: 0.78;
 }
 .iface .ihead .ttl {
   display: inline-flex; align-items: center; gap: 6px;
@@ -1207,14 +1209,18 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
   font-weight: 500;
   color: var(--text-2);
 }
+/* The interface name is the visual anchor on a collapsed row, so pump it up:
+   bigger, bolder, slightly more padding. The summary text fades behind it. */
 .iface .ihead .ttl .pill {
   font-family: 'Geist Mono', ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--rtr-text);
   background: var(--rtr-bg);
   border: 1px solid var(--rtr-border);
   border-radius: 4px;
-  padding: 1px 5px;
+  padding: 2px 7px;
 }
 .iface .ihead .del {
   width: 22px; height: 22px;

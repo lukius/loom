@@ -434,7 +434,10 @@ describe('renderRouterInsp — fabric-type dropdown', () => {
     expect(state.routers.r1.interfaces.eth0.link).toBeUndefined();
   });
 
-  it('iface summary shows "link p2p1" when link is set', () => {
+  it('iface summary lists the fabric name and address, but not the cost or a fabric-kind prefix', () => {
+    // Collapsed-row summary is "<fabric> · <address>" — short. Kind is
+    // implicit from context (and explicit once the iface is expanded);
+    // cost is editable inline once expanded so it's not worth a glance.
     state.links = { p2p1: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
     state.routers = {
       r1: { x: 0, y: 0, interfaces: { eth0: { link: 'p2p1', address: '10.0.0.1', cost: 5 } } },
@@ -443,7 +446,7 @@ describe('renderRouterInsp — fabric-type dropdown', () => {
     renderRouterInsp('r1', elI);
     const summary = elI.querySelector('.iface-summary');
     expect(summary).not.toBeNull();
-    expect(summary.textContent).toContain('link p2p1');
+    expect(summary.textContent.trim()).toBe('p2p1 · 10.0.0.1');
   });
 });
 

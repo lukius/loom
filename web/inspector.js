@@ -770,9 +770,7 @@ export function renderRouterInsp(name, elI) {
           ${ifaces.map(([ifn, ifc]) => {
             // Determine current fabric type for this interface
             const ifFabric = ifc.link !== undefined ? 'link' : 'network';
-            const fabricSummary = ifFabric === 'link'
-              ? `link ${escapeHtml(ifc.link || '—')}`
-              : escapeHtml(ifc.network || '—');
+            const fabricSummary = escapeHtml(ifc[ifFabric] || '—');
             const fabricNameOpts = ifFabric === 'link' ? linkOptsFor(ifc.link) : netOptsFor(ifc.network);
             const openAttr = openIfaces.has(ifn) ? ' open' : '';
             return `
@@ -780,7 +778,7 @@ export function renderRouterInsp(name, elI) {
               <summary class="ihead">
                 <span class="ttl">
                   <span class="pill">${escapeHtml(ifn)}</span>
-                  <span class="iface-summary">${fabricSummary} · ${escapeHtml(ifc.address || 'no ip')} · cost=${escapeHtml(String(ifc.cost ?? '—'))}</span>
+                  <span class="iface-summary">${fabricSummary} · ${escapeHtml(ifc.address || 'no ip')}</span>
                 </span>
                 <button class="del" data-del-iface="${escapeHtml(ifn)}" title="Remove">
                   <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l6 6M9 3l-6 6"/></svg>
