@@ -58,8 +58,16 @@ function addressValidatorFor(fabricKind, fabricName, selfRef) {
     // route via link-state, but no traffic could ever reach it.
     if (fabricName) {
       const fabric = (fabricKind === 'link' ? state.links : state.networks)[fabricName];
-      if (fabric && fabric.cidr && !addressInCidr(v, fabric.cidr)) {
-        return { ok: false, reason: `not in ${fabricName} (${fabric.cidr})` };
+      if (fabric) {
+        if (!fabric.cidr) {
+          // Flagging an empty-CIDR fabric is the early-warning the user wants:
+          // without it, the server's patch validator only catches the bad
+          // address on Resume, which is much later.
+          return { ok: false, reason: `${fabricName} has no CIDR set yet` };
+        }
+        if (!addressInCidr(v, fabric.cidr)) {
+          return { ok: false, reason: `not in ${fabricName} (${fabric.cidr})` };
+        }
       }
     }
     const owner = findAddressOwner(v, fabricKind, fabricName, selfRef);
@@ -647,7 +655,9 @@ export function renderHostInsp(name, elI) {
       h.network = e.target.value;
       delete h.link;
     }
-    markDirty(); renderCanvas(); renderNav();
+    // Re-render so the address validator re-wires against the new fabric's
+    // CIDR; otherwise the closure keeps pointing at the previous fabric.
+    markDirty(); renderInspector(); renderCanvas(); renderNav();
   });
   const newLinkBtn = elI.querySelector('#f-new-link');
   if (newLinkBtn) {
@@ -886,7 +896,9 @@ export function renderRouterInsp(name, elI) {
         iff.network = s.value;
         delete iff.link;
       }
-      markDirty(); renderCanvas(); renderNav();
+      // Re-render so the iface address validator re-wires against the new
+      // fabric's CIDR; otherwise the validator's closure keeps the old ref.
+      markDirty(); renderInspector(); renderCanvas(); renderNav();
     });
   });
   // "+ New link" button next to each iface's fabric-name select — creates a

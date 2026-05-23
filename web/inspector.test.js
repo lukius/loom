@@ -1109,6 +1109,117 @@ describe('renderHostInsp — host address must fall inside network CIDR', () => 
     expect(err.classList.contains('show')).toBe(true);
     expect(err.textContent).toMatch(/lan1|200\.100\.0\.0/);
   });
+
+  it('flags a link-attached host address outside the link CIDR', () => {
+    state.hosts = { h1: { link: 'p2p1', address: '10.0.0.5', x: 0, y: 0 } };
+    state.links = { p2p1: { cidr: '192.168.0.0/30', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const err = elI.querySelector('#f-addr-err');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toMatch(/p2p1|192\.168\.0\.0/);
+  });
+});
+
+describe('renderRouterInsp — iface on link address must fall inside link CIDR', () => {
+  it('flags a router-iface address outside the link CIDR', () => {
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { link: 'p2p1', address: '10.0.0.5', cost: 5 } } },
+    };
+    state.links = { p2p1: { cidr: '192.168.0.0/30', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const err = elI.querySelector('[data-iface-addr-err="eth0"]');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toMatch(/p2p1|192\.168\.0\.0/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Changing a host or router-iface's fabric (e.g. moving it from one link to
+// another) must re-validate the address against the *new* fabric's CIDR.
+// Without a re-wire of the field validator, a previously-valid address can
+// silently fall out of the new CIDR.
+// ---------------------------------------------------------------------------
+describe('host address is flagged when its fabric has no CIDR yet', () => {
+  it('flags a host address when the link CIDR is empty (cannot reach the address otherwise)', () => {
+    // The user's case: new link starts with cidr=''. Setting an address on a
+    // host attached to that link should fail validation immediately so the
+    // user sees the problem before hitting Resume.
+    state.hosts = { h1: { link: 'p2p1', address: '10.0.0.31', x: 0, y: 0 } };
+    state.links = { p2p1: { cidr: '', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const err = elI.querySelector('#f-addr-err');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toMatch(/p2p1/);
+  });
+
+  it('flags a host address when the network CIDR is empty', () => {
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const err = elI.querySelector('#f-addr-err');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toMatch(/lan1/);
+  });
+
+  it('stays silent when the host has no fabric set at all (unattached)', () => {
+    state.hosts = { h1: { network: '', address: '10.0.0.5', x: 0, y: 0 } };
+    state.networks = {};
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const err = elI.querySelector('#f-addr-err');
+    expect(err.classList.contains('show')).toBe(false);
+  });
+});
+
+describe('switching a host between fabrics rechecks the address CIDR', () => {
+  it('flags the host address after the link selection changes to one with a different CIDR', () => {
+    state.hosts = { h1: { link: 'p2p1', address: '192.168.0.1', x: 0, y: 0 } };
+    state.links = {
+      p2p1: { cidr: '192.168.0.0/30', x: 0, y: 0 },
+      p2p2: { cidr: '10.0.0.0/30', x: 0, y: 0 },
+    };
+    // The fabric-name change handler re-renders via renderInspector, which
+    // routes off state.selection — set it so the re-render hits the host
+    // path and produces the #f-addr-err span we want to inspect.
+    state.selection = { kind: 'host', name: 'h1' };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    // Initially valid for p2p1.
+    expect(elI.querySelector('#f-addr-err').classList.contains('show')).toBe(false);
+    // User picks p2p2 from the link dropdown — same address now falls outside.
+    const sel = elI.querySelector('#f-fabric-name');
+    sel.value = 'p2p2';
+    sel.dispatchEvent(new Event('change'));
+    expect(elI.querySelector('#f-addr-err').classList.contains('show')).toBe(true);
+    expect(elI.querySelector('#f-addr-err').textContent).toMatch(/p2p2|10\.0\.0\.0/);
+  });
+});
+
+describe('switching a router interface between fabrics rechecks the address CIDR', () => {
+  it('flags the iface address after the fabric-name selection changes', () => {
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: {
+        eth0: { link: 'p2p1', address: '192.168.0.1', cost: 5 },
+      } },
+    };
+    state.links = {
+      p2p1: { cidr: '192.168.0.0/30', x: 0, y: 0 },
+      p2p2: { cidr: '10.0.0.0/30', x: 0, y: 0 },
+    };
+    state.selection = { kind: 'router', name: 'r1' };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    expect(elI.querySelector('[data-iface-addr-err="eth0"]').classList.contains('show')).toBe(false);
+    const sel = elI.querySelector('[data-iface-fabric-name="eth0"]');
+    sel.value = 'p2p2';
+    sel.dispatchEvent(new Event('change'));
+    expect(elI.querySelector('[data-iface-addr-err="eth0"]').classList.contains('show')).toBe(true);
+    expect(elI.querySelector('[data-iface-addr-err="eth0"]').textContent).toMatch(/p2p2|10\.0\.0\.0/);
+  });
 });
 
 // ---------------------------------------------------------------------------
