@@ -225,6 +225,22 @@ describe('toast', () => {
     // Inner timeout removes the element.
     expect(wrap.children.length).toBe(0);
   });
+
+  it('keeps an error toast on screen longer than a default toast', () => {
+    // Error toasts must be obvious — they linger past the point a default
+    // toast would have been removed from the DOM so the user has time to
+    // read them.
+    toast('boom', 'error');
+    const wrap = document.getElementById('toasts');
+    expect(wrap.children.length).toBe(1);
+    // 2400 + 320 == the default dismissal-and-fade window. An error toast
+    // must still be in the DOM at this point.
+    vi.advanceTimersByTime(2400 + 320);
+    expect(wrap.children.length).toBe(1);
+    // Advance well past the longer error window; toast is now gone.
+    vi.advanceTimersByTime(5000 + 320);
+    expect(wrap.children.length).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

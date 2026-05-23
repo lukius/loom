@@ -1468,7 +1468,28 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
   font-size: 11px;
 }
 .toast.ok .icon { background: color-mix(in srgb, var(--pos) 15%, transparent); color: var(--pos); }
-.toast.error .icon { background: color-mix(in srgb, var(--neg) 15%, transparent); color: var(--neg); }
+.toast.error {
+  /* Errors must be obvious: red left stripe, red-tinted bg, heavier text. */
+  min-width: 280px;
+  border-color: color-mix(in srgb, var(--neg) 45%, var(--border));
+  border-left: 4px solid var(--neg);
+  background: color-mix(in srgb, var(--neg) 8%, var(--bg));
+  font-size: 13px;
+  font-weight: 500;
+  animation: toast-in-bump .28s ease both;
+}
+.toast.error .icon {
+  width: 18px; height: 18px;
+  background: color-mix(in srgb, var(--neg) 22%, var(--bg));
+  color: var(--neg);
+}
+.toast.error .body .lab { color: var(--neg); font-weight: 600; }
+.toast.error .body .msg { color: var(--text); }
+@keyframes toast-in-bump {
+  0%   { opacity: 0; transform: translateY(6px) scale(0.97); }
+  60%  { opacity: 1; transform: translateY(-2px) scale(1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
 .toast.info {
   /* keep the opaque base bg; --accent-bg in dark mode is rgba(...,0.10)
      which would let the canvas bleed through. Tint via a left accent stripe instead. */

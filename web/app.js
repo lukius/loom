@@ -77,7 +77,6 @@ document.getElementById('tb-toggle-ifaces').addEventListener('click', () => {
     try {
       await RuntimeClient.setRefreshInterval(v);
       lastGood = v;
-      toast(`Keepalive set to ${v}s`, 'info', 'Keepalive');
     } catch (err) {
       toast(`Failed: ${err.message}`, 'error', 'Keepalive');
       inp.value = lastGood;
