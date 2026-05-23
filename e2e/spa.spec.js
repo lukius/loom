@@ -212,6 +212,45 @@ test.describe('loom SPA - smoke', () => {
     expect(topo.yaml).toContain('200.100.0.1');
   });
 
+  test('right-click "Add router here" on a LAN while paused: cost edit + resume ships the router to the server', async ({ page, request }) => {
+    // Regression: editing the cost of an interface on a freshly-added
+    // router used to queue an update_cost op for a router the server
+    // didn't know about yet. Patch validation then failed with
+    // "interface_not_found" because validators run against current
+    // server state, not against state-after-applying-the-patch.
+
+    await page.locator('#tb-play').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
+    await page.locator('#tb-pause').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/paused/, { timeout: 8000 });
+
+    await page.locator('#nodes-layer g.node.network[data-name="lan1"]').click({ button: 'right' });
+    await page.locator('div.ctx button[data-act="add-router-here"]').click();
+
+    // Each interface block in the inspector is a <details> that starts
+    // collapsed — expand eth0 so its IP + cost inputs are visible.
+    await page.locator('#inspector details.iface[data-iface="eth0"]').evaluate(d => d.open = true);
+
+    const ip = page.locator('#inspector [data-iface-addr="eth0"]');
+    await expect(ip).toBeVisible();
+    await ip.fill('200.100.0.77');
+    await ip.dispatchEvent('input');
+
+    const cost = page.locator('#inspector [data-iface-cost="eth0"]');
+    await cost.fill('42');
+    await cost.dispatchEvent('input');
+    await page.waitForTimeout(150);
+
+    // Resume — no validator error toast.
+    await page.locator('#tb-pause').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
+    await expect(page.locator('.toast.error')).toHaveCount(0);
+
+    // The router landed on the server with the chosen address.
+    const topo = await (await request.get('/topology')).json();
+    expect(topo.yaml).toContain('200.100.0.77');
+  });
+
   test('sim play -> pause -> resume -> stop toggles toolbar state', async ({ page }) => {
     const play = page.locator('#tb-play');
     const pause = page.locator('#tb-pause');

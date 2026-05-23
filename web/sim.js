@@ -94,6 +94,19 @@ export function recordPatchOp(op) {
   }
 }
 
+/* Returns true when `name` is the target of a pending add_<kind> op in the
+ * current pause window — meaning the server hasn't seen this entity yet.
+ * Live patch ops that reference such an entity (update_cost on a new
+ * router's interface, set_gateway on a new host) must be skipped, because
+ * the server validates the whole patch before applying any of it. Their
+ * effect is carried instead by reconcilePatch, which rebuilds the
+ * pending add_<kind> op with the latest state at Resume time. */
+export function hasPendingAdd(kind, name) {
+  if (!Sim || Sim.state !== 'paused') return false;
+  const opKind = `add_${kind}`;
+  return Sim.patch.some(op => op.op === opKind && op.name === name);
+}
+
 export function updatePatchIndicator() {
   const pause = document.getElementById('tb-pause');
   if (!pause) return;

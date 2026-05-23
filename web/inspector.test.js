@@ -688,6 +688,40 @@ describe('add-host-here / add-router-here in paused sim', () => {
 // via deviceCommand — the host doesn't exist there yet. The gateway must
 // land in local state and be carried by reconcilePatch on Resume.
 // ---------------------------------------------------------------------------
+// Same shape as the gateway-on-pending-host bug: editing the cost of an
+// interface on a freshly-added router used to queue an `update_cost` op
+// that referenced a router the server didn't know about yet, so Resume
+// raised "interface_not_found" during patch validation.
+describe('cost edit while router has a pending add_router', () => {
+  beforeEach(() => {
+    Sim.state = 'paused';
+    Sim.patch = [];
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+  });
+  afterEach(() => {
+    Sim.state = 'idle';
+    Sim.patch = [];
+  });
+
+  it('does not queue update_cost; cost still lands in local state for reconcilePatch', () => {
+    handleCtxAction('add-router-here', { kind: 'network', name: 'lan1' }, { x: 0, y: 0 });
+    const name = Object.keys(state.routers)[0];
+    state.selection = { kind: 'router', name };
+
+    renderRouterInsp(name, document.getElementById('inspector'));
+    const costInp = document.querySelector('[data-iface-cost="eth0"]');
+    costInp.value = '25';
+    costInp.dispatchEvent(new Event('input'));
+
+    // Update_cost MUST NOT have been queued — the server can't apply it
+    // until the add_router op has run, and they're validated together.
+    expect(Sim.patch.some(o => o.op === 'update_cost' && o.router === name)).toBe(false);
+    // Local state still reflects the new cost; reconcilePatch will fold it
+    // into the rebuilt add_router op on Resume.
+    expect(state.routers[name].interfaces.eth0.cost).toBe(25);
+  });
+});
+
 describe('host gateway edit while host has a pending add_host', () => {
   beforeEach(() => {
     Sim.state = 'paused';

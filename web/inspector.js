@@ -9,7 +9,7 @@ import {
   renderCanvas, toggleNetworkOrientation, collectLinkEndpoints,
   startLinkWizard,
 } from './canvas.js';
-import { Sim, RuntimeClient, isTopologyLocked, recordPatchOp } from './sim.js';
+import { Sim, RuntimeClient, isTopologyLocked, recordPatchOp, hasPendingAdd } from './sim.js';
 
 /* ---------- Inline validation helpers ---------- */
 
@@ -656,8 +656,7 @@ export function renderHostInsp(name, elI) {
       // server yet (its add_host is still in Sim.patch). Skip the live shell
       // command in that case — reconcilePatch will fold the latest gateway
       // into the add_host op on Resume.
-      const isPendingAdd = Sim.state === 'paused'
-        && Sim.patch.some(op => op.op === 'add_host' && op.name === name);
+      const isPendingAdd = hasPendingAdd('host', name);
       // While the sim is running, push the new gateway live so routes update immediately.
       if (!isPendingAdd && (Sim.state === 'running' || Sim.state === 'paused')) {
         if (!v) {
@@ -911,7 +910,10 @@ export function renderRouterInsp(name, elI) {
       const v = parseInt(i.value, 10);
       const ifn = i.getAttribute('data-iface-cost');
       state.routers[name].interfaces[ifn].cost = isNaN(v) ? 0 : v;
-      if (!isNaN(v) && v > 0) {
+      // Skip update_cost when the router itself is a pending add — the server
+      // doesn't know about it yet, and reconcilePatch will fold the latest
+      // cost into the rebuilt add_router op on Resume.
+      if (!isNaN(v) && v > 0 && !hasPendingAdd('router', name)) {
         recordPatchOp({ op: 'update_cost', router: name, iface: ifn, cost: v });
       }
       markDirty(); renderCanvas();
