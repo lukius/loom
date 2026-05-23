@@ -194,10 +194,10 @@ test.describe('loom SPA - smoke', () => {
 
     // The bug: setting the gateway used to produce an error toast because
     // the server didn't know about this host yet. After the fix it must not.
+    // (The gateway is a <select> populated from routers on the same LAN —
+    // 200.100.0.1 is r1's eth0 in the sample topology, so it's available.)
     const gw = page.locator('#inspector #f-gw');
-    await gw.fill('200.100.0.1');
-    await gw.dispatchEvent('change');
-    // Microtasks need to settle; give the (async) handler a tick.
+    await gw.selectOption('200.100.0.1');
     await page.waitForTimeout(150);
     // No error-flavoured toast for Gateway should have appeared.
     await expect(page.locator('.toast.error', { hasText: 'Gateway' })).toHaveCount(0);

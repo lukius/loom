@@ -735,6 +735,11 @@ describe('host gateway edit while host has a pending add_host', () => {
   });
 
   it('skips RuntimeClient.deviceCommand and updates state locally', async () => {
+    // Need a peer router on lan1 so the gateway dropdown includes 10.0.0.1
+    // as a selectable option.
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.0.0.1', cost: 5 } } },
+    };
     // Drop in a host the way the right-click context menu would.
     handleCtxAction('add-host-here', { kind: 'network', name: 'lan1' }, { x: 0, y: 0 });
     const name = Object.keys(state.hosts)[0];
@@ -983,24 +988,48 @@ describe('renderHostInsp — inline IP validation', () => {
     expect(err.classList.contains('show')).toBe(false);
   });
 
-  it('shows error for invalid gateway in #f-gw', () => {
-    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', gateway: 'notanip', x: 0, y: 0 } };
-    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
-    const elI = document.getElementById('inspector');
-    renderHostInsp('h1', elI);
-    const err = elI.querySelector('#f-gw-err');
-    expect(err).not.toBeNull();
-    expect(err.classList.contains('show')).toBe(true);
-    expect(err.textContent).toBe('not a valid IPv4 address');
-  });
-
-  it('shows no error for empty #f-gw', () => {
+  it('renders #f-gw as a SELECT, not a free-text input', () => {
     state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
     state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
     const elI = document.getElementById('inspector');
     renderHostInsp('h1', elI);
-    const err = elI.querySelector('#f-gw-err');
-    expect(err.classList.contains('show')).toBe(false);
+    const gw = elI.querySelector('#f-gw');
+    expect(gw).not.toBeNull();
+    expect(gw.tagName).toBe('SELECT');
+  });
+
+  it('populates #f-gw with router interface IPs on the same fabric', () => {
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 }, lan2: { cidr: '20.0.0.0/24', x: 0, y: 0 } };
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.0.0.1', cost: 5 } } },
+      r2: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.0.0.254', cost: 5 } } },
+      // r3 is on lan2 — must NOT appear in lan1-host's gateway dropdown.
+      r3: { x: 0, y: 0, interfaces: { eth0: { network: 'lan2', address: '20.0.0.1', cost: 5 } } },
+    };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const gw = elI.querySelector('#f-gw');
+    const values = Array.from(gw.options).map(o => o.value);
+    expect(values).toContain('10.0.0.1');
+    expect(values).toContain('10.0.0.254');
+    expect(values).not.toContain('20.0.0.1');
+    // Empty value lets the user clear the gateway.
+    expect(values).toContain('');
+  });
+
+  it('preserves a host gateway that has no matching peer as a stale option', () => {
+    // Host carries a gateway from a router that's been removed; the dropdown
+    // must keep the value selectable so the user can see and replace it.
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', gateway: '10.0.0.99', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.routers = {};
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const gw = elI.querySelector('#f-gw');
+    const values = Array.from(gw.options).map(o => o.value);
+    expect(values).toContain('10.0.0.99');
+    expect(gw.value).toBe('10.0.0.99');
   });
 });
 
@@ -1055,6 +1084,30 @@ describe('renderRouterInsp — inline IP validation for iface address', () => {
     input.value = '10.0.0.1';
     input.dispatchEvent(new Event('input'));
     expect(err.classList.contains('show')).toBe(false);
+  });
+
+  it('flags an iface address that falls outside the network CIDR', () => {
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.50.50.1', cost: 5 } } },
+    };
+    state.networks = { lan1: { cidr: '200.100.0.0/24', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const err = elI.querySelector('[data-iface-addr-err="eth0"]');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toMatch(/lan1|200\.100\.0\.0/);
+  });
+});
+
+describe('renderHostInsp — host address must fall inside network CIDR', () => {
+  it('flags a host address outside the network CIDR', () => {
+    state.hosts = { h1: { network: 'lan1', address: '10.50.50.5', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '200.100.0.0/24', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const err = elI.querySelector('#f-addr-err');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toMatch(/lan1|200\.100\.0\.0/);
   });
 });
 
@@ -1146,9 +1199,11 @@ describe('renderRouterInsp — duplicate-address inline check', () => {
   });
 
   it('does NOT flag a router interface whose siblings sit on different LANs', () => {
+    // Both LAN CIDRs cover 10.0.0.5 so that the only effect under test is the
+    // cross-LAN duplicate-address check, not the in-CIDR containment check.
     state.networks = {
       lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 },
-      lan2: { cidr: '10.0.1.0/24', x: 0, y: 0 },
+      lan2: { cidr: '10.0.0.0/16', x: 0, y: 0 },
     };
     state.routers = {
       r1: { x: 0, y: 0, interfaces: {

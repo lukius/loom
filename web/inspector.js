@@ -52,6 +52,16 @@ function findAddressOwner(addr, fabricKind, fabricName, selfRef) {
 function addressValidatorFor(fabricKind, fabricName, selfRef) {
   return (v) => {
     if (!isValidIpv4(v)) return { ok: false, reason: 'not a valid IPv4 address' };
+    // Containment: an interface address only makes sense inside its fabric's
+    // CIDR. Without this check, the user could attach a router to lan1 with an
+    // address from a different subnet — neighbours would still flood the bogus
+    // route via link-state, but no traffic could ever reach it.
+    if (fabricName) {
+      const fabric = (fabricKind === 'link' ? state.links : state.networks)[fabricName];
+      if (fabric && fabric.cidr && !addressInCidr(v, fabric.cidr)) {
+        return { ok: false, reason: `not in ${fabricName} (${fabric.cidr})` };
+      }
+    }
     const owner = findAddressOwner(v, fabricKind, fabricName, selfRef);
     if (owner) return { ok: false, reason: `already used by ${owner}` };
     return { ok: true };
@@ -544,6 +554,28 @@ export function renderHostInsp(name, elI) {
     ? (linkOpts ? '<option value="">— unattached</option>' + linkOpts : '<option value="">(no links)</option>')
     : (netOpts  ? '<option value="">— unattached</option>' + netOpts  : '<option value="">(no networks)</option>');
   const gwHidden = fabricType === 'link';
+  // Gateway dropdown: list every router-interface IP attached to the host's
+  // fabric. Picking a known peer beats free-text typos. A "stale" entry
+  // preserves a previously-set gateway whose router was since removed so
+  // the user can see and replace it.
+  const peerOpts = [];
+  if (fabricType === 'network' && host.network) {
+    for (const [rn, r] of Object.entries(state.routers)) {
+      for (const [ifn, iff] of Object.entries(r.interfaces || {})) {
+        if (iff.network === host.network && iff.address) {
+          peerOpts.push({ ip: iff.address, label: `${rn}/${ifn} · ${iff.address}` });
+        }
+      }
+    }
+  }
+  let gwOptions = '<option value="">— none</option>';
+  for (const p of peerOpts) {
+    const sel = host.gateway === p.ip ? 'selected' : '';
+    gwOptions += `<option value="${escapeHtml(p.ip)}" ${sel}>${escapeHtml(p.label)}</option>`;
+  }
+  if (host.gateway && !peerOpts.some(p => p.ip === host.gateway)) {
+    gwOptions += `<option value="${escapeHtml(host.gateway)}" selected>${escapeHtml(host.gateway)} · no peer</option>`;
+  }
   elI.innerHTML = `
     <div class="insp-head">
       <div class="pre"><span class="pill host">host</span></div>
@@ -576,9 +608,8 @@ export function renderHostInsp(name, elI) {
       </div>
       <div class="field" id="f-gw-field"${gwHidden ? ' hidden' : ''}>
         <label>Default gateway</label>
-        <input id="f-gw" value="${escapeHtml(host.gateway || '')}" spellcheck="false" placeholder="(none)" />
-        <span class="field-error" id="f-gw-err"></span>
-        <div class="hint">Must be an IP within the host's network.</div>
+        <select id="f-gw">${gwOptions}</select>
+        <div class="hint">Pick a router on this LAN. Empty leaves the host without a default route.</div>
       </div>
     </div>
     <div class="insp-routes" id="insp-routes" hidden></div>
@@ -681,11 +712,6 @@ export function renderHostInsp(name, elI) {
       else delete state.hosts[name].gateway;
       markDirty();
     });
-    wireFieldValidation(
-      gwInp,
-      elI.querySelector('#f-gw-err'),
-      v => isValidIpv4(v) ? { ok: true } : { ok: false, reason: 'not a valid IPv4 address' },
-    );
   }
   elI.querySelector('#f-del').addEventListener('click', deleteSelected);
   elI.querySelector('#f-dup').addEventListener('click', () => duplicateHost(name));
