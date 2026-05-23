@@ -1085,6 +1085,7 @@ export function addNew(kind, world) {
     const name = uniqueName('p2p', state.links);
     state.links[name] = { cidr: '', x: def.x, y: def.y };
     state.selection = { kind, name };
+    recordPatchOp({ op: 'add_link', name, address: '' });
     toast(`Created ${name} — assign two router/host interfaces to use it`, '', 'new link');
   } else if (kind === 'host') {
     const name = uniqueName('h', state.hosts);

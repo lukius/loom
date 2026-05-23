@@ -470,10 +470,12 @@ describe('reconcilePatch', () => {
   });
 
   it('passes through unknown ops (remove_*, update_cost) verbatim', () => {
-    const op1 = { op: 'remove_host', name: 'h1' };
-    const op2 = { op: 'update_cost', router: 'r1', iface: 'eth0', cost: 5 };
-    const out = reconcilePatch([op1, op2]);
-    expect(out).toEqual([op1, op2]);
+    // Note: reconcile sorts by op-class rank, so update_cost (rank 2) ends
+    // up before remove_host (rank 3) — but neither op gets rewritten.
+    const removeOp = { op: 'remove_host', name: 'h1' };
+    const updateOp = { op: 'update_cost', router: 'r1', iface: 'eth0', cost: 5 };
+    const out = reconcilePatch([removeOp, updateOp]);
+    expect(out).toEqual([updateOp, removeOp]);
   });
 
   it('does NOT mutate state.networks/hosts/routers (read-only transform)', () => {
@@ -489,14 +491,56 @@ describe('reconcilePatch', () => {
     expect({ n: state.networks, h: state.hosts, r: state.routers }).toEqual(before);
   });
 
-  it('preserves order across mixed op types', () => {
+  it('reorders ops by rank: fabric adds first, then device adds, then mutations, then removes', () => {
+    // The server's patch validator walks ops in order. If the SPA queued a
+    // host before its fabric (easy to do: click "Host" then "LAN"), naive
+    // emission breaks resume. reconcilePatch buries that by sorting.
     state.networks.lan1 = { cidr: '10.0.0.0/24' };
+    state.hosts.h1 = { network: 'lan1', address: '10.0.0.5' };
     const out = reconcilePatch([
       { op: 'remove_host', name: 'h2' },
-      { op: 'add_network', name: 'lan1' },
+      { op: 'add_host', name: 'h1' },
       { op: 'update_cost', router: 'r1', iface: 'eth0', cost: 5 },
+      { op: 'add_network', name: 'lan1' },
     ]);
-    expect(out.map(o => o.op)).toEqual(['remove_host', 'add_network', 'update_cost']);
+    expect(out.map(o => o.op)).toEqual(['add_network', 'add_host', 'update_cost', 'remove_host']);
+  });
+
+  it('emits link: instead of network: for a host attached to a p2p link', () => {
+    state.links.p2p1 = { cidr: '192.168.0.0/30' };
+    state.hosts.h1 = { link: 'p2p1', address: '192.168.0.1' };
+    const out = reconcilePatch([{ op: 'add_host', name: 'h1' }]);
+    expect(out).toEqual([
+      { op: 'add_host', name: 'h1', link: 'p2p1', address: '192.168.0.1' },
+    ]);
+  });
+
+  it('emits link: per-interface for a router with mixed network + link attachments', () => {
+    state.networks.lan1 = { cidr: '10.0.0.0/24' };
+    state.links.p2p1 = { cidr: '192.168.0.0/30' };
+    state.routers.r1 = {
+      x: 0, y: 0,
+      interfaces: {
+        eth0: { network: 'lan1', address: '10.0.0.1', cost: 5 },
+        eth1: { link: 'p2p1', address: '192.168.0.1', cost: 1 },
+      },
+    };
+    const out = reconcilePatch([{ op: 'add_router', name: 'r1' }]);
+    expect(out[0].interfaces).toEqual([
+      { name: 'eth0', network: 'lan1', address: '10.0.0.1', cost: 5 },
+      { name: 'eth1', link: 'p2p1', address: '192.168.0.1', cost: 1 },
+    ]);
+  });
+
+  it('rewrites add_link ops to carry the current cidr from state', () => {
+    state.links.p2p1 = { cidr: '192.168.5.0/30' };
+    const out = reconcilePatch([{ op: 'add_link', name: 'p2p1' }]);
+    expect(out).toEqual([{ op: 'add_link', name: 'p2p1', address: '192.168.5.0/30' }]);
+  });
+
+  it('drops add_link ops whose link was deleted before resume', () => {
+    const out = reconcilePatch([{ op: 'add_link', name: 'gone' }]);
+    expect(out).toEqual([]);
   });
 });
 

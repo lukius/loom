@@ -251,6 +251,48 @@ test.describe('loom SPA - smoke', () => {
     expect(topo.yaml).toContain('200.100.0.77');
   });
 
+  test('add link + two hosts on it during pause, then resume — patch ships without error', async ({ page, request }) => {
+    // The user's reported flow: while paused, create a p2p link and attach
+    // two hosts to it; Resume must ship the whole patch without an
+    // "invalid_patch -> add host" or "link_not_found" toast.
+
+    await page.locator('#tb-play').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
+    await page.locator('#tb-pause').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/paused/, { timeout: 8000 });
+
+    // Drive the SPA's data layer directly. We're testing the patch protocol
+    // and reconcile/resume pipeline, not the link-wizard UI: do the in-state
+    // mutations the wizard would do, and queue the same patch ops addNew()
+    // and add-host-here would queue.
+    await page.evaluate(async () => {
+      const sim = await import('/sim.js');
+      const st = await import('/state.js');
+      const { state, bus } = st;
+      // 1) New /30 link with a chosen CIDR.
+      state.links.p2p_new = { cidr: '192.168.7.0/30', x: 600, y: 400 };
+      sim.recordPatchOp({ op: 'add_link', name: 'p2p_new', address: '' });
+      // 2) Two link-attached hosts with valid /30 host addresses.
+      state.hosts.h_a = { link: 'p2p_new', address: '192.168.7.1', x: 400, y: 400 };
+      state.hosts.h_b = { link: 'p2p_new', address: '192.168.7.2', x: 800, y: 400 };
+      sim.recordPatchOp({ op: 'add_host', name: 'h_a', network: '', address: '' });
+      sim.recordPatchOp({ op: 'add_host', name: 'h_b', network: '', address: '' });
+      bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+    });
+
+    // Resume — server applies the patch atomically.
+    await page.locator('#tb-pause').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
+    // No error toast.
+    await expect(page.locator('.toast.error')).toHaveCount(0);
+
+    // Both new hosts are on the server now.
+    const topo = await (await request.get('/topology')).json();
+    expect(topo.yaml).toContain('192.168.7.1');
+    expect(topo.yaml).toContain('192.168.7.2');
+    expect(topo.yaml).toContain('p2p_new');
+  });
+
   test('sim play -> pause -> resume -> stop toggles toolbar state', async ({ page }) => {
     const play = page.locator('#tb-play');
     const pause = page.locator('#tb-pause');

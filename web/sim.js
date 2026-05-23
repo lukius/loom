@@ -121,29 +121,57 @@ export function updatePatchIndicator() {
 /* ---------- patch reconciliation ----------
    Read-only transform: rewrites add_* ops so they carry the latest values from
    `state` (cidr, address, gateway, interface costs) and drops ops whose target
-   was deleted before resume. Pure — does not mutate state. */
+   was deleted before resume. Emits the right fabric key for hosts/router
+   interfaces — `link` when attached to a point-to-point link, `network`
+   otherwise.
+
+   Ops are also topologically ordered before emission: fabric adds first
+   (add_network / add_link), then device adds (add_host / add_router),
+   then mutations (update_cost), then removes. The user's session can
+   queue adds in any sequence (e.g. host before its fabric); the server's
+   patch validator walks in order, so without this reorder the host op
+   would fail with "network_not_found" / "link_not_found".
+
+   Pure — does not mutate state. */
 export function reconcilePatch(patch) {
+  const rank = (op) => {
+    if (op.op === 'add_network' || op.op === 'add_link') return 0;
+    if (op.op === 'add_host' || op.op === 'add_router') return 1;
+    if (op.op === 'update_cost') return 2;
+    return 3;
+  };
+  const ordered = [...patch].sort((a, b) => rank(a) - rank(b));
   const out = [];
-  for (const op of patch) {
+  for (const op of ordered) {
     if (op.op === 'add_network') {
       const net = state.networks[op.name];
       if (!net) continue;  // dropped before resume
       out.push({ op: 'add_network', name: op.name, address: net.cidr });
+    } else if (op.op === 'add_link') {
+      const lk = state.links[op.name];
+      if (!lk) continue;
+      out.push({ op: 'add_link', name: op.name, address: lk.cidr });
     } else if (op.op === 'add_host') {
       const host = state.hosts[op.name];
       if (!host) continue;
-      const o = { op: 'add_host', name: op.name, network: host.network, address: host.address };
+      const o = { op: 'add_host', name: op.name, address: host.address };
+      if (host.link) o.link = host.link;
+      else o.network = host.network;
       if (host.gateway) o.gateway = host.gateway;
       out.push(o);
     } else if (op.op === 'add_router') {
       const router = state.routers[op.name];
       if (!router) continue;
-      const ifaces = Object.entries(router.interfaces || {}).map(([iname, iff]) => ({
-        name: iname,
-        network: iff.network,
-        address: iff.address,
-        cost: typeof iff.cost === 'number' ? iff.cost : (parseInt(iff.cost, 10) || 1),
-      }));
+      const ifaces = Object.entries(router.interfaces || {}).map(([iname, iff]) => {
+        const base = {
+          name: iname,
+          address: iff.address,
+          cost: typeof iff.cost === 'number' ? iff.cost : (parseInt(iff.cost, 10) || 1),
+        };
+        if (iff.link) base.link = iff.link;
+        else base.network = iff.network;
+        return base;
+      });
       out.push({ op: 'add_router', name: op.name, interfaces: ifaces });
     } else {
       out.push(op);  // remove_*, update_cost — pass through
