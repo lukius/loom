@@ -1249,6 +1249,11 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 }
 .iface .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .iface .grid.full { grid-template-columns: 1fr; }
+/* Fabric-type label fits "Network" — give the rest to the fabric-name select
+   so long link/network names don't get truncated under the dropdown's arrow. */
+.iface .grid.fabric-row { grid-template-columns: 110px 1fr; }
+/* Cost is a 1–3 digit field; pin it narrow and let IP take the rest of the row. */
+.iface .grid.addr-row { grid-template-columns: 1fr 84px; }
 .add-if {
   font-size: 11px;
   font-weight: 500;

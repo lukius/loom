@@ -1243,6 +1243,58 @@ describe('switching a host between fabrics rechecks the address CIDR', () => {
   });
 });
 
+describe('renderRouterInsp — interface details stay open across a fabric change', () => {
+  // The fabric-type / fabric-name selects live inside an <details> block.
+  // Their change handlers call renderInspector(), which rewrites the
+  // whole panel; without preserving the open state, the user loses the
+  // edit context mid-edit.
+  beforeEach(() => {
+    state.networks = {
+      lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 },
+      lan2: { cidr: '10.0.1.0/24', x: 0, y: 0 },
+    };
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: {
+        eth0: { network: 'lan1', address: '10.0.0.1', cost: 5 },
+        eth1: { network: 'lan2', address: '10.0.1.1', cost: 5 },
+      } },
+    };
+    state.selection = { kind: 'router', name: 'r1' };
+  });
+
+  it('keeps eth0 expanded after the user picks a different network', () => {
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const details = elI.querySelector('details.iface[data-iface="eth0"]');
+    details.open = true;
+    const sel = elI.querySelector('[data-iface-fabric-name="eth0"]');
+    sel.value = 'lan2';
+    sel.dispatchEvent(new Event('change'));
+    // After re-render, the same iface must still be expanded.
+    expect(
+      elI.querySelector('details.iface[data-iface="eth0"]').open,
+    ).toBe(true);
+    // Sibling iface that was closed should remain closed.
+    expect(
+      elI.querySelector('details.iface[data-iface="eth1"]').open,
+    ).toBe(false);
+  });
+
+  it('keeps the expanded iface open after the fabric-type change', () => {
+    state.links = { p2p1: { cidr: '192.168.0.0/30', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const details = elI.querySelector('details.iface[data-iface="eth0"]');
+    details.open = true;
+    const sel = elI.querySelector('[data-iface-fabric-type="eth0"]');
+    sel.value = 'link';
+    sel.dispatchEvent(new Event('change'));
+    expect(
+      elI.querySelector('details.iface[data-iface="eth0"]').open,
+    ).toBe(true);
+  });
+});
+
 describe('switching a router interface between fabrics rechecks the address CIDR', () => {
   it('flags the iface address after the fabric-name selection changes', () => {
     state.routers = {

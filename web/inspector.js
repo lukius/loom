@@ -736,6 +736,13 @@ export function renderRouterInsp(name, elI) {
   const router = state.routers[name];
   if (!router) { state.selection = null; return renderInspector(); }
   const ifaces = Object.entries(router.interfaces || {});
+  // Snapshot which iface <details> are currently expanded before we blow
+  // away the inspector innerHTML; we re-apply the open state below so the
+  // user doesn't lose the context they were editing in.
+  const openIfaces = new Set(
+    Array.from(elI.querySelectorAll('details.iface[open]'))
+      .map(d => d.getAttribute('data-iface')),
+  );
   // Build fabric-type-aware option lists for a given interface
   const netOptsFor = (sel) => {
     const opts = Object.keys(state.networks)
@@ -767,8 +774,9 @@ export function renderRouterInsp(name, elI) {
               ? `link ${escapeHtml(ifc.link || '—')}`
               : escapeHtml(ifc.network || '—');
             const fabricNameOpts = ifFabric === 'link' ? linkOptsFor(ifc.link) : netOptsFor(ifc.network);
+            const openAttr = openIfaces.has(ifn) ? ' open' : '';
             return `
-            <details class="iface" data-iface="${escapeHtml(ifn)}">
+            <details class="iface" data-iface="${escapeHtml(ifn)}"${openAttr}>
               <summary class="ihead">
                 <span class="ttl">
                   <span class="pill">${escapeHtml(ifn)}</span>
@@ -784,7 +792,7 @@ export function renderRouterInsp(name, elI) {
                   <input data-iface-name="${escapeHtml(ifn)}" value="${escapeHtml(ifn)}" spellcheck="false" />
                 </div>
               </div>
-              <div class="grid">
+              <div class="grid fabric-row">
                 <div class="pair">
                   <label>Fabric type</label>
                   <select data-iface-fabric-type="${escapeHtml(ifn)}">
@@ -800,17 +808,15 @@ export function renderRouterInsp(name, elI) {
                   </div>
                 </div>
               </div>
-              <div class="grid">
-                <div class="pair">
-                  <label>Cost</label>
-                  <input type="number" min="0" data-iface-cost="${escapeHtml(ifn)}" value="${ifc.cost ?? ''}" />
-                </div>
-              </div>
-              <div class="grid full">
+              <div class="grid addr-row">
                 <div class="pair">
                   <label>IP address</label>
                   <input data-iface-addr="${escapeHtml(ifn)}" value="${escapeHtml(ifc.address || '')}" spellcheck="false" placeholder="10.0.0.1" />
                   <span class="field-error" data-iface-addr-err="${escapeHtml(ifn)}"></span>
+                </div>
+                <div class="pair">
+                  <label>Cost</label>
+                  <input type="number" min="0" data-iface-cost="${escapeHtml(ifn)}" value="${ifc.cost ?? ''}" />
                 </div>
               </div>
             </details>
