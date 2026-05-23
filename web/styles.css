@@ -1192,8 +1192,14 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 }
 .iface[open] > summary::before { content: '▾'; }
 .iface .ihead {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center;
 }
+/* Push only the delete button to the right; the pill + summary stay
+   anchored next to the disclosure triangle so the chip column lines up
+   across every iface row. (`justify-content: space-between` here would
+   spread three flex items — marker, ttl, del — and leave the chip
+   floating in the middle of the row.) */
+.iface .ihead .del { margin-left: auto; }
 /* Summary line is supporting context — fade it next to the bold iface pill. */
 .iface .iface-summary {
   font-family: 'Geist Mono', ui-monospace, monospace;
