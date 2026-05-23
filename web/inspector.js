@@ -614,11 +614,11 @@ export function renderHostInsp(name, elI) {
         <input id="f-addr" value="${escapeHtml(host.address || '')}" spellcheck="false" placeholder="192.168.0.10" />
         <span class="field-error" id="f-addr-err"></span>
       </div>
-      <div class="field" id="f-gw-field"${gwHidden ? ' hidden' : ''}>
+      ${gwHidden ? '' : `<div class="field" id="f-gw-field">
         <label>Default gateway</label>
         <select id="f-gw">${gwOptions}</select>
         <div class="hint">Pick a router on this LAN. Empty leaves the host without a default route.</div>
-      </div>
+      </div>`}
     </div>
     <div class="insp-routes" id="insp-routes" hidden></div>
     <div class="insp-foot">
@@ -637,6 +637,10 @@ export function renderHostInsp(name, elI) {
       // endpoint on an existing /30 — the user must pick a link explicitly.
       h.link = '';
       delete h.network;
+      // Gateways carried over from a network attachment can't possibly match
+      // the new link's peer (the parser enforces gateway == peer IP), so they
+      // become stale data. Drop them on the way to a link.
+      delete h.gateway;
     } else {
       const firstNet = Object.keys(state.networks)[0] || '';
       h.network = firstNet;

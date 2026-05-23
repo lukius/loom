@@ -531,14 +531,15 @@ describe('renderHostInsp — fabric-type dropdown', () => {
     expect(state.hosts.h1.link).toBeUndefined();
   });
 
-  it('hides the gateway field when fabric type is Link', () => {
+  it('omits the gateway field from the DOM when fabric type is Link', () => {
+    // Hosts on a p2p link have no gateway choice — the peer's IP plays
+    // that role and the parser fills it in. Remove the field entirely
+    // rather than ship a no-op control.
     state.links = { p2p1: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
     state.hosts = { h1: { link: 'p2p1', address: '10.0.0.1', x: 0, y: 0 } };
     const elI = document.getElementById('inspector');
     renderHostInsp('h1', elI);
-    const gwField = elI.querySelector('#f-gw-field');
-    expect(gwField).not.toBeNull();
-    expect(gwField.hidden).toBe(true);
+    expect(elI.querySelector('#f-gw-field')).toBeNull();
   });
 
   it('shows the gateway field when fabric type is Network', () => {
@@ -546,9 +547,8 @@ describe('renderHostInsp — fabric-type dropdown', () => {
     state.hosts = { h1: { network: 'lan1', address: '10.1.0.10', x: 0, y: 0 } };
     const elI = document.getElementById('inspector');
     renderHostInsp('h1', elI);
-    const gwField = elI.querySelector('#f-gw-field');
-    expect(gwField).not.toBeNull();
-    expect(gwField.hidden).toBe(false);
+    expect(elI.querySelector('#f-gw-field')).not.toBeNull();
+    expect(elI.querySelector('#f-gw')).not.toBeNull();
   });
 });
 
@@ -1016,6 +1016,50 @@ describe('renderHostInsp — inline IP validation', () => {
     expect(values).not.toContain('20.0.0.1');
     // Empty value lets the user clear the gateway.
     expect(values).toContain('');
+  });
+
+  it('omits the gateway field entirely for a link-attached host', () => {
+    // Hosts on a p2p link have no meaningful default-gateway choice — the
+    // peer's IP plays that role and the parser fills it in automatically.
+    // The field is removed from the DOM (not just hidden) when fabric=link.
+    state.hosts = { h1: { link: 'p2p1', address: '192.168.0.1', x: 0, y: 0 } };
+    state.links = { p2p1: { cidr: '192.168.0.0/30', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    expect(elI.querySelector('#f-gw')).toBeNull();
+    expect(elI.querySelector('#f-gw-field')).toBeNull();
+  });
+
+  it('renders the gateway field again after switching fabric type from link back to network', () => {
+    state.hosts = { h1: { link: 'p2p1', address: '192.168.0.1', x: 0, y: 0 } };
+    state.links = { p2p1: { cidr: '192.168.0.0/30', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.selection = { kind: 'host', name: 'h1' };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    expect(elI.querySelector('#f-gw')).toBeNull();
+    // User flips to network — the gateway field comes back.
+    const typeSel = elI.querySelector('#f-fabric-type');
+    typeSel.value = 'network';
+    typeSel.dispatchEvent(new Event('change'));
+    expect(elI.querySelector('#f-gw')).not.toBeNull();
+  });
+
+  it('clears any stored gateway when the host is moved to a link', () => {
+    // A gateway carried over from a previous network attachment can't match
+    // a p2p peer, so it would just become stale data. Drop it on switch.
+    state.hosts = { h1: {
+      network: 'lan1', address: '10.0.0.5', gateway: '10.0.0.1', x: 0, y: 0,
+    } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.links = { p2p1: { cidr: '192.168.0.0/30', x: 0, y: 0 } };
+    state.selection = { kind: 'host', name: 'h1' };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const typeSel = elI.querySelector('#f-fabric-type');
+    typeSel.value = 'link';
+    typeSel.dispatchEvent(new Event('change'));
+    expect(state.hosts.h1.gateway).toBeUndefined();
   });
 
   it('preserves a host gateway that has no matching peer as a stale option', () => {
