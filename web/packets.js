@@ -34,6 +34,24 @@ bus.addEventListener('sim:router-intercept', (e) => {
   }
 });
 
+// Build a packet badge text element. Used by initial render (T7) and the
+// live chatter toggle (T8) so both stay visually identical.
+function makePacketBadge(payloadId, label, fillColor) {
+  const badge = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  badge.setAttribute('class', 'packet-badge');
+  badge.setAttribute('text-anchor', 'middle');
+  badge.setAttribute('fill', fillColor);
+  badge.setAttribute('stroke', 'rgba(0,0,0,0.5)');
+  badge.setAttribute('stroke-width', '0.4');
+  badge.setAttribute('paint-order', 'stroke');
+  badge.setAttribute('font-size', '10');
+  badge.setAttribute('font-weight', '600');
+  badge.style.pointerEvents = 'none';
+  badge.textContent = label;
+  badge.dataset.payloadId = payloadId;
+  return badge;
+}
+
 // Position a packet rect and optional badge so the rect's center is at (cx, cy).
 // The badge floats just above the rect.
 function setPacketAnchor(rect, badge, cx, cy) {
@@ -118,6 +136,8 @@ export const PacketAnim = {
     dot.setAttribute('stroke-width', '1');
     dot.style.pointerEvents = 'all';
     dot.dataset.evt = JSON.stringify(evt);
+    dot.dataset.payloadId = evt.payload_id;
+    dot.dataset.packetType = evt.type;
     layer.appendChild(dot);
 
     dot.addEventListener('mouseenter', () => showPacketTooltip(evt, dot));
@@ -129,17 +149,8 @@ export const PacketAnim = {
     const chatterBadgesOn = document.body.dataset.chatterBadges === 'on';
     const wantBadge = id != null && (evt.type !== 'routing_flood' || chatterBadgesOn);
     if (wantBadge) {
-      badge = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      badge.setAttribute('class', 'packet-badge');
-      badge.setAttribute('text-anchor', 'middle');
-      badge.setAttribute('fill', color.fill);
-      badge.setAttribute('stroke', 'rgba(0,0,0,0.5)');
-      badge.setAttribute('stroke-width', '0.4');
-      badge.setAttribute('paint-order', 'stroke');
-      badge.setAttribute('font-size', '10');
-      badge.setAttribute('font-weight', '600');
-      badge.style.pointerEvents = 'none';
-      badge.textContent = evt.type === 'routing_flood' ? `#R${id}` : `#${id}`;
+      const label = evt.type === 'routing_flood' ? `#R${id}` : `#${id}`;
+      badge = makePacketBadge(evt.payload_id, label, color.fill);
       layer.appendChild(badge);
     }
 
@@ -383,3 +394,28 @@ export function hidePacketTooltip() {
 // Bus wiring: replay each packet event emitted by sim.js. The inline module
 // used to wire this through a bridge listener; ownership now lives here.
 bus.addEventListener('sim:packet', (e) => { PacketAnim.play(e.detail); });
+
+// Live chatter-badge toggle: when the body flag changes while chatter dots are
+// already in flight, add or remove their badges without waiting for a re-render.
+// Toggle-added badges stay at the dot's last position (no tween) — acceptable
+// because chatter packets are short-lived.
+bus.addEventListener('packets:chatter-badges-changed', () => {
+  const layer = document.getElementById('packet-layer');
+  if (!layer) return;
+  const chatterOn = document.body.dataset.chatterBadges === 'on';
+  const dots = layer.querySelectorAll('rect[data-packet-type="routing_flood"]');
+  dots.forEach(dot => {
+    const id = PacketStore.idFor({ payload_id: dot.dataset.payloadId, type: 'routing_flood' });
+    const existing = layer.querySelector(`text.packet-badge[data-payload-id="${dot.dataset.payloadId}"]`);
+    if (chatterOn && id != null && !existing) {
+      const badge = makePacketBadge(dot.dataset.payloadId, `#R${id}`, dot.getAttribute('fill'));
+      const cx = parseFloat(dot.getAttribute('x')) + PACKET_W / 2;
+      const cy = parseFloat(dot.getAttribute('y')) + PACKET_H / 2;
+      badge.setAttribute('x', cx);
+      badge.setAttribute('y', cy - PACKET_H / 2 - 4);
+      layer.appendChild(badge);
+    } else if (!chatterOn && existing) {
+      existing.parentNode.removeChild(existing);
+    }
+  });
+});

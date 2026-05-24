@@ -315,6 +315,56 @@ describe('Packet tooltip with NAT', () => {
 
 import { PacketStore } from './packetstore.js';
 
+describe('PacketAnim — chatter badge live toggle', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    PacketAnim._lastChatter.clear();
+    delete document.body.dataset.chatterBadges;
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g data-kind="host" data-name="h1" transform="translate(100 100)"></g>
+        <g data-kind="network" data-name="lan_a" transform="translate(250 100)"></g>
+      </g><g id="packet-layer"></g></svg>`;
+    state.networks = { lan_a: { cidr: '10.0.0.0/24', x: 250, y: 100 } };
+    state.hosts = { h1: { address: '0.0.0.0', network: 'lan_a', x: 100, y: 100 } };
+    state.routers = {};
+    state.links = {};
+  });
+
+  it('adds chatter badges live when the body flag turns on', () => {
+    const evt = {
+      type: 'routing_flood', payload_id: 'c1', network: 'lan_a',
+      src: { device: 'h1', address: '0.0.0.0' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '0.0.0.0', payload_dst: '255.255.255.255',
+    };
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: evt }));
+    const layer = document.getElementById('packet-layer');
+    expect(layer.querySelectorAll('text.packet-badge').length).toBe(0);
+
+    document.body.dataset.chatterBadges = 'on';
+    bus.dispatchEvent(new CustomEvent('packets:chatter-badges-changed'));
+    expect(layer.querySelectorAll('text.packet-badge').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('removes chatter badges live when the body flag turns off', () => {
+    document.body.dataset.chatterBadges = 'on';
+    const evt = {
+      type: 'routing_flood', payload_id: 'c1', network: 'lan_a',
+      src: { device: 'h1', address: '0.0.0.0' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '0.0.0.0', payload_dst: '255.255.255.255',
+    };
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: evt }));
+    const layer = document.getElementById('packet-layer');
+    expect(layer.querySelectorAll('text.packet-badge').length).toBe(1);
+
+    delete document.body.dataset.chatterBadges;
+    bus.dispatchEvent(new CustomEvent('packets:chatter-badges-changed'));
+    expect(layer.querySelectorAll('text.packet-badge').length).toBe(0);
+  });
+});
+
 describe('PacketAnim — badge rendering', () => {
   beforeEach(() => {
     PacketStore._reset();
