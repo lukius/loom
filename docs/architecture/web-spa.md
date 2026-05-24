@@ -236,6 +236,7 @@ export const PacketStore = {
 - A user-traffic row moves from `inFlight` → `recent` when the matching `sim:packet-arrived` fires for the final hop (`evt.dst.address === payload_dst`).
 - Chatter rows leave the `chatter` map on arrival; they don't enter `recent`.
 - Counters reset to 1 on `sim:status-changed → idle`. They persist across pause/resume.
+- While paused, `_scheduleEmit()` is suppressed and chatter TTL deletions are deferred to `_pendingChatterDeletes`; both are flushed on resume so the panel stays frozen during a pause.
 - The NAT cache lives here so both the panel and the `packets.js` tooltip query the same source. `PacketStore.natFor(payloadId)` returns the list (or `[]`).
 - `PacketStore.idFor(evt)` resolves the numeric id used as the on-canvas badge text.
 

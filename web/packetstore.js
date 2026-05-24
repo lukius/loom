@@ -8,7 +8,11 @@
 import { bus, state } from './state.js';
 
 let _debounceTimer = null;
+let _simPaused = false;
+const _pendingChatterDeletes = new Set();
+
 function _scheduleEmit() {
+  if (_simPaused) return;
   if (_debounceTimer != null) return;
   _debounceTimer = setTimeout(() => {
     _debounceTimer = null;
@@ -35,12 +39,32 @@ export const PacketStore = {
       clearTimeout(_debounceTimer);
       _debounceTimer = null;
     }
+    _simPaused = false;
+    _pendingChatterDeletes.clear();
   },
 };
 
 bus.addEventListener('sim:status-changed', (e) => {
-  if (e.detail && e.detail.status === 'idle') {
+  const status = e.detail && e.detail.status;
+  if (status === 'idle') {
+    _simPaused = false;
+    _pendingChatterDeletes.clear();
     PacketStore._reset();
+    _scheduleEmit();
+    return;
+  }
+  const wasPaused = _simPaused;
+  _simPaused = (status === 'paused');
+  if (wasPaused && status === 'running') {
+    // Resume: process deferred chatter deletions.
+    let mutated = false;
+    for (const pid of _pendingChatterDeletes) {
+      if (PacketStore.chatter.delete(pid)) mutated = true;
+    }
+    _pendingChatterDeletes.clear();
+    if (mutated) _scheduleEmit();
+    // Force one emit so the panel catches up on any state changes
+    // suppressed during pause.
     _scheduleEmit();
   }
 });
@@ -128,8 +152,13 @@ function _handleChatterPacket(evt, st) {
   // sim:packet-arrived will fire. Clean up after the visual budget so
   // the chatter map doesn't grow without bound. For chatter that does
   // animate, finish() will dispatch sim:packet-arrived earlier and this
-  // becomes a no-op.
+  // becomes a no-op. If paused at fire time, defer the deletion so the
+  // panel stays frozen until resume.
   setTimeout(() => {
+    if (_simPaused) {
+      _pendingChatterDeletes.add(evt.payload_id);
+      return;
+    }
     if (PacketStore.chatter.delete(evt.payload_id)) _scheduleEmit();
   }, 2000);
   _scheduleEmit();

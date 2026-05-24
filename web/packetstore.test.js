@@ -431,6 +431,62 @@ describe('PacketStore — chatter TTL', () => {
   });
 });
 
+describe('PacketStore — freeze during sim pause', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    state.routers = { r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 } } } };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  function chatter(pid) {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood', payload_id: pid, network: 'lan_a',
+      src: { device: 'r1', address: '0.0.0.0' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '0.0.0.0', payload_dst: '255.255.255.255',
+    } }));
+  }
+
+  it('suppresses packets:list-changed while paused', () => {
+    const spy = vi.fn();
+    bus.addEventListener('packets:list-changed', spy);
+    bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: 'paused' } }));
+    chatter('c1');
+    chatter('c2');
+    vi.advanceTimersByTime(100);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('defers chatter TTL deletion while paused', () => {
+    chatter('c1');
+    bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: 'paused' } }));
+    vi.advanceTimersByTime(3000);   // past TTL
+    expect(PacketStore.chatter.size).toBe(1);
+  });
+
+  it('processes deferred deletions and re-emits on resume', () => {
+    chatter('c1');
+    bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: 'paused' } }));
+    vi.advanceTimersByTime(3000);
+    expect(PacketStore.chatter.size).toBe(1);   // deferred
+    const spy = vi.fn();
+    bus.addEventListener('packets:list-changed', spy);
+    bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: 'running' } }));
+    expect(PacketStore.chatter.size).toBe(0);   // deferred delete applied
+    vi.advanceTimersByTime(100);
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('idle still resets, clearing deferred deletions', () => {
+    chatter('c1');
+    bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: 'paused' } }));
+    vi.advanceTimersByTime(3000);
+    bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: 'idle' } }));
+    expect(PacketStore.chatter.size).toBe(0);
+    expect(PacketStore._nextChatterId).toBe(1);
+  });
+});
+
 describe('PacketStore — debounced packets:list-changed', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
