@@ -30,7 +30,10 @@ def _summarize_payload(payload) -> dict:
             n = len(body)
         except TypeError:
             n = 0
-        return {"bytes": n}
+        summary = {"bytes": n}
+        if isinstance(body, str):
+            summary["text"] = body
+        return summary
     if isinstance(payload, PingRequest):
         return {"seq": payload.seq}
     if isinstance(payload, PingReply):

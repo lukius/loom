@@ -241,7 +241,7 @@ metadata:
 
 | `type`          | `payload` keys                          |
 |-----------------|-----------------------------------------|
-| `user_datagram` | `{"bytes": <int>}` — body byte count    |
+| `user_datagram` | `{"bytes": <int>}` always; `"text": <str>` when the body is a string |
 | `ping_request`  | `{"seq": <int>}`                        |
 | `ping_reply`    | `{"seq": <int>, "request_ts": <float>}` |
 | `routing_flood` | `{}`                                    |

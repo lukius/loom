@@ -132,7 +132,53 @@ def test_packet_event_carries_user_message_byte_count():
             if e.get("kind") == "packet" and e.get("type") == "user_datagram"
         ]
         assert pkt_events, "expected at least one user_datagram packet event"
-        assert pkt_events[0]["payload"] == {"bytes": len("hello")}
+        assert pkt_events[0]["payload"] == {"bytes": len("hello"), "text": "hello"}
+        system.stop()
+    finally:
+        os.unlink(path)
+
+
+def test_packet_event_non_string_user_message_omits_text_key():
+    import os
+    import tempfile
+    import textwrap
+    import time
+
+    from entities import UserMessage
+    from entities.event import EventTracer
+    from parser import Parser
+
+    yaml_text = textwrap.dedent("""
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan1: "10.0.0.0/24"
+          hosts:
+            h1: {network: lan1, address: "10.0.0.1"}
+            h2: {network: lan1, address: "10.0.0.2"}
+    """)
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_text)
+        path = f.name
+    try:
+        events = []
+        system = Parser(path).parse().single_as()
+        EventTracer.subscribe(events.append)
+        h1, h2 = system.host("h1"), system.host("h2")
+        payload = b"raw bytes"
+        h1.send_message_to(UserMessage(payload), h2.address())
+        time.sleep(0.2)
+        pkt_events = [
+            e for e in events
+            if e.get("kind") == "packet" and e.get("type") == "user_datagram"
+        ]
+        assert pkt_events, "expected at least one user_datagram packet event"
+        summary = pkt_events[0]["payload"]
+        assert summary == {"bytes": len(payload)}
+        assert "text" not in summary
         system.stop()
     finally:
         os.unlink(path)
