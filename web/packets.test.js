@@ -315,6 +315,54 @@ describe('Packet tooltip with NAT', () => {
 
 import { PacketStore } from './packetstore.js';
 
+describe('PacketAnim — finish dispatches sim:packet-arrived for chatter on a Network (T32)', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    PacketAnim._lastChatter.clear();
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g data-kind="router" data-name="r1" transform="translate(100 100)"></g>
+        <g data-kind="network" data-name="lan_a" transform="translate(250 100)"></g>
+      </g><g id="packet-layer"></g></svg>`;
+    state.networks = { lan_a: { cidr: '10.0.0.0/24', x: 250, y: 100 } };
+    state.hosts = {};
+    state.routers = { r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 } } } };
+    state.links = {};
+  });
+
+  it('finish() dispatches sim:packet-arrived for chatter on a Network (broadcast, no dst device)', async () => {
+    const arrivedSpy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', arrivedSpy);
+
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+        type: 'routing_flood', payload_id: 'msg-1', network: 'lan_a',
+        src: { device: 'r1', iface: 'eth0', address: '10.0.0.254' },
+        dst: { device: null, address: '255.255.255.255' },
+        payload_src: '10.0.0.254', payload_dst: '255.255.255.255',
+      } }));
+
+      // Wait for the 1ms tween to complete.
+      await new Promise(r => setTimeout(r, 80));
+
+      // Arrival should have fired exactly once with the composite key, device:null.
+      const chatterArrivals = arrivedSpy.mock.calls
+        .map(c => c[0].detail)
+        .filter(d => d.payloadId && d.payloadId.startsWith('msg-1|'));
+      expect(chatterArrivals.length).toBe(1);
+      expect(chatterArrivals[0].device).toBe(null);
+
+      // Chatter store row should be gone (deleted by the arrival handler).
+      expect(PacketStore.chatter.size).toBe(0);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+      bus.removeEventListener('sim:packet-arrived', arrivedSpy);
+    }
+  });
+});
+
 describe('PacketAnim — chatter badge live toggle', () => {
   beforeEach(() => {
     PacketStore._reset();

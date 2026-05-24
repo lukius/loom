@@ -226,7 +226,10 @@ export const PacketAnim = {
         // No key (defensive) — fall back to removing the closure-captured badge.
         layer.removeChild(badge);
       }
-      if (dstDeviceName) {
+      if (dotKey) {
+        // Arrival is dispatched even when the destination device couldn't be
+        // resolved (chatter broadcasts have no specific destination device).
+        // Downstream listeners that need a device name early-return on null.
         bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
           detail: { payloadId: dotKey, device: dstDeviceName },
         }));
