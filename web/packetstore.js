@@ -7,6 +7,15 @@
 // badges. All state is reset when the simulator goes idle.
 import { bus, state } from './state.js';
 
+let _debounceTimer = null;
+function _scheduleEmit() {
+  if (_debounceTimer != null) return;
+  _debounceTimer = setTimeout(() => {
+    _debounceTimer = null;
+    bus.dispatchEvent(new CustomEvent('packets:list-changed'));
+  }, 50);
+}
+
 export const PacketStore = {
   inFlight:     new Map(),  // payload_id -> PacketRow
   chatter:      new Map(),  // payload_id -> ChatterRow
@@ -22,11 +31,18 @@ export const PacketStore = {
     this.natByPayload.clear();
     this._nextUserId = 1;
     this._nextChatterId = 1;
+    if (_debounceTimer != null) {
+      clearTimeout(_debounceTimer);
+      _debounceTimer = null;
+    }
   },
 };
 
 bus.addEventListener('sim:status-changed', (e) => {
-  if (e.detail && e.detail.status === 'idle') PacketStore._reset();
+  if (e.detail && e.detail.status === 'idle') {
+    PacketStore._reset();
+    _scheduleEmit();
+  }
 });
 
 const USER_TYPES = new Set(['user_datagram', 'ping_request', 'ping_reply']);
@@ -69,6 +85,7 @@ function _handleUserPacket(evt, st) {
     t: performance.now(),
   });
   row._isLastHop = (evt.dst && evt.dst.address) === row.payloadDst;
+  _scheduleEmit();
 }
 
 function _resolveIface(srcDev, network, st) {
@@ -89,6 +106,7 @@ function _handleChatterPacket(evt, st) {
     network: evt.network,
     iface: _resolveIface(evt.src && evt.src.device, evt.network, st),
   });
+  _scheduleEmit();
 }
 
 PacketStore._NAT_CACHE_LIMIT = 1024;
@@ -107,6 +125,7 @@ bus.addEventListener('sim:nat', (e) => {
     const firstKey = PacketStore.natByPayload.keys().next().value;
     PacketStore.natByPayload.delete(firstKey);
   }
+  _scheduleEmit();
 });
 
 PacketStore.idFor = function (evt) {
@@ -133,7 +152,10 @@ bus.addEventListener('sim:packet-arrived', (e) => {
   const detail = e.detail || {};
   const payloadId = detail.payloadId;
   if (!payloadId) return;
-  if (PacketStore.chatter.delete(payloadId)) return;
+  if (PacketStore.chatter.delete(payloadId)) {
+    _scheduleEmit();
+    return;
+  }
   const row = PacketStore.inFlight.get(payloadId);
   if (!row || !row._isLastHop) return;
   row.status = 'delivered';
@@ -141,4 +163,5 @@ bus.addEventListener('sim:packet-arrived', (e) => {
   PacketStore.inFlight.delete(payloadId);
   PacketStore.recent.push(row);
   if (PacketStore.recent.length > 10) PacketStore.recent.shift();
+  _scheduleEmit();
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { PacketStore } from './packetstore.js';
 import { state, bus } from './state.js';
 
@@ -269,5 +269,39 @@ describe('PacketStore — NAT cache', () => {
       } }));
     }
     expect(PacketStore.natByPayload.size).toBe(PacketStore._NAT_CACHE_LIMIT);
+  });
+});
+
+import { vi } from 'vitest';
+
+describe('PacketStore — debounced packets:list-changed', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('coalesces a burst of three events into one emission after ~50ms', () => {
+    const spy = vi.fn();
+    bus.addEventListener('packets:list-changed', spy);
+
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: userPacketEvt({
+      payload_id: 'p1', srcDev: 'h1', srcAddr: '10.0.0.1', dstDev: 'h2', dstAddr: '10.0.0.2', network: 'lan_a',
+    }) }));
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: userPacketEvt({
+      payload_id: 'p2', srcDev: 'h1', srcAddr: '10.0.0.1', dstDev: 'h2', dstAddr: '10.0.0.2', network: 'lan_a',
+    }) }));
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: userPacketEvt({
+      payload_id: 'p3', srcDev: 'h1', srcAddr: '10.0.0.1', dstDev: 'h2', dstAddr: '10.0.0.2', network: 'lan_a',
+    }) }));
+
+    expect(spy).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(50);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits once on sim-idle reset as well', () => {
+    const spy = vi.fn();
+    bus.addEventListener('packets:list-changed', spy);
+    bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: 'idle' } }));
+    vi.advanceTimersByTime(50);
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });
