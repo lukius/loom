@@ -126,6 +126,12 @@ export const PacketAnim = {
     // glyph used in networking literature. The packet is centered via cx/cy
     // proxy attributes (data-cx/cy) so the tween helpers can keep using a
     // simple point-tracking API; we translate into x/y at write time.
+    // Chatter packets use a composite key so each interface emission gets its
+    // own distinct dot↔row binding. User traffic continues to use bare payload_id.
+    const dotKey = evt.type === 'routing_flood'
+      ? `${evt.payload_id}|${(evt.src && evt.src.device) || '?'}|${(evt.src && evt.src.iface) || '?'}|${evt.network || '?'}`
+      : evt.payload_id;
+
     const dot = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     dot.setAttribute('width', PACKET_W);
     dot.setAttribute('height', PACKET_H);
@@ -136,7 +142,7 @@ export const PacketAnim = {
     dot.setAttribute('stroke-width', '1');
     dot.style.pointerEvents = 'all';
     dot.dataset.evt = JSON.stringify(evt);
-    dot.dataset.payloadId = evt.payload_id;
+    dot.dataset.payloadId = dotKey;
     dot.dataset.packetType = evt.type;
     layer.appendChild(dot);
     bus.dispatchEvent(new CustomEvent('packets:dot-appeared', {
@@ -153,7 +159,7 @@ export const PacketAnim = {
     const wantBadge = id != null && (evt.type !== 'routing_flood' || chatterBadgesOn);
     if (wantBadge) {
       const label = evt.type === 'routing_flood' ? `#R${id}` : `#${id}`;
-      badge = makePacketBadge(evt.payload_id, label, color.fill);
+      badge = makePacketBadge(dotKey, label, color.fill);
       layer.appendChild(badge);
     }
 
@@ -174,19 +180,19 @@ export const PacketAnim = {
 
     const finish = () => {
       if (dot.parentNode) layer.removeChild(dot);
-      // Remove every badge tied to this payload — covers the badge created
+      // Remove every badge tied to this dot's key — covers the badge created
       // here in _render AND any badge appended later by the
       // packets:chatter-badges-changed listener while the dot was mid-tween.
-      if (evt.payload_id) {
-        const sel = `text.packet-badge[data-payload-id="${CSS.escape(evt.payload_id)}"]`;
+      if (dotKey) {
+        const sel = `text.packet-badge[data-payload-id="${CSS.escape(dotKey)}"]`;
         layer.querySelectorAll(sel).forEach(b => { if (b.parentNode) b.parentNode.removeChild(b); });
       } else if (badge && badge.parentNode) {
-        // No payload_id (defensive) — fall back to removing the closure-captured badge.
+        // No key (defensive) — fall back to removing the closure-captured badge.
         layer.removeChild(badge);
       }
       if (dstDeviceName) {
         bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
-          detail: { payloadId: evt.payload_id, device: dstDeviceName },
+          detail: { payloadId: dotKey, device: dstDeviceName },
         }));
       }
       if (onDone) onDone();
@@ -417,10 +423,15 @@ bus.addEventListener('packets:chatter-badges-changed', () => {
   const chatterOn = document.body.dataset.chatterBadges === 'on';
   const dots = layer.querySelectorAll('rect[data-packet-type="routing_flood"]');
   dots.forEach(dot => {
-    const id = PacketStore.idFor({ payload_id: dot.dataset.payloadId, type: 'routing_flood' });
-    const existing = layer.querySelector(`text.packet-badge[data-payload-id="${dot.dataset.payloadId}"]`);
+    // dot.dataset.payloadId is already the composite key for chatter dots.
+    // Look up the row directly rather than going through idFor (which would
+    // need to rebuild the composite key from evt fields not available here).
+    const key = dot.dataset.payloadId;
+    const row = PacketStore.chatter.get(key);
+    const id = row ? row.id : null;
+    const existing = layer.querySelector(`text.packet-badge[data-payload-id="${CSS.escape(key)}"]`);
     if (chatterOn && id != null && !existing) {
-      const badge = makePacketBadge(dot.dataset.payloadId, `#R${id}`, dot.getAttribute('fill'));
+      const badge = makePacketBadge(key, `#R${id}`, dot.getAttribute('fill'));
       const cx = parseFloat(dot.getAttribute('x')) + PACKET_W / 2;
       const cy = parseFloat(dot.getAttribute('y')) + PACKET_H / 2;
       badge.setAttribute('x', cx);

@@ -447,10 +447,13 @@ describe('PacketsPanel — chatter row expansion and halo', () => {
     delete document.body.dataset.chatterBadges;
   });
 
+  // Composite chatter key: payload_id|srcDev|srcIface|network
+  const C1_KEY = 'c1|r1|eth0|lan_a';
+
   function emitChatterWithPayload(payloadId, payload) {
     bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
       type: 'routing_flood', payload_id: payloadId, network: 'lan_a',
-      src: { device: 'r1', address: '0.0.0.0' },
+      src: { device: 'r1', iface: 'eth0', address: '0.0.0.0' },
       dst: { device: null, address: '255.255.255.255' },
       payload_src: '0.0.0.0', payload_dst: '255.255.255.255',
       payload,
@@ -463,10 +466,10 @@ describe('PacketsPanel — chatter row expansion and halo', () => {
     emitChatterWithPayload('c1', { seq: 5, destinations: [{ prefix: '10.0.0.0/24', cost: 1 }] });
     PacketsPanel._setChatterExpanded(true);
     PacketsPanel.render();
-    const row = document.querySelector('.pkt-chatter-row[data-payload-id="c1"]');
+    const row = document.querySelector(`.pkt-chatter-row[data-payload-id="${CSS.escape(C1_KEY)}"]`);
     expect(row).not.toBeNull();
     row.querySelector('.pkt-toggle').click();
-    const detail = document.querySelector('.pkt-chatter-row[data-payload-id="c1"] .pkt-detail');
+    const detail = document.querySelector(`.pkt-chatter-row[data-payload-id="${CSS.escape(C1_KEY)}"] .pkt-detail`);
     expect(detail).not.toBeNull();
     expect(detail.textContent).toContain('seq');
     expect(detail.textContent).toContain('5');
@@ -480,7 +483,8 @@ describe('PacketsPanel — chatter row expansion and halo', () => {
     })();
     const layer = document.getElementById('packet-layer');
     const dot = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    dot.dataset.payloadId = 'c1';
+    // dot.dataset.payloadId must match the composite key that the panel renders
+    dot.dataset.payloadId = C1_KEY;
     dot.dataset.packetType = 'routing_flood';
     layer.appendChild(dot);
 
@@ -490,7 +494,7 @@ describe('PacketsPanel — chatter row expansion and halo', () => {
     PacketsPanel._setChatterExpanded(true);
     PacketsPanel.render();
 
-    const row = document.querySelector('.pkt-chatter-row[data-payload-id="c1"]');
+    const row = document.querySelector(`.pkt-chatter-row[data-payload-id="${CSS.escape(C1_KEY)}"]`);
     expect(row).not.toBeNull();
     row.dispatchEvent(new MouseEvent('mouseenter'));
     expect(dot.classList.contains('halo')).toBe(true);

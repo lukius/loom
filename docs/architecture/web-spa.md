@@ -224,17 +224,17 @@ Shape:
 
 ```js
 export const PacketStore = {
-  inFlight:      Map<payload_id, PacketRow>,   // user traffic (datagrams, pings)
-  chatter:       Map<payload_id, ChatterRow>,  // routing floods, kept separately
-  recent:        PacketRow[],                  // FIFO cap 10, user traffic only
-  natByPayload:  Map<payload_id, NatHop[]>,    // relocated from packets.js (was _natByPayloadId)
-  _nextUserId:   1,                            // monotonic; reset on sim stop
-  _nextChatterId: 1,                           // independent monotonic
+  inFlight:      Map<payload_id, PacketRow>,                         // user traffic (datagrams, pings)
+  chatter:       Map<"pid|dev|iface|net", ChatterRow>,               // routing floods, composite key
+  recent:        PacketRow[],                                        // FIFO cap 10, user traffic only
+  natByPayload:  Map<payload_id, NatHop[]>,                          // relocated from packets.js (was _natByPayloadId)
+  _nextUserId:   1,                                                  // monotonic; reset on sim stop
+  _nextChatterId: 1,                                                 // independent monotonic
 };
 ```
 
 - A user-traffic row moves from `inFlight` → `recent` when the matching `sim:packet-arrived` fires for the final hop (`evt.dst.address === payload_dst`).
-- Chatter rows leave the `chatter` map on arrival; they don't enter `recent`.
+- Chatter rows are keyed by a composite `"payload_id|srcDev|srcIface|network"` string so that N emissions of the same `RoutingMessage` (one per router interface) each get a distinct store row, badge, and hover-halo hit-target. Chatter rows leave the `chatter` map on arrival (or after a 2 s TTL) and don't enter `recent`.
 - Counters reset to 1 on `sim:status-changed → idle`. They persist across pause/resume.
 - While paused, `_scheduleEmit()` is suppressed and chatter TTL deletions are deferred to `_pendingChatterDeletes`; both are flushed on resume so the panel stays frozen during a pause.
 - The NAT cache lives here so both the panel and the `packets.js` tooltip query the same source. `PacketStore.natFor(payloadId)` returns the list (or `[]`).

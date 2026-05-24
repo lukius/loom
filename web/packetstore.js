@@ -139,13 +139,25 @@ function _resolveIface(srcDev, network, st) {
   return null;
 }
 
+// Build a composite chatter map key so that N emissions of the same
+// RoutingMessage (one per interface) each get their own store row, badge,
+// and hover-halo hit-target. User traffic continues to use bare payload_id.
+function _chatterKey(evt) {
+  const dev = (evt.src && evt.src.device) || '?';
+  const iface = (evt.src && evt.src.iface) || '?';
+  const net = evt.network || '?';
+  return `${evt.payload_id}|${dev}|${iface}|${net}`;
+}
+
 function _handleChatterPacket(evt, st) {
-  if (PacketStore.chatter.has(evt.payload_id)) return;
-  PacketStore.chatter.set(evt.payload_id, {
+  const key = _chatterKey(evt);
+  if (PacketStore.chatter.has(key)) return;
+  PacketStore.chatter.set(key, {
     id: PacketStore._nextChatterId++,
-    payloadId: evt.payload_id,
+    payloadId: key,
     type: 'routing_flood',
     srcDev: evt.src && evt.src.device,
+    srcIface: evt.src && evt.src.iface,
     network: evt.network,
     iface: _resolveIface(evt.src && evt.src.device, evt.network, st),
     payload: (evt.payload && typeof evt.payload === 'object') ? evt.payload : {},
@@ -158,10 +170,10 @@ function _handleChatterPacket(evt, st) {
   // panel stays frozen until resume.
   setTimeout(() => {
     if (_simPaused) {
-      _pendingChatterDeletes.add(evt.payload_id);
+      _pendingChatterDeletes.add(key);
       return;
     }
-    if (PacketStore.chatter.delete(evt.payload_id)) _scheduleEmit();
+    if (PacketStore.chatter.delete(key)) _scheduleEmit();
   }, 2000);
   _scheduleEmit();
 }
@@ -192,7 +204,7 @@ PacketStore.idFor = function (evt) {
     return row ? row.id : null;
   }
   if (evt.type === 'routing_flood') {
-    const row = this.chatter.get(evt.payload_id);
+    const row = this.chatter.get(_chatterKey(evt));
     return row ? row.id : null;
   }
   return null;
