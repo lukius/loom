@@ -352,7 +352,7 @@ describe('PacketStore — visibility', () => {
     expect(PacketStore.visibleInFlight().length).toBe(1);
   });
 
-  it('packets:dot-appeared also works for chatter rows', () => {
+  it('chatter rows appear in visibleChatter immediately, no dot-appeared signal needed', () => {
     state.routers = { r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 } } } };
     bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
       type: 'routing_flood', payload_id: 'c1', network: 'lan_a',
@@ -360,9 +360,8 @@ describe('PacketStore — visibility', () => {
       dst: { device: null, address: '255.255.255.255' },
       payload_src: '0.0.0.0', payload_dst: '255.255.255.255',
     } }));
-    expect(PacketStore.visibleChatterCount()).toBe(0);
-    bus.dispatchEvent(new CustomEvent('packets:dot-appeared', { detail: { payloadId: 'c1' } }));
     expect(PacketStore.visibleChatterCount()).toBe(1);
+    expect(PacketStore.visibleChatter().length).toBe(1);
   });
 });
 
@@ -409,6 +408,28 @@ describe('PacketStore — payload field', () => {
 });
 
 import { vi } from 'vitest';
+
+describe('PacketStore — chatter TTL', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    state.routers = { r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 } } } };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('removes chatter rows after the TTL even when no sim:packet-arrived fires', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood', payload_id: 'c1', network: 'lan_a',
+      src: { device: 'r1', address: '0.0.0.0' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '0.0.0.0', payload_dst: '255.255.255.255',
+    } }));
+    expect(PacketStore.chatter.size).toBe(1);
+    vi.advanceTimersByTime(1999);
+    expect(PacketStore.chatter.size).toBe(1);
+    vi.advanceTimersByTime(2);
+    expect(PacketStore.chatter.size).toBe(0);
+  });
+});
 
 describe('PacketStore — debounced packets:list-changed', () => {
   beforeEach(() => { vi.useFakeTimers(); });

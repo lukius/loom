@@ -123,8 +123,15 @@ function _handleChatterPacket(evt, st) {
     srcDev: evt.src && evt.src.device,
     network: evt.network,
     iface: _resolveIface(evt.src && evt.src.device, evt.network, st),
-    _visible: false,
   });
+  // TTL: muted or throttled chatter has no canvas animation, so no
+  // sim:packet-arrived will fire. Clean up after the visual budget so
+  // the chatter map doesn't grow without bound. For chatter that does
+  // animate, finish() will dispatch sim:packet-arrived earlier and this
+  // becomes a no-op.
+  setTimeout(() => {
+    if (PacketStore.chatter.delete(evt.payload_id)) _scheduleEmit();
+  }, 2000);
   _scheduleEmit();
 }
 
@@ -192,7 +199,7 @@ bus.addEventListener('sim:packet-arrived', (e) => {
 bus.addEventListener('packets:dot-appeared', (e) => {
   const payloadId = e.detail && e.detail.payloadId;
   if (!payloadId) return;
-  const row = PacketStore.inFlight.get(payloadId) || PacketStore.chatter.get(payloadId);
+  const row = PacketStore.inFlight.get(payloadId);  // only inFlight now
   if (!row) return;
   if (row._visible) return;
   row._visible = true;
@@ -204,11 +211,9 @@ PacketStore.visibleInFlight = function () {
 };
 
 PacketStore.visibleChatterCount = function () {
-  let n = 0;
-  for (const r of this.chatter.values()) if (r._visible) n++;
-  return n;
+  return this.chatter.size;
 };
 
 PacketStore.visibleChatter = function () {
-  return Array.from(this.chatter.values()).filter(r => r._visible).sort((a, b) => a.id - b.id);
+  return Array.from(this.chatter.values()).sort((a, b) => a.id - b.id);
 };
