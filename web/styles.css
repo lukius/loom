@@ -619,7 +619,10 @@ body.col-resizing * { cursor: col-resize !important; }
 .term-line { display: flex; padding: 0 8px 6px; }
 .term-prompt { color: #4a8; margin-right: 6px; white-space: pre; }
 .term-in { flex: 1; background: transparent; color: #aaffaa;
-  border: none; outline: none; font: inherit; caret-color: #33ff66; }
+  border: none; outline: none; font: inherit; caret-color: #33ff66;
+  resize: none; min-height: 1.2em; padding: 0; line-height: 1.2;
+  overflow: hidden; overflow-wrap: anywhere; word-break: break-all;
+  white-space: pre-wrap; }
 .term-cursor::after { content: '█'; animation: term-blink 1s steps(2, start) infinite; color: #33ff66; }
 @keyframes term-blink { 50% { opacity: 0; } }
 

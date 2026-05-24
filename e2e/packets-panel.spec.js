@@ -47,7 +47,7 @@ test.describe('loom Packets panel — visual smoke', () => {
     await page.locator('#nodes-layer g.node.host[data-name="h1"]').dblclick();
     const term = page.locator('div.term').first();
     await expect(term).toBeVisible({ timeout: 3000 });
-    const input = term.locator('input.term-in');
+    const input = term.locator('textarea.term-in');
     await input.click();
     await input.fill('set_gateway 200.100.0.1');
     await input.press('Enter');
