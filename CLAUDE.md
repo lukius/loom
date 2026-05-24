@@ -27,6 +27,8 @@ loom/
 │   ├── inspector.js       # Nav, right-pane panels, rename/duplicate/delete ops, context menu
 │   ├── terminals.js       # Per-node terminal popups
 │   ├── packets.js         # PacketAnim + tooltips
+│   ├── packetstore.js     # PacketStore: in-flight registry, NAT cache, #N counters
+│   ├── packetspanel.js    # Slide-out Packets panel
 │   └── *.test.js          # vitest tests co-located (utils, state, sim)
 ├── e2e/                   # Playwright smoke suite (real Chromium + spawned FastAPI)
 ├── docs/
@@ -142,6 +144,6 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 
 - **`PauseGate` gates packet propagation and keepalive.** `AS` owns one `PauseGate` (`src/entities/clock.py`). `Interface._pkt_loop` and `Network._pkt_loop` call `gate.wait_or_stop()` after each dequeue; `RoutingProtocol._keepalive_loop` waits on it instead of `time.sleep`. `AS.stop()` triggers the stop event, which wakes any blocked workers. New worker threads must follow the same pattern or they won't pause cleanly.
 
-- **Web SPA uses native ES modules + an EventTarget bus.** `web/state.js` exports a singleton `bus = new EventTarget()`. Cross-component coordination (re-render after mutation, react to sim status changes) flows through bus events: `state:topology-changed`, `state:topology-loaded`, `state:selection-changed`, `sim:status-changed`, `sim:packet`, `sim:routing-table-changed`, `view:changed`. Synchronous queries and DOM helpers (`canvas.lookupDeviceNode`, `utils.el`, etc.) are direct imports. The rule: state mutations + cross-component re-renders → bus; sync queries + DOM helpers → direct import. Don't reintroduce module-to-module direct render calls.
+- **Web SPA uses native ES modules + an EventTarget bus.** `web/state.js` exports a singleton `bus = new EventTarget()`. Cross-component coordination (re-render after mutation, react to sim status changes) flows through bus events: `state:topology-changed`, `state:topology-loaded`, `state:selection-changed`, `sim:status-changed`, `sim:packet`, `sim:routing-table-changed`, `sim:packet-arrived`, `packets:list-changed`, `packets:chatter-badges-changed`, `view:changed`. Synchronous queries and DOM helpers (`canvas.lookupDeviceNode`, `utils.el`, etc.) are direct imports. The rule: state mutations + cross-component re-renders → bus; sync queries + DOM helpers → direct import. Don't reintroduce module-to-module direct render calls.
 
 - **Most fixtures under `test/resources/` are deliberately invalid** (e.g. `invalid_netmask.yaml`, `missing_as.yaml`). Don't "fix" them — they exist to assert the parser rejects them with the right error.
