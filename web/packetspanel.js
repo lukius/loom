@@ -216,6 +216,11 @@ export const PacketsPanel = {
 
   render() {
     if (!this._panel) return;
+    // Row DOM is rebuilt on every render, which detaches the mouseleave
+    // handlers responsible for clearing canvas halos. Clear any stale halos
+    // up front so hovers don't accumulate across re-renders.
+    const layer = document.getElementById('packet-layer');
+    if (layer) layer.querySelectorAll('rect.halo').forEach(d => d.classList.remove('halo'));
     const inFlight = PacketStore.visibleInFlight();
     const chatterGroups = state.ui.showChatter ? PacketStore.visibleChatterGroups() : [];
     const total = inFlight.length + chatterGroups.length;
