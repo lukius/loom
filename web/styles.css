@@ -1648,6 +1648,11 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 #inspector[data-packets-open] > *:not(#packets-panel) { display: none; }
 .packets-header { padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
 .packets-close { background: none; border: 0; cursor: pointer; font-size: 16px; padding: 0 4px; }
+.packets-header-actions { display: flex; align-items: center; gap: 6px; }
+.packets-chatter-toggle { background: none; border: 0; padding: 4px; cursor: pointer; color: var(--text, #111); display: flex; align-items: center; justify-content: center; border-radius: 3px; }
+.packets-chatter-toggle:hover { background: var(--row-hover, rgba(0,0,0,0.06)); }
+.packets-chatter-toggle[aria-pressed="false"] { opacity: 0.35; }
+.packets-chatter-toggle .ico { width: 14px; height: 14px; }
 .canv-toolbar .tb-btn.toggle-on { background: var(--accent-bg); color: var(--accent-text); }
 .packet-badge { font-family: 'Geist Mono', monospace; }
 .packets-body { padding: 4px 0; }

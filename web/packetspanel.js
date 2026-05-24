@@ -184,6 +184,7 @@ export const PacketsPanel = {
   },
 
   _chatterSectionHtml() {
+    if (!state.ui.showChatter) return '';
     const count = PacketStore.visibleChatterCount();
     if (count === 0) return '';
     const open = this._chatterExpanded;
@@ -205,14 +206,23 @@ export const PacketsPanel = {
   render() {
     if (!this._panel) return;
     const inFlight = PacketStore.visibleInFlight();
-    const chatterCount = PacketStore.visibleChatterCount();
+    const chatterCount = state.ui.showChatter ? PacketStore.visibleChatterCount() : 0;
     const total = inFlight.length + chatterCount;
     const empty = total === 0 && PacketStore.recent.length === 0;
 
     this._panel.innerHTML = `
       <header class="packets-header">
         <span>Packets (${total})</span>
-        <button class="packets-close" aria-label="Close">×</button>
+        <div class="packets-header-actions">
+          <button class="packets-chatter-toggle" aria-pressed="${state.ui.showChatter ? 'true' : 'false'}" title="Show/hide routing chatter section">
+            <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+              <circle cx="4" cy="8" r="1.5" fill="currentColor"/>
+              <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
+              <circle cx="12" cy="8" r="1.5" fill="currentColor"/>
+            </svg>
+          </button>
+          <button class="packets-close" aria-label="Close">×</button>
+        </div>
       </header>
       <div class="packets-body">
         ${empty ? '<div class="packets-empty">No packets yet — start the simulation to see traffic.</div>' : ''}
@@ -232,6 +242,14 @@ export const PacketsPanel = {
 
     const close = this._panel.querySelector('.packets-close');
     if (close) close.addEventListener('click', () => this.close());
+    const chatterToggleBtn = this._panel.querySelector('.packets-chatter-toggle');
+    if (chatterToggleBtn) {
+      chatterToggleBtn.addEventListener('click', () => {
+        state.ui.showChatter = !state.ui.showChatter;
+        markDirty();
+        this.render();
+      });
+    }
     this._panel.querySelectorAll('.pkt-row').forEach(rowEl => {
       const tog = rowEl.querySelector('.pkt-toggle');
       if (tog) {

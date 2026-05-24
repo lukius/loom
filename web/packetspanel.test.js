@@ -10,7 +10,7 @@ beforeEach(() => {
     <button id="tb-packets"><span class="lbl">Packets</span></button>
     <aside id="inspector"></aside>
   `;
-  state.ui = { packetsPanelOpen: false };
+  state.ui = { packetsPanelOpen: false, showChatter: true };
   PacketsPanel._reset();
 });
 
@@ -496,5 +496,72 @@ describe('PacketsPanel — chatter row expansion and halo', () => {
     expect(dot.classList.contains('halo')).toBe(true);
     row.dispatchEvent(new MouseEvent('mouseleave'));
     expect(dot.classList.contains('halo')).toBe(false);
+  });
+});
+
+describe('PacketsPanel — chatter section toggle', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    state.routers = { r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 } } } };
+  });
+
+  function emitAndShowChatter(payloadId) {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood', payload_id: payloadId, network: 'lan_a',
+      src: { device: 'r1', address: '0.0.0.0' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '0.0.0.0', payload_dst: '255.255.255.255',
+    } }));
+  }
+
+  it('renders chatter section by default', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitAndShowChatter('c1');
+    PacketsPanel.render();
+    expect(document.querySelector('#packets-panel .pkt-chatter-summary')).not.toBeNull();
+  });
+
+  it('hides the chatter section when state.ui.showChatter is false', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitAndShowChatter('c1');
+    state.ui.showChatter = false;
+    PacketsPanel.render();
+    expect(document.querySelector('#packets-panel .pkt-chatter-summary')).toBeNull();
+    // No "In flight — routing chatter" heading either:
+    const headings = Array.from(document.querySelectorAll('#packets-panel .packets-section h3'))
+      .map(h => h.textContent.toLowerCase());
+    expect(headings.some(h => h.includes('routing chatter'))).toBe(false);
+  });
+
+  it('header toggle flips state.ui.showChatter and re-renders', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitAndShowChatter('c1');
+    PacketsPanel.render();
+    expect(state.ui.showChatter).toBe(true);
+    const toggle = document.querySelector('#packets-panel .packets-chatter-toggle');
+    expect(toggle).not.toBeNull();
+    toggle.click();
+    expect(state.ui.showChatter).toBe(false);
+    expect(document.querySelector('#packets-panel .pkt-chatter-summary')).toBeNull();
+    document.querySelector('#packets-panel .packets-chatter-toggle').click();
+    expect(state.ui.showChatter).toBe(true);
+    expect(document.querySelector('#packets-panel .pkt-chatter-summary')).not.toBeNull();
+  });
+
+  it('total count excludes chatter when section is hidden', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitAndShowChatter('c1');
+    emitAndShowChatter('c2');
+    PacketsPanel.render();
+    const header = document.querySelector('#packets-panel .packets-header').textContent;
+    expect(header).toContain('Packets (2)');
+    state.ui.showChatter = false;
+    PacketsPanel.render();
+    const header2 = document.querySelector('#packets-panel .packets-header').textContent;
+    expect(header2).toContain('Packets (0)');
   });
 });

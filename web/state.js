@@ -22,7 +22,7 @@ export const state = {
   /* visibility toggles for on-canvas annotations (persisted) */
   display: { showCosts: true, showIfaces: true },
   /* UI panel open/closed state (persisted) */
-  ui: { packetsPanelOpen: false },
+  ui: { packetsPanelOpen: false, showChatter: true },
   /* transient sim state — NAT snapshots keyed by device name; populated by
      the `nat_table_changed` WS event. Not persisted; reset on loadSample. */
   natTables: {},
@@ -138,7 +138,7 @@ export function restore() {
     state.links = (d.links && typeof d.links === 'object' && !Array.isArray(d.links)) ? d.links : {};
     if (d.view) state.view = d.view;
     state.display = { ...DISPLAY_DEFAULTS, ...(d.display || {}) };
-    state.ui = { packetsPanelOpen: false, ...(d.ui || {}) };
+    state.ui = { packetsPanelOpen: false, showChatter: true, ...(d.ui || {}) };
     state.sourceName = (typeof d.sourceName === 'string' && d.sourceName) ? d.sourceName : null;
     return true;
   } catch (_) { return false; }
@@ -167,7 +167,7 @@ export function loadSample() {
   state.selection = null;
   state.view = { x: 0, y: 0, k: 1 };
   state.display = { ...DISPLAY_DEFAULTS };
-  state.ui = { packetsPanelOpen: false };
+  state.ui = { packetsPanelOpen: false, showChatter: true };
   state.natTables = {};
   const projName = document.getElementById('proj-name');
   if (projName) projName.value = state.asName;
