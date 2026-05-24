@@ -240,3 +240,34 @@ describe('PacketStore — routing chatter', () => {
     expect(PacketStore.idFor({ payload_id: 'c1', type: 'routing_flood' })).toBe(1);
   });
 });
+
+describe('PacketStore — NAT cache', () => {
+  it('accumulates nat hops keyed by payload_id, FIFO-evicting past _NAT_CACHE_LIMIT', () => {
+    bus.dispatchEvent(new CustomEvent('sim:nat', { detail: {
+      payload_id: 'p1', router: 'r1', direction: 'outbound',
+      original_src: '10.0.0.1', rewritten_src: '200.1.1.5',
+    } }));
+    bus.dispatchEvent(new CustomEvent('sim:nat', { detail: {
+      payload_id: 'p1', router: 'r1', direction: 'inbound',
+      rewritten_dst: '200.1.1.5', original_dst: '10.0.0.1',
+    } }));
+
+    const hops = PacketStore.natByPayload.get('p1');
+    expect(hops.length).toBe(2);
+    expect(hops[0].direction).toBe('outbound');
+    expect(hops[1].direction).toBe('inbound');
+
+    expect(PacketStore.natFor('p1').length).toBe(2);
+    expect(PacketStore.natFor('unknown').length).toBe(0);
+  });
+
+  it('cache is bounded to _NAT_CACHE_LIMIT', () => {
+    for (let i = 0; i < PacketStore._NAT_CACHE_LIMIT + 5; i++) {
+      bus.dispatchEvent(new CustomEvent('sim:nat', { detail: {
+        payload_id: `p${i}`, router: 'r1', direction: 'outbound',
+        original_src: '10.0.0.1', rewritten_src: '200.1.1.5',
+      } }));
+    }
+    expect(PacketStore.natByPayload.size).toBe(PacketStore._NAT_CACHE_LIMIT);
+  });
+});

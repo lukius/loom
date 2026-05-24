@@ -91,6 +91,24 @@ function _handleChatterPacket(evt, st) {
   });
 }
 
+PacketStore._NAT_CACHE_LIMIT = 1024;
+
+PacketStore.natFor = function (payloadId) {
+  return this.natByPayload.get(payloadId) || [];
+};
+
+bus.addEventListener('sim:nat', (e) => {
+  const evt = e.detail;
+  if (!evt || !evt.payload_id) return;
+  const list = PacketStore.natByPayload.get(evt.payload_id) || [];
+  list.push(evt);
+  PacketStore.natByPayload.set(evt.payload_id, list);
+  if (PacketStore.natByPayload.size > PacketStore._NAT_CACHE_LIMIT) {
+    const firstKey = PacketStore.natByPayload.keys().next().value;
+    PacketStore.natByPayload.delete(firstKey);
+  }
+});
+
 PacketStore.idFor = function (evt) {
   if (!evt || !evt.payload_id) return null;
   if (USER_TYPES.has(evt.type)) {
