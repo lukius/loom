@@ -354,4 +354,12 @@ export function _onEvent(evt) {
     }
     return;
   }
+  if (evt.kind === 'router_intercept') {
+    // A router answered an ICMP echo addressed to one of its own IPs instead
+    // of forwarding. Fired right before the matching reply packet, so
+    // subscribers (packets.js) can cache by payload_id and decorate the
+    // reply's tooltip.
+    bus.dispatchEvent(new CustomEvent('sim:router-intercept', { detail: evt }));
+    return;
+  }
 }

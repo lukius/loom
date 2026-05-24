@@ -37,6 +37,22 @@ bus.addEventListener('sim:nat', (e) => {
   }
 });
 
+// payload_id -> { router, originator, pinged_address, received_on }
+// A router-intercept event fires immediately before the reply packet event
+// that carries the same payload_id; we cache it so the tooltip on that
+// reply can flag "this came from a router, not the device you pinged".
+const _interceptByPayloadId = new Map();
+
+bus.addEventListener('sim:router-intercept', (e) => {
+  const evt = e.detail;
+  if (!evt || !evt.payload_id) return;
+  _interceptByPayloadId.set(evt.payload_id, evt);
+  if (_interceptByPayloadId.size > _NAT_CACHE_LIMIT) {
+    const firstKey = _interceptByPayloadId.keys().next().value;
+    _interceptByPayloadId.delete(firstKey);
+  }
+});
+
 // Position a packet rect so its center is at world (cx, cy).
 function setPacketCenter(rect, cx, cy) {
   rect.setAttribute('x', cx - PACKET_W / 2);
@@ -347,7 +363,11 @@ export function showPacketTooltip(evt, dot) {
     }
     return `<div class="nat">NAT @ ${escapeHtml(n.router)}: ${escapeHtml(n.rewritten_dst)} → ${escapeHtml(n.original_dst)}</div>`;
   }).join('');
-  tt.innerHTML = headHtml + natHtml;
+  const intercept = evt.payload_id && _interceptByPayloadId.get(evt.payload_id);
+  const interceptHtml = intercept
+    ? `<div class="intercept">Replied by router ${escapeHtml(intercept.router)} — ${escapeHtml(intercept.pinged_address)} is its ${escapeHtml(intercept.owning_iface || 'own')} address</div>`
+    : '';
+  tt.innerHTML = headHtml + interceptHtml + natHtml;
   tt.style.display = 'block';
   const bbox = dot.getBoundingClientRect();
   tt.style.left = (bbox.right + 8) + 'px';
