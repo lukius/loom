@@ -1632,3 +1632,25 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
   border-radius: 3px;
 }
 .link-wizard-banner-close:hover { background: var(--bg-3); color: var(--text); }
+
+/* ============================================================
+   packets panel (slide-out)
+   ============================================================ */
+.packets-panel {
+  position: fixed;
+  top: 56px;
+  right: 0;
+  width: 320px;
+  max-height: calc(100vh - 80px);
+  overflow: auto;
+  background: var(--bg-2);
+  color: var(--text);
+  border-left: 1px solid var(--border);
+  box-shadow: -4px 0 12px rgba(0,0,0,0.08);
+  z-index: 30;
+  font-size: 12px;
+}
+.packets-panel[hidden] { display: none; }
+.packets-header { padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
+.canv-toolbar .tb-btn.toggle-on { background: var(--accent-bg); color: var(--accent-text); }
+.packet-badge { font-family: 'Geist Mono', monospace; }

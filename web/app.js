@@ -27,6 +27,7 @@ import {
 } from './inspector.js';
 import './terminals.js';
 import { PacketAnim } from './packets.js';
+import { PacketsPanel } from './packetspanel.js';
 import { importYaml as _importYaml, exportYaml } from './yaml-io.js';
 import { openImportPicker, runExportSave, fetchSourceName } from './file-picker.js';
 
@@ -192,6 +193,7 @@ function wire() {
   });
 
   wireCanvas();
+  PacketsPanel.wire();
 }
 
 /* ---------- init ---------- */
@@ -224,6 +226,7 @@ function init() {
   // reflect restored display toggles on the toolbar buttons
   syncToggleBtn('tb-toggle-costs',  state.display.showCosts);
   syncToggleBtn('tb-toggle-ifaces', state.display.showIfaces);
+  PacketsPanel.init();
   renderAll();
   // initial fit (after layout)
   requestAnimationFrame(() => {
