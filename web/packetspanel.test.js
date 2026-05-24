@@ -174,3 +174,44 @@ describe('PacketsPanel — chatter section', () => {
     expect(document.querySelectorAll('.pkt-chatter-row').length).toBe(0);
   });
 });
+
+describe('PacketsPanel — recent section', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    state.hosts = {};
+  });
+
+  function emitAndDeliver(payloadId, srcAddr, dstAddr) {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'user_datagram',
+      payload_id: payloadId, network: 'lan_a',
+      src: { device: 'h1', address: srcAddr },
+      dst: { device: 'h2', address: dstAddr },
+      payload_src: srcAddr,
+      payload_dst: dstAddr,
+    } }));
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId, device: 'h2' } }));
+  }
+
+  it('renders a Recent section once at least one packet has been delivered', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitAndDeliver('p1', '10.0.0.1', '10.0.0.2');
+    PacketsPanel.render();
+    const headings = Array.from(document.querySelectorAll('#packets-panel .packets-section h3'))
+      .map(h => h.textContent.toLowerCase());
+    expect(headings.some(h => h.includes('recent'))).toBe(true);
+    const rows = document.querySelectorAll('#packets-panel .pkt-row[data-payload-id="p1"]');
+    expect(rows.length).toBe(1);
+  });
+
+  it('shows at most 10 entries, newest last', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    for (let i = 1; i <= 11; i++) emitAndDeliver(`p${i}`, '10.0.0.1', '10.0.0.2');
+    PacketsPanel.render();
+    const rows = document.querySelectorAll('#packets-panel .packets-recent .pkt-row');
+    expect(rows.length).toBe(10);
+    expect(rows[rows.length - 1].dataset.payloadId).toBe('p11');
+  });
+});

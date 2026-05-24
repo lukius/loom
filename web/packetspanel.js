@@ -152,6 +152,11 @@ export const PacketsPanel = {
             ${inFlight.map(r => this._userRowHtml(r)).join('')}
           </section>` : ''}
         ${this._chatterSectionHtml()}
+        ${PacketStore.recent.length > 0 ? `
+          <section class="packets-section packets-recent">
+            <h3>Recent</h3>
+            ${PacketStore.recent.map(r => this._userRowHtml(r)).join('')}
+          </section>` : ''}
       </div>
     `;
 

@@ -1678,3 +1678,4 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 .pkt-chatter-summary:hover { background: var(--row-hover, rgba(0,0,0,0.04)); }
 .pkt-chatter-row { display: flex; align-items: center; gap: 6px; padding: 2px 12px 2px 36px; font-size: 11px; }
 .pkt-chatter-row:hover { background: var(--row-hover, rgba(0,0,0,0.04)); }
+.packets-recent .pkt-row { opacity: 0.85; }
