@@ -480,25 +480,26 @@ describe('sourceName / defaultExportFilename', () => {
     expect(state.sourceName).toBe('alpha.yaml');
   });
 
-  it('appends .session before the extension', () => {
-    expect(defaultExportFilename('sample.yaml')).toBe('sample.session.yaml');
-    expect(defaultExportFilename('sample.yml')).toBe('sample.session.yml');
+  it('returns the source name unchanged when it already ends in .yaml/.yml', () => {
+    expect(defaultExportFilename('sample.yaml')).toBe('sample.yaml');
+    expect(defaultExportFilename('sample.yml')).toBe('sample.yml');
   });
 
-  it('falls back to topology.session.yaml when sourceName is empty', () => {
-    expect(defaultExportFilename(null)).toBe('topology.session.yaml');
-    expect(defaultExportFilename('')).toBe('topology.session.yaml');
-    expect(defaultExportFilename(undefined)).toBe('topology.session.yaml');
+  it('falls back to topology.yaml when sourceName is empty', () => {
+    expect(defaultExportFilename(null)).toBe('topology.yaml');
+    expect(defaultExportFilename('')).toBe('topology.yaml');
+    expect(defaultExportFilename(undefined)).toBe('topology.yaml');
   });
 
-  it('does not double-session a name that already carries the suffix', () => {
-    // If someone exported once with the suggested name, then re-imported it,
-    // the next export should still be `<stem>.session.yaml`, not `<stem>.session.session.yaml`.
-    expect(defaultExportFilename('sample.session.yaml')).toBe('sample.session.yaml');
+  it('strips a .session stem so an imported session file maps to its source name', () => {
+    // The old default was `<name>.session.yaml`. Users who already have such
+    // files in their library shouldn't re-stack the suffix on Export.
+    expect(defaultExportFilename('sample.session.yaml')).toBe('sample.yaml');
+    expect(defaultExportFilename('sample.session.yml')).toBe('sample.yml');
   });
 
   it('appends a yaml extension when the source has none', () => {
-    expect(defaultExportFilename('weird')).toBe('weird.session.yaml');
+    expect(defaultExportFilename('weird')).toBe('weird.yaml');
   });
 });
 
@@ -786,5 +787,50 @@ internet:
     const ok = importYaml(yaml);
     expect(ok).not.toBe(false);
     expect(state.natTables).toEqual({});
+  });
+
+  it('export — internet.name takes the value of state.asName (the editable header field)', () => {
+    state.asName = 'my-net';
+    state.networks = {};
+    state.hosts = {};
+    state.routers = {};
+    state.links = {};
+    const yaml = exportYaml();
+    // The internet block's name now mirrors what the user typed at the top
+    // of the SPA, instead of being hardcoded to "loom".
+    expect(yaml).toMatch(/internet:\s*\n\s*name:\s*"?my-net"?/);
+  });
+
+  it('import — picks up internet.name when present and reflects it in state.asName', () => {
+    // Backwards-compat: older SPA exports wrote `internet.name: loom` and
+    // carried the user-typed name only as the AS key. We still accept that
+    // shape, but a newer YAML with a non-default `internet.name` wins.
+    const yaml = `
+internet:
+  name: custom-internet
+  autonomous_systems:
+    some_as:
+      asn: 65000
+      networks: {}
+      hosts: {}
+      routers: {}
+`;
+    importYaml(yaml);
+    expect(state.asName).toBe('custom-internet');
+  });
+
+  it('import — falls back to the AS key when internet.name is the legacy "loom"', () => {
+    const yaml = `
+internet:
+  name: loom
+  autonomous_systems:
+    my_legacy_as:
+      asn: 65000
+      networks: {}
+      hosts: {}
+      routers: {}
+`;
+    importYaml(yaml);
+    expect(state.asName).toBe('my_legacy_as');
   });
 });

@@ -142,15 +142,17 @@ export function restore() {
 
 /* ---------- export filename ---------- */
 /* Derive the default filename for an Export from the basename of the YAML
-   the topology was last loaded from. Mirrors the server's session-file naming:
-   "foo.yaml" -> "foo.session.yaml". Idempotent on names that already carry
-   the suffix. Falls back to "topology.session.yaml" when nothing is loaded. */
+   the topology was last loaded from. The suggested name mirrors the source
+   so the user can save back over it (the browser save dialog still asks
+   before overwriting); a `.session` stem on an imported session file is
+   stripped so the name doesn't grow on each round-trip. Falls back to
+   "topology.yaml" when nothing is loaded. */
 export function defaultExportFilename(sourceName) {
-  if (!sourceName) return 'topology.session.yaml';
+  if (!sourceName) return 'topology.yaml';
   const m = /^(.+?)(\.ya?ml)$/i.exec(sourceName);
-  if (!m) return `${sourceName}.session.yaml`;
+  if (!m) return `${sourceName}.yaml`;
   const stem = m[1].replace(/\.session$/i, '');
-  return `${stem}.session${m[2]}`;
+  return `${stem}${m[2]}`;
 }
 export function loadSample() {
   state.asName = SAMPLE.asName;
