@@ -5,7 +5,7 @@
 // the NAT translations seen for each payload. Owns monotonic numeric IDs
 // (#1, #2, #R1, ...) used both in the Packets panel and as on-canvas
 // badges. All state is reset when the simulator goes idle.
-import { bus } from './state.js';
+import { bus, state } from './state.js';
 
 export const PacketStore = {
   inFlight:     new Map(),  // payload_id -> PacketRow
@@ -27,4 +27,60 @@ export const PacketStore = {
 
 bus.addEventListener('sim:status-changed', (e) => {
   if (e.detail && e.detail.status === 'idle') PacketStore._reset();
+});
+
+const USER_TYPES = new Set(['user_datagram', 'ping_request', 'ping_reply']);
+
+function resolveDeviceLabel(address, st) {
+  if (!address) return null;
+  for (const [hn, h] of Object.entries(st.hosts || {})) {
+    if (h.address === address) return hn;
+  }
+  for (const [rn, r] of Object.entries(st.routers || {})) {
+    for (const iff of Object.values(r.interfaces || {})) {
+      if (iff.address === address) return rn;
+    }
+  }
+  return null;
+}
+
+function _handleUserPacket(evt, st) {
+  let row = PacketStore.inFlight.get(evt.payload_id);
+  if (!row) {
+    const payloadSrc = evt.payload_src || (evt.src && evt.src.address) || null;
+    const payloadDst = evt.payload_dst || (evt.dst && evt.dst.address) || null;
+    row = {
+      id: PacketStore._nextUserId++,
+      payloadId: evt.payload_id,
+      type: evt.type,
+      payloadSrc,
+      payloadDst,
+      srcLabel: resolveDeviceLabel(payloadSrc, st) || payloadSrc,
+      dstLabel: resolveDeviceLabel(payloadDst, st) || payloadDst,
+      hops: [],
+      status: 'in_flight',
+    };
+    PacketStore.inFlight.set(evt.payload_id, row);
+  }
+  row.hops.push({
+    srcDev: evt.src && evt.src.device,
+    dstDev: evt.dst && evt.dst.device,
+    network: evt.network,
+    t: performance.now(),
+  });
+}
+
+PacketStore.idFor = function (evt) {
+  if (!evt || !evt.payload_id) return null;
+  if (USER_TYPES.has(evt.type)) {
+    const row = this.inFlight.get(evt.payload_id);
+    return row ? row.id : null;
+  }
+  return null;  // chatter handled in Task 4
+};
+
+bus.addEventListener('sim:packet', (e) => {
+  const evt = e.detail;
+  if (!evt || !evt.payload_id) return;
+  if (USER_TYPES.has(evt.type)) _handleUserPacket(evt, state);
 });
