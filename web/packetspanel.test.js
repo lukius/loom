@@ -571,6 +571,99 @@ describe('PacketsPanel — chatter row expansion and halo', () => {
   });
 });
 
+describe('PacketsPanel — multi-group chatter hover (9 groups, 6 emissions each)', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    state.routers = {
+      r1: { interfaces: {
+        eth0: { network: 'lan_a', address: '10.0.0.1', cost: 5 },
+        eth1: { network: 'lan_b', address: '10.0.1.1', cost: 5 },
+        eth2: { network: 'p2p',   address: '10.0.2.1', cost: 5 },
+      } },
+      r2: { interfaces: {
+        eth0: { network: 'lan_a', address: '10.0.0.2', cost: 5 },
+        eth1: { network: 'lan_b', address: '10.0.1.2', cost: 5 },
+        eth2: { network: 'lan_c', address: '10.0.3.2', cost: 5 },
+      } },
+      r3: { interfaces: {
+        eth0: { network: 'lan_b', address: '10.0.1.3', cost: 5 },
+        eth1: { network: 'lan_c', address: '10.0.3.3', cost: 5 },
+        eth2: { network: 'p2p',   address: '10.0.2.3', cost: 5 },
+      } },
+    };
+    delete document.body.dataset.chatterBadges;
+    // Ensure a packet-layer exists inside the DOM from the top-level beforeEach.
+    if (!document.getElementById('packet-layer')) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.innerHTML = '<g id="packet-layer"></g>';
+      document.body.appendChild(svg);
+    }
+  });
+
+  it('all chatter group rows halo their dots (9 groups, 6 emissions each)', () => {
+    const layer = document.getElementById('packet-layer');
+
+    // Emit 9 distinct chatter groups, each with 6 emissions from varied
+    // srcDev/iface/network combinations. For each emission, also place a
+    // matching canvas rect in #packet-layer.
+    for (let g = 0; g < 9; g++) {
+      const payloadId = `msg-${g}`;
+      for (let e = 0; e < 6; e++) {
+        const dev   = `r${(e % 3) + 1}`;
+        const iface = `eth${e % 3}`;
+        const net   = `net-${g}-${e}`;
+        const composite = `${payloadId}|${dev}|${iface}|${net}`;
+
+        // Ensure the router/interface entry exists so _resolveIface can find it.
+        if (!state.routers[dev].interfaces[iface]) {
+          state.routers[dev].interfaces[iface] = { network: net, address: '10.99.99.99', cost: 1 };
+        } else if (state.routers[dev].interfaces[iface].network !== net) {
+          // _resolveIface matches by network name; add a synthetic entry so
+          // the iface lookup won't fail (the store doesn't depend on it for
+          // the composite key — the key is built directly from the event).
+        }
+
+        bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+          type: 'routing_flood',
+          payload_id: payloadId,
+          network: net,
+          src: { device: dev, iface, address: '10.99.99.99' },
+          dst: { device: null, address: '255.255.255.255' },
+          payload_src: '10.99.99.99',
+          payload_dst: '255.255.255.255',
+        } }));
+
+        // Place the canvas dot with the matching composite key.
+        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        dot.dataset.payloadId  = composite;
+        dot.dataset.packetType = 'routing_flood';
+        layer.appendChild(dot);
+      }
+    }
+
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    PacketsPanel._setChatterExpanded(true);
+    PacketsPanel.render();
+
+    // All 9 groups should be rendered as chatter rows.
+    const rows = document.querySelectorAll('#packets-panel .pkt-chatter-row');
+    expect(rows.length).toBe(9);
+
+    // Each row: hover should halo exactly 6 dots; leave should clear them all.
+    rows.forEach((row, idx) => {
+      row.dispatchEvent(new MouseEvent('mouseenter'));
+      const halos = document.querySelectorAll('#packet-layer rect.halo');
+      expect(halos.length, `row #${idx} (payloadId="${row.dataset.payloadId}") should halo 6 dots`).toBe(6);
+      row.dispatchEvent(new MouseEvent('mouseleave'));
+      expect(
+        document.querySelectorAll('#packet-layer rect.halo').length,
+        `row #${idx} mouseleave should clear all halos`,
+      ).toBe(0);
+    });
+  });
+});
+
 describe('PacketsPanel — chatter section toggle', () => {
   beforeEach(() => {
     PacketStore._reset();
