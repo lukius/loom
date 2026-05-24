@@ -260,3 +260,40 @@ PacketStore.visibleChatterCount = function () {
 PacketStore.visibleChatter = function () {
   return Array.from(this.chatter.values()).sort((a, b) => a.id - b.id);
 };
+
+PacketStore.visibleChatterGroups = function () {
+  const groups = new Map();   // payload_id -> { payloadId, id, srcDev, network, iface, payload, emissionKeys: [] }
+  for (const [compositeKey, row] of this.chatter.entries()) {
+    // The bare payload_id is the first segment of the composite key.
+    const payloadId = compositeKey.split('|')[0];
+    let group = groups.get(payloadId);
+    if (!group) {
+      group = {
+        payloadId,                     // bare payload_id, used as the panel row's data-payload-id prefix
+        id: row.id,                    // first emission's #R id — shown as the group label
+        type: 'routing_flood',
+        srcDev: row.srcDev,            // original emitter (from the first emission seen)
+        network: row.network,
+        iface: row.iface,
+        payload: row.payload,
+        emissionKeys: [],
+      };
+      groups.set(payloadId, group);
+    }
+    // Pick the minimum id across emissions (i.e. the original emission's id).
+    if (row.id < group.id) {
+      group.id = row.id;
+      // Also update srcDev/network/iface to reflect the earliest emission.
+      group.srcDev = row.srcDev;
+      group.network = row.network;
+      group.iface = row.iface;
+      group.payload = row.payload;
+    }
+    group.emissionKeys.push(compositeKey);
+  }
+  return Array.from(groups.values()).sort((a, b) => a.id - b.id);
+};
+
+PacketStore.visibleChatterGroupCount = function () {
+  return this.visibleChatterGroups().length;
+};

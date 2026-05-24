@@ -166,30 +166,36 @@ export const PacketsPanel = {
     bus.dispatchEvent(new CustomEvent('packets:chatter-badges-changed'));
   },
 
-  _chatterRowHtml(row) {
-    const isOpen = this._expanded.has(row.payloadId);
+  _chatterGroupRowHtml(group) {
+    const isOpen = this._expanded.has(group.payloadId);
     const detail = isOpen ? `
       <div class="pkt-detail">
-        ${this._payloadHtml(row.payload)}
+        ${this._payloadHtml(group.payload)}
+        <div class="pkt-emissions">${group.emissionKeys.length} emission${group.emissionKeys.length === 1 ? '' : 's'} in flight</div>
       </div>` : '';
     return `
-      <div class="pkt-row pkt-chatter-row" data-payload-id="${escapeHtml(row.payloadId)}">
+      <div class="pkt-row pkt-chatter-row" data-payload-id="${escapeHtml(group.payloadId)}" data-emission-keys="${escapeHtml(group.emissionKeys.join(' '))}">
         <button class="pkt-toggle" aria-expanded="${isOpen}">${isOpen ? '▾' : '▸'}</button>
         <span class="pkt-swatch" data-type="routing_flood"></span>
-        <span class="pkt-id">#R${row.id}</span>
-        <span class="pkt-route">${escapeHtml(row.srcDev || '?')} → ${escapeHtml(row.network || '?')}</span>
-        ${row.iface ? `<span class="pkt-hop-net">(${escapeHtml(row.iface)})</span>` : ''}
+        <span class="pkt-id">#R${group.id}</span>
+        <span class="pkt-route">${escapeHtml(group.srcDev || '?')} → ${escapeHtml(group.network || '?')}</span>
+        ${group.iface ? `<span class="pkt-hop-net">(${escapeHtml(group.iface)})</span>` : ''}
+        <span class="pkt-emission-count">×${group.emissionKeys.length}</span>
         ${detail}
       </div>`;
   },
 
+  _totalEmissions(groups) {
+    return groups.reduce((sum, g) => sum + g.emissionKeys.length, 0);
+  },
+
   _chatterSectionHtml() {
     if (!state.ui.showChatter) return '';
-    const count = PacketStore.visibleChatterCount();
-    if (count === 0) return '';
+    const groups = PacketStore.visibleChatterGroups();
+    if (groups.length === 0) return '';
     const open = this._chatterExpanded;
     const list = open
-      ? PacketStore.visibleChatter().map(r => this._chatterRowHtml(r)).join('')
+      ? groups.map(g => this._chatterGroupRowHtml(g)).join('')
       : '';
     return `
       <section class="packets-section">
@@ -197,7 +203,7 @@ export const PacketsPanel = {
         <div class="pkt-chatter-summary">
           <button class="pkt-toggle" aria-expanded="${open}">${open ? '▾' : '▸'}</button>
           <span class="pkt-swatch" data-type="routing_flood"></span>
-          <span>Routing chatter · ${count} in flight</span>
+          <span>Routing chatter · ${groups.length} message${groups.length === 1 ? '' : 's'} (${this._totalEmissions(groups)} emissions)</span>
         </div>
         ${list}
       </section>`;
@@ -206,8 +212,8 @@ export const PacketsPanel = {
   render() {
     if (!this._panel) return;
     const inFlight = PacketStore.visibleInFlight();
-    const chatterCount = state.ui.showChatter ? PacketStore.visibleChatterCount() : 0;
-    const total = inFlight.length + chatterCount;
+    const chatterGroups = state.ui.showChatter ? PacketStore.visibleChatterGroups() : [];
+    const total = inFlight.length + chatterGroups.length;
     const empty = total === 0 && PacketStore.recent.length === 0;
 
     this._panel.innerHTML = `
@@ -260,14 +266,30 @@ export const PacketsPanel = {
           this.render();
         });
       }
+      const emissionKeys = rowEl.dataset.emissionKeys;
       const pid = rowEl.dataset.payloadId;
       rowEl.addEventListener('mouseenter', () => {
-        const dot = document.querySelector(`#packet-layer rect[data-payload-id="${CSS.escape(pid)}"]`);
-        if (dot) dot.classList.add('halo');
+        if (emissionKeys) {
+          // Chatter group: halo every emission's dot.
+          emissionKeys.split(' ').forEach(k => {
+            const dot = document.querySelector(`#packet-layer rect[data-payload-id="${CSS.escape(k)}"]`);
+            if (dot) dot.classList.add('halo');
+          });
+        } else {
+          const dot = document.querySelector(`#packet-layer rect[data-payload-id="${CSS.escape(pid)}"]`);
+          if (dot) dot.classList.add('halo');
+        }
       });
       rowEl.addEventListener('mouseleave', () => {
-        const dot = document.querySelector(`#packet-layer rect[data-payload-id="${CSS.escape(pid)}"]`);
-        if (dot) dot.classList.remove('halo');
+        if (emissionKeys) {
+          emissionKeys.split(' ').forEach(k => {
+            const dot = document.querySelector(`#packet-layer rect[data-payload-id="${CSS.escape(k)}"]`);
+            if (dot) dot.classList.remove('halo');
+          });
+        } else {
+          const dot = document.querySelector(`#packet-layer rect[data-payload-id="${CSS.escape(pid)}"]`);
+          if (dot) dot.classList.remove('halo');
+        }
       });
     });
 

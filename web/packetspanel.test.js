@@ -447,7 +447,9 @@ describe('PacketsPanel — chatter row expansion and halo', () => {
     delete document.body.dataset.chatterBadges;
   });
 
-  // Composite chatter key: payload_id|srcDev|srcIface|network
+  // Chatter group rows use the bare payload_id, not the composite key.
+  const C1_BARE = 'c1';
+  // Composite key for the canvas dot
   const C1_KEY = 'c1|r1|eth0|lan_a';
 
   function emitChatterWithPayload(payloadId, payload) {
@@ -466,16 +468,17 @@ describe('PacketsPanel — chatter row expansion and halo', () => {
     emitChatterWithPayload('c1', { seq: 5, destinations: [{ prefix: '10.0.0.0/24', cost: 1 }] });
     PacketsPanel._setChatterExpanded(true);
     PacketsPanel.render();
-    const row = document.querySelector(`.pkt-chatter-row[data-payload-id="${CSS.escape(C1_KEY)}"]`);
+    // Group rows use bare payload_id
+    const row = document.querySelector(`.pkt-chatter-row[data-payload-id="${C1_BARE}"]`);
     expect(row).not.toBeNull();
     row.querySelector('.pkt-toggle').click();
-    const detail = document.querySelector(`.pkt-chatter-row[data-payload-id="${CSS.escape(C1_KEY)}"] .pkt-detail`);
+    const detail = document.querySelector(`.pkt-chatter-row[data-payload-id="${C1_BARE}"] .pkt-detail`);
     expect(detail).not.toBeNull();
     expect(detail.textContent).toContain('seq');
     expect(detail.textContent).toContain('5');
   });
 
-  it('hover on a chatter row adds .halo to the matching packet dot', () => {
+  it('hover on a chatter group row halos the emission dot via data-emission-keys', () => {
     document.body.querySelector('#packet-layer') || (() => {
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.innerHTML = '<g id="packet-layer"></g>';
@@ -483,7 +486,7 @@ describe('PacketsPanel — chatter row expansion and halo', () => {
     })();
     const layer = document.getElementById('packet-layer');
     const dot = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    // dot.dataset.payloadId must match the composite key that the panel renders
+    // dot uses the composite key (unchanged from T29)
     dot.dataset.payloadId = C1_KEY;
     dot.dataset.packetType = 'routing_flood';
     layer.appendChild(dot);
@@ -494,12 +497,77 @@ describe('PacketsPanel — chatter row expansion and halo', () => {
     PacketsPanel._setChatterExpanded(true);
     PacketsPanel.render();
 
-    const row = document.querySelector(`.pkt-chatter-row[data-payload-id="${CSS.escape(C1_KEY)}"]`);
+    // Group row is keyed by bare payload_id; hover halos via data-emission-keys
+    const row = document.querySelector(`.pkt-chatter-row[data-payload-id="${C1_BARE}"]`);
     expect(row).not.toBeNull();
     row.dispatchEvent(new MouseEvent('mouseenter'));
     expect(dot.classList.contains('halo')).toBe(true);
     row.dispatchEvent(new MouseEvent('mouseleave'));
     expect(dot.classList.contains('halo')).toBe(false);
+  });
+
+  it('groups multiple emissions of the same payload_id into one chatter row', () => {
+    PacketStore._reset();
+    state.routers = { r1: { interfaces: {
+      eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 },
+      eth1: { network: 'lan_b', address: '10.0.1.254', cost: 5 },
+      eth2: { network: 'lan_c', address: '10.0.2.254', cost: 5 },
+    } } };
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    // Three emissions, same payload_id
+    for (const [iface, net] of [['eth0', 'lan_a'], ['eth1', 'lan_b'], ['eth2', 'lan_c']]) {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+        type: 'routing_flood', payload_id: 'msg-1', network: net,
+        src: { device: 'r1', iface, address: '10.0.0.254' },
+        dst: { device: null, address: '255.255.255.255' },
+        payload_src: '10.0.0.254', payload_dst: '255.255.255.255',
+      } }));
+    }
+    PacketsPanel._setChatterExpanded(true);
+    PacketsPanel.render();
+    const rows = document.querySelectorAll('#packets-panel .pkt-chatter-row');
+    expect(rows.length).toBe(1);
+    expect(rows[0].dataset.payloadId).toBe('msg-1');
+    expect(rows[0].textContent).toContain('×3');   // emission count badge
+  });
+
+  it('chatter group hover halos all of its emission dots', () => {
+    // Set up a fake DOM with three chatter dots, one per emission.
+    const layer = document.getElementById('packet-layer') || (() => {
+      const svg = document.createElement('svg');
+      svg.innerHTML = '<g id="packet-layer"></g>';
+      document.body.appendChild(svg);
+      return document.getElementById('packet-layer');
+    })();
+    PacketStore._reset();
+    state.routers = { r1: { interfaces: {
+      eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 },
+      eth1: { network: 'lan_b', address: '10.0.1.254', cost: 5 },
+      eth2: { network: 'lan_c', address: '10.0.2.254', cost: 5 },
+    } } };
+    for (const [iface, net] of [['eth0', 'lan_a'], ['eth1', 'lan_b'], ['eth2', 'lan_c']]) {
+      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      dot.dataset.payloadId = `msg-1|r1|${iface}|${net}`;
+      dot.dataset.packetType = 'routing_flood';
+      layer.appendChild(dot);
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+        type: 'routing_flood', payload_id: 'msg-1', network: net,
+        src: { device: 'r1', iface, address: '10.0.0.254' },
+        dst: { device: null, address: '255.255.255.255' },
+        payload_src: '10.0.0.254', payload_dst: '255.255.255.255',
+      } }));
+    }
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    PacketsPanel._setChatterExpanded(true);
+    PacketsPanel.render();
+    const row = document.querySelector('.pkt-chatter-row[data-payload-id="msg-1"]');
+    row.dispatchEvent(new MouseEvent('mouseenter'));
+    const halos = document.querySelectorAll('#packet-layer rect.halo');
+    expect(halos.length).toBe(3);
+    row.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(document.querySelectorAll('#packet-layer rect.halo').length).toBe(0);
   });
 });
 

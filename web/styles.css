@@ -1682,6 +1682,8 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 .pkt-chatter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 2px 12px 2px 36px; font-size: 11px; }
 .pkt-chatter-row:hover { background: var(--row-hover, rgba(0,0,0,0.04)); }
 .pkt-chatter-row .pkt-detail { flex-basis: 100%; margin: 4px 0 4px 24px; }
+.pkt-emission-count { font-size: 10px; opacity: 0.6; font-family: 'Geist Mono', monospace; }
+.pkt-emissions { margin-top: 4px; font-size: 10px; opacity: 0.6; }
 .packets-recent .pkt-row { opacity: 0.85; }
 #packet-layer rect.halo {
   stroke: var(--accent, #2563eb);

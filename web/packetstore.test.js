@@ -576,6 +576,54 @@ describe('PacketStore — chatter payload field', () => {
   });
 });
 
+describe('PacketStore — chatter grouping by payload_id', () => {
+  beforeEach(() => {
+    state.routers = { r1: { interfaces: {
+      eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 },
+      eth1: { network: 'lan_b', address: '10.0.1.254', cost: 5 },
+      eth2: { network: 'lan_c', address: '10.0.2.254', cost: 5 },
+    } } };
+  });
+
+  function emit(payloadId, iface, network) {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood', payload_id: payloadId, network,
+      src: { device: 'r1', iface, address: '10.0.0.254' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '10.0.0.254', payload_dst: '255.255.255.255',
+      payload: { seq: 42, destinations: [] },
+    } }));
+  }
+
+  it('groups three emissions of the same payload_id into one group', () => {
+    emit('msg-1', 'eth0', 'lan_a');
+    emit('msg-1', 'eth1', 'lan_b');
+    emit('msg-1', 'eth2', 'lan_c');
+    const groups = PacketStore.visibleChatterGroups();
+    expect(groups.length).toBe(1);
+    expect(groups[0].payloadId).toBe('msg-1');
+    expect(groups[0].emissionKeys.length).toBe(3);
+    expect(PacketStore.visibleChatterGroupCount()).toBe(1);
+  });
+
+  it('keeps distinct payload_ids in distinct groups', () => {
+    emit('msg-1', 'eth0', 'lan_a');
+    emit('msg-2', 'eth0', 'lan_a');
+    const groups = PacketStore.visibleChatterGroups();
+    expect(groups.length).toBe(2);
+    expect(groups.map(g => g.payloadId).sort()).toEqual(['msg-1', 'msg-2']);
+  });
+
+  it('group id reflects the earliest emission (lowest #R)', () => {
+    emit('msg-1', 'eth0', 'lan_a');
+    const firstRow = Array.from(PacketStore.chatter.values())[0];
+    const firstId = firstRow.id;
+    emit('msg-1', 'eth1', 'lan_b');
+    const group = PacketStore.visibleChatterGroups()[0];
+    expect(group.id).toBe(firstId);
+  });
+});
+
 describe('PacketStore — chatter composite key (T29)', () => {
   beforeEach(() => {
     state.routers = { r1: { interfaces: {
