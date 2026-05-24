@@ -214,6 +214,19 @@ describe('PacketsPanel — recent section', () => {
     expect(rows.length).toBe(10);
     expect(rows[rows.length - 1].dataset.payloadId).toBe('p11');
   });
+
+  it('does NOT mark the last hop as "in flight" for delivered rows in Recent', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitAndDeliver('p1', '10.0.0.1', '10.0.0.2');
+    PacketsPanel.render();
+    // Expand the recent row.
+    const row = document.querySelector('#packets-panel .packets-recent .pkt-row[data-payload-id="p1"]');
+    row.querySelector('.pkt-toggle').click();
+    const expanded = document.querySelector('#packets-panel .packets-recent .pkt-row[data-payload-id="p1"] .pkt-detail');
+    expect(expanded).not.toBeNull();
+    expect(expanded.textContent).not.toContain('in flight');
+  });
 });
 
 describe('PacketsPanel — hover-row halo', () => {

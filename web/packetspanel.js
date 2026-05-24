@@ -82,7 +82,7 @@ export const PacketsPanel = {
           ${row.hops.map((h, i) => `
             <li><span class="pkt-hop">${escapeHtml(h.srcDev || '?')} → ${escapeHtml(h.dstDev || '?')}</span>
                 <span class="pkt-hop-net">(${escapeHtml(h.network || '')})</span>
-                ${i === row.hops.length - 1 ? '<span class="pkt-hop-flag">◀ in flight</span>' : ''}
+                ${i === row.hops.length - 1 && row.status !== 'delivered' ? '<span class="pkt-hop-flag">◀ in flight</span>' : ''}
             </li>`).join('')}
         </ol>
         ${this._natFormat(PacketStore.natFor(row.payloadId))}
