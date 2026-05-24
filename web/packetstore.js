@@ -71,28 +71,53 @@ function _handleUserPacket(evt, st) {
   row._isLastHop = (evt.dst && evt.dst.address) === row.payloadDst;
 }
 
+function _resolveIface(srcDev, network, st) {
+  const r = (st.routers || {})[srcDev];
+  if (!r) return null;
+  for (const [ifn, iff] of Object.entries(r.interfaces || {})) {
+    if (iff.network === network || iff.link === network) return ifn;
+  }
+  return null;
+}
+
+function _handleChatterPacket(evt, st) {
+  if (PacketStore.chatter.has(evt.payload_id)) return;
+  PacketStore.chatter.set(evt.payload_id, {
+    id: PacketStore._nextChatterId++,
+    type: 'routing_flood',
+    srcDev: evt.src && evt.src.device,
+    network: evt.network,
+    iface: _resolveIface(evt.src && evt.src.device, evt.network, st),
+  });
+}
+
 PacketStore.idFor = function (evt) {
   if (!evt || !evt.payload_id) return null;
   if (USER_TYPES.has(evt.type)) {
     const row = this.inFlight.get(evt.payload_id);
     return row ? row.id : null;
   }
-  return null;  // chatter handled in Task 4
+  if (evt.type === 'routing_flood') {
+    const row = this.chatter.get(evt.payload_id);
+    return row ? row.id : null;
+  }
+  return null;
 };
 
 bus.addEventListener('sim:packet', (e) => {
   const evt = e.detail;
   if (!evt || !evt.payload_id) return;
   if (USER_TYPES.has(evt.type)) _handleUserPacket(evt, state);
+  else if (evt.type === 'routing_flood') _handleChatterPacket(evt, state);
 });
 
 bus.addEventListener('sim:packet-arrived', (e) => {
   const detail = e.detail || {};
   const payloadId = detail.payloadId;
   if (!payloadId) return;
+  if (PacketStore.chatter.delete(payloadId)) return;
   const row = PacketStore.inFlight.get(payloadId);
-  if (!row) return;
-  if (!row._isLastHop) return;
+  if (!row || !row._isLastHop) return;
   row.status = 'delivered';
   delete row._isLastHop;
   PacketStore.inFlight.delete(payloadId);

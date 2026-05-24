@@ -171,3 +171,72 @@ describe('PacketStore — last-hop promotion and FIFO cap', () => {
     expect(PacketStore.recent.length).toBe(0);
   });
 });
+
+function chatterEvt({ payload_id, srcDev, network }) {
+  return {
+    type: 'routing_flood',
+    payload_id, network,
+    src: { device: srcDev, address: '0.0.0.0' },
+    dst: { device: null, address: '255.255.255.255' },
+    payload_src: '0.0.0.0',
+    payload_dst: '255.255.255.255',
+  };
+}
+
+describe('PacketStore — routing chatter', () => {
+  beforeEach(() => {
+    state.routers = {
+      r1: { interfaces: {
+        eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 },
+        eth1: { network: 'lan_b', address: '10.0.1.254', cost: 5 },
+      } },
+    };
+  });
+
+  it('lives in the chatter map with its own counter (#R1, #R2)', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatterEvt({ payload_id: 'c1', srcDev: 'r1', network: 'lan_a' }) }));
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatterEvt({ payload_id: 'c2', srcDev: 'r1', network: 'lan_b' }) }));
+
+    expect(PacketStore.inFlight.size).toBe(0);
+    expect(PacketStore.chatter.size).toBe(2);
+    expect(PacketStore.chatter.get('c1').id).toBe(1);
+    expect(PacketStore.chatter.get('c2').id).toBe(2);
+    expect(PacketStore.chatter.get('c1').srcDev).toBe('r1');
+    expect(PacketStore.chatter.get('c1').network).toBe('lan_a');
+  });
+
+  it('resolves the source iface name from state.routers', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatterEvt({ payload_id: 'c1', srcDev: 'r1', network: 'lan_b' }) }));
+    expect(PacketStore.chatter.get('c1').iface).toBe('eth1');
+  });
+
+  it('removes the chatter row on arrival (no recent for chatter)', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatterEvt({ payload_id: 'c1', srcDev: 'r1', network: 'lan_a' }) }));
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: 'c1', device: 'r2' } }));
+    expect(PacketStore.chatter.size).toBe(0);
+    expect(PacketStore.recent.length).toBe(0);
+  });
+
+  it('chatter counter is independent of the user counter', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatterEvt({ payload_id: 'c1', srcDev: 'r1', network: 'lan_a' }) }));
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: userPacketEvt({
+      payload_id: 'u1', srcDev: 'h1', srcAddr: '10.0.0.1',
+      dstDev: 'h2', dstAddr: '10.0.0.2', network: 'lan_a',
+    }) }));
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatterEvt({ payload_id: 'c2', srcDev: 'r1', network: 'lan_a' }) }));
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: userPacketEvt({
+      payload_id: 'u2', srcDev: 'h2', srcAddr: '10.0.0.2',
+      dstDev: 'h1', dstAddr: '10.0.0.1', network: 'lan_a',
+    }) }));
+
+    expect(PacketStore.chatter.get('c1').id).toBe(1);
+    expect(PacketStore.chatter.get('c2').id).toBe(2);
+    expect(PacketStore.inFlight.get('u1').id).toBe(1);
+    expect(PacketStore.inFlight.get('u2').id).toBe(2);
+  });
+
+  it('idFor returns the chatter id', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatterEvt({ payload_id: 'c1', srcDev: 'r1', network: 'lan_a' }) }));
+    expect(PacketStore.idFor({ payload_id: 'c1', type: 'routing_flood' })).toBe(1);
+  });
+});
