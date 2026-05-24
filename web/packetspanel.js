@@ -5,6 +5,10 @@
 // subscribes to packets:list-changed, and renders.
 import { state, bus, markDirty } from './state.js';
 
+// Temporary chatter-hover diagnostics. Enable in DevTools:
+//   localStorage.setItem('chatter-diag', '1')
+// then refresh. Filter console on [chatter-diag] to isolate.
+const _CHATTER_DIAG = (typeof window !== 'undefined') && window.localStorage && localStorage.getItem('chatter-diag') === '1';
 import { escapeHtml } from './utils.js';
 import { PacketStore } from './packetstore.js';
 
@@ -272,10 +276,26 @@ export const PacketsPanel = {
       rowEl.addEventListener('mouseenter', () => {
         if (emissionKeys) {
           // Chatter group: halo every emission's dot.
-          emissionKeys.split(' ').forEach(k => {
+          const keys = emissionKeys.split(' ');
+          const found = [];
+          const missing = [];
+          keys.forEach(k => {
             const dot = document.querySelector(`#packet-layer rect[data-payload-id="${CSS.escape(k)}"]`);
-            if (dot) dot.classList.add('halo');
+            if (dot) {
+              dot.classList.add('halo');
+              found.push(k);
+            } else {
+              missing.push(k);
+            }
           });
+          if (_CHATTER_DIAG && missing.length > 0) {
+            console.warn('[chatter-diag] hover: some emission keys had no matching canvas dot', {
+              row_payload_id: rowEl.dataset.payloadId,
+              total_emissions: keys.length,
+              found: found.length,
+              missing,
+            });
+          }
         } else {
           const dot = document.querySelector(`#packet-layer rect[data-payload-id="${CSS.escape(pid)}"]`);
           if (dot) dot.classList.add('halo');

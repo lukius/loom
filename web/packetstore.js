@@ -7,6 +7,11 @@
 // badges. All state is reset when the simulator goes idle.
 import { bus, state } from './state.js';
 
+// Temporary chatter-hover diagnostics. Enable in DevTools:
+//   localStorage.setItem('chatter-diag', '1')
+// then refresh. Filter console on [chatter-diag] to isolate.
+const _CHATTER_DIAG = (typeof window !== 'undefined') && window.localStorage && localStorage.getItem('chatter-diag') === '1';
+
 let _debounceTimer = null;
 let _simPaused = false;
 const _pendingChatterDeletes = new Set();
@@ -162,6 +167,12 @@ function _handleChatterPacket(evt, st) {
     iface: _resolveIface(evt.src && evt.src.device, evt.network, st),
     payload: (evt.payload && typeof evt.payload === 'object') ? evt.payload : {},
   });
+  if (_CHATTER_DIAG) {
+    console.warn('[chatter-diag] store: chatter row created', {
+      key,
+      id: PacketStore._nextChatterId - 1,
+    });
+  }
   // TTL: muted or throttled chatter has no canvas animation, so no
   // sim:packet-arrived will fire. Clean up after the visual budget so
   // the chatter map doesn't grow without bound. For chatter that does
@@ -221,7 +232,14 @@ bus.addEventListener('sim:packet-arrived', (e) => {
   const detail = e.detail || {};
   const payloadId = detail.payloadId;
   if (!payloadId) return;
-  if (PacketStore.chatter.delete(payloadId)) {
+  const chatterDeleted = PacketStore.chatter.delete(payloadId);
+  if (_CHATTER_DIAG) {
+    console.warn('[chatter-diag] sim:packet-arrived: chatter delete attempt', {
+      key: payloadId,
+      deleted: chatterDeleted,
+    });
+  }
+  if (chatterDeleted) {
     _scheduleEmit();
     return;
   }
