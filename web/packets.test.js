@@ -365,6 +365,51 @@ describe('PacketAnim — chatter badge live toggle', () => {
   });
 });
 
+describe('PacketAnim — finish removes badges added by live toggle', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    PacketAnim._lastChatter.clear();
+    delete document.body.dataset.chatterBadges;
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g data-kind="host" data-name="h1" transform="translate(100 100)"></g>
+        <g data-kind="network" data-name="lan_a" transform="translate(250 100)"></g>
+      </g><g id="packet-layer"></g></svg>`;
+    state.networks = { lan_a: { cidr: '10.0.0.0/24', x: 250, y: 100 } };
+    state.hosts = { h1: { address: '0.0.0.0', network: 'lan_a', x: 100, y: 100 } };
+    state.routers = {};
+    state.links = {};
+  });
+
+  it('finish() removes a badge that was added by live toggle (real frame)', async () => {
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+        type: 'routing_flood', payload_id: 'c1', network: 'lan_a',
+        src: { device: 'h1', address: '0.0.0.0' },
+        dst: { device: null, address: '255.255.255.255' },
+        payload_src: '0.0.0.0', payload_dst: '255.255.255.255',
+      } }));
+      const layer = document.getElementById('packet-layer');
+      // No badge yet — chatter badges are off.
+      expect(layer.querySelectorAll('text.packet-badge').length).toBe(0);
+
+      // Live-toggle adds a badge to the in-flight dot.
+      document.body.dataset.chatterBadges = 'on';
+      bus.dispatchEvent(new CustomEvent('packets:chatter-badges-changed'));
+      expect(layer.querySelectorAll('text.packet-badge').length).toBe(1);
+
+      // Wait long enough for the 1ms tween to fully complete.
+      await new Promise(r => setTimeout(r, 80));
+      // The dot finished — the toggle-added badge should be gone too.
+      expect(layer.querySelectorAll('text.packet-badge').length).toBe(0);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+    }
+  });
+});
+
 describe('PacketAnim — badge rendering', () => {
   beforeEach(() => {
     PacketStore._reset();

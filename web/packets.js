@@ -174,7 +174,16 @@ export const PacketAnim = {
 
     const finish = () => {
       if (dot.parentNode) layer.removeChild(dot);
-      if (badge && badge.parentNode) layer.removeChild(badge);
+      // Remove every badge tied to this payload — covers the badge created
+      // here in _render AND any badge appended later by the
+      // packets:chatter-badges-changed listener while the dot was mid-tween.
+      if (evt.payload_id) {
+        const sel = `text.packet-badge[data-payload-id="${CSS.escape(evt.payload_id)}"]`;
+        layer.querySelectorAll(sel).forEach(b => { if (b.parentNode) b.parentNode.removeChild(b); });
+      } else if (badge && badge.parentNode) {
+        // No payload_id (defensive) — fall back to removing the closure-captured badge.
+        layer.removeChild(badge);
+      }
       if (dstDeviceName) {
         bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
           detail: { payloadId: evt.payload_id, device: dstDeviceName },
