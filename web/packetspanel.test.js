@@ -77,7 +77,7 @@ describe('PacketsPanel — in-flight user-traffic rows', () => {
     expect(rows.length).toBe(1);
     expect(rows[0].textContent).toContain('#1');
     expect(rows[0].textContent).toContain('user_datagram');
-    expect(rows[0].textContent).toContain('[hop 2]');
+    expect(rows[0].textContent).toContain('[hop 1]');  // current hop, not total
   });
 
   it('omits [hop K] for a single-hop packet', () => {
@@ -113,6 +113,20 @@ describe('PacketsPanel — in-flight user-traffic rows', () => {
     PacketsPanel.open();
     PacketsPanel.render();
     expect(document.getElementById('packets-panel').textContent).toContain('No packets yet');
+  });
+
+  it('hop counter advances on each sim:packet-arrived', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitUser('p1', 'h1', '10.0.0.1', 'r1', '10.0.0.254', 'lan_a', '10.0.1.5');
+    emitUser('p1', 'r1', '10.0.1.1', 'r2', '10.0.1.2', 'link_0', '10.0.1.5');
+    emitUser('p1', 'r2', '10.0.1.2', 'h4', '10.0.1.5', 'lan_b', '10.0.1.5');
+    PacketsPanel.render();
+    expect(document.querySelector('#packets-panel .pkt-row[data-payload-id="p1"]').textContent).toContain('[hop 1]');
+
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: 'p1', device: 'r1' } }));
+    PacketsPanel.render();
+    expect(document.querySelector('#packets-panel .pkt-row[data-payload-id="p1"]').textContent).toContain('[hop 2]');
   });
 });
 

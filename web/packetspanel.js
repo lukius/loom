@@ -72,7 +72,9 @@ export const PacketsPanel = {
 
   _userRowHtml(row) {
     const isOpen = this._expanded.has(row.payloadId);
-    const hopBadge = row.hops.length > 1 ? `<span class="pkt-hopct">[hop ${row.hops.length}]</span>` : '';
+    const totalRegistered = row.hops.length;
+    const currentHop = row.status === 'delivered' ? totalRegistered : Math.min((row._arrivedCount || 0) + 1, totalRegistered);
+    const hopBadge = totalRegistered > 1 ? `<span class="pkt-hopct">[hop ${currentHop}]</span>` : '';
     const swatch = `<span class="pkt-swatch" data-type="${escapeHtml(row.type)}"></span>`;
     const detail = isOpen ? `
       <div class="pkt-detail">

@@ -60,6 +60,19 @@ function resolveDeviceLabel(address, st) {
   return null;
 }
 
+function _resolveDeviceOnFabric(address, fabricName, st) {
+  if (!address || !fabricName) return null;
+  for (const [hn, h] of Object.entries(st.hosts || {})) {
+    if (h.address === address && (h.network === fabricName || h.link === fabricName)) return hn;
+  }
+  for (const [rn, r] of Object.entries(st.routers || {})) {
+    for (const iff of Object.values(r.interfaces || {})) {
+      if (iff.address === address && (iff.network === fabricName || iff.link === fabricName)) return rn;
+    }
+  }
+  return null;
+}
+
 function _handleUserPacket(evt, st) {
   let row = PacketStore.inFlight.get(evt.payload_id);
   if (!row) {
@@ -75,16 +88,19 @@ function _handleUserPacket(evt, st) {
       dstLabel: resolveDeviceLabel(payloadDst, st) || payloadDst,
       hops: [],
       status: 'in_flight',
+      _arrivedCount: 0,
     };
     PacketStore.inFlight.set(evt.payload_id, row);
   }
+  const srcDev = (evt.src && evt.src.device) || _resolveDeviceOnFabric(evt.src && evt.src.address, evt.network, st) || (evt.src && evt.src.address) || '?';
+  const dstDev = (evt.dst && evt.dst.device) || _resolveDeviceOnFabric(evt.dst && evt.dst.address, evt.network, st) || (evt.dst && evt.dst.address) || '?';
   row.hops.push({
-    srcDev: evt.src && evt.src.device,
-    dstDev: evt.dst && evt.dst.device,
+    srcDev,
+    dstDev,
     network: evt.network,
     t: performance.now(),
+    isFinal: (evt.dst && evt.dst.address) === row.payloadDst,
   });
-  row._isLastHop = (evt.dst && evt.dst.address) === row.payloadDst;
   _scheduleEmit();
 }
 
@@ -157,11 +173,15 @@ bus.addEventListener('sim:packet-arrived', (e) => {
     return;
   }
   const row = PacketStore.inFlight.get(payloadId);
-  if (!row || !row._isLastHop) return;
-  row.status = 'delivered';
-  delete row._isLastHop;
-  PacketStore.inFlight.delete(payloadId);
-  PacketStore.recent.push(row);
-  if (PacketStore.recent.length > 10) PacketStore.recent.shift();
+  if (!row) return;
+  row._arrivedCount = (row._arrivedCount || 0) + 1;
+  const lastHop = row.hops[row.hops.length - 1];
+  if (row._arrivedCount >= row.hops.length && lastHop && lastHop.isFinal) {
+    row.status = 'delivered';
+    delete row._arrivedCount;
+    PacketStore.inFlight.delete(payloadId);
+    PacketStore.recent.push(row);
+    if (PacketStore.recent.length > 10) PacketStore.recent.shift();
+  }
   _scheduleEmit();
 });

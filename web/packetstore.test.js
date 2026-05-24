@@ -126,6 +126,35 @@ describe('PacketStore — user-traffic ID assignment and hop tracking', () => {
     expect(PacketStore.idFor({ payload_id: 'p1', type: 'user_datagram' })).toBe(1);
     expect(PacketStore.idFor({ payload_id: 'unknown', type: 'user_datagram' })).toBe(null);
   });
+
+  it('resolves hop dstDev from address when wire event omits dst.device', () => {
+    state.hosts = {
+      h1: { address: '10.0.0.1', network: 'lan_a' },
+      h2: { address: '10.0.0.2', network: 'lan_a' },
+    };
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'user_datagram',
+      payload_id: 'p1',
+      network: 'lan_a',
+      src: { device: 'h1', address: '10.0.0.1' },
+      // intentionally NO device on dst — matches the real backend
+      dst: { address: '10.0.0.2' },
+      payload_src: '10.0.0.1',
+      payload_dst: '10.0.0.2',
+    } }));
+    const row = PacketStore.inFlight.get('p1');
+    expect(row.hops[0].dstDev).toBe('h2');
+  });
+
+  it('tags each hop with isFinal (true only for the final hop)', () => {
+    const e1 = userPacketEvt({ payload_id: 'p1', srcDev: 'h1', srcAddr: '10.0.0.1', dstDev: 'r1', dstAddr: '10.0.0.254', network: 'lan_a', payload_dst: '10.0.1.5' });
+    const e2 = userPacketEvt({ payload_id: 'p1', srcDev: 'r1', srcAddr: '10.0.1.1', dstDev: 'h4', dstAddr: '10.0.1.5', network: 'lan_b', payload_src: '10.0.0.1', payload_dst: '10.0.1.5' });
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: e1 }));
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: e2 }));
+    const row = PacketStore.inFlight.get('p1');
+    expect(row.hops[0].isFinal).toBe(false);
+    expect(row.hops[1].isFinal).toBe(true);
+  });
 });
 
 function arrivedEvt(payloadId, device) {
@@ -169,6 +198,37 @@ describe('PacketStore — last-hop promotion and FIFO cap', () => {
     bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: arrivedEvt('never-seen', 'h4') }));
     expect(PacketStore.inFlight.size).toBe(0);
     expect(PacketStore.recent.length).toBe(0);
+  });
+
+  it('does NOT promote to recent when only the first of multiple hops has arrived', () => {
+    const e1 = userPacketEvt({ payload_id: 'p1', srcDev: 'h1', srcAddr: '10.0.0.1', dstDev: 'r1', dstAddr: '10.0.0.254', network: 'lan_a', payload_dst: '10.0.1.5' });
+    const e2 = userPacketEvt({ payload_id: 'p1', srcDev: 'r1', srcAddr: '10.0.1.1', dstDev: 'r2', dstAddr: '10.0.1.2', network: 'link_0', payload_src: '10.0.0.1', payload_dst: '10.0.1.5' });
+    const e3 = userPacketEvt({ payload_id: 'p1', srcDev: 'r2', srcAddr: '10.0.1.2', dstDev: 'h4', dstAddr: '10.0.1.5', network: 'lan_b', payload_src: '10.0.0.1', payload_dst: '10.0.1.5' });
+    // All three sim:packet events fire BEFORE any arrival (the simulator is faster than the animation).
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: e1 }));
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: e2 }));
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: e3 }));
+    // First arrival fires — represents hop 1 completing on canvas.
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: 'p1', device: 'r1' } }));
+    expect(PacketStore.inFlight.has('p1')).toBe(true);
+    expect(PacketStore.recent.length).toBe(0);
+    // Second arrival.
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: 'p1', device: 'r2' } }));
+    expect(PacketStore.inFlight.has('p1')).toBe(true);
+    expect(PacketStore.recent.length).toBe(0);
+    // Final arrival promotes.
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: 'p1', device: 'h4' } }));
+    expect(PacketStore.inFlight.has('p1')).toBe(false);
+    expect(PacketStore.recent.length).toBe(1);
+  });
+
+  it('tracks _arrivedCount on the row', () => {
+    const e1 = userPacketEvt({ payload_id: 'p1', srcDev: 'h1', srcAddr: '10.0.0.1', dstDev: 'r1', dstAddr: '10.0.0.254', network: 'lan_a', payload_dst: '10.0.1.5' });
+    const e2 = userPacketEvt({ payload_id: 'p1', srcDev: 'r1', srcAddr: '10.0.1.1', dstDev: 'h4', dstAddr: '10.0.1.5', network: 'lan_b', payload_src: '10.0.0.1', payload_dst: '10.0.1.5' });
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: e1 }));
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: e2 }));
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: 'p1', device: 'r1' } }));
+    expect(PacketStore.inFlight.get('p1')._arrivedCount).toBe(1);
   });
 });
 
