@@ -130,7 +130,7 @@ export const PacketsPanel = {
       return `
       <div class="pkt-payload-row">
         <span class="pkt-payload-key">${escapeHtml(k)}</span>
-        <span class="pkt-payload-val">${escapeHtml(this._formatScalar(v))}</span>
+        <span class="pkt-payload-val" title="${escapeHtml(String(v))}">${escapeHtml(this._formatScalar(v))}</span>
       </div>`;
     }).join('');
     return `<div class="pkt-payload-section">

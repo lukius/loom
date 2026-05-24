@@ -389,6 +389,19 @@ describe('PacketsPanel — payload rendering', () => {
     expect(items[0].textContent).toBe('alpha');
     expect(items[1].textContent).toBe('beta');
   });
+
+  it('puts the full scalar in the title attribute and truncates display', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    const longText = 'a'.repeat(120);
+    emitAndShowWithPayload('p1', { text: longText });
+    PacketsPanel._expanded.add('p1');
+    PacketsPanel.render();
+    const val = document.querySelector('#packets-panel .pkt-row[data-payload-id="p1"] .pkt-payload-val');
+    expect(val).not.toBeNull();
+    expect(val.getAttribute('title')).toBe(longText);
+    // Computed style (white-space: nowrap; overflow: hidden) keeps it one line — happy-dom doesn't run CSS, so we just assert the class+attr contract.
+  });
 });
 
 describe('PacketsPanel — hover-row halo', () => {
