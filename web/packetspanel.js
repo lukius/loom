@@ -14,17 +14,8 @@ export const PacketsPanel = {
   _chatterExpanded: false,
 
   _reset() {
-    // Best-effort restore inspector children if the test was mid-open.
     const host = document.getElementById('inspector');
-    if (host) {
-      for (const ch of host.children) {
-        if (ch.dataset.packetsPanelHidden === '1') {
-          ch.hidden = ch.dataset.packetsPanelPrevHidden === '1';
-          delete ch.dataset.packetsPanelHidden;
-          delete ch.dataset.packetsPanelPrevHidden;
-        }
-      }
-    }
+    if (host) delete host.dataset.packetsOpen;
     this._wired = false;
     if (this._panel && this._panel.parentNode) this._panel.parentNode.removeChild(this._panel);
     this._panel = null;
@@ -60,15 +51,10 @@ export const PacketsPanel = {
       this._panel.id = 'packets-panel';
       this._panel.className = 'packets-panel';
       host.appendChild(this._panel);
+    } else if (this._panel.parentNode !== host) {
+      host.appendChild(this._panel);
     }
-    // Hide every direct child of the inspector that isn't our panel.
-    for (const ch of host.children) {
-      if (ch === this._panel) continue;
-      if (ch.dataset.packetsPanelHidden === '1') continue;
-      ch.dataset.packetsPanelHidden = '1';
-      ch.dataset.packetsPanelPrevHidden = ch.hidden ? '1' : '0';
-      ch.hidden = true;
-    }
+    host.dataset.packetsOpen = '1';
     this._panel.hidden = false;
     this.render();
     this._syncButton();
@@ -78,17 +64,8 @@ export const PacketsPanel = {
   close() {
     state.ui.packetsPanelOpen = false;
     if (this._panel) this._panel.hidden = true;
-    // Restore previously-hidden inspector children.
     const host = document.getElementById('inspector');
-    if (host) {
-      for (const ch of host.children) {
-        if (ch.dataset.packetsPanelHidden === '1') {
-          ch.hidden = ch.dataset.packetsPanelPrevHidden === '1';
-          delete ch.dataset.packetsPanelHidden;
-          delete ch.dataset.packetsPanelPrevHidden;
-        }
-      }
-    }
+    if (host) delete host.dataset.packetsOpen;
     this._syncButton();
     markDirty();
   },
@@ -234,3 +211,16 @@ export const PacketsPanel = {
 };
 
 bus.addEventListener('packets:list-changed', () => PacketsPanel.render());
+
+// The inspector re-renders (via innerHTML=) on selection and topology changes,
+// which destroys the #packets-panel child. Re-attach it when the panel is open.
+function _reattachIfOpen() {
+  if (!state.ui || !state.ui.packetsPanelOpen || !PacketsPanel._panel) return;
+  const host = document.getElementById('inspector');
+  if (!host) return;
+  if (PacketsPanel._panel.parentNode !== host) host.appendChild(PacketsPanel._panel);
+  host.dataset.packetsOpen = '1';
+  PacketsPanel._panel.hidden = false;
+}
+bus.addEventListener('state:selection-changed', _reattachIfOpen);
+bus.addEventListener('state:topology-changed', _reattachIfOpen);

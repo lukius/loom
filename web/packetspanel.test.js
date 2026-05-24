@@ -8,9 +8,7 @@ beforeEach(() => {
   document.body.innerHTML = `
     <div id="save-state"><span class="dot"></span> idle</div>
     <button id="tb-packets"><span class="lbl">Packets</span></button>
-    <aside id="inspector">
-      <div class="insp-original-content">existing inspector content</div>
-    </aside>
+    <aside id="inspector"></aside>
   `;
   state.ui = { packetsPanelOpen: false };
   PacketsPanel._reset();
@@ -51,15 +49,32 @@ describe('PacketsPanel — toolbar button toggle', () => {
     expect(document.getElementById('packets-panel').hidden).toBeFalsy();
   });
 
-  it('hides inspector contents when open and restores them on close', () => {
+  it('hides inspector contents (including children inserted after open) until close', () => {
     PacketsPanel.wire();
-    const orig = document.querySelector('.insp-original-content');
-    expect(orig.hidden).toBe(false);
+    const host = document.getElementById('inspector');
+    // Provide a real initial child.
+    const orig = document.createElement('div');
+    orig.className = 'insp-original-content';
+    orig.textContent = 'existing inspector content';
+    host.appendChild(orig);
+
     document.getElementById('tb-packets').click();
-    expect(orig.hidden).toBe(true);
-    expect(document.getElementById('packets-panel').parentElement.id).toBe('inspector');
+    // After open: host has data-packets-open; the CSS rule hides non-panel children.
+    expect(host.dataset.packetsOpen).toBe('1');
+
+    // Simulate the inspector re-rendering — e.g. selection-change rebuilds children.
+    host.querySelectorAll(':scope > :not(#packets-panel)').forEach(c => c.remove());
+    const fresh = document.createElement('section');
+    fresh.className = 'insp-fresh-content';
+    fresh.textContent = 'inspector re-rendered';
+    host.appendChild(fresh);
+
+    // Data attribute still set — CSS hides the new child too.
+    expect(host.dataset.packetsOpen).toBe('1');
+
+    // Close — attribute cleared, CSS no longer hides anything.
     document.getElementById('tb-packets').click();
-    expect(orig.hidden).toBe(false);
+    expect(host.dataset.packetsOpen).toBeUndefined();
   });
 });
 

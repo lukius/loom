@@ -241,7 +241,7 @@ export const PacketStore = {
 
 ## Packets panel (`web/packetspanel.js`)
 
-The panel listing in-flight packets and recent activity. Wires the `tb-packets` toolbar button and mounts the panel inside the `#inspector` slot, hiding the inspector's normal content while open and restoring it on close. Open/closed state is persisted under `state.ui.packetsPanelOpen`.
+The panel listing in-flight packets and recent activity. Wires the `tb-packets` toolbar button and mounts the panel inside the `#inspector` slot. When open, sets `data-packets-open` on the inspector host; a CSS rule (`#inspector[data-packets-open] > *:not(#packets-panel) { display: none }`) hides every non-panel child — including children inserted by a later inspector re-render. Because `inspector.js` uses `innerHTML =` to re-render on `state:selection-changed` and `state:topology-changed` (which destroys the `#packets-panel` child), `packetspanel.js` subscribes to those same events and re-appends the panel when it is open. Open/closed state is persisted under `state.ui.packetsPanelOpen`.
 
 Three sections, rendered from `PacketStore`:
 
