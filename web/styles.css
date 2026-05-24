@@ -538,6 +538,11 @@ body.col-resizing * { cursor: col-resize !important; }
   font: inherit;
   text-align: right;
 }
+/* Keepalive is typically 1–3 digits — trim it; Packets typically 4 digits
+   (1800 ms is the default) and the up/down arrows eat into the visible
+   number, so give it a bit more room. */
+.canv-toolbar .tb-refresh input#tb-refresh { width: 44px; }
+.canv-toolbar .tb-refresh input#tb-speed   { width: 72px; }
 .canv-toolbar .tb-refresh input:disabled { opacity: 0.55; cursor: not-allowed; }
 .canv-toolbar .tb-refresh input:focus { outline: none; border-color: var(--accent); }
 .canv-toolbar .tb-refresh .unit { color: var(--text-3); font-size: 11px; }
