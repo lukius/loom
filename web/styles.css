@@ -1670,8 +1670,9 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 .packets-empty { padding: 16px; opacity: 0.7; text-align: center; }
 .pkt-chatter-summary { display: flex; align-items: center; gap: 6px; padding: 4px 12px; }
 .pkt-chatter-summary:hover { background: var(--row-hover, rgba(0,0,0,0.04)); }
-.pkt-chatter-row { display: flex; align-items: center; gap: 6px; padding: 2px 12px 2px 36px; font-size: 11px; }
+.pkt-chatter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 2px 12px 2px 36px; font-size: 11px; }
 .pkt-chatter-row:hover { background: var(--row-hover, rgba(0,0,0,0.04)); }
+.pkt-chatter-row .pkt-detail { flex-basis: 100%; margin: 4px 0 4px 24px; }
 .packets-recent .pkt-row { opacity: 0.85; }
 #packet-layer rect.halo {
   stroke: var(--accent, #2563eb);

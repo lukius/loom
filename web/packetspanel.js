@@ -146,19 +146,29 @@ export const PacketsPanel = {
     bus.dispatchEvent(new CustomEvent('packets:chatter-badges-changed'));
   },
 
+  _chatterRowHtml(row) {
+    const isOpen = this._expanded.has(row.payloadId);
+    const detail = isOpen ? `
+      <div class="pkt-detail">
+        ${this._payloadHtml(row.payload)}
+      </div>` : '';
+    return `
+      <div class="pkt-row pkt-chatter-row" data-payload-id="${escapeHtml(row.payloadId)}">
+        <button class="pkt-toggle" aria-expanded="${isOpen}">${isOpen ? '▾' : '▸'}</button>
+        <span class="pkt-swatch" data-type="routing_flood"></span>
+        <span class="pkt-id">#R${row.id}</span>
+        <span class="pkt-route">${escapeHtml(row.srcDev || '?')} → ${escapeHtml(row.network || '?')}</span>
+        ${row.iface ? `<span class="pkt-hop-net">(${escapeHtml(row.iface)})</span>` : ''}
+        ${detail}
+      </div>`;
+  },
+
   _chatterSectionHtml() {
     const count = PacketStore.visibleChatterCount();
     if (count === 0) return '';
     const open = this._chatterExpanded;
     const list = open
-      ? PacketStore.visibleChatter()
-          .map(r => `
-            <div class="pkt-chatter-row">
-              <span class="pkt-swatch" data-type="routing_flood"></span>
-              <span class="pkt-id">#R${r.id}</span>
-              <span class="pkt-route">${escapeHtml(r.srcDev || '?')} → ${escapeHtml(r.network || '?')}</span>
-              ${r.iface ? `<span class="pkt-hop-net">(${escapeHtml(r.iface)})</span>` : ''}
-            </div>`).join('')
+      ? PacketStore.visibleChatter().map(r => this._chatterRowHtml(r)).join('')
       : '';
     return `
       <section class="packets-section">

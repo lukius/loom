@@ -244,7 +244,7 @@ metadata:
 | `user_datagram` | `{"bytes": <int>}` always; `"text": <str>` when the body is a string |
 | `ping_request`  | `{"seq": <int>}`                        |
 | `ping_reply`    | `{"seq": <int>, "request_ts": <float>}` |
-| `routing_flood` | `{}`                                    |
+| `routing_flood` | `{"seq": <int>, "destinations": [{"prefix": <str>, "cost": <int>}, ...]}` |
 | anything else   | `{}`                                    |
 
 The shape is intentionally free-form — future message types add their own

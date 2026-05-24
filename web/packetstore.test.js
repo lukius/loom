@@ -518,3 +518,43 @@ describe('PacketStore — debounced packets:list-changed', () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('PacketStore — chatter payload field', () => {
+  beforeEach(() => {
+    state.routers = { r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 } } } };
+  });
+
+  it('captures payload on chatter rows', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood', payload_id: 'c1', network: 'lan_a',
+      src: { device: 'r1', address: '0.0.0.0' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '0.0.0.0', payload_dst: '255.255.255.255',
+      payload: { seq: 5, destinations: [{ prefix: '10.0.0.0/24', cost: 1 }] },
+    } }));
+    expect(PacketStore.chatter.get('c1').payload).toEqual({
+      seq: 5,
+      destinations: [{ prefix: '10.0.0.0/24', cost: 1 }],
+    });
+  });
+
+  it('defaults payload to {} when the wire event omits it', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood', payload_id: 'c2', network: 'lan_a',
+      src: { device: 'r1', address: '0.0.0.0' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '0.0.0.0', payload_dst: '255.255.255.255',
+    } }));
+    expect(PacketStore.chatter.get('c2').payload).toEqual({});
+  });
+
+  it('stores payloadId on the chatter row', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood', payload_id: 'c3', network: 'lan_a',
+      src: { device: 'r1', address: '0.0.0.0' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '0.0.0.0', payload_dst: '255.255.255.255',
+    } }));
+    expect(PacketStore.chatter.get('c3').payloadId).toBe('c3');
+  });
+});

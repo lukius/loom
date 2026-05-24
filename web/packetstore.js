@@ -143,10 +143,12 @@ function _handleChatterPacket(evt, st) {
   if (PacketStore.chatter.has(evt.payload_id)) return;
   PacketStore.chatter.set(evt.payload_id, {
     id: PacketStore._nextChatterId++,
+    payloadId: evt.payload_id,
     type: 'routing_flood',
     srcDev: evt.src && evt.src.device,
     network: evt.network,
     iface: _resolveIface(evt.src && evt.src.device, evt.network, st),
+    payload: (evt.payload && typeof evt.payload === 'object') ? evt.payload : {},
   });
   // TTL: muted or throttled chatter has no canvas animation, so no
   // sim:packet-arrived will fire. Clean up after the visual budget so

@@ -270,7 +270,7 @@ def test_packet_event_carries_ping_reply_seq_and_request_ts():
         os.unlink(path)
 
 
-def test_packet_event_for_routing_flood_has_empty_payload_dict():
+def test_packet_event_for_routing_flood_carries_seq_and_destinations():
     import os
     import tempfile
     import textwrap
@@ -279,6 +279,8 @@ def test_packet_event_for_routing_flood_has_empty_payload_dict():
     from entities.event import EventTracer
     from parser import Parser
 
+    # Public addresses are used so the default RFC1918 outbound policy
+    # does not filter the prefixes out of the RoutingMessage.
     yaml_text = textwrap.dedent("""
     internet:
       name: loom
@@ -286,11 +288,11 @@ def test_packet_event_for_routing_flood_has_empty_payload_dict():
         main:
           asn: 65000
           networks:
-            lan1: "10.0.0.0/24"
-            lan2: "10.0.1.0/24"
+            lan1: "200.100.0.0/24"
+            lan2: "200.100.1.0/24"
           routers:
-            r1: {interfaces: {eth0: {network: lan1, address: "10.0.0.1", cost: 5},
-                              eth1: {network: lan2, address: "10.0.1.1", cost: 5}}}
+            r1: {interfaces: {eth0: {network: lan1, address: "200.100.0.1", cost: 5},
+                              eth1: {network: lan2, address: "200.100.1.1", cost: 5}}}
     """)
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(yaml_text)
@@ -306,7 +308,12 @@ def test_packet_event_for_routing_flood_has_empty_payload_dict():
             if e.get("kind") == "packet" and e.get("type") == "routing_flood"
         ]
         assert flood_events, "expected at least one routing_flood packet event"
-        assert flood_events[0]["payload"] == {}
+        payload = flood_events[0]["payload"]
+        assert isinstance(payload["seq"], int)
+        prefixes = {d["prefix"] for d in payload["destinations"]}
+        assert prefixes == {"200.100.0.0/24", "200.100.1.0/24"}
+        for dest in payload["destinations"]:
+            assert isinstance(dest["cost"], int)
         system.stop()
     finally:
         os.unlink(path)

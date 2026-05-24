@@ -6,7 +6,7 @@ from .address import Address
 from .base import Entity
 from .event import EventTracer
 from .exception import InterfaceNotReadyException
-from .packet import Datagram, Frame, PingReply, PingRequest, UserMessage
+from .packet import Datagram, Frame, PingReply, PingRequest, RoutingMessage, UserMessage
 
 _PACKET_KIND = {
     "RoutingMessage": "routing_flood",
@@ -38,6 +38,14 @@ def _summarize_payload(payload) -> dict:
         return {"seq": payload.seq}
     if isinstance(payload, PingReply):
         return {"seq": payload.seq, "request_ts": payload.request_ts}
+    if isinstance(payload, RoutingMessage):
+        return {
+            "seq": payload.seq(),
+            "destinations": [
+                {"prefix": str(p), "cost": c}
+                for p, c in payload.destinations().items()
+            ],
+        }
     return {}
 
 

@@ -380,3 +380,64 @@ describe('PacketsPanel — hover-row halo', () => {
     expect(document.querySelector('rect[data-payload-id="p1"]').classList.contains('halo')).toBe(false);
   });
 });
+
+describe('PacketsPanel — chatter row expansion and halo', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    state.routers = { r1: { interfaces: {
+      eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 },
+    } } };
+    delete document.body.dataset.chatterBadges;
+  });
+
+  function emitChatterWithPayload(payloadId, payload) {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood', payload_id: payloadId, network: 'lan_a',
+      src: { device: 'r1', address: '0.0.0.0' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '0.0.0.0', payload_dst: '255.255.255.255',
+      payload,
+    } }));
+  }
+
+  it('chatter rows are expandable and show payload when expanded', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitChatterWithPayload('c1', { seq: 5, destinations: [{ prefix: '10.0.0.0/24', cost: 1 }] });
+    PacketsPanel._setChatterExpanded(true);
+    PacketsPanel.render();
+    const row = document.querySelector('.pkt-chatter-row[data-payload-id="c1"]');
+    expect(row).not.toBeNull();
+    row.querySelector('.pkt-toggle').click();
+    const detail = document.querySelector('.pkt-chatter-row[data-payload-id="c1"] .pkt-detail');
+    expect(detail).not.toBeNull();
+    expect(detail.textContent).toContain('seq');
+    expect(detail.textContent).toContain('5');
+  });
+
+  it('hover on a chatter row adds .halo to the matching packet dot', () => {
+    document.body.querySelector('#packet-layer') || (() => {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.innerHTML = '<g id="packet-layer"></g>';
+      document.body.appendChild(svg);
+    })();
+    const layer = document.getElementById('packet-layer');
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    dot.dataset.payloadId = 'c1';
+    dot.dataset.packetType = 'routing_flood';
+    layer.appendChild(dot);
+
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitChatterWithPayload('c1', {});
+    PacketsPanel._setChatterExpanded(true);
+    PacketsPanel.render();
+
+    const row = document.querySelector('.pkt-chatter-row[data-payload-id="c1"]');
+    expect(row).not.toBeNull();
+    row.dispatchEvent(new MouseEvent('mouseenter'));
+    expect(dot.classList.contains('halo')).toBe(true);
+    row.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(dot.classList.contains('halo')).toBe(false);
+  });
+});
