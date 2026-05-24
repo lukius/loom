@@ -164,12 +164,22 @@ export const PacketsPanel = {
     if (close) close.addEventListener('click', () => this.close());
     this._panel.querySelectorAll('.pkt-row').forEach(rowEl => {
       const tog = rowEl.querySelector('.pkt-toggle');
-      if (!tog) return;
-      tog.addEventListener('click', () => {
-        const pid = rowEl.dataset.payloadId;
-        if (this._expanded.has(pid)) this._expanded.delete(pid);
-        else this._expanded.add(pid);
-        this.render();
+      if (tog) {
+        tog.addEventListener('click', () => {
+          const pid = rowEl.dataset.payloadId;
+          if (this._expanded.has(pid)) this._expanded.delete(pid);
+          else this._expanded.add(pid);
+          this.render();
+        });
+      }
+      const pid = rowEl.dataset.payloadId;
+      rowEl.addEventListener('mouseenter', () => {
+        const dot = document.querySelector(`#packet-layer rect[data-payload-id="${CSS.escape(pid)}"]`);
+        if (dot) dot.classList.add('halo');
+      });
+      rowEl.addEventListener('mouseleave', () => {
+        const dot = document.querySelector(`#packet-layer rect[data-payload-id="${CSS.escape(pid)}"]`);
+        if (dot) dot.classList.remove('halo');
       });
     });
 

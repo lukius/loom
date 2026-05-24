@@ -1679,3 +1679,8 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 .pkt-chatter-row { display: flex; align-items: center; gap: 6px; padding: 2px 12px 2px 36px; font-size: 11px; }
 .pkt-chatter-row:hover { background: var(--row-hover, rgba(0,0,0,0.04)); }
 .packets-recent .pkt-row { opacity: 0.85; }
+#packet-layer rect.halo {
+  stroke: var(--accent, #2563eb);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 4px var(--accent, #2563eb));
+}

@@ -215,3 +215,35 @@ describe('PacketsPanel — recent section', () => {
     expect(rows[rows.length - 1].dataset.payloadId).toBe('p11');
   });
 });
+
+describe('PacketsPanel — hover-row halo', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    document.body.innerHTML = `
+      <div id="save-state"><span></span></div>
+      <button id="tb-packets"></button>
+      <svg><g id="packet-layer">
+        <rect data-payload-id="p1" data-packet-type="user_datagram" class="packet-dot" />
+      </g></svg>`;
+    PacketsPanel._reset();
+  });
+
+  it('mouseenter on a row adds .halo to the matching packet dot', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'user_datagram',
+      payload_id: 'p1', network: 'lan_a',
+      src: { device: 'h1', address: '10.0.0.1' },
+      dst: { device: 'h2', address: '10.0.0.2' },
+      payload_src: '10.0.0.1', payload_dst: '10.0.0.2',
+    } }));
+    PacketsPanel.render();
+    const row = document.querySelector('.pkt-row[data-payload-id="p1"]');
+    row.dispatchEvent(new MouseEvent('mouseenter'));
+    expect(document.querySelector('rect[data-payload-id="p1"]').classList.contains('halo')).toBe(true);
+
+    row.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(document.querySelector('rect[data-payload-id="p1"]').classList.contains('halo')).toBe(false);
+  });
+});
