@@ -345,6 +345,50 @@ describe('PacketsPanel — payload rendering', () => {
     const detail = document.querySelector('#packets-panel .pkt-row[data-payload-id="p1"] .pkt-detail');
     expect(detail.textContent).toContain('1.235');
   });
+
+  it('renders an array value as a bulleted list (one item per line)', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitAndShowWithPayload('p1', {
+      seq: 1,
+      destinations: [
+        { prefix: '200.100.0.0/24', cost: 10 },
+        { prefix: '100.200.0.0/24', cost: 15 },
+      ],
+    });
+    PacketsPanel._expanded.add('p1');
+    PacketsPanel.render();
+    const detail = document.querySelector('#packets-panel .pkt-row[data-payload-id="p1"] .pkt-detail');
+    const list = detail.querySelector('.pkt-payload-list');
+    expect(list).not.toBeNull();
+    const items = list.querySelectorAll('li');
+    expect(items.length).toBe(2);
+    expect(items[0].textContent).toContain('prefix=200.100.0.0/24');
+    expect(items[0].textContent).toContain('cost=10');
+    expect(items[1].textContent).toContain('prefix=100.200.0.0/24');
+    expect(items[1].textContent).toContain('cost=15');
+  });
+
+  it('renders an empty array as (empty)', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitAndShowWithPayload('p1', { destinations: [] });
+    PacketsPanel._expanded.add('p1');
+    PacketsPanel.render();
+    const detail = document.querySelector('#packets-panel .pkt-row[data-payload-id="p1"] .pkt-detail');
+    expect(detail.textContent).toContain('(empty)');
+  });
+
+  it('renders a string array element verbatim', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitAndShowWithPayload('p1', { items: ['alpha', 'beta'] });
+    PacketsPanel._expanded.add('p1');
+    PacketsPanel.render();
+    const items = document.querySelectorAll('#packets-panel .pkt-row[data-payload-id="p1"] .pkt-payload-list li');
+    expect(items[0].textContent).toBe('alpha');
+    expect(items[1].textContent).toBe('beta');
+  });
 });
 
 describe('PacketsPanel — hover-row halo', () => {

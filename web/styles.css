@@ -1681,6 +1681,13 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 }
 .pkt-payload-section { margin-top: 6px; padding-top: 4px; border-top: 1px dashed var(--border, #ddd); }
 .pkt-payload-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.6; margin-bottom: 2px; }
-.pkt-payload-row { display: flex; justify-content: space-between; font-size: 11px; }
+.pkt-payload-row { display: flex; gap: 8px; font-size: 11px; align-items: baseline; }
 .pkt-payload-key { opacity: 0.7; }
-.pkt-payload-val { font-family: 'Geist Mono', monospace; }
+.pkt-payload-val { font-family: 'Geist Mono', monospace; word-break: break-all; min-width: 0; flex: 1; text-align: right; }
+.pkt-payload-block { margin: 4px 0; }
+.pkt-payload-block .pkt-payload-key { display: block; margin-bottom: 2px; opacity: 0.7; }
+.pkt-payload-list { margin: 0; padding-left: 14px; font-size: 11px; font-family: 'Geist Mono', monospace; }
+.pkt-payload-list li { margin: 1px 0; word-break: break-all; }
+.pkt-payload-list .pkt-payload-empty { font-family: inherit; opacity: 0.6; list-style: none; padding-left: 0; }
+.pkt-payload-kv { white-space: nowrap; margin-right: 8px; }
+.pkt-payload-kv-k { opacity: 0.7; }

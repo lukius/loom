@@ -116,22 +116,42 @@ export const PacketsPanel = {
     if (!payload || typeof payload !== 'object') return '';
     const entries = Object.entries(payload);
     if (entries.length === 0) return '';
-    const rows = entries.map(([k, v]) => `
+    const rows = entries.map(([k, v]) => {
+      if (Array.isArray(v)) {
+        const items = v.length === 0
+          ? '<li class="pkt-payload-empty">(empty)</li>'
+          : v.map(item => `<li>${this._renderPayloadScalar(item)}</li>`).join('');
+        return `
+        <div class="pkt-payload-block">
+          <div class="pkt-payload-key">${escapeHtml(k)}</div>
+          <ul class="pkt-payload-list">${items}</ul>
+        </div>`;
+      }
+      return `
       <div class="pkt-payload-row">
         <span class="pkt-payload-key">${escapeHtml(k)}</span>
-        <span class="pkt-payload-val">${escapeHtml(this._formatPayloadValue(v))}</span>
-      </div>`).join('');
+        <span class="pkt-payload-val">${escapeHtml(this._formatScalar(v))}</span>
+      </div>`;
+    }).join('');
     return `<div class="pkt-payload-section">
       <div class="pkt-payload-title">payload</div>
       ${rows}
     </div>`;
   },
 
-  _formatPayloadValue(v) {
-    if (v == null) return '';
-    if (typeof v === 'number') {
-      return Number.isInteger(v) ? String(v) : v.toFixed(3);
+  _renderPayloadScalar(item) {
+    if (item == null) return '';
+    if (typeof item === 'object' && !Array.isArray(item)) {
+      return Object.entries(item)
+        .map(([k, v]) => `<span class="pkt-payload-kv"><span class="pkt-payload-kv-k">${escapeHtml(k)}</span>=<span class="pkt-payload-kv-v">${escapeHtml(this._formatScalar(v))}</span></span>`)
+        .join(' ');
     }
+    return escapeHtml(this._formatScalar(item));
+  },
+
+  _formatScalar(v) {
+    if (v == null) return '';
+    if (typeof v === 'number') return Number.isInteger(v) ? String(v) : v.toFixed(3);
     if (typeof v === 'string') return v;
     if (typeof v === 'object') {
       try { return JSON.stringify(v); } catch (_) { return String(v); }
