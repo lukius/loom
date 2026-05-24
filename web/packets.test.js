@@ -518,6 +518,67 @@ describe('PacketAnim — badge rendering', () => {
 });
 
 
+describe('PacketAnim — throttled chatter cleans up store row', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    PacketAnim._lastChatter.clear();
+    PacketAnim.muted = false;
+    delete document.body.dataset.chatterBadges;
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g data-kind="router" data-name="r1" transform="translate(100 100)"></g>
+        <g data-kind="network" data-name="lan_a" transform="translate(250 100)"></g>
+      </g><g id="packet-layer"></g></svg>`;
+    state.networks = { lan_a: { cidr: '10.0.0.0/24', x: 250, y: 100 } };
+    state.hosts = {};
+    state.routers = { r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 } } } };
+    state.links = {};
+  });
+
+  function chatter(payloadId) {
+    return {
+      type: 'routing_flood', payload_id: payloadId, network: 'lan_a',
+      src: { device: 'r1', iface: 'eth0', address: '10.0.0.254' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '10.0.0.254', payload_dst: '255.255.255.255',
+    };
+  }
+
+  it('dispatches sim:packet-arrived for throttled chatter so the store cleans up', () => {
+    // First chatter from r1/lan_a passes through.
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('p1') }));
+    expect(PacketStore.chatter.size).toBe(1);
+
+    // Spy on sim:packet-arrived BEFORE the second event (which will be throttled).
+    const spy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', spy);
+
+    // Second chatter from r1/lan_a within 200ms — throttled.
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('p2') }));
+
+    // Store briefly had two rows but the throttle path dispatched arrival
+    // for p2's composite key, which removed it. Only p1 remains.
+    const compositeP2 = 'p2|r1|eth0|lan_a';
+    const arrivalDetails = spy.mock.calls.map(c => c[0].detail);
+    expect(arrivalDetails.some(d => d.payloadId === compositeP2 && d.device === null)).toBe(true);
+    expect(PacketStore.chatter.has(compositeP2)).toBe(false);
+    expect(PacketStore.chatter.has('p1|r1|eth0|lan_a')).toBe(true);
+  });
+
+  it('dispatches sim:packet-arrived for muted chatter so the store cleans up', () => {
+    PacketAnim.muted = true;
+    const spy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', spy);
+
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('p1') }));
+
+    const compositeP1 = 'p1|r1|eth0|lan_a';
+    const arrivalDetails = spy.mock.calls.map(c => c[0].detail);
+    expect(arrivalDetails.some(d => d.payloadId === compositeP1 && d.device === null)).toBe(true);
+    expect(PacketStore.chatter.has(compositeP1)).toBe(false);
+  });
+});
+
 describe('PacketAnim — dot-appeared signal', () => {
   beforeEach(() => {
     PacketStore._reset();

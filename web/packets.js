@@ -4,10 +4,6 @@
 // the canvas. Reads Sim.state to freeze in-flight tweens while paused.
 import { bus, state, NODE } from './state.js';
 
-// Temporary chatter-hover diagnostics. Enable in DevTools:
-//   localStorage.setItem('chatter-diag', '1')
-// then refresh. Filter console on [chatter-diag] to isolate.
-const _CHATTER_DIAG = (typeof window !== 'undefined') && window.localStorage && localStorage.getItem('chatter-diag') === '1';
 import { escapeHtml } from './utils.js';
 import { PacketStore } from './packetstore.js';
 import {
@@ -87,7 +83,15 @@ export const PacketAnim = {
   muted: false,
 
   play(evt) {
-    if (evt.type === 'routing_flood' && (this.muted || !this._chatterAllowed(evt))) return;
+    if (evt.type === 'routing_flood' && (this.muted || !this._chatterAllowed(evt))) {
+      // Throttled or muted: no animation will run. Dispatch arrival so the
+      // store cleans up the entry now instead of waiting 2s for the TTL.
+      const dotKey = `${evt.payload_id}|${(evt.src && evt.src.device) || '?'}|${(evt.src && evt.src.iface) || '?'}|${evt.network || '?'}`;
+      bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
+        detail: { payloadId: dotKey, device: null },
+      }));
+      return;
+    }
 
     if (evt.flow && this._SEQUENTIAL.has(evt.type)) {
       const q = this._queues.get(evt.flow);
@@ -114,13 +118,6 @@ export const PacketAnim = {
   _render(evt, onDone) {
     const srcNode = lookupDeviceNode(evt.src && evt.src.device);
     if (!srcNode) {
-      if (_CHATTER_DIAG && evt.type === 'routing_flood') {
-        console.warn('[chatter-diag] _render early-return: no srcNode', {
-          payload_id: evt.payload_id,
-          src_device: evt.src && evt.src.device,
-          network: evt.network,
-        });
-      }
       if (onDone) onDone();
       return;
     }
@@ -132,27 +129,12 @@ export const PacketAnim = {
     const isLink = !!(state.links && state.links[evt.network]);
     const netNode = isLink ? null : lookupNetworkNode(evt.network);
     if (!isLink && !netNode) {
-      if (_CHATTER_DIAG && evt.type === 'routing_flood') {
-        console.warn('[chatter-diag] _render early-return: no netNode', {
-          payload_id: evt.payload_id,
-          src_device: evt.src && evt.src.device,
-          network: evt.network,
-          isLink,
-        });
-      }
       if (onDone) onDone();
       return;
     }
 
     const layer = document.getElementById('packet-layer');
     if (!layer) {
-      if (_CHATTER_DIAG && evt.type === 'routing_flood') {
-        console.warn('[chatter-diag] _render early-return: no layer', {
-          payload_id: evt.payload_id,
-          src_device: evt.src && evt.src.device,
-          network: evt.network,
-        });
-      }
       if (onDone) onDone();
       return;
     }
@@ -230,13 +212,6 @@ export const PacketAnim = {
         // Arrival is dispatched even when the destination device couldn't be
         // resolved (chatter broadcasts have no specific destination device).
         // Downstream listeners that need a device name early-return on null.
-        if (_CHATTER_DIAG && evt.type === 'routing_flood') {
-          console.warn('[chatter-diag] finish: dispatching sim:packet-arrived', {
-            dotKey,
-            dstDeviceName,
-            type: evt.type,
-          });
-        }
         bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
           detail: { payloadId: dotKey, device: dstDeviceName },
         }));
@@ -248,15 +223,6 @@ export const PacketAnim = {
       ? this._segmentsForLink(evt, srcNode)
       : this._segmentsForNetwork(evt, srcNode, netNode);
     if (segs.length === 0) {
-      if (_CHATTER_DIAG && evt.type === 'routing_flood') {
-        console.warn('[chatter-diag] _render produced no segments — dot will finish synchronously', {
-          payload_id: evt.payload_id,
-          src_device: evt.src && evt.src.device,
-          src_iface: evt.src && evt.src.iface,
-          network: evt.network,
-          isLink,
-        });
-      }
       finish();
       return;
     }
