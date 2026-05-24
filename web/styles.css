@@ -613,7 +613,8 @@ body.col-resizing * { cursor: col-resize !important; }
   padding: 1px 6px; border: 1px solid #fbbf24; border-radius: 3px; opacity: 0.85;
   justify-self: end; }
 .term-in:disabled { opacity: 0.55; cursor: not-allowed; }
-.term-out { flex: 1; padding: 6px 8px; overflow-y: auto; white-space: pre-wrap; margin: 0;
+.term-out { flex: 1; padding: 6px 8px; overflow-y: auto; overflow-x: hidden;
+  white-space: pre-wrap; overflow-wrap: anywhere; margin: 0;
   background: #0a0a0a; color: #aaffaa; }
 .term-line { display: flex; padding: 0 8px 6px; }
 .term-prompt { color: #4a8; margin-right: 6px; white-space: pre; }
