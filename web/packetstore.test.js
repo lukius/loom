@@ -127,3 +127,47 @@ describe('PacketStore — user-traffic ID assignment and hop tracking', () => {
     expect(PacketStore.idFor({ payload_id: 'unknown', type: 'user_datagram' })).toBe(null);
   });
 });
+
+function arrivedEvt(payloadId, device) {
+  return { payloadId, device };
+}
+
+describe('PacketStore — last-hop promotion and FIFO cap', () => {
+  it('promotes a row to recent when the matching arrival fires for the final hop', () => {
+    const e1 = userPacketEvt({ payload_id: 'p1', srcDev: 'h1', srcAddr: '10.0.0.1', dstDev: 'r1', dstAddr: '10.0.0.254', network: 'lan_a', payload_dst: '10.0.1.5' });
+    const e2 = userPacketEvt({ payload_id: 'p1', srcDev: 'r1', srcAddr: '10.0.1.1', dstDev: 'h4', dstAddr: '10.0.1.5', network: 'lan_b', payload_src: '10.0.0.1', payload_dst: '10.0.1.5' });
+
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: e1 }));
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: arrivedEvt('p1', 'r1') }));
+    expect(PacketStore.inFlight.has('p1')).toBe(true);
+    expect(PacketStore.recent.length).toBe(0);
+
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: e2 }));
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: arrivedEvt('p1', 'h4') }));
+    expect(PacketStore.inFlight.has('p1')).toBe(false);
+    expect(PacketStore.recent.length).toBe(1);
+    expect(PacketStore.recent[0].id).toBe(1);
+    expect(PacketStore.recent[0].status).toBe('delivered');
+  });
+
+  it('keeps recent FIFO-capped at 10', () => {
+    for (let i = 1; i <= 11; i++) {
+      const pid = `p${i}`;
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: userPacketEvt({
+        payload_id: pid, srcDev: 'h1', srcAddr: '10.0.0.1',
+        dstDev: 'h2', dstAddr: '10.0.0.2', network: 'lan_a',
+        payload_src: '10.0.0.1', payload_dst: '10.0.0.2',
+      }) }));
+      bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: arrivedEvt(pid, 'h2') }));
+    }
+    expect(PacketStore.recent.length).toBe(10);
+    expect(PacketStore.recent[0].id).toBe(2);
+    expect(PacketStore.recent[9].id).toBe(11);
+  });
+
+  it('ignores arrival events for unknown payloads', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: arrivedEvt('never-seen', 'h4') }));
+    expect(PacketStore.inFlight.size).toBe(0);
+    expect(PacketStore.recent.length).toBe(0);
+  });
+});

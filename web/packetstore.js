@@ -68,6 +68,7 @@ function _handleUserPacket(evt, st) {
     network: evt.network,
     t: performance.now(),
   });
+  row._isLastHop = (evt.dst && evt.dst.address) === row.payloadDst;
 }
 
 PacketStore.idFor = function (evt) {
@@ -83,4 +84,18 @@ bus.addEventListener('sim:packet', (e) => {
   const evt = e.detail;
   if (!evt || !evt.payload_id) return;
   if (USER_TYPES.has(evt.type)) _handleUserPacket(evt, state);
+});
+
+bus.addEventListener('sim:packet-arrived', (e) => {
+  const detail = e.detail || {};
+  const payloadId = detail.payloadId;
+  if (!payloadId) return;
+  const row = PacketStore.inFlight.get(payloadId);
+  if (!row) return;
+  if (!row._isLastHop) return;
+  row.status = 'delivered';
+  delete row._isLastHop;
+  PacketStore.inFlight.delete(payloadId);
+  PacketStore.recent.push(row);
+  if (PacketStore.recent.length > 10) PacketStore.recent.shift();
 });
