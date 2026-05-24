@@ -294,6 +294,59 @@ describe('PacketsPanel — recent section', () => {
   });
 });
 
+describe('PacketsPanel — payload rendering', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    state.hosts = {};
+  });
+
+  function emitAndShowWithPayload(payloadId, payload) {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'user_datagram',
+      payload_id: payloadId, network: 'lan_a',
+      src: { device: 'h1', address: '10.0.0.1' },
+      dst: { address: '10.0.0.2' },
+      payload_src: '10.0.0.1', payload_dst: '10.0.0.2',
+      payload,
+    } }));
+    bus.dispatchEvent(new CustomEvent('packets:dot-appeared', { detail: { payloadId } }));
+  }
+
+  it('renders payload key/value rows in the expanded view', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitAndShowWithPayload('p1', { bytes: 13 });
+    PacketsPanel._expanded.add('p1');  // start expanded
+    PacketsPanel.render();
+    const detail = document.querySelector('#packets-panel .pkt-row[data-payload-id="p1"] .pkt-detail');
+    expect(detail).not.toBeNull();
+    const section = detail.querySelector('.pkt-payload-section');
+    expect(section).not.toBeNull();
+    expect(section.textContent).toContain('bytes');
+    expect(section.textContent).toContain('13');
+  });
+
+  it('omits the payload section when payload is empty', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitAndShowWithPayload('p1', {});
+    PacketsPanel._expanded.add('p1');
+    PacketsPanel.render();
+    const detail = document.querySelector('#packets-panel .pkt-row[data-payload-id="p1"] .pkt-detail');
+    expect(detail.querySelector('.pkt-payload-section')).toBeNull();
+  });
+
+  it('formats floats to 3 decimals', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitAndShowWithPayload('p1', { request_ts: 1.234567 });
+    PacketsPanel._expanded.add('p1');
+    PacketsPanel.render();
+    const detail = document.querySelector('#packets-panel .pkt-row[data-payload-id="p1"] .pkt-detail');
+    expect(detail.textContent).toContain('1.235');
+  });
+});
+
 describe('PacketsPanel — hover-row halo', () => {
   beforeEach(() => {
     PacketStore._reset();

@@ -366,6 +366,48 @@ describe('PacketStore — visibility', () => {
   });
 });
 
+describe('PacketStore — payload field', () => {
+  it('captures evt.payload on the row at creation', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'user_datagram', payload_id: 'p1', network: 'lan_a',
+      src: { device: 'h1', address: '10.0.0.1' },
+      dst: { address: '10.0.0.2' },
+      payload_src: '10.0.0.1', payload_dst: '10.0.0.2',
+      payload: { bytes: 13 },
+    } }));
+    expect(PacketStore.inFlight.get('p1').payload).toEqual({ bytes: 13 });
+  });
+
+  it('defaults payload to {} when wire event omits it', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'user_datagram', payload_id: 'p1', network: 'lan_a',
+      src: { device: 'h1', address: '10.0.0.1' },
+      dst: { address: '10.0.0.2' },
+      payload_src: '10.0.0.1', payload_dst: '10.0.0.2',
+      // no payload key
+    } }));
+    expect(PacketStore.inFlight.get('p1').payload).toEqual({});
+  });
+
+  it('does not overwrite payload on subsequent hops', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'user_datagram', payload_id: 'p1', network: 'lan_a',
+      src: { device: 'h1', address: '10.0.0.1' },
+      dst: { address: '10.0.0.254' },
+      payload_src: '10.0.0.1', payload_dst: '10.0.1.5',
+      payload: { bytes: 5 },
+    } }));
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'user_datagram', payload_id: 'p1', network: 'link_0',
+      src: { device: 'r1', address: '10.0.1.1' },
+      dst: { address: '10.0.1.5' },
+      payload_src: '10.0.0.1', payload_dst: '10.0.1.5',
+      payload: { bytes: 999 },  // simulator wouldn't actually do this, but check we don't overwrite
+    } }));
+    expect(PacketStore.inFlight.get('p1').payload).toEqual({ bytes: 5 });
+  });
+});
+
 import { vi } from 'vitest';
 
 describe('PacketStore — debounced packets:list-changed', () => {

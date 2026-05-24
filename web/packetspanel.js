@@ -97,6 +97,7 @@ export const PacketsPanel = {
                 ${i === row.hops.length - 1 && row.status !== 'delivered' ? '<span class="pkt-hop-flag">◀ in flight</span>' : ''}
             </li>`).join('')}
         </ol>
+        ${this._payloadHtml(row.payload)}
         ${this._natFormat(PacketStore.natFor(row.payloadId))}
       </div>` : '';
     return `
@@ -109,6 +110,33 @@ export const PacketsPanel = {
         ${hopBadge}
         ${detail}
       </div>`;
+  },
+
+  _payloadHtml(payload) {
+    if (!payload || typeof payload !== 'object') return '';
+    const entries = Object.entries(payload);
+    if (entries.length === 0) return '';
+    const rows = entries.map(([k, v]) => `
+      <div class="pkt-payload-row">
+        <span class="pkt-payload-key">${escapeHtml(k)}</span>
+        <span class="pkt-payload-val">${escapeHtml(this._formatPayloadValue(v))}</span>
+      </div>`).join('');
+    return `<div class="pkt-payload-section">
+      <div class="pkt-payload-title">payload</div>
+      ${rows}
+    </div>`;
+  },
+
+  _formatPayloadValue(v) {
+    if (v == null) return '';
+    if (typeof v === 'number') {
+      return Number.isInteger(v) ? String(v) : v.toFixed(3);
+    }
+    if (typeof v === 'string') return v;
+    if (typeof v === 'object') {
+      try { return JSON.stringify(v); } catch (_) { return String(v); }
+    }
+    return String(v);
   },
 
   _setChatterExpanded(on) {

@@ -88,6 +88,7 @@ function _handleUserPacket(evt, st) {
       dstLabel: resolveDeviceLabel(payloadDst, st) || payloadDst,
       hops: [],
       status: 'in_flight',
+      payload: (evt.payload && typeof evt.payload === 'object') ? evt.payload : {},
       _arrivedCount: 0,
       _visible: false,
     };
