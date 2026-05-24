@@ -34,10 +34,15 @@ bus.addEventListener('sim:router-intercept', (e) => {
   }
 });
 
-// Position a packet rect so its center is at world (cx, cy).
-function setPacketCenter(rect, cx, cy) {
+// Position a packet rect and optional badge so the rect's center is at (cx, cy).
+// The badge floats just above the rect.
+function setPacketAnchor(rect, badge, cx, cy) {
   rect.setAttribute('x', cx - PACKET_W / 2);
   rect.setAttribute('y', cy - PACKET_H / 2);
+  if (badge) {
+    badge.setAttribute('x', cx);
+    badge.setAttribute('y', cy - PACKET_H / 2 - 4);
+  }
 }
 
 /* ---------- PacketAnim ---------- */
@@ -118,6 +123,26 @@ export const PacketAnim = {
     dot.addEventListener('mouseenter', () => showPacketTooltip(evt, dot));
     dot.addEventListener('mouseleave', hidePacketTooltip);
 
+    // Numeric badge (#N for user traffic, #R* for routing chatter when enabled).
+    let badge = null;
+    const id = PacketStore.idFor(evt);
+    const chatterBadgesOn = document.body.dataset.chatterBadges === 'on';
+    const wantBadge = id != null && (evt.type !== 'routing_flood' || chatterBadgesOn);
+    if (wantBadge) {
+      badge = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      badge.setAttribute('class', 'packet-badge');
+      badge.setAttribute('text-anchor', 'middle');
+      badge.setAttribute('fill', color.fill);
+      badge.setAttribute('stroke', 'rgba(0,0,0,0.5)');
+      badge.setAttribute('stroke-width', '0.4');
+      badge.setAttribute('paint-order', 'stroke');
+      badge.setAttribute('font-size', '10');
+      badge.setAttribute('font-weight', '600');
+      badge.style.pointerEvents = 'none';
+      badge.textContent = evt.type === 'routing_flood' ? `#R${id}` : `#${id}`;
+      layer.appendChild(badge);
+    }
+
     // Resolve the destination device once so the arrival signal can name it.
     // Networks use address-on-fabric lookup; p2p links use the structural
     // "other endpoint" since dst.address can collide with same-IP ifaces
@@ -135,6 +160,7 @@ export const PacketAnim = {
 
     const finish = () => {
       if (dot.parentNode) layer.removeChild(dot);
+      if (badge && badge.parentNode) layer.removeChild(badge);
       if (dstDeviceName) {
         bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
           detail: { payloadId: evt.payload_id, device: dstDeviceName },
@@ -163,8 +189,8 @@ export const PacketAnim = {
       const s = segs[i];
       const d = durs[i];
       const onSegDone = () => { i++; stepNext(); };
-      if (s.kind === 'bez') this._tweenBezier(dot, s.p0, s.c1, s.c2, s.p3, d, onSegDone);
-      else                  this._tweenPoints(dot, s.from, s.to, d, onSegDone);
+      if (s.kind === 'bez') this._tweenBezier(dot, badge, s.p0, s.c1, s.c2, s.p3, d, onSegDone);
+      else                  this._tweenPoints(dot, badge, s.from, s.to, d, onSegDone);
     };
     stepNext();
   },
@@ -270,15 +296,8 @@ export const PacketAnim = {
     return true;
   },
 
-  _tween(dot, fromNode, toNode, durationMs, done) {
-    const fp = getNodeCenter(fromNode);
-    const tp = getNodeCenter(toNode);
-    if (!fp || !tp) { done(); return; }
-    this._tweenPoints(dot, fp, tp, durationMs, done);
-  },
-
   // Straight-line tween between two world-space points. Freezes while paused.
-  _tweenPoints(dot, fp, tp, durationMs, done) {
+  _tweenPoints(dot, badge, fp, tp, durationMs, done) {
     let elapsed = 0;
     let lastT = performance.now();
     const tick = () => {
@@ -286,7 +305,7 @@ export const PacketAnim = {
       if (Sim.state !== 'paused') elapsed += (now - lastT);
       lastT = now;
       const t = Math.min(1, elapsed / durationMs);
-      setPacketCenter(dot, fp.x + (tp.x - fp.x) * t, fp.y + (tp.y - fp.y) * t);
+      setPacketAnchor(dot, badge, fp.x + (tp.x - fp.x) * t, fp.y + (tp.y - fp.y) * t);
       if (t < 1) requestAnimationFrame(tick);
       else done();
     };
@@ -295,7 +314,7 @@ export const PacketAnim = {
 
   // Cubic bezier tween — samples B(t) for each frame so the packet rides the
   // same curve drawEdge renders. Freezes while paused (same pattern as above).
-  _tweenBezier(dot, p0, c1, c2, p3, durationMs, done) {
+  _tweenBezier(dot, badge, p0, c1, c2, p3, durationMs, done) {
     let elapsed = 0;
     let lastT = performance.now();
     const tick = () => {
@@ -305,8 +324,9 @@ export const PacketAnim = {
       const t = Math.min(1, elapsed / durationMs);
       const u = 1 - t;
       const a = u*u*u, b = 3*u*u*t, c = 3*u*t*t, d = t*t*t;
-      setPacketCenter(
+      setPacketAnchor(
         dot,
+        badge,
         a*p0.x + b*c1.x + c*c2.x + d*p3.x,
         a*p0.y + b*c1.y + c*c2.y + d*p3.y,
       );

@@ -312,3 +312,64 @@ describe('Packet tooltip with NAT', () => {
     expect(tt.innerHTML).toContain('NAT @ r_b');
   });
 });
+
+import { PacketStore } from './packetstore.js';
+
+describe('PacketAnim — badge rendering', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g class="node host" data-kind="host" data-name="h1" transform="translate(100 100)"></g>
+        <g class="node host" data-kind="host" data-name="h2" transform="translate(400 100)"></g>
+      </g>
+      <g id="packet-layer"></g></svg>`;
+    state.links = {};
+    state.networks = { lan_a: { cidr: '10.0.0.0/24', x: 250, y: 100 } };
+    state.routers = {};
+    state.hosts = {
+      h1: { address: '10.0.0.1', network: 'lan_a', x: 100, y: 100 },
+      h2: { address: '10.0.0.2', network: 'lan_a', x: 400, y: 100 },
+    };
+    // Add the rail node so _segmentsForNetwork can resolve netNode.
+    const layer = document.getElementById('nodes-layer');
+    const rail = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    rail.setAttribute('data-kind', 'network');
+    rail.setAttribute('data-name', 'lan_a');
+    rail.setAttribute('transform', 'translate(250 100)');
+    layer.appendChild(rail);
+  });
+
+  it('renders a <text> badge for a user-traffic packet with the assigned id', () => {
+    const evt = {
+      type: 'user_datagram',
+      payload_id: 'p1',
+      network: 'lan_a',
+      src: { device: 'h1', address: '10.0.0.1' },
+      dst: { device: 'h2', address: '10.0.0.2' },
+      payload_src: '10.0.0.1',
+      payload_dst: '10.0.0.2',
+    };
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: evt }));
+    const layer = document.getElementById('packet-layer');
+    const badges = layer.querySelectorAll('text.packet-badge');
+    expect(badges.length).toBe(1);
+    expect(badges[0].textContent).toBe('#1');
+  });
+
+  it('does NOT render a badge for routing_flood when chatter badges are off', () => {
+    delete document.body.dataset.chatterBadges;
+    const evt = {
+      type: 'routing_flood',
+      payload_id: 'c1',
+      network: 'lan_a',
+      src: { device: 'h1', address: '0.0.0.0' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '0.0.0.0',
+      payload_dst: '255.255.255.255',
+    };
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: evt }));
+    const layer = document.getElementById('packet-layer');
+    expect(layer.querySelectorAll('text.packet-badge').length).toBe(0);
+  });
+});
