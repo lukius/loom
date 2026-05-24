@@ -82,7 +82,12 @@ export const PacketAnim = {
   muted: false,
 
   play(evt) {
-    if (evt.type === 'routing_flood' && (this.muted || !this._chatterAllowed(evt))) return;
+    if (evt.type === 'routing_flood' && (this.muted || !this._chatterAllowed(evt))) {
+      bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
+        detail: { payloadId: evt.payload_id, device: null },
+      }));
+      return;
+    }
 
     if (evt.flow && this._SEQUENTIAL.has(evt.type)) {
       const q = this._queues.get(evt.flow);
@@ -139,6 +144,9 @@ export const PacketAnim = {
     dot.dataset.payloadId = evt.payload_id;
     dot.dataset.packetType = evt.type;
     layer.appendChild(dot);
+    bus.dispatchEvent(new CustomEvent('packets:dot-appeared', {
+      detail: { payloadId: evt.payload_id },
+    }));
 
     dot.addEventListener('mouseenter', () => showPacketTooltip(evt, dot));
     dot.addEventListener('mouseleave', hidePacketTooltip);

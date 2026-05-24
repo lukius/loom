@@ -109,11 +109,11 @@ export const PacketsPanel = {
   },
 
   _chatterSectionHtml() {
-    const count = PacketStore.chatter.size;
+    const count = PacketStore.visibleChatterCount();
     if (count === 0) return '';
     const open = this._chatterExpanded;
     const list = open
-      ? Array.from(PacketStore.chatter.values()).sort((a, b) => a.id - b.id)
+      ? PacketStore.visibleChatter()
           .map(r => `
             <div class="pkt-chatter-row">
               <span class="pkt-swatch" data-type="routing_flood"></span>
@@ -136,8 +136,8 @@ export const PacketsPanel = {
 
   render() {
     if (!this._panel) return;
-    const inFlight = Array.from(PacketStore.inFlight.values()).sort((a, b) => a.id - b.id);
-    const chatterCount = PacketStore.chatter.size;
+    const inFlight = PacketStore.visibleInFlight();
+    const chatterCount = PacketStore.visibleChatterCount();
     const total = inFlight.length + chatterCount;
     const empty = total === 0 && PacketStore.recent.length === 0;
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PacketAnim, showPacketTooltip, hidePacketTooltip } from './packets.js';
 import { state, bus } from './state.js';
 
@@ -421,5 +421,82 @@ describe('PacketAnim — badge rendering', () => {
     bus.dispatchEvent(new CustomEvent('sim:packet', { detail: evt }));
     const layer = document.getElementById('packet-layer');
     expect(layer.querySelectorAll('text.packet-badge').length).toBe(0);
+  });
+});
+
+describe('PacketAnim — chatter cleanup on early return', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    PacketAnim._lastChatter.clear();
+    PacketAnim.muted = false;
+  });
+
+  it('dispatches sim:packet-arrived (device:null) when chatter is muted', () => {
+    PacketAnim.muted = true;
+    const spy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', spy);
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood', payload_id: 'c1', network: 'lan_a',
+      src: { device: 'r1', address: '0.0.0.0' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '0.0.0.0', payload_dst: '255.255.255.255',
+    } }));
+    expect(spy).toHaveBeenCalled();
+    expect(spy.mock.calls[0][0].detail.payloadId).toBe('c1');
+    expect(spy.mock.calls[0][0].detail.device).toBe(null);
+  });
+
+  it('dispatches sim:packet-arrived (device:null) when chatter is throttled', () => {
+    // First chatter event for r1/lan_a — allowed.
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood', payload_id: 'c1', network: 'lan_a',
+      src: { device: 'r1', address: '0.0.0.0' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '0.0.0.0', payload_dst: '255.255.255.255',
+    } }));
+    // Second within 200ms — throttled.
+    const spy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', spy);
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood', payload_id: 'c2', network: 'lan_a',
+      src: { device: 'r1', address: '0.0.0.0' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '0.0.0.0', payload_dst: '255.255.255.255',
+    } }));
+    const c2Calls = spy.mock.calls.filter(c => c[0].detail.payloadId === 'c2');
+    expect(c2Calls.length).toBeGreaterThan(0);
+  });
+});
+
+describe('PacketAnim — dot-appeared signal', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    PacketAnim._lastChatter.clear();
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g data-kind="host" data-name="h1" transform="translate(100 100)"></g>
+        <g data-kind="host" data-name="h2" transform="translate(400 100)"></g>
+        <g data-kind="network" data-name="lan_a" transform="translate(250 100)"></g>
+      </g><g id="packet-layer"></g></svg>`;
+    state.networks = { lan_a: { cidr: '10.0.0.0/24', x: 250, y: 100 } };
+    state.hosts = {
+      h1: { address: '10.0.0.1', network: 'lan_a', x: 100, y: 100 },
+      h2: { address: '10.0.0.2', network: 'lan_a', x: 400, y: 100 },
+    };
+    state.routers = {};
+    state.links = {};
+  });
+
+  it('dispatches packets:dot-appeared after rendering the dot', () => {
+    const spy = vi.fn();
+    bus.addEventListener('packets:dot-appeared', spy);
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'user_datagram', payload_id: 'p1', network: 'lan_a',
+      src: { device: 'h1', address: '10.0.0.1' },
+      dst: { device: 'h2', address: '10.0.0.2' },
+      payload_src: '10.0.0.1', payload_dst: '10.0.0.2',
+    } }));
+    expect(spy).toHaveBeenCalled();
+    expect(spy.mock.calls[0][0].detail.payloadId).toBe('p1');
   });
 });

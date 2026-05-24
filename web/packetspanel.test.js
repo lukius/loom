@@ -49,6 +49,21 @@ describe('PacketsPanel — toolbar button toggle', () => {
   });
 });
 
+// Helper: emit sim:packet AND immediately signal dot-appeared so the row
+// passes the visibility filter. Tests that want to check "hidden before
+// dot-appeared" should use raw bus.dispatchEvent('sim:packet', …) instead.
+function emitAndShow(payloadId, srcDev, srcAddr, dstDev, dstAddr, network, payloadDst) {
+  bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+    type: 'user_datagram',
+    payload_id: payloadId, network,
+    src: { device: srcDev, address: srcAddr },
+    dst: { device: dstDev, address: dstAddr },
+    payload_src: srcAddr,
+    payload_dst: payloadDst || dstAddr,
+  } }));
+  bus.dispatchEvent(new CustomEvent('packets:dot-appeared', { detail: { payloadId } }));
+}
+
 describe('PacketsPanel — in-flight user-traffic rows', () => {
   beforeEach(() => {
     PacketStore._reset();
@@ -56,22 +71,28 @@ describe('PacketsPanel — in-flight user-traffic rows', () => {
     state.routers = {};
   });
 
-  function emitUser(payloadId, srcDev, srcAddr, dstDev, dstAddr, network, payloadDst) {
+  it('hides rows until packets:dot-appeared fires for them', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
     bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
       type: 'user_datagram',
-      payload_id: payloadId, network,
-      src: { device: srcDev, address: srcAddr },
-      dst: { device: dstDev, address: dstAddr },
-      payload_src: srcAddr,
-      payload_dst: payloadDst || dstAddr,
+      payload_id: 'p1', network: 'lan_a',
+      src: { device: 'h1', address: '10.0.0.1' },
+      dst: { device: 'h2', address: '10.0.0.2' },
+      payload_src: '10.0.0.1', payload_dst: '10.0.0.2',
     } }));
-  }
+    PacketsPanel.render();
+    expect(document.querySelector('#packets-panel .pkt-row[data-payload-id="p1"]')).toBeNull();
+    bus.dispatchEvent(new CustomEvent('packets:dot-appeared', { detail: { payloadId: 'p1' } }));
+    PacketsPanel.render();
+    expect(document.querySelector('#packets-panel .pkt-row[data-payload-id="p1"]')).not.toBeNull();
+  });
 
   it('shows one collapsed row per in-flight payload with #N, type, src→dst, [hop K]', () => {
     PacketsPanel.wire();
     PacketsPanel.open();
-    emitUser('p1', 'h1', '10.0.0.1', 'r1', '10.0.0.254', 'lan_a', '10.0.1.5');
-    emitUser('p1', 'r1', '10.0.1.1', 'r2', '10.0.1.2', 'link_0', '10.0.1.5');
+    emitAndShow('p1', 'h1', '10.0.0.1', 'r1', '10.0.0.254', 'lan_a', '10.0.1.5');
+    emitAndShow('p1', 'r1', '10.0.1.1', 'r2', '10.0.1.2', 'link_0', '10.0.1.5');
     PacketsPanel.render();
     const rows = document.querySelectorAll('#packets-panel .pkt-row[data-payload-id="p1"]');
     expect(rows.length).toBe(1);
@@ -83,7 +104,7 @@ describe('PacketsPanel — in-flight user-traffic rows', () => {
   it('omits [hop K] for a single-hop packet', () => {
     PacketsPanel.wire();
     PacketsPanel.open();
-    emitUser('p1', 'h1', '10.0.0.1', 'h2', '10.0.0.2', 'lan_a');
+    emitAndShow('p1', 'h1', '10.0.0.1', 'h2', '10.0.0.2', 'lan_a');
     PacketsPanel.render();
     const row = document.querySelector('#packets-panel .pkt-row[data-payload-id="p1"]');
     expect(row.textContent).not.toContain('[hop ');
@@ -92,8 +113,8 @@ describe('PacketsPanel — in-flight user-traffic rows', () => {
   it('expanding a row reveals payload and hops list', () => {
     PacketsPanel.wire();
     PacketsPanel.open();
-    emitUser('p1', 'h1', '10.0.0.1', 'r1', '10.0.0.254', 'lan_a', '10.0.1.5');
-    emitUser('p1', 'r1', '10.0.1.1', 'h4', '10.0.1.5', 'lan_b', '10.0.1.5');
+    emitAndShow('p1', 'h1', '10.0.0.1', 'r1', '10.0.0.254', 'lan_a', '10.0.1.5');
+    emitAndShow('p1', 'r1', '10.0.1.1', 'h4', '10.0.1.5', 'lan_b', '10.0.1.5');
     PacketsPanel.render();
 
     document.querySelector('#packets-panel .pkt-row[data-payload-id="p1"] .pkt-toggle').click();
@@ -118,9 +139,9 @@ describe('PacketsPanel — in-flight user-traffic rows', () => {
   it('hop counter advances on each sim:packet-arrived', () => {
     PacketsPanel.wire();
     PacketsPanel.open();
-    emitUser('p1', 'h1', '10.0.0.1', 'r1', '10.0.0.254', 'lan_a', '10.0.1.5');
-    emitUser('p1', 'r1', '10.0.1.1', 'r2', '10.0.1.2', 'link_0', '10.0.1.5');
-    emitUser('p1', 'r2', '10.0.1.2', 'h4', '10.0.1.5', 'lan_b', '10.0.1.5');
+    emitAndShow('p1', 'h1', '10.0.0.1', 'r1', '10.0.0.254', 'lan_a', '10.0.1.5');
+    emitAndShow('p1', 'r1', '10.0.1.1', 'r2', '10.0.1.2', 'link_0', '10.0.1.5');
+    emitAndShow('p1', 'r2', '10.0.1.2', 'h4', '10.0.1.5', 'lan_b', '10.0.1.5');
     PacketsPanel.render();
     expect(document.querySelector('#packets-panel .pkt-row[data-payload-id="p1"]').textContent).toContain('[hop 1]');
 
@@ -148,6 +169,7 @@ describe('PacketsPanel — chatter section', () => {
       payload_src: '0.0.0.0',
       payload_dst: '255.255.255.255',
     } }));
+    bus.dispatchEvent(new CustomEvent('packets:dot-appeared', { detail: { payloadId } }));
   }
 
   it('shows a collapsed summary row when chatter is in flight', () => {
@@ -265,6 +287,7 @@ describe('PacketsPanel — hover-row halo', () => {
       dst: { device: 'h2', address: '10.0.0.2' },
       payload_src: '10.0.0.1', payload_dst: '10.0.0.2',
     } }));
+    bus.dispatchEvent(new CustomEvent('packets:dot-appeared', { detail: { payloadId: 'p1' } }));
     PacketsPanel.render();
     const row = document.querySelector('.pkt-row[data-payload-id="p1"]');
     row.dispatchEvent(new MouseEvent('mouseenter'));

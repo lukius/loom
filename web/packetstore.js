@@ -89,6 +89,7 @@ function _handleUserPacket(evt, st) {
       hops: [],
       status: 'in_flight',
       _arrivedCount: 0,
+      _visible: false,
     };
     PacketStore.inFlight.set(evt.payload_id, row);
   }
@@ -121,6 +122,7 @@ function _handleChatterPacket(evt, st) {
     srcDev: evt.src && evt.src.device,
     network: evt.network,
     iface: _resolveIface(evt.src && evt.src.device, evt.network, st),
+    _visible: false,
   });
   _scheduleEmit();
 }
@@ -185,3 +187,27 @@ bus.addEventListener('sim:packet-arrived', (e) => {
   }
   _scheduleEmit();
 });
+
+bus.addEventListener('packets:dot-appeared', (e) => {
+  const payloadId = e.detail && e.detail.payloadId;
+  if (!payloadId) return;
+  const row = PacketStore.inFlight.get(payloadId) || PacketStore.chatter.get(payloadId);
+  if (!row) return;
+  if (row._visible) return;
+  row._visible = true;
+  _scheduleEmit();
+});
+
+PacketStore.visibleInFlight = function () {
+  return Array.from(this.inFlight.values()).filter(r => r._visible).sort((a, b) => a.id - b.id);
+};
+
+PacketStore.visibleChatterCount = function () {
+  let n = 0;
+  for (const r of this.chatter.values()) if (r._visible) n++;
+  return n;
+};
+
+PacketStore.visibleChatter = function () {
+  return Array.from(this.chatter.values()).filter(r => r._visible).sort((a, b) => a.id - b.id);
+};

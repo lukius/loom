@@ -62,6 +62,7 @@ module-to-module direct render calls.
 | `sim:packet-arrived` | `packets` (animation finish) | `packetstore` | A packet animation completed at its destination device. Detail: `{payloadId, device}`. Drives last-hop promotion in the store. |
 | `packets:list-changed` | `packetstore` (debounced ~50ms) | `packetspanel` | The store's in-flight or recent set mutated. Panel re-renders on receipt. |
 | `packets:chatter-badges-changed` | `packetspanel` | `packets` | The chatter group's expand state flipped; live chatter dots add/remove their `#R*` badges. |
+| `packets:dot-appeared` | `packets` (after appendChild) | `packetstore` | A new packet dot was appended to the canvas layer. Detail: `{payloadId}`. Drives the panel's visibility filter — rows stay hidden until their dot is on screen. |
 | `sim:yaml-export-requested` | `sim.onPrimary` | `app.js` | Sim needs current YAML to load before starting |
 | `sim:topology-import-requested` | `sim.onReset` | `app.js` | Sim received reset; refresh canvas from server YAML |
 | `view:changed` | `canvas` | (none currently — kept for future) | Pan/zoom |

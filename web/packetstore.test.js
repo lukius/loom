@@ -332,6 +332,40 @@ describe('PacketStore — NAT cache', () => {
   });
 });
 
+describe('PacketStore — visibility', () => {
+  it('rows start with _visible: false', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: userPacketEvt({
+      payload_id: 'p1', srcDev: 'h1', srcAddr: '10.0.0.1',
+      dstDev: 'h2', dstAddr: '10.0.0.2', network: 'lan_a',
+    }) }));
+    expect(PacketStore.inFlight.get('p1')._visible).toBe(false);
+    expect(PacketStore.visibleInFlight().length).toBe(0);
+  });
+
+  it('packets:dot-appeared flips _visible to true', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: userPacketEvt({
+      payload_id: 'p1', srcDev: 'h1', srcAddr: '10.0.0.1',
+      dstDev: 'h2', dstAddr: '10.0.0.2', network: 'lan_a',
+    }) }));
+    bus.dispatchEvent(new CustomEvent('packets:dot-appeared', { detail: { payloadId: 'p1' } }));
+    expect(PacketStore.inFlight.get('p1')._visible).toBe(true);
+    expect(PacketStore.visibleInFlight().length).toBe(1);
+  });
+
+  it('packets:dot-appeared also works for chatter rows', () => {
+    state.routers = { r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 } } } };
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood', payload_id: 'c1', network: 'lan_a',
+      src: { device: 'r1', address: '0.0.0.0' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '0.0.0.0', payload_dst: '255.255.255.255',
+    } }));
+    expect(PacketStore.visibleChatterCount()).toBe(0);
+    bus.dispatchEvent(new CustomEvent('packets:dot-appeared', { detail: { payloadId: 'c1' } }));
+    expect(PacketStore.visibleChatterCount()).toBe(1);
+  });
+});
+
 import { vi } from 'vitest';
 
 describe('PacketStore — debounced packets:list-changed', () => {
