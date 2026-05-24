@@ -15,7 +15,7 @@ web/
 ├── terminals.js         # per-device terminal popups
 ├── packets.js           # packet animation + tooltips
 ├── packetstore.js       # PacketStore — in-flight registry, hop history, NAT cache, #N counters
-├── packetspanel.js      # Slide-out Packets panel — toolbar button, row rendering, hover halo
+├── packetspanel.js      # Packets panel — toolbar button, mounts inside #inspector, row rendering, hover halo
 ├── sim.js               # Sim state machine + RuntimeClient + WS dispatcher
 ├── yaml-io.js           # YAML import / export
 └── utils.js             # DOM helpers (el, escapeHtml, toast, ...)
@@ -241,7 +241,7 @@ export const PacketStore = {
 
 ## Packets panel (`web/packetspanel.js`)
 
-The slide-out panel on the right edge listing in-flight packets and recent activity. Wires the `tb-packets` toolbar button and mounts the panel under `<body>`. Open/closed state is persisted under `state.ui.packetsPanelOpen`.
+The panel listing in-flight packets and recent activity. Wires the `tb-packets` toolbar button and mounts the panel inside the `#inspector` slot, hiding the inspector's normal content while open and restoring it on close. Open/closed state is persisted under `state.ui.packetsPanelOpen`.
 
 Three sections, rendered from `PacketStore`:
 

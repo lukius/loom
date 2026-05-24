@@ -8,13 +8,16 @@ beforeEach(() => {
   document.body.innerHTML = `
     <div id="save-state"><span class="dot"></span> idle</div>
     <button id="tb-packets"><span class="lbl">Packets</span></button>
+    <aside id="inspector">
+      <div class="insp-original-content">existing inspector content</div>
+    </aside>
   `;
   state.ui = { packetsPanelOpen: false };
   PacketsPanel._reset();
 });
 
 describe('PacketsPanel — toolbar button toggle', () => {
-  it('opens the panel and mounts it under <body> on first click', () => {
+  it('opens the panel and mounts it inside #inspector on first click', () => {
     PacketsPanel.wire();
     expect(document.getElementById('packets-panel')).toBeNull();
     document.getElementById('tb-packets').click();
@@ -46,6 +49,17 @@ describe('PacketsPanel — toolbar button toggle', () => {
     PacketsPanel.init();
     expect(document.getElementById('packets-panel')).not.toBeNull();
     expect(document.getElementById('packets-panel').hidden).toBeFalsy();
+  });
+
+  it('hides inspector contents when open and restores them on close', () => {
+    PacketsPanel.wire();
+    const orig = document.querySelector('.insp-original-content');
+    expect(orig.hidden).toBe(false);
+    document.getElementById('tb-packets').click();
+    expect(orig.hidden).toBe(true);
+    expect(document.getElementById('packets-panel').parentElement.id).toBe('inspector');
+    document.getElementById('tb-packets').click();
+    expect(orig.hidden).toBe(false);
   });
 });
 
@@ -271,6 +285,7 @@ describe('PacketsPanel — hover-row halo', () => {
     document.body.innerHTML = `
       <div id="save-state"><span></span></div>
       <button id="tb-packets"></button>
+      <aside id="inspector"></aside>
       <svg><g id="packet-layer">
         <rect data-payload-id="p1" data-packet-type="user_datagram" class="packet-dot" />
       </g></svg>`;

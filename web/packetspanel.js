@@ -1,6 +1,7 @@
 // web/packetspanel.js
-// Slide-out panel listing in-flight packets and the last 10 delivered.
-// Wires the tb-packets toolbar button, mounts the panel under <body>,
+// Panel listing in-flight packets and the last 10 delivered.
+// Wires the tb-packets toolbar button, mounts the panel inside the
+// #inspector slot (hiding the inspector's normal content while open),
 // subscribes to packets:list-changed, and renders.
 import { state, bus, markDirty } from './state.js';
 import { escapeHtml } from './utils.js';
@@ -13,6 +14,17 @@ export const PacketsPanel = {
   _chatterExpanded: false,
 
   _reset() {
+    // Best-effort restore inspector children if the test was mid-open.
+    const host = document.getElementById('inspector');
+    if (host) {
+      for (const ch of host.children) {
+        if (ch.dataset.packetsPanelHidden === '1') {
+          ch.hidden = ch.dataset.packetsPanelPrevHidden === '1';
+          delete ch.dataset.packetsPanelHidden;
+          delete ch.dataset.packetsPanelPrevHidden;
+        }
+      }
+    }
     this._wired = false;
     if (this._panel && this._panel.parentNode) this._panel.parentNode.removeChild(this._panel);
     this._panel = null;
@@ -41,11 +53,21 @@ export const PacketsPanel = {
 
   open() {
     state.ui.packetsPanelOpen = true;
+    const host = document.getElementById('inspector');
+    if (!host) return;
     if (!this._panel) {
-      this._panel = document.createElement('aside');
+      this._panel = document.createElement('div');
       this._panel.id = 'packets-panel';
       this._panel.className = 'packets-panel';
-      document.body.appendChild(this._panel);
+      host.appendChild(this._panel);
+    }
+    // Hide every direct child of the inspector that isn't our panel.
+    for (const ch of host.children) {
+      if (ch === this._panel) continue;
+      if (ch.dataset.packetsPanelHidden === '1') continue;
+      ch.dataset.packetsPanelHidden = '1';
+      ch.dataset.packetsPanelPrevHidden = ch.hidden ? '1' : '0';
+      ch.hidden = true;
     }
     this._panel.hidden = false;
     this.render();
@@ -56,6 +78,17 @@ export const PacketsPanel = {
   close() {
     state.ui.packetsPanelOpen = false;
     if (this._panel) this._panel.hidden = true;
+    // Restore previously-hidden inspector children.
+    const host = document.getElementById('inspector');
+    if (host) {
+      for (const ch of host.children) {
+        if (ch.dataset.packetsPanelHidden === '1') {
+          ch.hidden = ch.dataset.packetsPanelPrevHidden === '1';
+          delete ch.dataset.packetsPanelHidden;
+          delete ch.dataset.packetsPanelPrevHidden;
+        }
+      }
+    }
     this._syncButton();
     markDirty();
   },

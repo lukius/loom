@@ -1637,17 +1637,10 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
    packets panel (slide-out)
    ============================================================ */
 .packets-panel {
-  position: fixed;
-  top: 56px;
-  right: 0;
-  width: 320px;
-  max-height: calc(100vh - 80px);
+  height: 100%;
   overflow: auto;
-  background: var(--bg-2);
-  color: var(--text);
-  border-left: 1px solid var(--border);
-  box-shadow: -4px 0 12px rgba(0,0,0,0.08);
-  z-index: 30;
+  background: var(--bg-2, #fff);
+  color: var(--text, #111);
   font-size: 12px;
 }
 .packets-panel[hidden] { display: none; }
