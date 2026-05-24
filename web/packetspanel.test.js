@@ -115,3 +115,62 @@ describe('PacketsPanel — in-flight user-traffic rows', () => {
     expect(document.getElementById('packets-panel').textContent).toContain('No packets yet');
   });
 });
+
+describe('PacketsPanel — chatter section', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    state.routers = { r1: { interfaces: {
+      eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 },
+    } } };
+    delete document.body.dataset.chatterBadges;
+  });
+
+  function emitChatter(payloadId, srcDev, network) {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood',
+      payload_id: payloadId, network,
+      src: { device: srcDev, address: '0.0.0.0' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '0.0.0.0',
+      payload_dst: '255.255.255.255',
+    } }));
+  }
+
+  it('shows a collapsed summary row when chatter is in flight', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitChatter('c1', 'r1', 'lan_a');
+    emitChatter('c2', 'r1', 'lan_a');
+    PacketsPanel.render();
+    const summary = document.querySelector('#packets-panel .pkt-chatter-summary');
+    expect(summary).not.toBeNull();
+    expect(summary.textContent).toContain('2');
+    expect(summary.textContent.toLowerCase()).toContain('routing chatter');
+  });
+
+  it('expanding the summary sets data-chatter-badges=on and reveals #R rows', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitChatter('c1', 'r1', 'lan_a');
+    PacketsPanel.render();
+    document.querySelector('.pkt-chatter-summary .pkt-toggle').click();
+    expect(document.body.dataset.chatterBadges).toBe('on');
+    const rows = document.querySelectorAll('.pkt-chatter-row');
+    expect(rows.length).toBe(1);
+    expect(rows[0].textContent).toContain('#R1');
+    expect(rows[0].textContent).toContain('r1');
+    expect(rows[0].textContent).toContain('lan_a');
+  });
+
+  it('collapsing the summary clears data-chatter-badges and removes #R rows', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitChatter('c1', 'r1', 'lan_a');
+    PacketsPanel.render();
+    const toggle = document.querySelector('.pkt-chatter-summary .pkt-toggle');
+    toggle.click();
+    document.querySelector('.pkt-chatter-summary .pkt-toggle').click();  // re-query after re-render
+    expect(document.body.dataset.chatterBadges).toBeUndefined();
+    expect(document.querySelectorAll('.pkt-chatter-row').length).toBe(0);
+  });
+});

@@ -1674,3 +1674,7 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 .pkt-hop-flag { color: var(--accent); margin-left: 6px; font-weight: 600; }
 .pkt-nat { margin-top: 4px; color: var(--accent); }
 .packets-empty { padding: 16px; opacity: 0.7; text-align: center; }
+.pkt-chatter-summary { display: flex; align-items: center; gap: 6px; padding: 4px 12px; }
+.pkt-chatter-summary:hover { background: var(--row-hover, rgba(0,0,0,0.04)); }
+.pkt-chatter-row { display: flex; align-items: center; gap: 6px; padding: 2px 12px 2px 36px; font-size: 11px; }
+.pkt-chatter-row:hover { background: var(--row-hover, rgba(0,0,0,0.04)); }

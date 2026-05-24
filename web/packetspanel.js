@@ -10,12 +10,15 @@ export const PacketsPanel = {
   _wired: false,
   _panel: null,
   _expanded: new Set(),
+  _chatterExpanded: false,
 
   _reset() {
     this._wired = false;
     if (this._panel && this._panel.parentNode) this._panel.parentNode.removeChild(this._panel);
     this._panel = null;
     this._expanded.clear();
+    this._chatterExpanded = false;
+    delete document.body.dataset.chatterBadges;
   },
 
   wire() {
@@ -96,6 +99,39 @@ export const PacketsPanel = {
       </div>`;
   },
 
+  _setChatterExpanded(on) {
+    this._chatterExpanded = on;
+    if (on) document.body.dataset.chatterBadges = 'on';
+    else delete document.body.dataset.chatterBadges;
+    bus.dispatchEvent(new CustomEvent('packets:chatter-badges-changed'));
+  },
+
+  _chatterSectionHtml() {
+    const count = PacketStore.chatter.size;
+    if (count === 0) return '';
+    const open = this._chatterExpanded;
+    const list = open
+      ? Array.from(PacketStore.chatter.values()).sort((a, b) => a.id - b.id)
+          .map(r => `
+            <div class="pkt-chatter-row">
+              <span class="pkt-swatch" data-type="routing_flood"></span>
+              <span class="pkt-id">#R${r.id}</span>
+              <span class="pkt-route">${escapeHtml(r.srcDev || '?')} → ${escapeHtml(r.network || '?')}</span>
+              ${r.iface ? `<span class="pkt-hop-net">(${escapeHtml(r.iface)})</span>` : ''}
+            </div>`).join('')
+      : '';
+    return `
+      <section class="packets-section">
+        <h3>In flight — routing chatter</h3>
+        <div class="pkt-chatter-summary">
+          <button class="pkt-toggle" aria-expanded="${open}">${open ? '▾' : '▸'}</button>
+          <span class="pkt-swatch" data-type="routing_flood"></span>
+          <span>Routing chatter · ${count} in flight</span>
+        </div>
+        ${list}
+      </section>`;
+  },
+
   render() {
     if (!this._panel) return;
     const inFlight = Array.from(PacketStore.inFlight.values()).sort((a, b) => a.id - b.id);
@@ -115,6 +151,7 @@ export const PacketsPanel = {
             <h3>In flight — user traffic</h3>
             ${inFlight.map(r => this._userRowHtml(r)).join('')}
           </section>` : ''}
+        ${this._chatterSectionHtml()}
       </div>
     `;
 
@@ -130,6 +167,14 @@ export const PacketsPanel = {
         this.render();
       });
     });
+
+    const chatterToggle = this._panel.querySelector('.pkt-chatter-summary .pkt-toggle');
+    if (chatterToggle) {
+      chatterToggle.addEventListener('click', () => {
+        this._setChatterExpanded(!this._chatterExpanded);
+        this.render();
+      });
+    }
   },
 
   _syncButton() {
