@@ -235,3 +235,37 @@ def test_install_and_build_graph_concurrent_no_torn_reads():
     t1.join()
     t2.join()
     # No crash, no assertion errors → pass.
+
+
+# ---------- Multi-origin expiry: originator refresh keeps own LSA below max_age -----
+
+def test_originator_refresh_keeps_local_lsa_below_max_age():
+    """Repeated refresh install() resets installed_at so the originator's own LSA
+    never reaches max_age regardless of how much wall time has elapsed."""
+    max_age = 60.0
+    local = _router_with(['10.0.0.0/24'], [1], name='local')
+    remote_a = _router_with(['10.0.1.0/24'], [1], name='ra')
+    remote_b = _router_with(['10.0.2.0/24'], [1], name='rb')
+    lsdb = LSDB(local)
+
+    # Install all three origins at t=0.
+    lsdb.install(LSA.from_router(local, seq=1, policy=_PermitAll()), now=0.0)
+    lsdb.install(LSA.from_router(remote_a, seq=1, policy=_PermitAll()), now=0.0)
+    lsdb.install(LSA.from_router(remote_b, seq=1, policy=_PermitAll()), now=0.0)
+
+    # Simulate periodic originator self-refresh at intervals shorter than max_age.
+    refresh_interval = 30.0
+    now = 0.0
+    for seq in range(2, 6):
+        now += refresh_interval
+        lsdb.install(LSA.from_router(local, seq=seq, policy=_PermitAll()), now=now)
+
+    # At now=150.0: remotes installed at t=0 are expired (age=150 > 60).
+    # Local was last refreshed at now=120.0 (seq=5), so its age is 30.0.
+    expired = lsdb.expired_origins(max_age=max_age, now=now)
+    assert local not in expired, "originator's own LSA must not expire after refresh"
+    assert remote_a in expired, "remote_a (never refreshed) should be expired"
+    assert remote_b in expired, "remote_b (never refreshed) should be expired"
+
+    # Age of local LSA must be strictly below max_age.
+    assert lsdb.age_of(local, now=now) < max_age
