@@ -1,5 +1,11 @@
-from entities.address import NetworkAddress
-from entities.packet import Message, Packet  # noqa: F401
+"""Wire-format messages for the routing layer.
+
+Datagram lives here. The protocol-message family (RoutingMessage
+abstract base + LSA + Hello) lives in their own modules under
+routing/. Routers and tests should import from ``routing`` (the
+package __init__ re-exports everything).
+"""
+from entities.packet import Packet
 
 _DEFAULT_TTL = 64
 
@@ -15,27 +21,3 @@ class Datagram(Packet):
 
     def decrement_ttl(self):
         self._ttl -= 1
-
-
-class RoutingMessage(Message):
-
-    def __init__(self, src, seq: int):
-        super().__init__()
-        self._src = src
-        self._seq = seq
-        self._dests = dict()
-
-    def seq(self):
-        return self._seq
-
-    def src_address(self):
-        return self._src.address()
-
-    def src_router(self):
-        return self._src.device()
-
-    def destinations(self):
-        return self._dests
-
-    def add_destination(self, prefix: NetworkAddress, cost: int):
-        self._dests[prefix] = cost

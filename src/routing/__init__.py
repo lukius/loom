@@ -8,6 +8,8 @@ from .exception import (
     NoRouteToHostException as NoRouteToHostException,
 )
 from .graph import NetworkGraph as NetworkGraph
+from .lsa import LSA as LSA  # noqa: F401
+from .lsa import RoutingMessage as RoutingMessage
 from .policy import (
     RFC1918_OUTBOUND as RFC1918_OUTBOUND,
 )

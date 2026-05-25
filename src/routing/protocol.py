@@ -8,7 +8,8 @@ from entities.address import NullAddress
 from entities.event import EventTracer
 
 from .graph import NetworkGraph
-from .messages import Datagram, RoutingMessage
+from .lsa import RoutingMessage
+from .messages import Datagram
 from .policy import RFC1918_OUTBOUND
 
 

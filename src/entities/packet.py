@@ -111,4 +111,5 @@ class PingReply(Message):
 # Re-exported so `from entities.packet import Datagram, RoutingMessage` and
 # `from entities import Datagram, RoutingMessage` still resolve. Canonical
 # home for these wire-format classes is routing.messages.
-from routing.messages import Datagram, RoutingMessage  # noqa: E402, F401
+from routing.lsa import RoutingMessage  # noqa: E402, F401
+from routing.messages import Datagram  # noqa: E402, F401
