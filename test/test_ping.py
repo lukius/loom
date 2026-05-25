@@ -431,6 +431,7 @@ def test_nat_ping_packet_events_share_one_flow():
             f"got {len(ping_packet_events)}: {ping_packet_events}"
         )
         flows = {e.get("flow") for e in ping_packet_events}
+        # jitter-audit: all hops of one ping share one flow ID (logical property)
         assert len(flows) == 1, (
             f"all hops of one ping should share a flow; "
             f"got {len(flows)} flows: {flows}"

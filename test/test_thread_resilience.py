@@ -65,6 +65,7 @@ class InterfaceThreadResilienceTest(unittest.TestCase):
         self.assertTrue(
             processed.wait(timeout=2.0), "thread died after first exception"
         )
+        # jitter-audit: exactly 2 frames enqueued; count is deterministic
         self.assertEqual(call_count, 2)
 
 

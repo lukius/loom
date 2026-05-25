@@ -46,6 +46,7 @@ def test_one_cycle_emits_single_lsa_with_uniform_seq_across_interfaces():
         Interface.send_to = original_send
 
     lsa_payloads = [pkt.payload() for _, pkt in sent if isinstance(pkt.payload(), LSA)]
+    # jitter-audit: synchronous _handle_update call; count == N interfaces
     assert len(lsa_payloads) == 3
     # Single LSA object reused.
     assert all(p is lsa_payloads[0] for p in lsa_payloads[1:])
@@ -929,6 +930,7 @@ def test_handle_update_omits_private_prefixes_from_outbound_message():
         finally:
             Interface.send_to = original_send
 
+        # jitter-audit: synchronous _handle_update call; count == N interfaces
         assert len(captured) == 2, (
             f"expected one LSA per interface, got {len(captured)}"
         )
@@ -1093,6 +1095,7 @@ def test_hello_emitted_on_every_interface_each_cycle():
         Interface.send_to = original_send
 
     hellos = [p.payload() for p in sent if isinstance(p.payload(), Hello)]
+    # jitter-audit: synchronous _handle_update call; count == N interfaces
     assert len(hellos) == 2  # one per interface
 
 
@@ -1312,6 +1315,7 @@ def test_protocol_stop_floods_withdrawal_lsa_on_every_interface():
         p.payload() for p in sent
         if isinstance(p.payload(), LSA) and p.payload().is_withdrawal()
     ]
+    # jitter-audit: proto.stop() sends withdrawals synchronously; count == N interfaces
     assert len(withdrawals) == 2  # one per interface
 
 
