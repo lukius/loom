@@ -3,34 +3,7 @@ from entities.packet import Message
 
 
 class RoutingMessage(Message):
-    """Abstract base for link-state-protocol wire messages.
-
-    During the Phase 1 migration this class still accepts the legacy
-    (src_interface, seq) construction shape so test fixtures keep
-    compiling. Task 3 migrates all callers to LSA.from_router(...)
-    and this fallback shrinks back to a pure abstract base.
-    """
-
-    def __init__(self, src=None, seq: int = 0):
-        super().__init__()
-        self._legacy_src = src
-        self._legacy_seq = seq
-        self._legacy_dests: dict = {}
-
-    def src_address(self):
-        return self._legacy_src.address() if self._legacy_src is not None else None
-
-    def src_router(self):
-        return self._legacy_src.device() if self._legacy_src is not None else None
-
-    def seq(self) -> int:
-        return self._legacy_seq
-
-    def destinations(self):
-        return self._legacy_dests
-
-    def add_destination(self, prefix: NetworkAddress, cost: int):
-        self._legacy_dests[prefix] = cost
+    """Abstract base for link-state-protocol wire messages."""
 
 
 class LSA(RoutingMessage):
@@ -55,7 +28,7 @@ class LSA(RoutingMessage):
         return cls(origin=router, seq=seq, is_withdrawal=True)
 
     def __init__(self, origin, seq: int, is_withdrawal: bool = False):
-        Message.__init__(self)  # bypass RoutingMessage's legacy init
+        super().__init__()
         self._origin = origin
         self._seq = seq
         self._is_withdrawal = is_withdrawal

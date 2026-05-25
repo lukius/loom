@@ -942,6 +942,53 @@ def test_receiver_graph_never_learns_private_prefix():
         os.unlink(path)
 
 
+def test_three_router_convergence_with_per_origin_seq():
+    """Three-router convergence: every router's routing table contains
+    a rule for every prefix after one keepalive cycle. Pins that
+    per-origin-seq + LSDB end-to-end behaviour matches the previous
+    per-interface scheme."""
+    yaml = textwrap.dedent("""
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan1: "200.0.1.0/24"
+            lan2: "200.0.2.0/24"
+            lan3: "200.0.3.0/24"
+            lan4: "200.0.4.0/24"
+          hosts:
+            h1: {network: lan1, address: "200.0.1.10"}
+            h4: {network: lan4, address: "200.0.4.10"}
+          routers:
+            r1:
+              interfaces:
+                eth0: {network: lan1, address: "200.0.1.1", cost: 1}
+                eth1: {network: lan2, address: "200.0.2.1", cost: 1}
+            r2:
+              interfaces:
+                eth0: {network: lan2, address: "200.0.2.2", cost: 1}
+                eth1: {network: lan3, address: "200.0.3.1", cost: 1}
+            r3:
+              interfaces:
+                eth0: {network: lan3, address: "200.0.3.2", cost: 1}
+                eth1: {network: lan4, address: "200.0.4.1", cost: 1}
+    """)
+    path = _make_tmp_topology(yaml)
+    system = Parser(path).parse().single_as()
+    try:
+        assert _wait(lambda: all(
+            _table_has_prefix(r, p)
+            for r in system.routers().values()
+            for p in ["200.0.1.0/24", "200.0.2.0/24",
+                      "200.0.3.0/24", "200.0.4.0/24"]
+        )), "three-router topology did not converge in time"
+    finally:
+        system.stop()
+        os.unlink(path)
+
+
 class OutboundPolicyTest(unittest.TestCase):
 
     def test_outbound_policy_default_filters_rfc1918(self):
