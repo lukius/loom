@@ -1,6 +1,6 @@
 # Subagent-driven feature execution
 
-How we run a written implementation plan (`docs/superpowers/plans/<plan>.md`) to completion. Reusable across features. The plan itself lists the tasks and steps; this document describes the **process** that turns those tasks into committed code.
+How we run a written implementation plan to completion. Reusable across features. The plan itself lists the tasks and steps; this document describes the **process** that turns those tasks into committed code.
 
 ## Why subagent-driven
 
@@ -170,8 +170,8 @@ Same rule for reviewers: if the plan is wrong, surface it; don't approve a devia
 
 ## Glossary
 
-- **Plan** — the implementation document at `docs/superpowers/plans/<date>-<feature>.md`. The source of task instructions.
-- **Spec / design** — the design document at `docs/superpowers/specs/<date>-<feature>-design.md`. The source of requirements.
+- **Plan** — the implementation document for the feature. The source of task instructions. Path is feature- and toolchain-specific.
+- **Spec / design** — the design document the plan was written from. The source of requirements. Path is feature- and toolchain-specific.
 - **Task** — one numbered unit in the plan. Owns one or more commits.
 - **Cycle** — one developer-then-reviewer pair on a single task. A task may need multiple cycles.
 - **Phase** — a group of related tasks in the plan (e.g. "Phase 2 — Hello + Neighbor states").
