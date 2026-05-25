@@ -102,26 +102,128 @@ function wireFieldValidation(input, errorEl, validateFn) {
   update(input.value);
 }
 
+/* ---------- collapsible section helpers ----------
+   Track which top-level sections are open across re-renders, mirroring the
+   existing per-iface openIfaces pattern. Values: 'routing' | 'nat' | 'neighbours'. */
+const openSections = new Set();
+
+function rememberOpen(elI) {
+  const opens = Array.from(elI.querySelectorAll('details.insp-section[open]'))
+    .map(d => d.dataset.section);
+  openSections.clear();
+  for (const k of opens) openSections.add(k);
+}
+
+function isOpen(key, defaultOpen = false) {
+  if (openSections.has(key)) return true;
+  if (defaultOpen && openSections.size === 0) return true;
+  return false;
+}
+
+/* ---------- routing table section (synchronous placeholder) ---------- */
+function renderRoutingSection(deviceName, _openSet) {
+  // Render an empty collapsible shell synchronously; refreshRoutes() fills in
+  // the real rules once the async fetch completes.  The shell guarantees the
+  // <details> exists at DOM insertion time so test queries and toggle-listeners
+  // can attach immediately.
+  const openAttr = isOpen('routing', true) ? ' open' : '';
+  return `<details class="insp-section" data-section="routing"${openAttr}>` +
+    `<summary>Routing table <span class="summary-hint">(loading…)</span></summary>` +
+    `<div class="insp-section-body"><div class="hint">(loading…)</div></div>` +
+    `</details>`;
+}
+
+/* ---------- neighbours section ---------- */
+function formatAgo(_timestamp) {
+  // Server timestamps are monotonic seconds; without a synchronised clock
+  // we can only say "recent". A future enhancement could use server epoch.
+  return 'recent';
+}
+
+function renderNeighbourSection(device, router) {
+  const data = (state.neighborsByDevice && state.neighborsByDevice[device]) || {};
+  const ifaceNames = Object.keys(router.interfaces || {});
+  const counts = { down: 0, init: 0, two_way: 0 };
+  const ifaceBlocks = ifaceNames.map(iface => {
+    const peers = data[iface] || {};
+    const peerNames = Object.keys(peers);
+    if (peerNames.length === 0) {
+      counts.down += 1;
+      return `<div class="neigh-iface-block"><div class="iface-name">${escapeHtml(iface)}</div>` +
+        `<div class="neigh-row"><span class="peer">—</span>` +
+        `<span class="neigh-state down">DOWN</span></div></div>`;
+    }
+    const rows = peerNames.map(peer => {
+      const n = peers[peer];
+      counts[n.state] = (counts[n.state] || 0) + 1;
+      const ago = n.last_hello_at != null ? `last hello ${formatAgo(n.last_hello_at)}` : '';
+      const stateClass = n.state || 'down';
+      const stateLabel = (n.state || 'down').toUpperCase();
+      return `<div class="neigh-row">` +
+        `<span class="peer">${escapeHtml(peer)}</span>` +
+        `<span class="neigh-state ${stateClass}">${stateLabel}</span>` +
+        `<span class="timing">${ago}</span>` +
+        `</div>`;
+    }).join('');
+    return `<div class="neigh-iface-block">` +
+      `<div class="iface-name">${escapeHtml(iface)}</div>` +
+      `${rows}` +
+      `</div>`;
+  }).join('');
+  const hint = `(${counts.two_way} TWO_WAY · ${counts.init} INIT · ${counts.down} DOWN)`;
+  const openAttr = isOpen('neighbours') ? ' open' : '';
+  return `<details class="insp-section" data-section="neighbours"${openAttr}>` +
+    `<summary>Neighbours <span class="summary-hint">${hint}</span></summary>` +
+    `<div class="insp-section-body neigh-list">${ifaceBlocks}</div>` +
+    `</details>`;
+}
+
 /* ---------- Inspector ---------- */
 export const Inspector = {
   async refreshRoutes(deviceName) {
     const sec = document.getElementById('insp-routes');
     if (!sec) return;
-    if (Sim.state === 'idle' || !deviceName) { sec.hidden = true; return; }
-    // Hosts don't have a routing table; hide the section.
+    // Hosts don't have a routing table; hide the section entirely.
     if (state.hosts && state.hosts[deviceName]) { sec.hidden = true; return; }
+    if (!deviceName) { sec.hidden = true; return; }
+    if (Sim.state === 'idle') {
+      // Sim idle: routing table data not available. Leave the static placeholder
+      // visible for routers (the section renders synchronously in the inspector
+      // HTML) but update the hint so the user knows why it looks empty.
+      const hint = sec.querySelector('.summary-hint');
+      if (hint) hint.textContent = '(sim not running)';
+      return;
+    }
     try {
       const r = await RuntimeClient.deviceRoutes(deviceName);
-      sec.hidden = false;
-      const rows = (r.rules || []).map(x =>
+      const rules = r.rules || [];
+      const ruleCount = rules.length;
+      const rows = rules.map(x =>
         `<tr><td>${escapeHtml(x.prefix)}</td><td>${escapeHtml(x.next_hop)}</td><td>${escapeHtml(x.iface)}</td></tr>`
       ).join('');
-      sec.innerHTML = `<h4 class="insp-h">Routing table — ${escapeHtml(deviceName)}</h4>` +
-        (rows
-          ? `<table class="insp-table"><thead><tr><th>Prefix</th><th>Next hop</th><th>Iface</th></tr></thead><tbody>${rows}</tbody></table>`
-          : '<div class="hint">(empty)</div>');
-    } catch (e) {
-      sec.hidden = true;
+      const tableHtml = rows
+        ? `<table class="insp-table"><thead><tr><th>Prefix</th><th>Next hop</th><th>Iface</th></tr></thead><tbody>${rows}</tbody></table>`
+        : '<div class="hint">(empty)</div>';
+      // Update the <details> content in place, preserving open/closed state.
+      let details = sec.querySelector('details.insp-section[data-section="routing"]');
+      if (!details) {
+        const openAttr = isOpen('routing', true) ? ' open' : '';
+        sec.innerHTML = `<details class="insp-section" data-section="routing"${openAttr}>` +
+          `<summary>Routing table <span class="summary-hint"></span></summary>` +
+          `<div class="insp-section-body"></div>` +
+          `</details>`;
+        details = sec.querySelector('details.insp-section');
+        details.addEventListener('toggle', () => {
+          if (details.open) openSections.add(details.dataset.section);
+          else openSections.delete(details.dataset.section);
+        });
+      }
+      const hint = details.querySelector('.summary-hint');
+      if (hint) hint.textContent = `(${ruleCount} ${ruleCount === 1 ? 'rule' : 'rules'})`;
+      const body = details.querySelector('.insp-section-body');
+      if (body) body.innerHTML = tableHtml;
+    } catch (_e) {
+      // Server not reachable or device not found — leave the placeholder.
     }
   },
 
@@ -168,8 +270,18 @@ export const Inspector = {
       }
       return `<tr><td>${escapeHtml(e.original_src)}</td><td>${escapeHtml(e.rewritten_src)}</td><td>${escapeHtml(e.dst)}</td>${fidCell}</tr>`;
     }).join('');
-    sec.innerHTML = `<h4 class="insp-h">NAT table — ${escapeHtml(deviceName)}</h4>` +
-      `<table class="insp-table"><thead><tr><th>Original</th><th>Rewritten</th><th>Destination</th><th>Flow ID</th></tr></thead><tbody>${rows}</tbody></table>`;
+    const openAttr = isOpen('nat') ? ' open' : '';
+    sec.innerHTML = `<details class="insp-section" data-section="nat"${openAttr}>` +
+      `<summary>NAT table <span class="summary-hint">(${entries.length} ${entries.length === 1 ? 'entry' : 'entries'})</span></summary>` +
+      `<div class="insp-section-body">` +
+      `<table class="insp-table"><thead><tr><th>Original</th><th>Rewritten</th><th>Destination</th><th>Flow ID</th></tr></thead><tbody>${rows}</tbody></table>` +
+      `</div></details>`;
+    sec.addEventListener('toggle', (e) => {
+      const d = e.target.closest('details.insp-section');
+      if (!d) return;
+      if (d.open) openSections.add(d.dataset.section);
+      else openSections.delete(d.dataset.section);
+    }, { capture: true });
   },
 
   onNATChange(evt) {
@@ -736,9 +848,10 @@ export function renderRouterInsp(name, elI) {
   const router = state.routers[name];
   if (!router) { state.selection = null; return renderInspector(); }
   const ifaces = Object.entries(router.interfaces || {});
-  // Snapshot which iface <details> are currently expanded before we blow
-  // away the inspector innerHTML; we re-apply the open state below so the
-  // user doesn't lose the context they were editing in.
+  // Snapshot which iface <details> are currently expanded and which top-level
+  // sections are open before we blow away the inspector innerHTML; we
+  // re-apply open state below so the user doesn't lose their context.
+  rememberOpen(elI);
   const openIfaces = new Set(
     Array.from(elI.querySelectorAll('details.iface[open]'))
       .map(d => d.getAttribute('data-iface')),
@@ -823,7 +936,8 @@ export function renderRouterInsp(name, elI) {
         <button class="add-if" id="add-if" style="margin-top:8px;">+ Add interface</button>
       </div>
     </div>
-    <div class="insp-routes" id="insp-routes" hidden></div>
+    <div class="insp-neighbours">${renderNeighbourSection(name, router)}</div>
+    <div class="insp-routes" id="insp-routes">${renderRoutingSection(name, openSections)}</div>
     <div class="insp-nat" id="insp-nat" hidden></div>
     <div class="insp-foot">
       <button class="dup" id="f-dup">Duplicate</button>
@@ -967,6 +1081,13 @@ export function renderRouterInsp(name, elI) {
   });
   elI.querySelector('#f-del').addEventListener('click', deleteSelected);
   elI.querySelector('#f-dup').addEventListener('click', () => duplicateRouter(name));
+  // Persist open/closed state of top-level collapsible sections across re-renders.
+  elI.querySelectorAll('details.insp-section').forEach(d => {
+    d.addEventListener('toggle', () => {
+      if (d.open) openSections.add(d.dataset.section);
+      else openSections.delete(d.dataset.section);
+    });
+  });
   Inspector.refreshRoutes(name);
   Inspector.refreshNAT(name);
 }
@@ -1150,6 +1271,24 @@ bus.addEventListener('sim:routing-table-changed', (e) => {
 });
 bus.addEventListener('sim:nat-table-changed', (e) => {
   Inspector.onNATChange({ device: e.detail.device });
+});
+bus.addEventListener('sim:neighbor-state-changed', (e) => {
+  const { device } = e.detail;
+  if (!state.selection || state.selection.kind !== 'router' || state.selection.name !== device) return;
+  const router = state.routers[device];
+  if (!router) return;
+  const elI = document.getElementById('inspector');
+  const container = elI && elI.querySelector('.insp-neighbours');
+  if (!container) return;
+  // Re-render only the Neighbours section, preserving open/closed state.
+  rememberOpen(elI);
+  container.innerHTML = renderNeighbourSection(device, router);
+  container.querySelectorAll('details.insp-section').forEach(d => {
+    d.addEventListener('toggle', () => {
+      if (d.open) openSections.add(d.dataset.section);
+      else openSections.delete(d.dataset.section);
+    });
+  });
 });
 bus.addEventListener('canvas:contextmenu-requested', (e) => {
   openContextMenu(e.detail.clientX, e.detail.clientY, e.detail.target, e.detail.world);

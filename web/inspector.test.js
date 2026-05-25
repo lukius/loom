@@ -1576,7 +1576,9 @@ describe('Inspector.refreshNAT', () => {
     expect(sec.innerHTML).toContain('8.8.8.8');
     expect(sec.innerHTML).toContain('7');
     expect(sec.innerHTML).toContain('NAT table');
-    expect(sec.innerHTML).toContain('r_a');
+    // The section is now a collapsible <details> — the device name lives in
+    // the outer inspector header, not inside the NAT section itself.
+    expect(sec.querySelector('details.insp-section')).not.toBeNull();
   });
 
   it('truncates long string flow_ids (UUIDs) to a short prefix, full value in title', () => {
@@ -1671,5 +1673,86 @@ describe('Inspector.onNATChange', () => {
     Inspector.onNATChange({ device: 'r_a' });
     // Panel stays hidden because refreshNAT was never called for r_a.
     expect(document.getElementById('insp-nat').hidden).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Collapsible inspector sections + Neighbours panel (Task 20)
+// ---------------------------------------------------------------------------
+function setupRouter20() {
+  state.routers = {
+    r1: {
+      interfaces: {
+        eth0: { network: 'lan1', address: '10.0.0.1', cost: 1 },
+        eth1: { network: 'lan2', address: '10.0.1.1', cost: 5 },
+      },
+    },
+  };
+  state.networks = { lan1: { address: '10.0.0.0/24' }, lan2: { address: '10.0.1.0/24' } };
+  state.links = {};
+  state.routingTables = {};
+  state.natTables = {};
+  state.neighborsByDevice = {};
+}
+
+describe('renderRouterInsp — collapsible sections + Neighbours', () => {
+  beforeEach(() => {
+    setupDOM();
+    resetState();
+    setupRouter20();
+  });
+
+  it('renders top-level collapsible sections for Routing table and Neighbours', () => {
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const sections = document.querySelectorAll('details.insp-section');
+    const labels = Array.from(sections).map(s => s.querySelector('summary').textContent.trim());
+    expect(labels.some(l => l.startsWith('Routing table'))).toBe(true);
+    expect(labels.some(l => l.startsWith('Neighbours'))).toBe(true);
+  });
+
+  it('renders eth0 and eth1 in the Neighbours section when no neighbour data', () => {
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const neighbourSection = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbours'));
+    expect(neighbourSection).toBeTruthy();
+    expect(neighbourSection.textContent).toContain('eth0');
+    expect(neighbourSection.textContent).toContain('eth1');
+  });
+
+  it('groups multiple peers on the same interface under one iface block', () => {
+    state.neighborsByDevice = {
+      r1: {
+        eth0: {
+          r2: { state: 'two_way', last_hello_at: 1, peer_acked_at: 1 },
+          r3: { state: 'two_way', last_hello_at: 1, peer_acked_at: 1 },
+          r4: { state: 'init', last_hello_at: 1, peer_acked_at: null },
+        },
+      },
+    };
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const ifaceBlocks = document.querySelectorAll('.neigh-iface-block');
+    expect(ifaceBlocks.length).toBeGreaterThanOrEqual(2);  // eth0 + eth1
+    const eth0Block = Array.from(ifaceBlocks).find(b => b.textContent.includes('eth0'));
+    expect(eth0Block).toBeTruthy();
+    expect(eth0Block.querySelectorAll('.neigh-row').length).toBe(3);
+    expect(eth0Block.textContent).toContain('r2');
+    expect(eth0Block.textContent).toContain('r3');
+    expect(eth0Block.textContent).toContain('r4');
+    expect(eth0Block.textContent).toContain('TWO_WAY');
+    expect(eth0Block.textContent).toContain('INIT');
+  });
+
+  it('summary line carries TWO_WAY / INIT counts', () => {
+    state.neighborsByDevice = {
+      r1: {
+        eth0: { r2: { state: 'two_way' }, r3: { state: 'init' } },
+      },
+    };
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const section = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbours'));
+    const summary = section.querySelector('summary').textContent;
+    expect(summary).toMatch(/1 TWO_WAY/);
+    expect(summary).toMatch(/1 INIT/);
   });
 });

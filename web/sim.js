@@ -7,7 +7,7 @@
    packet animation, route re-fetch) flow through `bus`; intra-namespace
    calls like `Sim._renderToolbar()` stay direct.
    =========================================================== */
-import { state, bus } from './state.js';
+import { state, bus, applyNeighborStateChanged } from './state.js';
 import { toast } from './utils.js';
 
 /* ---------- RuntimeClient — REST + WS wrapper ---------- */
@@ -365,6 +365,10 @@ export function _onEvent(evt) {
     // subscribers (packets.js) can cache by payload_id and decorate the
     // reply's tooltip.
     bus.dispatchEvent(new CustomEvent('sim:router-intercept', { detail: evt }));
+    return;
+  }
+  if (evt.kind === 'neighbor_state_changed') {
+    applyNeighborStateChanged(evt);
     return;
   }
 }
