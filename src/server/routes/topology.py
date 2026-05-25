@@ -34,6 +34,16 @@ def fetch(request: Request):
     return {"yaml": s.session_path.read_text()}
 
 
+@router.get("/topology/source")
+def source(request: Request):
+    """Basename of the topology source file (LOOM_TOPOLOGY).
+
+    The SPA uses this as the default stem for Export filenames when the
+    user has not imported a file in the current session.
+    """
+    return {"name": _state(request).source.name}
+
+
 @router.post("/topology/reset")
 def reset(request: Request):
     s = _state(request)

@@ -233,11 +233,22 @@ Two correlation ids accompany every packet event:
 - `payload_id` = `str(message.id())` — identifies the single direction of
   a flow. A ping request and its reply have **different** `payload_id`s.
 - `flow` = `"{min}<->{max}"` (sorted endpoints) — identifies the
-  end-to-end conversation. The ping pair shares the same `flow`, so the
-  SPA can sequence their animations in order.
+  end-to-end conversation. The ping pair shares the same `flow`, so
+  subscribers can sequence their processing in order.
 
-`packets.js` uses `flow` to chain hops; the chatter toggle filters by
-`type === "routing_flood"`.
+Each event also carries a `payload` dict with per-Message-subclass
+metadata:
+
+| `type`          | `payload` keys                          |
+|-----------------|-----------------------------------------|
+| `user_datagram` | `{"bytes": <int>}` always; `"text": <str>` when the body is a string |
+| `ping_request`  | `{"seq": <int>}`                        |
+| `ping_reply`    | `{"seq": <int>, "request_ts": <float>}` |
+| `routing_flood` | `{"seq": <int>, "destinations": [{"prefix": <str>, "cost": <int>}, ...]}` |
+| anything else   | `{}`                                    |
+
+The shape is intentionally free-form — future message types add their own
+keys without coordinating with subscribers.
 
 ### `kind: "nat"`
 

@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from entities import NetworkAddress
+from entities import Address, NetworkAddress
 from entities.event import EventTracer
 from parser import Parser
 
@@ -479,5 +479,96 @@ def test_two_private_hosts_keep_distinct_nat_entries_for_same_destination():
             f"NAT table should hold one entry per private host; got: {snap}"
         )
     finally:
+        system.stop()
+        os.unlink(path)
+
+
+_TWO_HOPS_TO_R1 = textwrap.dedent("""
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: "10.0.0.0/24"
+        lan2: "192.168.0.0/24"
+      hosts:
+        h1: {network: lan1, address: "10.0.0.10", gateway: "10.0.0.1"}
+      routers:
+        r1:
+          interfaces:
+            eth0: {network: lan1, address: "10.0.0.1", cost: 1}
+            eth1: {network: lan2, address: "192.168.0.1", cost: 1}
+""")
+
+
+def test_ping_router_on_its_inbound_interface():
+    """Pinging the IP of the router's own LAN-facing interface succeeds.
+
+    This worked before: dst matches the receiving interface's address, so
+    Device.handle_packet routed the packet into _handle_message — and the
+    router used to silently drop it. After the fix, the router replies.
+    """
+    path = _make_topology(_TWO_HOPS_TO_R1)
+    system = Parser(path).parse().single_as()
+    try:
+        h1 = system.host("h1")
+        rtt = h1.ping(Address("10.0.0.1"), timeout=2.0)
+        assert rtt is not None, "router did not reply to ping on its inbound interface"
+    finally:
+        system.stop()
+        os.unlink(path)
+
+
+def test_ping_router_on_its_far_side_interface():
+    """Pinging an IP that lives on the router's *other* interface succeeds.
+
+    Regression: r1.eth0 receives a packet whose dst is r1.eth1's address.
+    Before the fix, Device.handle_packet only compared dst with the
+    receiving iface; dst didn't match, so the packet was forwarded into
+    the routing table — back out the same path it came in, eventually
+    looping until TTL expired and the ping timed out.
+    """
+    path = _make_topology(_TWO_HOPS_TO_R1)
+    system = Parser(path).parse().single_as()
+    try:
+        h1 = system.host("h1")
+        r1 = system.router("r1")
+        far_addr = r1.interfaces()["eth1"].address()
+        rtt = h1.ping(far_addr, timeout=2.0)
+        assert rtt is not None, (
+            "router did not reply to a ping for its far-side interface "
+            "(forwarded instead of intercepted)"
+        )
+    finally:
+        system.stop()
+        os.unlink(path)
+
+
+def test_router_ping_intercept_emits_event():
+    """A router answering an ICMP echo on its own address fires a
+    `router_intercept` tracer event so subscribers (the SPA, observers,
+    tests) can annotate the duplicate-IP-aware behaviour."""
+    intercepts = []
+
+    def on_evt(evt):
+        if evt.get("kind") == "router_intercept":
+            intercepts.append(evt)
+
+    path = _make_topology(_TWO_HOPS_TO_R1)
+    system = Parser(path).parse().single_as()
+    unsub = EventTracer.subscribe(on_evt)
+    try:
+        h1 = system.host("h1")
+        rtt = h1.ping(Address("192.168.0.1"), timeout=2.0)
+        assert rtt is not None
+        # The intercept event should carry the router name + the source host
+        # so the SPA tooltip can render "Replied by router r1".
+        assert intercepts, "no router_intercept event was emitted"
+        evt = intercepts[-1]
+        assert evt.get("router") == "r1"
+        assert evt.get("originator") == "10.0.0.10"  # h1
+    finally:
+        unsub()
         system.stop()
         os.unlink(path)

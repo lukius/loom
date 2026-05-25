@@ -181,10 +181,12 @@ export function toast(msg, kind = '', label = null) {
     </div>
   `;
   wrap.appendChild(elT);
+  // Errors linger so the user actually sees them; other kinds dismiss fast.
+  const lifetime = kind === 'error' ? 5000 : 2400;
   setTimeout(() => {
     elT.style.transition = 'opacity .3s, transform .3s';
     elT.style.opacity = 0;
     elT.style.transform = 'translateY(6px)';
     setTimeout(() => elT.remove(), 320);
-  }, 2400);
+  }, lifetime);
 }

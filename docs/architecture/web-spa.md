@@ -14,6 +14,8 @@ web/
 ├── inspector.js         # left nav + right pane, rename/duplicate/delete, context menu
 ├── terminals.js         # per-device terminal popups
 ├── packets.js           # packet animation + tooltips
+├── packetstore.js       # PacketStore — in-flight registry, hop history, NAT cache, #N counters
+├── packetspanel.js      # Packets panel — toolbar button, mounts inside #inspector, row rendering, hover halo
 ├── sim.js               # Sim state machine + RuntimeClient + WS dispatcher
 ├── yaml-io.js           # YAML import / export
 └── utils.js             # DOM helpers (el, escapeHtml, toast, ...)
@@ -57,6 +59,10 @@ module-to-module direct render calls.
 | `sim:routing-table-changed` | `sim` (from WS) | `inspector` (re-fetch routes if selected) | Server emitted a route change |
 | `sim:nat` | `sim` (from WS) | packet tooltip renderer | A router performed source or destination NAT on a packet. Outbound carries `{router, direction, original_src, rewritten_src, dst, flow_id, payload_id}`; inbound carries `{router, direction, rewritten_dst, original_dst, src, flow_id, payload_id}`. `flow_id` is the conversation UUID (same value as `flow` on the `packet` event, and same value the router's NAT table is keyed on). |
 | `sim:nat-table-changed` | `sim` (from WS) | `inspector` (NAT table panel) | A router's NAT table was mutated. Carries `{device}` in detail; the full snapshot is mirrored into `state.natTables[device]` for the inspector to render. |
+| `sim:packet-arrived` | `packets` (animation finish) | `packetstore` | A packet animation completed at its destination device. Detail: `{payloadId, device}`. Drives last-hop promotion in the store. |
+| `packets:list-changed` | `packetstore` (debounced ~50ms) | `packetspanel` | The store's in-flight or recent set mutated. Panel re-renders on receipt. |
+| `packets:chatter-badges-changed` | `packetspanel` | `packets` | The chatter group's expand state flipped; live chatter dots add/remove their `#R*` badges. |
+| `packets:dot-appeared` | `packets` (after appendChild) | `packetstore` | A new packet dot was appended to the canvas layer. Detail: `{payloadId}`. Drives the panel's visibility filter — rows stay hidden until their dot is on screen. |
 | `sim:yaml-export-requested` | `sim.onPrimary` | `app.js` | Sim needs current YAML to load before starting |
 | `sim:topology-import-requested` | `sim.onReset` | `app.js` | Sim received reset; refresh canvas from server YAML |
 | `view:changed` | `canvas` | (none currently — kept for future) | Pan/zoom |
@@ -206,6 +212,48 @@ The packet color/icon comes from the `type` field of the event:
 | `ping_reply` | Solid dot with incoming-arrow icon |
 | `unknown` | Solid dot, gray |
 
+Each packet animation also creates a small `<text class="packet-badge">` element sibling to the dot, displaying the numeric id (`#N` for user traffic, `#R*` for routing chatter) assigned by `packetstore.js`. The badge rides with the dot via the same `setPacketAnchor` write-step and is removed on `finish()`. Chatter badges only render when `<body data-chatter-badges="on">` is set, which the panel toggles on chatter-group expand/collapse and signals via `packets:chatter-badges-changed`.
+
+The NAT cache previously kept here moved to `packetstore.js` so the tooltip and the panel query the same source.
+
+## Packet store (`web/packetstore.js`)
+
+A singleton registry of packets the simulator is currently animating, plus a small ring of recently delivered ones. Subscribes to `sim:packet`, `sim:packet-arrived`, `sim:nat`, and `sim:status-changed`. Emits `packets:list-changed` (debounced ~50 ms) so the Packets panel can re-render after bursts.
+
+Shape:
+
+```js
+export const PacketStore = {
+  inFlight:      Map<payload_id, PacketRow>,                         // user traffic (datagrams, pings)
+  chatter:       Map<"pid|dev|iface|net", ChatterRow>,               // routing floods, composite key
+  recent:        PacketRow[],                                        // FIFO cap 10, user traffic only
+  natByPayload:  Map<payload_id, NatHop[]>,                          // relocated from packets.js (was _natByPayloadId)
+  _nextUserId:   1,                                                  // monotonic; reset on sim stop
+  _nextChatterId: 1,                                                 // independent monotonic
+};
+```
+
+- A user-traffic row moves from `inFlight` → `recent` when the matching `sim:packet-arrived` fires for the final hop (`evt.dst.address === payload_dst`).
+- Chatter rows are keyed by a composite `"payload_id|srcDev|srcIface|network"` string so that N emissions of the same `RoutingMessage` (one per router interface) each get a distinct store row, badge, and hover-halo hit-target. Chatter rows leave the `chatter` map on arrival (or after a 2 s TTL) and don't enter `recent`.
+- Counters reset to 1 on `sim:status-changed → idle`. They persist across pause/resume.
+- While paused, `_scheduleEmit()` is suppressed and chatter TTL deletions are deferred to `_pendingChatterDeletes`; both are flushed on resume so the panel stays frozen during a pause.
+- The NAT cache lives here so both the panel and the `packets.js` tooltip query the same source. `PacketStore.natFor(payloadId)` returns the list (or `[]`).
+- `PacketStore.idFor(evt)` resolves the numeric id used as the on-canvas badge text.
+
+## Packets panel (`web/packetspanel.js`)
+
+The panel listing in-flight packets and recent activity. Wires the `tb-packets` toolbar button and mounts the panel inside the `#inspector` slot. When open, sets `data-packets-open` on the inspector host; a CSS rule (`#inspector[data-packets-open] > *:not(#packets-panel) { display: none }`) hides every non-panel child — including children inserted by a later inspector re-render. Because `inspector.js` uses `innerHTML =` to re-render on `state:selection-changed` and `state:topology-changed` (which destroys the `#packets-panel` child), `packetspanel.js` subscribes to those same events and re-appends the panel when it is open. Open/closed state is persisted under `state.ui.packetsPanelOpen`.
+
+Three sections, rendered from `PacketStore`:
+
+- **In flight — user traffic.** One row per `payload_id`. Expand for hop history + NAT lines.
+- **In flight — routing chatter.** Collapsed summary by default. Expanding flips `<body data-chatter-badges="on">` and dispatches `packets:chatter-badges-changed`, so `packets.js` adds `#R*` text labels to chatter dots that are already mid-tween. Collapsing reverses it. Each row in the expanded list represents one logical `RoutingMessage` (one `payload_id`), aggregated across all of its N interface emissions via `PacketStore.visibleChatterGroups()`. The emission count is shown as `×N`. Canvas dots retain their unique composite keys (`payload_id|dev|iface|net`); the group row carries `data-emission-keys` (space-separated list of composite keys) so hover halos every dot belonging to the group.
+- **Recent.** Last ten delivered user-traffic rows, FIFO. Routing chatter is excluded from this section to keep it readable.
+
+Hovering a row adds class `halo` to the corresponding canvas dot (matched by `dot.dataset.payloadId`). For chatter group rows, all emission dots (listed in `data-emission-keys`) are haloed simultaneously.
+
+The panel re-renders on every `packets:list-changed` event; expensive layout is avoided by re-rendering the entire body innerHTML on each tick (the panel is small).
+
 ## YAML I/O (`web/yaml-io.js`)
 
 Exports two functions:
@@ -231,6 +279,8 @@ Each module has a co-located `*.test.js` exercising its public seams:
   transitions, `reconcilePatch` edge cases.
 - `canvas.test.js`, `inspector.test.js`, `packets.test.js` — DOM-level
   tests under happy-dom.
+- `packetstore.test.js` — store lifecycle, hop tracking, FIFO cap, chatter counter, NAT cache, debounced emission (uses `vi.useFakeTimers()` for the debounce check).
+- `packetspanel.test.js` — toolbar toggle + persistence, in-flight rendering, chatter section expand/collapse, recent section, hover halo.
 
 End-to-end tests under `e2e/spa.spec.js` run against a real Chromium and
 a real FastAPI server (booted by Playwright's `webServer`).

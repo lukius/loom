@@ -72,6 +72,8 @@ Effects, observable in the canvas:
 - Routing-protocol keepalives stop ticking.
 - The **Pause** button becomes **Resume**.
 
+Pause is also the natural pairing with the Packets panel (see [web-ui.md](web-ui.md)) — frozen animations make the badge-to-row mapping easy to read.
+
 **While paused, you can edit:**
 
 - Add a LAN, host, or router.

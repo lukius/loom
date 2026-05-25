@@ -29,9 +29,8 @@ From left to right:
 | Group | Control | What it does |
 |---|---|---|
 | Project | **Project name** | Editable AS name. Persisted; round-trips to/from YAML. |
-| Project | **Load sample** | Reset the canvas to the bundled sample topology. |
-| Project | **Import** | Open a modal to paste YAML; **Parse & load** replaces the canvas. |
-| Project | **Export** | Open a modal showing the current YAML; **Copy to clipboard** copies it. |
+| Project | **Import** | Open a picker listing the YAML topologies in `samples/`; click one to load it, or use **Browse local file…** to pick any `.yaml` on your computer. |
+| Project | **Export** | Open the browser's save dialog so you can pick a folder and filename for the current topology. The suggested name is the loaded source filename with a `.session` suffix (e.g. `sample.session.yaml`). |
 | Build | **LAN** (<kbd>N</kbd>) | Add a network rail at the canvas center. Disabled while running. |
 | Build | **Host** (<kbd>H</kbd>) | Add a host. Disabled while running. |
 | Build | **Router** (<kbd>R</kbd>) | Add a router. Disabled while running. |
@@ -42,6 +41,7 @@ From left to right:
 | Sim | **Refresh** | Routing-protocol keepalive interval in seconds (1–300). Enabled while sim is loaded. |
 | Sim | **Packet speed** | Per-hop animation duration in ms (200–5000). Local to the SPA; doesn't talk to the server. |
 | View | **Chatter** | Mute or unmute routing-protocol packet animations. |
+| View | **Packets** | Open the Packets panel listing all packets currently traveling, with a numeric badge on each. Expand a row to see its hop history and any NAT translations along the way. |
 | View | **Costs** | Show or hide link cost labels at each router interface. |
 | View | **Interfaces** | Show or hide interface name + count badges. |
 | Theme | **Theme buttons** | Light / dark / contrast — persisted to `localStorage`. |
@@ -135,6 +135,8 @@ routing-protocol packets when you want a quieter canvas.
 
 ### Inspecting packet internals
 
+#### Pause and hover
+
 **Pause the simulation, then hover the mouse over any frozen packet
 dot — a tooltip pops up with the packet's internals.** Pausing freezes
 in-flight packet animations in place, so the canvas effectively becomes
@@ -158,6 +160,20 @@ traffic is actually going: pause, hover each frozen dot in order, and
 read off the per-hop trail. While the simulation is running, packets
 move too fast for the tooltip to land on the dot reliably — pause
 first.
+
+#### Packets panel
+
+For tracking multiple packets at once — or for keeping context while the simulation is still running — click **Packets** in the toolbar. A panel slides in from the right showing:
+
+- **In flight — user traffic.** One row per packet currently crossing the network, with a numeric badge (`#1`, `#2`, …). The same badge rides on the corresponding dot in the canvas, so a row and its packet are always paired by sight. Expand a row to see the packet's hop history and any NAT translations along the way.
+- **In flight — routing chatter.** Routing-protocol packets are summarised on a single line by default to keep the list readable. Expand the summary to see each one individually with its own `#R1`, `#R2`, … badge — handy when teaching how the protocol propagates updates.
+- **Recent.** The last ten user-traffic packets that have completed, oldest dropped first. The same expand-for-detail behaviour applies.
+
+The panel works just as well while the sim is paused — frozen badges sit on the wires alongside the panel rows, making the badge-to-row mapping easy to read.
+
+![Packets panel showing in-flight user traffic with numeric badges](../images/41-packets-panel.png)
+
+![A row expanded to show its hop history](../images/42-packets-panel-expanded.png)
 
 ### NAT annotations
 

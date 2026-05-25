@@ -31,7 +31,7 @@ test.describe('loom SPA - smoke', () => {
     await page.waitForSelector('#nodes-layer g.node', { timeout: 5000 });
   });
 
-  test('serves index, styles, and all eight JS modules', async ({ page }) => {
+  test('serves index, styles, and all JS modules', async ({ page }) => {
     // Reload and collect every response, then assert that every module the
     // SPA depends on returned 200. If app.js silently fails to import a
     // module, the page still loads but the suite goes red here.
@@ -43,6 +43,7 @@ test.describe('loom SPA - smoke', () => {
     const modules = [
       'app.js', 'state.js', 'utils.js', 'sim.js',
       'canvas.js', 'inspector.js', 'terminals.js', 'packets.js',
+      'yaml-io.js', 'file-picker.js',
     ];
     for (const m of modules) {
       const r = responses.find((x) => x.url.endsWith(`/${m}`));
@@ -138,22 +139,158 @@ test.describe('loom SPA - smoke', () => {
     await expect(menu.locator('button[data-act="detach-host"]')).toBeVisible();
   });
 
-  test('Load Sample button reloads the bundled topology with no console errors', async ({ page }) => {
+  test('header no longer has a Sample button', async ({ page }) => {
+    await expect(page.locator('#btn-sample')).toHaveCount(0);
+    // The Import + Export pair is still present.
+    await expect(page.locator('#btn-import')).toBeVisible();
+    await expect(page.locator('#btn-export')).toBeVisible();
+  });
+
+  test('Import opens a picker listing samples/, and loading sample.yaml repopulates the canvas', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
-    // Wipe topology in-page to simulate an empty state, then click Sample.
-    await page.evaluate(() => {
-      try { localStorage.clear(); } catch (_) {}
-    });
-    await page.locator('#btn-sample').click();
+    await page.locator('#btn-import').click();
+    const modal = page.locator('.modal-picker');
+    await expect(modal).toBeVisible();
 
-    // Sample should give us the canonical 3+3+3 set.
+    // Sample list comes from GET /samples — sample.yaml is guaranteed to be there.
+    const item = modal.locator('.picker-item', { hasText: 'sample.yaml' });
+    await expect(item).toBeVisible();
+    await item.click();
+
+    // Picker dismisses itself; sample's canonical 3+3+3 nodes appear.
+    await expect(modal).toHaveCount(0);
     await expect(page.locator('#nodes-layer g.node.host')).toHaveCount(3);
     await expect(page.locator('#nodes-layer g.node.router')).toHaveCount(3);
     await expect(page.locator('#nodes-layer g.node.network')).toHaveCount(3);
     expect(errors, errors.join('\n')).toEqual([]);
+  });
+
+  test('right-click "Add host here" on a LAN while paused: gateway edit + resume ships the host to the server', async ({ page, request }) => {
+    // Regression: the right-click "Add host here" used to skip recording an
+    // add_host patch op, so the server never learned about the new host. The
+    // gateway editor then tried to push a set_gateway shell command at a host
+    // the server didn't know existed, raising an error toast.
+
+    // Cycle through start → pause so the sim is in 'paused' state.
+    await page.locator('#tb-play').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
+    await page.locator('#tb-pause').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/paused/, { timeout: 8000 });
+
+    // Right-click on lan1 and pick "Add host here".
+    await page.locator('#nodes-layer g.node.network[data-name="lan1"]').click({ button: 'right' });
+    const menu = page.locator('div.ctx');
+    await expect(menu.locator('button[data-act="add-host-here"]')).toBeVisible();
+    await menu.locator('button[data-act="add-host-here"]').click();
+
+    // A fresh host is now selected in the inspector. Fill in IP + gateway.
+    const ip = page.locator('#inspector #f-addr');
+    await expect(ip).toBeVisible();
+    await ip.fill('200.100.0.99');
+    await ip.dispatchEvent('change');
+
+    // The bug: setting the gateway used to produce an error toast because
+    // the server didn't know about this host yet. After the fix it must not.
+    // (The gateway is a <select> populated from routers on the same LAN —
+    // 200.100.0.1 is r1's eth0 in the sample topology, so it's available.)
+    const gw = page.locator('#inspector #f-gw');
+    await gw.selectOption('200.100.0.1');
+    await page.waitForTimeout(150);
+    // No error-flavoured toast for Gateway should have appeared.
+    await expect(page.locator('.toast.error', { hasText: 'Gateway' })).toHaveCount(0);
+
+    // Resume — the pending add_host op carries the gateway to the server.
+    await page.locator('#tb-pause').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
+
+    // The host now exists on the server's session.
+    const topo = await (await request.get('/topology')).json();
+    expect(topo.yaml).toContain('200.100.0.99');
+    expect(topo.yaml).toContain('200.100.0.1');
+  });
+
+  test('right-click "Add router here" on a LAN while paused: cost edit + resume ships the router to the server', async ({ page, request }) => {
+    // Regression: editing the cost of an interface on a freshly-added
+    // router used to queue an update_cost op for a router the server
+    // didn't know about yet. Patch validation then failed with
+    // "interface_not_found" because validators run against current
+    // server state, not against state-after-applying-the-patch.
+
+    await page.locator('#tb-play').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
+    await page.locator('#tb-pause').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/paused/, { timeout: 8000 });
+
+    await page.locator('#nodes-layer g.node.network[data-name="lan1"]').click({ button: 'right' });
+    await page.locator('div.ctx button[data-act="add-router-here"]').click();
+
+    // Each interface block in the inspector is a <details> that starts
+    // collapsed — expand eth0 so its IP + cost inputs are visible.
+    await page.locator('#inspector details.iface[data-iface="eth0"]').evaluate(d => d.open = true);
+
+    const ip = page.locator('#inspector [data-iface-addr="eth0"]');
+    await expect(ip).toBeVisible();
+    await ip.fill('200.100.0.77');
+    await ip.dispatchEvent('input');
+
+    const cost = page.locator('#inspector [data-iface-cost="eth0"]');
+    await cost.fill('42');
+    await cost.dispatchEvent('input');
+    await page.waitForTimeout(150);
+
+    // Resume — no validator error toast.
+    await page.locator('#tb-pause').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
+    await expect(page.locator('.toast.error')).toHaveCount(0);
+
+    // The router landed on the server with the chosen address.
+    const topo = await (await request.get('/topology')).json();
+    expect(topo.yaml).toContain('200.100.0.77');
+  });
+
+  test('add link + two hosts on it during pause, then resume — patch ships without error', async ({ page, request }) => {
+    // The user's reported flow: while paused, create a p2p link and attach
+    // two hosts to it; Resume must ship the whole patch without an
+    // "invalid_patch -> add host" or "link_not_found" toast.
+
+    await page.locator('#tb-play').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
+    await page.locator('#tb-pause').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/paused/, { timeout: 8000 });
+
+    // Drive the SPA's data layer directly. We're testing the patch protocol
+    // and reconcile/resume pipeline, not the link-wizard UI: do the in-state
+    // mutations the wizard would do, and queue the same patch ops addNew()
+    // and add-host-here would queue.
+    await page.evaluate(async () => {
+      const sim = await import('/sim.js');
+      const st = await import('/state.js');
+      const { state, bus } = st;
+      // 1) New /30 link with a chosen CIDR.
+      state.links.p2p_new = { cidr: '192.168.7.0/30', x: 600, y: 400 };
+      sim.recordPatchOp({ op: 'add_link', name: 'p2p_new', address: '' });
+      // 2) Two link-attached hosts with valid /30 host addresses.
+      state.hosts.h_a = { link: 'p2p_new', address: '192.168.7.1', x: 400, y: 400 };
+      state.hosts.h_b = { link: 'p2p_new', address: '192.168.7.2', x: 800, y: 400 };
+      sim.recordPatchOp({ op: 'add_host', name: 'h_a', network: '', address: '' });
+      sim.recordPatchOp({ op: 'add_host', name: 'h_b', network: '', address: '' });
+      bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+    });
+
+    // Resume — server applies the patch atomically.
+    await page.locator('#tb-pause').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
+    // No error toast.
+    await expect(page.locator('.toast.error')).toHaveCount(0);
+
+    // Both new hosts are on the server now.
+    const topo = await (await request.get('/topology')).json();
+    expect(topo.yaml).toContain('192.168.7.1');
+    expect(topo.yaml).toContain('192.168.7.2');
+    expect(topo.yaml).toContain('p2p_new');
   });
 
   test('sim play -> pause -> resume -> stop toggles toolbar state', async ({ page }) => {
@@ -198,7 +335,7 @@ test.describe('loom SPA - smoke', () => {
     const term = page.locator('div.term').first();
     await expect(term).toBeVisible({ timeout: 3000 });
     await expect(term.locator('.title')).toHaveText('h1@loom');
-    await expect(term.locator('input.term-in')).toBeVisible();
+    await expect(term.locator('textarea.term-in')).toBeVisible();
 
     // Close via the macOS-style traffic light close button.
     await term.locator('.light.close').click();
@@ -241,7 +378,7 @@ test.describe('loom SPA - smoke', () => {
     const term = page.locator('div.term').first();
     await expect(term).toBeVisible({ timeout: 3000 });
 
-    const input = term.locator('input.term-in');
+    const input = term.locator('textarea.term-in');
     await input.click();
     await input.fill('send h2 hello');
     await input.press('Enter');

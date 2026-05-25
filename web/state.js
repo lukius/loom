@@ -21,9 +21,15 @@ export const state = {
   view: { x: 0, y: 0, k: 1 }, // pan x,y and zoom factor
   /* visibility toggles for on-canvas annotations (persisted) */
   display: { showCosts: true, showIfaces: true },
+  /* UI panel open/closed state (persisted) */
+  ui: { packetsPanelOpen: false, showChatter: true },
   /* transient sim state — NAT snapshots keyed by device name; populated by
      the `nat_table_changed` WS event. Not persisted; reset on loadSample. */
   natTables: {},
+  /* basename of the YAML file the topology was last loaded from (via Import
+     or, on first boot, via the server's LOOM_TOPOLOGY). Used to derive the
+     default Export filename. Persisted; null until set. */
+  sourceName: null,
 };
 
 /* Defaults used when restoring a legacy session that didn't persist `display`. */
@@ -114,6 +120,8 @@ export function persist() {
       links: state.links,
       view: state.view,
       display: state.display,
+      ui: state.ui,
+      sourceName: state.sourceName,
     }));
     setSave('autosaved');
   } catch (_) {}
@@ -130,8 +138,25 @@ export function restore() {
     state.links = (d.links && typeof d.links === 'object' && !Array.isArray(d.links)) ? d.links : {};
     if (d.view) state.view = d.view;
     state.display = { ...DISPLAY_DEFAULTS, ...(d.display || {}) };
+    state.ui = { packetsPanelOpen: false, showChatter: true, ...(d.ui || {}) };
+    state.sourceName = (typeof d.sourceName === 'string' && d.sourceName) ? d.sourceName : null;
     return true;
   } catch (_) { return false; }
+}
+
+/* ---------- export filename ---------- */
+/* Derive the default filename for an Export from the basename of the YAML
+   the topology was last loaded from. The suggested name mirrors the source
+   so the user can save back over it (the browser save dialog still asks
+   before overwriting); a `.session` stem on an imported session file is
+   stripped so the name doesn't grow on each round-trip. Falls back to
+   "topology.yaml" when nothing is loaded. */
+export function defaultExportFilename(sourceName) {
+  if (!sourceName) return 'topology.yaml';
+  const m = /^(.+?)(\.ya?ml)$/i.exec(sourceName);
+  if (!m) return `${sourceName}.yaml`;
+  const stem = m[1].replace(/\.session$/i, '');
+  return `${stem}${m[2]}`;
 }
 export function loadSample() {
   state.asName = SAMPLE.asName;
@@ -142,6 +167,7 @@ export function loadSample() {
   state.selection = null;
   state.view = { x: 0, y: 0, k: 1 };
   state.display = { ...DISPLAY_DEFAULTS };
+  state.ui = { packetsPanelOpen: false, showChatter: true };
   state.natTables = {};
   const projName = document.getElementById('proj-name');
   if (projName) projName.value = state.asName;

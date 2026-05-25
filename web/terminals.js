@@ -38,7 +38,7 @@ type 'help' for commands
 </pre>
       <div class="term-line">
         <span class="term-prompt">${escapeHtml(deviceName)}@loom:~$</span>
-        <input class="term-in" autocomplete="off" spellcheck="false" />
+        <textarea class="term-in" rows="1" autocomplete="off" spellcheck="false"></textarea>
         <span class="term-cursor"></span>
       </div>`;
     const w = document.createElement('div');
@@ -102,6 +102,13 @@ type 'help' for commands
       drag = null;
     });
 
+    const autoResize = () => {
+      inp.style.height = 'auto';
+      inp.style.height = inp.scrollHeight + 'px';
+    };
+    inp.addEventListener('input', autoResize);
+    autoResize();
+
     inp.addEventListener('keydown', async (e) => {
       if (e.ctrlKey && (e.key === 'd' || e.key === 'D')) {
         if (inp.value === '') {
@@ -116,9 +123,11 @@ type 'help' for commands
         return;
       }
       if (e.key === 'Enter') {
+        e.preventDefault();
         const cmd = inp.value;
         out.textContent += `${name}@loom:~$ ${cmd}\n`;
         inp.value = '';
+        autoResize();
         if (cmd.trim() === 'clear') {
           out.textContent = '';
         } else if (cmd.trim() !== '') {

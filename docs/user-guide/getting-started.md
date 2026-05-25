@@ -178,7 +178,8 @@ already running, or another service holds the port. Either kill it or
 launch with a different port: `LOOM_PORT=8765 python loom.py`.
 
 **The canvas is empty on first load.** The sample topology should load
-automatically; if it doesn't, click **Load sample** in the empty state.
+automatically; if it doesn't, click **Import topology…** in the empty
+state and pick `sample.yaml` from the list.
 
 **Packets don't animate.** Make sure the sim is `running` (not paused or
 idle), and that the **Chatter** toggle isn't muting all packets. The

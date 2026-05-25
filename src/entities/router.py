@@ -9,7 +9,7 @@ from .device import NetworkDevice
 from .event import EventTracer
 from .interface import Interface
 from .nat import NATTable, flow_id
-from .packet import Datagram, RoutingMessage
+from .packet import Datagram, PingReply, PingRequest, RoutingMessage
 
 
 class RoutingRule:
@@ -222,7 +222,55 @@ class Router(NetworkDevice):
     def _handle_message(self, msg, interface, packet):
         if msg.type() == RoutingMessage:
             self._handle_routing_message(msg, interface)
-        # PingRequest/PingReply silently dropped
+            return
+        if isinstance(msg, PingRequest):
+            self._reply_to_ping(msg, interface, packet)
+            return
+        # PingReply silently dropped — routers don't initiate pings.
+
+    def _reply_to_ping(self, msg: PingRequest, interface: Interface, packet: Datagram):
+        """Answer an ICMP echo request addressed to one of our interfaces.
+
+        Mirrors a real router's behavior. Important when interface IPs
+        coincide with addresses on other subnets (e.g. two /30 links that
+        accidentally share a CIDR): the router answers, the sender sees a
+        successful ping that didn't actually reach the intended host. A
+        `router_intercept` event is emitted so the SPA can flag the reply.
+        """
+        originator = packet.source()
+        result = self._routing_table.match(originator)
+        if not result.is_matched():
+            return  # No route back — quietly drop, same as a real router would.
+        out_iface = result.interface()
+        next_hop = result.next_hop()
+        if next_hop == NullAddress:
+            next_hop = originator
+        reply = PingReply(
+            seq=msg.seq, request_ts=msg.sent_at, request_id=msg.id(),
+        )
+        # Source address of the reply is the IP the sender pinged — the
+        # interface whose address matched, not the receiving interface.
+        reply_dgram = Datagram(
+            src_addr=packet.destination(), dst_addr=originator, payload=reply,
+        )
+        # Identify which of our interfaces owned the address that was pinged
+        # — usually NOT the one the packet came in on (that's the whole reason
+        # this branch fires through the cross-interface "for me" check).
+        owning_iface = next(
+            (n for n, iff in self._interfaces.items()
+             if iff.address() == packet.destination()),
+            None,
+        )
+        EventTracer._broadcast({
+            'kind': 'router_intercept',
+            'router': self.name(),
+            'originator': str(originator),
+            'pinged_address': str(packet.destination()),
+            'received_on': interface.name(),
+            'owning_iface': owning_iface,
+            'payload_id': str(reply.id()),
+        })
+        out_iface.send_to(reply_dgram, dst_addr=next_hop)
 
     def _handle_routing_message(self, msg: RoutingMessage, interface: Interface):
         for proto in self._protocols:

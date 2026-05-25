@@ -1,5 +1,6 @@
 import textwrap
 import time
+from pathlib import Path
 
 import pytest
 import yaml as _yaml
@@ -27,9 +28,10 @@ def source_yaml(tmp_path):
     return p
 
 
-def test_session_file_created_on_first_use(source_yaml):
+def test_session_file_created_on_first_use(source_yaml, tmp_path, monkeypatch):
     from server.persistence import prepare_session
 
+    monkeypatch.setenv("LOOM_SESSION_DIR", str(tmp_path / "sessions"))
     session = prepare_session(source_yaml)
     assert session.exists()
     assert session.read_text() == SAMPLE
@@ -37,13 +39,49 @@ def test_session_file_created_on_first_use(source_yaml):
     assert source_yaml.read_text() == SAMPLE  # source untouched
 
 
-def test_session_reset_reclones(source_yaml):
+def test_session_reset_reclones(source_yaml, tmp_path, monkeypatch):
     from server.persistence import prepare_session, reset_session
 
+    monkeypatch.setenv("LOOM_SESSION_DIR", str(tmp_path / "sessions"))
     session = prepare_session(source_yaml)
     session.write_text("mutated")
     new_session = reset_session(source_yaml)
     assert new_session.read_text() == SAMPLE
+
+
+def test_session_path_lives_in_LOOM_SESSION_DIR_not_alongside_source(
+    source_yaml, tmp_path, monkeypatch,
+):
+    # Sessions used to land next to the source file; they now live in a
+    # dedicated tmp dir so the source tree stays clean and the OS can wipe
+    # them at reboot.
+    from server.persistence import prepare_session
+
+    session_dir = tmp_path / "sessions"
+    monkeypatch.setenv("LOOM_SESSION_DIR", str(session_dir))
+    session = prepare_session(source_yaml)
+    assert session.parent == session_dir.resolve()
+    # Make sure nothing was written next to the source.
+    assert not (source_yaml.with_name(source_yaml.stem + ".session.yaml")).exists()
+
+
+def test_session_default_dir_is_system_tmp(source_yaml, monkeypatch):
+    # When LOOM_SESSION_DIR is unset, sessions land in <system-tmp>/loom.
+    # Verify default placement, then clean up the file we wrote so /tmp/loom
+    # doesn't accumulate cruft from test runs (the directory itself is
+    # shared across tests, so we leave it in place).
+    import tempfile
+
+    from server.persistence import prepare_session
+
+    monkeypatch.delenv("LOOM_SESSION_DIR", raising=False)
+    session = prepare_session(source_yaml)
+    try:
+        expected = Path(tempfile.gettempdir()).resolve() / "loom"
+        assert session.parent == expected
+    finally:
+        if session.exists():
+            session.unlink()
 
 
 def test_sim_state_transitions(source_yaml):

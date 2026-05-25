@@ -130,9 +130,7 @@
 
     <div class="head-mid">
       <div class="crumb">
-        <span>document</span>
-        <span class="sep">/</span>
-        <input class="proj" id="proj-name" value="test_as" spellcheck="false" />
+        <input class="proj" id="proj-name" value="test_as" spellcheck="false" title="Name of this topology" />
       </div>
       <div class="save" id="save-state"><span class="dot"></span> autosaved</div>
     </div>
@@ -151,14 +149,6 @@
           </svg>
         </button>
       </div>
-      <button class="btn outline" id="btn-sample" title="Load sample topology">
-        <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-          <rect x="2.5" y="3.5" width="11" height="2" rx="0.5"/>
-          <rect x="2.5" y="7" width="8" height="2" rx="0.5"/>
-          <rect x="2.5" y="10.5" width="10" height="2" rx="0.5"/>
-        </svg>
-        Sample
-      </button>
       <button class="btn outline" id="btn-import" title="Import YAML">
         <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M8 11V2M4 7l4 4 4-4M2 14h12"/>
@@ -243,6 +233,14 @@
         </svg>
         <span class="lbl">Ifaces</span>
       </button>
+      <button class="tb-btn" id="tb-packets" title="Show in-flight packets and recent activity">
+        <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+          <rect x="2" y="3" width="12" height="3" rx="0.6"/>
+          <rect x="2" y="7" width="12" height="3" rx="0.6"/>
+          <rect x="2" y="11" width="12" height="3" rx="0.6"/>
+        </svg>
+        <span class="lbl">Packets</span>
+      </button>
     </div>
 
     <!-- zoom -->
@@ -282,10 +280,10 @@
           <svg viewBox="0 0 32 30" style="color:var(--rtr)"><use href="#ico-router"/></svg>
         </div>
         <div class="ttl">No topology yet</div>
-        <div class="sub">Add a LAN, then drop hosts and routers onto it. Or load the sample to explore.</div>
+        <div class="sub">Add a LAN, then drop hosts and routers onto it. Or import a topology to explore.</div>
         <div class="actions">
           <button class="btn primary" id="empty-add-net">+ Add LAN</button>
-          <button class="btn outline" id="empty-sample">Load sample</button>
+          <button class="btn outline" id="empty-import">Import topology…</button>
         </div>
       </div>
     </div>

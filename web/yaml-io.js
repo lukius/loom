@@ -115,11 +115,16 @@ export function exportYaml() {
     })),
   }]));
 
+  // The user types one name at the top of the SPA; we mirror it into both
+  // `internet.name` and the autonomous-systems key. There is only one AS in
+  // the SPA's data model — naming both fields the same value keeps the YAML
+  // self-consistent without surfacing a separate AS-name control.
+  const docName = state.asName || 'main';
   const out = {
     internet: {
-      name: 'loom',
+      name: docName,
       autonomous_systems: {
-        [state.asName || 'main']: asBlock,
+        [docName]: asBlock,
       },
     },
   };
@@ -155,7 +160,13 @@ export function importYaml(text, { ensurePositions, fitView, renderAll } = {}) {
   }
   const asShortName = keys[0];
   const node = ases[asShortName];
-  state.asName = asShortName;
+  // Prefer internet.name when it's been set to something meaningful; older
+  // SPA-exported YAMLs always emitted the hardcoded "loom" there, in which
+  // case the user-typed value lives on the AS key and we fall back to it.
+  const internetName = parsed.internet && parsed.internet.name;
+  state.asName = (internetName && internetName !== 'loom')
+    ? internetName
+    : asShortName;
   state.networks = {}; state.hosts = {}; state.routers = {}; state.links = {};
   state.natTables = {};
 

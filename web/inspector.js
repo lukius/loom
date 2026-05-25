@@ -2,14 +2,14 @@
 // Right-pane inspector, left-pane nav, add/rename/duplicate/delete ops, and
 // the canvas right-click context menu. Listens on the shared bus for topology
 // and selection changes, and re-renders accordingly.
-import { state, bus, markDirty, loadSample } from './state.js';
+import { state, bus, markDirty } from './state.js';
 import { escapeHtml, uniqueName, uniqueIface, pad2, toast, cssEscape, isValidIpv4, isValidNetworkCidr, addressInCidr } from './utils.js';
 import {
   canvasEl, applyView, clientToWorld, fitView,
   renderCanvas, toggleNetworkOrientation, collectLinkEndpoints,
   startLinkWizard,
 } from './canvas.js';
-import { Sim, RuntimeClient, isTopologyLocked, recordPatchOp } from './sim.js';
+import { Sim, RuntimeClient, isTopologyLocked, recordPatchOp, hasPendingAdd } from './sim.js';
 
 /* ---------- Inline validation helpers ---------- */
 
@@ -52,6 +52,24 @@ function findAddressOwner(addr, fabricKind, fabricName, selfRef) {
 function addressValidatorFor(fabricKind, fabricName, selfRef) {
   return (v) => {
     if (!isValidIpv4(v)) return { ok: false, reason: 'not a valid IPv4 address' };
+    // Containment: an interface address only makes sense inside its fabric's
+    // CIDR. Without this check, the user could attach a router to lan1 with an
+    // address from a different subnet — neighbours would still flood the bogus
+    // route via link-state, but no traffic could ever reach it.
+    if (fabricName) {
+      const fabric = (fabricKind === 'link' ? state.links : state.networks)[fabricName];
+      if (fabric) {
+        if (!fabric.cidr) {
+          // Flagging an empty-CIDR fabric is the early-warning the user wants:
+          // without it, the server's patch validator only catches the bad
+          // address on Resume, which is much later.
+          return { ok: false, reason: `${fabricName} has no CIDR set yet` };
+        }
+        if (!addressInCidr(v, fabric.cidr)) {
+          return { ok: false, reason: `not in ${fabricName} (${fabric.cidr})` };
+        }
+      }
+    }
     const owner = findAddressOwner(v, fabricKind, fabricName, selfRef);
     if (owner) return { ok: false, reason: `already used by ${owner}` };
     return { ok: true };
@@ -184,7 +202,7 @@ export function openContextMenu(clientX, clientY, target, world) {
       <button class="ctx-item" ${mut('new-router')}><svg class="ico"><use href="#ui-router"/></svg>New router<span class="meta">R</span></button>
       <div class="ctx-sep"></div>
       <button class="ctx-item" data-act="fit">Fit to view</button>
-      <button class="ctx-item" ${mut('sample')}>Load sample</button>
+      <button class="ctx-item" ${mut('import')}>Import topology…</button>
     `;
   } else {
     html += `<div class="ctx-head">${escapeHtml(target.kind)} · ${escapeHtml(target.name)}</div>`;
@@ -266,7 +284,7 @@ export function handleCtxAction(act, target, world, arg) {
     case 'new-host':   addNew('host', world); break;
     case 'new-router': addNew('router', world); break;
     case 'fit':        fitView(); break;
-    case 'sample':     loadSample(); break;
+    case 'import':     bus.dispatchEvent(new CustomEvent('ui:import-requested')); break;
     case 'edit':
       state.selection = { kind: target.kind, name: target.name };
       bus.dispatchEvent(new CustomEvent('state:topology-changed'));
@@ -278,6 +296,7 @@ export function handleCtxAction(act, target, world, arg) {
       const name = uniqueName('h', state.hosts);
       state.hosts[name] = { network: target.name, address: '', x: net.x - 280, y: net.y };
       state.selection = { kind:'host', name };
+      recordPatchOp({ op: 'add_host', name, network: target.name, address: '' });
       markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
       break;
     }
@@ -289,6 +308,7 @@ export function handleCtxAction(act, target, world, arg) {
         interfaces: { eth0: { network: target.name, address: '', cost: 10 } },
       };
       state.selection = { kind:'router', name };
+      recordPatchOp({ op: 'add_router', name, interfaces: [] });
       markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
       break;
     }
@@ -542,6 +562,28 @@ export function renderHostInsp(name, elI) {
     ? (linkOpts ? '<option value="">— unattached</option>' + linkOpts : '<option value="">(no links)</option>')
     : (netOpts  ? '<option value="">— unattached</option>' + netOpts  : '<option value="">(no networks)</option>');
   const gwHidden = fabricType === 'link';
+  // Gateway dropdown: list every router-interface IP attached to the host's
+  // fabric. Picking a known peer beats free-text typos. A "stale" entry
+  // preserves a previously-set gateway whose router was since removed so
+  // the user can see and replace it.
+  const peerOpts = [];
+  if (fabricType === 'network' && host.network) {
+    for (const [rn, r] of Object.entries(state.routers)) {
+      for (const [ifn, iff] of Object.entries(r.interfaces || {})) {
+        if (iff.network === host.network && iff.address) {
+          peerOpts.push({ ip: iff.address, label: `${rn}/${ifn} · ${iff.address}` });
+        }
+      }
+    }
+  }
+  let gwOptions = '<option value="">— none</option>';
+  for (const p of peerOpts) {
+    const sel = host.gateway === p.ip ? 'selected' : '';
+    gwOptions += `<option value="${escapeHtml(p.ip)}" ${sel}>${escapeHtml(p.label)}</option>`;
+  }
+  if (host.gateway && !peerOpts.some(p => p.ip === host.gateway)) {
+    gwOptions += `<option value="${escapeHtml(host.gateway)}" selected>${escapeHtml(host.gateway)} · no peer</option>`;
+  }
   elI.innerHTML = `
     <div class="insp-head">
       <div class="pre"><span class="pill host">host</span></div>
@@ -572,12 +614,11 @@ export function renderHostInsp(name, elI) {
         <input id="f-addr" value="${escapeHtml(host.address || '')}" spellcheck="false" placeholder="192.168.0.10" />
         <span class="field-error" id="f-addr-err"></span>
       </div>
-      <div class="field" id="f-gw-field"${gwHidden ? ' hidden' : ''}>
+      ${gwHidden ? '' : `<div class="field" id="f-gw-field">
         <label>Default gateway</label>
-        <input id="f-gw" value="${escapeHtml(host.gateway || '')}" spellcheck="false" placeholder="(none)" />
-        <span class="field-error" id="f-gw-err"></span>
-        <div class="hint">Must be an IP within the host's network.</div>
-      </div>
+        <select id="f-gw">${gwOptions}</select>
+        <div class="hint">Pick a router on this LAN. Empty leaves the host without a default route.</div>
+      </div>`}
     </div>
     <div class="insp-routes" id="insp-routes" hidden></div>
     <div class="insp-foot">
@@ -596,6 +637,10 @@ export function renderHostInsp(name, elI) {
       // endpoint on an existing /30 — the user must pick a link explicitly.
       h.link = '';
       delete h.network;
+      // Gateways carried over from a network attachment can't possibly match
+      // the new link's peer (the parser enforces gateway == peer IP), so they
+      // become stale data. Drop them on the way to a link.
+      delete h.gateway;
     } else {
       const firstNet = Object.keys(state.networks)[0] || '';
       h.network = firstNet;
@@ -614,7 +659,9 @@ export function renderHostInsp(name, elI) {
       h.network = e.target.value;
       delete h.link;
     }
-    markDirty(); renderCanvas(); renderNav();
+    // Re-render so the address validator re-wires against the new fabric's
+    // CIDR; otherwise the closure keeps pointing at the previous fabric.
+    markDirty(); renderInspector(); renderCanvas(); renderNav();
   });
   const newLinkBtn = elI.querySelector('#f-new-link');
   if (newLinkBtn) {
@@ -650,8 +697,13 @@ export function renderHostInsp(name, elI) {
   if (gwInp) {
     gwInp.addEventListener('change', async (e) => {
       const v = e.target.value.trim();
+      // A host added during the current pause window doesn't exist on the
+      // server yet (its add_host is still in Sim.patch). Skip the live shell
+      // command in that case — reconcilePatch will fold the latest gateway
+      // into the add_host op on Resume.
+      const isPendingAdd = hasPendingAdd('host', name);
       // While the sim is running, push the new gateway live so routes update immediately.
-      if (Sim.state === 'running' || Sim.state === 'paused') {
+      if (!isPendingAdd && (Sim.state === 'running' || Sim.state === 'paused')) {
         if (!v) {
           toast('Clearing the gateway requires stopping the simulation', 'info', 'Gateway');
           e.target.value = state.hosts[name].gateway || '';
@@ -674,11 +726,6 @@ export function renderHostInsp(name, elI) {
       else delete state.hosts[name].gateway;
       markDirty();
     });
-    wireFieldValidation(
-      gwInp,
-      elI.querySelector('#f-gw-err'),
-      v => isValidIpv4(v) ? { ok: true } : { ok: false, reason: 'not a valid IPv4 address' },
-    );
   }
   elI.querySelector('#f-del').addEventListener('click', deleteSelected);
   elI.querySelector('#f-dup').addEventListener('click', () => duplicateHost(name));
@@ -689,6 +736,13 @@ export function renderRouterInsp(name, elI) {
   const router = state.routers[name];
   if (!router) { state.selection = null; return renderInspector(); }
   const ifaces = Object.entries(router.interfaces || {});
+  // Snapshot which iface <details> are currently expanded before we blow
+  // away the inspector innerHTML; we re-apply the open state below so the
+  // user doesn't lose the context they were editing in.
+  const openIfaces = new Set(
+    Array.from(elI.querySelectorAll('details.iface[open]'))
+      .map(d => d.getAttribute('data-iface')),
+  );
   // Build fabric-type-aware option lists for a given interface
   const netOptsFor = (sel) => {
     const opts = Object.keys(state.networks)
@@ -716,16 +770,15 @@ export function renderRouterInsp(name, elI) {
           ${ifaces.map(([ifn, ifc]) => {
             // Determine current fabric type for this interface
             const ifFabric = ifc.link !== undefined ? 'link' : 'network';
-            const fabricSummary = ifFabric === 'link'
-              ? `link ${escapeHtml(ifc.link || '—')}`
-              : escapeHtml(ifc.network || '—');
+            const fabricSummary = escapeHtml(ifc[ifFabric] || '—');
             const fabricNameOpts = ifFabric === 'link' ? linkOptsFor(ifc.link) : netOptsFor(ifc.network);
+            const openAttr = openIfaces.has(ifn) ? ' open' : '';
             return `
-            <details class="iface" data-iface="${escapeHtml(ifn)}">
+            <details class="iface" data-iface="${escapeHtml(ifn)}"${openAttr}>
               <summary class="ihead">
                 <span class="ttl">
                   <span class="pill">${escapeHtml(ifn)}</span>
-                  <span class="iface-summary">${fabricSummary} · ${escapeHtml(ifc.address || 'no ip')} · cost=${escapeHtml(String(ifc.cost ?? '—'))}</span>
+                  <span class="iface-summary">${fabricSummary} · ${escapeHtml(ifc.address || 'no ip')}</span>
                 </span>
                 <button class="del" data-del-iface="${escapeHtml(ifn)}" title="Remove">
                   <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l6 6M9 3l-6 6"/></svg>
@@ -737,7 +790,7 @@ export function renderRouterInsp(name, elI) {
                   <input data-iface-name="${escapeHtml(ifn)}" value="${escapeHtml(ifn)}" spellcheck="false" />
                 </div>
               </div>
-              <div class="grid">
+              <div class="grid fabric-row">
                 <div class="pair">
                   <label>Fabric type</label>
                   <select data-iface-fabric-type="${escapeHtml(ifn)}">
@@ -753,17 +806,15 @@ export function renderRouterInsp(name, elI) {
                   </div>
                 </div>
               </div>
-              <div class="grid">
-                <div class="pair">
-                  <label>Cost</label>
-                  <input type="number" min="0" data-iface-cost="${escapeHtml(ifn)}" value="${ifc.cost ?? ''}" />
-                </div>
-              </div>
-              <div class="grid full">
+              <div class="grid addr-row">
                 <div class="pair">
                   <label>IP address</label>
                   <input data-iface-addr="${escapeHtml(ifn)}" value="${escapeHtml(ifc.address || '')}" spellcheck="false" placeholder="10.0.0.1" />
                   <span class="field-error" data-iface-addr-err="${escapeHtml(ifn)}"></span>
+                </div>
+                <div class="pair">
+                  <label>Cost</label>
+                  <input type="number" min="0" data-iface-cost="${escapeHtml(ifn)}" value="${ifc.cost ?? ''}" />
                 </div>
               </div>
             </details>
@@ -853,7 +904,9 @@ export function renderRouterInsp(name, elI) {
         iff.network = s.value;
         delete iff.link;
       }
-      markDirty(); renderCanvas(); renderNav();
+      // Re-render so the iface address validator re-wires against the new
+      // fabric's CIDR; otherwise the validator's closure keeps the old ref.
+      markDirty(); renderInspector(); renderCanvas(); renderNav();
     });
   });
   // "+ New link" button next to each iface's fabric-name select — creates a
@@ -903,7 +956,10 @@ export function renderRouterInsp(name, elI) {
       const v = parseInt(i.value, 10);
       const ifn = i.getAttribute('data-iface-cost');
       state.routers[name].interfaces[ifn].cost = isNaN(v) ? 0 : v;
-      if (!isNaN(v) && v > 0) {
+      // Skip update_cost when the router itself is a pending add — the server
+      // doesn't know about it yet, and reconcilePatch will fold the latest
+      // cost into the rebuilt add_router op on Resume.
+      if (!isNaN(v) && v > 0 && !hasPendingAdd('router', name)) {
         recordPatchOp({ op: 'update_cost', router: name, iface: ifn, cost: v });
       }
       markDirty(); renderCanvas();
@@ -1049,6 +1105,7 @@ export function addNew(kind, world) {
     const name = uniqueName('p2p', state.links);
     state.links[name] = { cidr: '', x: def.x, y: def.y };
     state.selection = { kind, name };
+    recordPatchOp({ op: 'add_link', name, address: '' });
     toast(`Created ${name} — assign two router/host interfaces to use it`, '', 'new link');
   } else if (kind === 'host') {
     const name = uniqueName('h', state.hosts);

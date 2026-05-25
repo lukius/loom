@@ -6,7 +6,7 @@ from .address import Address
 from .base import Entity
 from .event import EventTracer
 from .exception import InterfaceNotReadyException
-from .packet import Datagram, Frame
+from .packet import Datagram, Frame, PingReply, PingRequest, RoutingMessage, UserMessage
 
 _PACKET_KIND = {
     "RoutingMessage": "routing_flood",
@@ -18,6 +18,35 @@ _PACKET_KIND = {
 
 def _classify(payload) -> str:
     return _PACKET_KIND.get(type(payload).__name__, "unknown")
+
+
+def _summarize_payload(payload) -> dict:
+    """Per-Message-subclass metadata broadcast on each packet event as
+    ``payload``. Free-form by design — future message types add their own
+    keys without coordinating with subscribers."""
+    if isinstance(payload, UserMessage):
+        body = payload.payload()
+        try:
+            n = len(body)
+        except TypeError:
+            n = 0
+        summary = {"bytes": n}
+        if isinstance(body, str):
+            summary["text"] = body
+        return summary
+    if isinstance(payload, PingRequest):
+        return {"seq": payload.seq}
+    if isinstance(payload, PingReply):
+        return {"seq": payload.seq, "request_ts": payload.request_ts}
+    if isinstance(payload, RoutingMessage):
+        return {
+            "seq": payload.seq(),
+            "destinations": [
+                {"prefix": str(p), "cost": c}
+                for p, c in payload.destinations().items()
+            ],
+        }
+    return {}
 
 
 class Interface(Entity):
@@ -85,6 +114,7 @@ class Interface(Entity):
                 },
                 "dst": {"address": str(dst_addr)},
                 "network": self._net.name(),
+                "payload": _summarize_payload(payload),
             }
         )
 

@@ -255,9 +255,9 @@ internet:
             eth2: { link:    "p2p1", address: "10.0.0.2",      cost: 5  }
 ```
 
-This is the bundled `samples/sample.yaml`. Click **Load sample** in
-the SPA to drop it onto the canvas; click **Export** to get it back as
-text.
+This is the bundled `samples/sample.yaml`. Click **Import** in the SPA
+and pick `sample.yaml` from the list to drop it onto the canvas; click
+**Export** to save it to disk.
 
 ## Save and resume workflow
 
@@ -289,17 +289,18 @@ Lifecycle:
 
 To **save** a topology you built in the SPA:
 
-1. **Export** → modal opens with the YAML.
-2. **Copy to clipboard**, paste into a file, save.
+1. **Export** → the browser's save dialog opens with a suggested
+   filename (the loaded source with a `.session` suffix, e.g.
+   `sample.session.yaml`). Pick a folder and confirm.
 
-Or open `<source>.session.yaml` directly — it's the same YAML the SPA
-would Export.
+Or open `<source>.session.yaml` directly from the source directory —
+it's the same YAML the SPA would Export.
 
 To **resume** a saved topology:
 
 1. Point `LOOM_TOPOLOGY` at your file: `LOOM_TOPOLOGY=/path/to/lab.yaml python loom.py`.
-2. Or run `loom` with the default source, then **Import** your YAML
-   into the SPA.
+2. Or run `loom` with the default source, then click **Import →
+   Browse local file…** in the SPA and pick your YAML.
 
 For round-trip stability:
 

@@ -27,7 +27,14 @@ class NetworkDevice(Entity):
     def handle_packet(self, packet, interface):
         dst = packet.destination()
         net_broadcast_addr = interface.network().broadcast_address()
-        if dst == interface.address() or dst == net_broadcast_addr:
+        # "For me" matches *any* interface's address on this device — not
+        # just the one the packet arrived on. A real router that finds the
+        # destination on a different interface terminates the packet locally
+        # (echo reply, ICMP unreachable, …) instead of forwarding it back
+        # toward itself; without this, a host pinging a router's far-side
+        # IP would loop the packet on whatever subnet hosted that IP.
+        own_addresses = {iface.address() for iface in self._interfaces.values()}
+        if dst in own_addresses or dst == net_broadcast_addr:
             self._handle_message(packet.payload(), interface, packet)
         else:
             self._handle_forwarding(packet)

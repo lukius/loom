@@ -538,6 +538,11 @@ body.col-resizing * { cursor: col-resize !important; }
   font: inherit;
   text-align: right;
 }
+/* Keepalive is typically 1–3 digits — trim it; Packets typically 4 digits
+   (1800 ms is the default) and the up/down arrows eat into the visible
+   number, so give it a bit more room. */
+.canv-toolbar .tb-refresh input#tb-refresh { width: 44px; }
+.canv-toolbar .tb-refresh input#tb-speed   { width: 72px; }
 .canv-toolbar .tb-refresh input:disabled { opacity: 0.55; cursor: not-allowed; }
 .canv-toolbar .tb-refresh input:focus { outline: none; border-color: var(--accent); }
 .canv-toolbar .tb-refresh .unit { color: var(--text-3); font-size: 11px; }
@@ -555,6 +560,18 @@ body.col-resizing * { cursor: col-resize !important; }
 }
 .packet-tt .hop {
   color: #aab;
+  font-size: 10px;
+  margin-top: 2px;
+}
+.packet-tt .nat {
+  color: #c9d;
+  font-size: 10px;
+  margin-top: 2px;
+}
+/* Intercept: a router answered for an IP that wasn't its primary identity —
+   the user probably pinged a different device. Highlight in amber. */
+.packet-tt .intercept {
+  color: #f6c071;
   font-size: 10px;
   margin-top: 2px;
 }
@@ -596,12 +613,16 @@ body.col-resizing * { cursor: col-resize !important; }
   padding: 1px 6px; border: 1px solid #fbbf24; border-radius: 3px; opacity: 0.85;
   justify-self: end; }
 .term-in:disabled { opacity: 0.55; cursor: not-allowed; }
-.term-out { flex: 1; padding: 6px 8px; overflow-y: auto; white-space: pre-wrap; margin: 0;
+.term-out { flex: 1; padding: 6px 8px; overflow-y: auto; overflow-x: hidden;
+  white-space: pre-wrap; overflow-wrap: anywhere; margin: 0;
   background: #0a0a0a; color: #aaffaa; }
 .term-line { display: flex; padding: 0 8px 6px; }
 .term-prompt { color: #4a8; margin-right: 6px; white-space: pre; }
 .term-in { flex: 1; background: transparent; color: #aaffaa;
-  border: none; outline: none; font: inherit; caret-color: #33ff66; }
+  border: none; outline: none; font: inherit; caret-color: #33ff66;
+  resize: none; min-height: 1.2em; padding: 0; line-height: 1.2;
+  overflow: hidden; overflow-wrap: anywhere; word-break: break-all;
+  white-space: pre-wrap; }
 .term-cursor::after { content: '█'; animation: term-blink 1s steps(2, start) infinite; color: #33ff66; }
 @keyframes term-blink { 50% { opacity: 0; } }
 
@@ -1192,14 +1213,22 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 }
 .iface[open] > summary::before { content: '▾'; }
 .iface .ihead {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center;
 }
+/* Push only the delete button to the right; the pill + summary stay
+   anchored next to the disclosure triangle so the chip column lines up
+   across every iface row. (`justify-content: space-between` here would
+   spread three flex items — marker, ttl, del — and leave the chip
+   floating in the middle of the row.) */
+.iface .ihead .del { margin-left: auto; }
+/* Summary line is supporting context — fade it next to the bold iface pill. */
 .iface .iface-summary {
   font-family: 'Geist Mono', ui-monospace, monospace;
   font-size: 10.5px;
   color: var(--text-3);
-  margin-left: 4px;
+  margin-left: 6px;
   font-weight: 400;
+  opacity: 0.78;
 }
 .iface .ihead .ttl {
   display: inline-flex; align-items: center; gap: 6px;
@@ -1207,14 +1236,18 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
   font-weight: 500;
   color: var(--text-2);
 }
+/* The interface name is the visual anchor on a collapsed row, so pump it up:
+   bigger, bolder, slightly more padding. The summary text fades behind it. */
 .iface .ihead .ttl .pill {
   font-family: 'Geist Mono', ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--rtr-text);
   background: var(--rtr-bg);
   border: 1px solid var(--rtr-border);
   border-radius: 4px;
-  padding: 1px 5px;
+  padding: 2px 7px;
 }
 .iface .ihead .del {
   width: 22px; height: 22px;
@@ -1249,6 +1282,11 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 }
 .iface .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .iface .grid.full { grid-template-columns: 1fr; }
+/* Fabric-type label fits "Network" — give the rest to the fabric-name select
+   so long link/network names don't get truncated under the dropdown's arrow. */
+.iface .grid.fabric-row { grid-template-columns: 110px 1fr; }
+/* Cost is a 1–3 digit field; pin it narrow and let IP take the rest of the row. */
+.iface .grid.addr-row { grid-template-columns: 1fr 84px; }
 .add-if {
   font-size: 11px;
   font-weight: 500;
@@ -1390,6 +1428,51 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slide-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
+/* import-topology picker (modal variant: file list + local-file button) */
+.modal-picker .modal-body { display: flex; flex-direction: column; gap: 18px; }
+.picker-section { display: flex; flex-direction: column; gap: 8px; }
+.picker-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+.picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.picker-list li { padding: 0; }
+.picker-list li + li { margin-top: 2px; }
+.picker-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 12.5px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background .1s, color .1s;
+}
+.picker-item:hover { background: var(--accent-bg); color: var(--accent); }
+.picker-empty {
+  padding: 16px 12px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.picker-browse { align-self: flex-start; }
+
 /* ============================================================
    toasts
    ============================================================ */
@@ -1423,7 +1506,28 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
   font-size: 11px;
 }
 .toast.ok .icon { background: color-mix(in srgb, var(--pos) 15%, transparent); color: var(--pos); }
-.toast.error .icon { background: color-mix(in srgb, var(--neg) 15%, transparent); color: var(--neg); }
+.toast.error {
+  /* Errors must be obvious: red left stripe, red-tinted bg, heavier text. */
+  min-width: 280px;
+  border-color: color-mix(in srgb, var(--neg) 45%, var(--border));
+  border-left: 4px solid var(--neg);
+  background: color-mix(in srgb, var(--neg) 8%, var(--bg));
+  font-size: 13px;
+  font-weight: 500;
+  animation: toast-in-bump .28s ease both;
+}
+.toast.error .icon {
+  width: 18px; height: 18px;
+  background: color-mix(in srgb, var(--neg) 22%, var(--bg));
+  color: var(--neg);
+}
+.toast.error .body .lab { color: var(--neg); font-weight: 600; }
+.toast.error .body .msg { color: var(--text); }
+@keyframes toast-in-bump {
+  0%   { opacity: 0; transform: translateY(6px) scale(0.97); }
+  60%  { opacity: 1; transform: translateY(-2px) scale(1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
 .toast.info {
   /* keep the opaque base bg; --accent-bg in dark mode is rgba(...,0.10)
      which would let the canvas bleed through. Tint via a left accent stripe instead. */
@@ -1532,3 +1636,70 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
   border-radius: 3px;
 }
 .link-wizard-banner-close:hover { background: var(--bg-3); color: var(--text); }
+
+/* ============================================================
+   packets panel (slide-out)
+   ============================================================ */
+.packets-panel {
+  height: 100%;
+  overflow: auto;
+  background: var(--bg-2, #fff);
+  color: var(--text, #111);
+  font-size: 12px;
+}
+.packets-panel[hidden] { display: none; }
+#inspector[data-packets-open] > *:not(#packets-panel) { display: none; }
+.packets-header { padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.packets-close { background: none; border: 0; cursor: pointer; font-size: 16px; padding: 0 4px; }
+.packets-header-actions { display: flex; align-items: center; gap: 6px; }
+.packets-chatter-toggle { background: none; border: 0; padding: 4px; cursor: pointer; color: var(--text, #111); display: flex; align-items: center; justify-content: center; border-radius: 3px; }
+.packets-chatter-toggle:hover { background: var(--row-hover, rgba(0,0,0,0.06)); }
+.packets-chatter-toggle[aria-pressed="false"] { opacity: 0.35; }
+.packets-chatter-toggle .ico { width: 14px; height: 14px; }
+.canv-toolbar .tb-btn.toggle-on { background: var(--accent-bg); color: var(--accent-text); }
+.packet-badge { font-family: 'Geist Mono', monospace; }
+.packets-body { padding: 4px 0; }
+.packets-section h3 { margin: 8px 12px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; }
+.pkt-row { display: grid; grid-template-columns: auto auto auto 1fr auto auto; gap: 6px; align-items: center; padding: 4px 12px; }
+.pkt-row:hover { background: var(--hover); }
+.pkt-toggle { background: none; border: 0; cursor: pointer; padding: 0 2px; font-size: 12px; }
+.pkt-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.pkt-swatch[data-type="user_datagram"] { background: #22c55e; }
+.pkt-swatch[data-type="ping_request"]  { background: #f59e0b; }
+.pkt-swatch[data-type="ping_reply"]    { background: #fbbf24; }
+.pkt-swatch[data-type="routing_flood"] { background: #94a3b8; }
+.pkt-id { font-family: 'Geist Mono', monospace; font-weight: 600; }
+.pkt-type { font-family: 'Geist Mono', monospace; font-size: 11px; opacity: 0.8; }
+.pkt-route { opacity: 0.85; }
+.pkt-hopct { font-size: 10px; opacity: 0.6; }
+.pkt-detail { grid-column: 1 / -1; margin: 6px 0 8px 24px; font-size: 11px; opacity: 0.9; }
+.pkt-detail ol { padding-left: 18px; margin: 4px 0; }
+.pkt-hop-flag { color: var(--accent); margin-left: 6px; font-weight: 600; }
+.pkt-nat { margin-top: 4px; color: var(--accent); }
+.packets-empty { padding: 16px; opacity: 0.7; text-align: center; }
+.pkt-chatter-summary { display: flex; align-items: center; gap: 6px; padding: 4px 12px; }
+.pkt-chatter-summary:hover { background: var(--row-hover, rgba(0,0,0,0.04)); }
+.pkt-chatter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 2px 12px 2px 36px; font-size: 11px; }
+.pkt-chatter-row:hover { background: var(--row-hover, rgba(0,0,0,0.04)); }
+.pkt-chatter-row .pkt-detail { flex-basis: 100%; margin: 4px 0 4px 24px; }
+.pkt-emission-count { font-size: 10px; opacity: 0.6; font-family: 'Geist Mono', monospace; }
+.pkt-emissions { margin-top: 4px; font-size: 10px; opacity: 0.6; }
+.packets-recent .pkt-row { opacity: 0.85; }
+#packet-layer rect.halo {
+  stroke: var(--accent, #2563eb);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 4px var(--accent, #2563eb));
+}
+.pkt-payload-section { margin-top: 6px; padding-top: 4px; border-top: 1px dashed var(--border, #ddd); }
+.pkt-payload-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.6; margin-bottom: 2px; }
+.pkt-payload-row { display: flex; gap: 8px; font-size: 11px; align-items: baseline; }
+.pkt-payload-key { opacity: 0.7; }
+.pkt-payload-val { font-family: 'Geist Mono', monospace; flex: 1; min-width: 0; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pkt-payload-val[title]:hover { cursor: help; }
+.pkt-payload-block { margin: 4px 0; }
+.pkt-payload-block .pkt-payload-key { display: block; margin-bottom: 2px; opacity: 0.7; }
+.pkt-payload-list { margin: 0; padding-left: 14px; font-size: 11px; font-family: 'Geist Mono', monospace; }
+.pkt-payload-list li { margin: 1px 0; word-break: break-all; }
+.pkt-payload-list .pkt-payload-empty { font-family: inherit; opacity: 0.6; list-style: none; padding-left: 0; }
+.pkt-payload-kv { white-space: nowrap; margin-right: 8px; }
+.pkt-payload-kv-k { opacity: 0.7; }

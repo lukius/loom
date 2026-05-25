@@ -17,6 +17,7 @@ import {
   deleteSelected,
   openContextMenu,
   closeContextMenu,
+  handleCtxAction,
   Inspector,
 } from './inspector.js';
 import { Sim, RuntimeClient } from './sim.js';
@@ -433,7 +434,10 @@ describe('renderRouterInsp — fabric-type dropdown', () => {
     expect(state.routers.r1.interfaces.eth0.link).toBeUndefined();
   });
 
-  it('iface summary shows "link p2p1" when link is set', () => {
+  it('iface summary lists the fabric name and address, but not the cost or a fabric-kind prefix', () => {
+    // Collapsed-row summary is "<fabric> · <address>" — short. Kind is
+    // implicit from context (and explicit once the iface is expanded);
+    // cost is editable inline once expanded so it's not worth a glance.
     state.links = { p2p1: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
     state.routers = {
       r1: { x: 0, y: 0, interfaces: { eth0: { link: 'p2p1', address: '10.0.0.1', cost: 5 } } },
@@ -442,7 +446,7 @@ describe('renderRouterInsp — fabric-type dropdown', () => {
     renderRouterInsp('r1', elI);
     const summary = elI.querySelector('.iface-summary');
     expect(summary).not.toBeNull();
-    expect(summary.textContent).toContain('link p2p1');
+    expect(summary.textContent.trim()).toBe('p2p1 · 10.0.0.1');
   });
 });
 
@@ -530,14 +534,15 @@ describe('renderHostInsp — fabric-type dropdown', () => {
     expect(state.hosts.h1.link).toBeUndefined();
   });
 
-  it('hides the gateway field when fabric type is Link', () => {
+  it('omits the gateway field from the DOM when fabric type is Link', () => {
+    // Hosts on a p2p link have no gateway choice — the peer's IP plays
+    // that role and the parser fills it in. Remove the field entirely
+    // rather than ship a no-op control.
     state.links = { p2p1: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
     state.hosts = { h1: { link: 'p2p1', address: '10.0.0.1', x: 0, y: 0 } };
     const elI = document.getElementById('inspector');
     renderHostInsp('h1', elI);
-    const gwField = elI.querySelector('#f-gw-field');
-    expect(gwField).not.toBeNull();
-    expect(gwField.hidden).toBe(true);
+    expect(elI.querySelector('#f-gw-field')).toBeNull();
   });
 
   it('shows the gateway field when fabric type is Network', () => {
@@ -545,9 +550,8 @@ describe('renderHostInsp — fabric-type dropdown', () => {
     state.hosts = { h1: { network: 'lan1', address: '10.1.0.10', x: 0, y: 0 } };
     const elI = document.getElementById('inspector');
     renderHostInsp('h1', elI);
-    const gwField = elI.querySelector('#f-gw-field');
-    expect(gwField).not.toBeNull();
-    expect(gwField.hidden).toBe(false);
+    expect(elI.querySelector('#f-gw-field')).not.toBeNull();
+    expect(elI.querySelector('#f-gw')).not.toBeNull();
   });
 });
 
@@ -643,6 +647,119 @@ describe('duplicate-* in paused sim', () => {
     expect(state.links['p2p1_1']).toBeDefined();
     // Mirrors addNew: link creation isn't a patch op (server has no add_link).
     expect(Sim.patch.some(o => o.op && o.op.startsWith('add_link'))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Right-click "Add host / router here" on a LAN must queue a patch op while
+// paused, mirroring the toolbar's addNew() — otherwise the new device exists
+// only in the SPA and Resume sees nothing to ship to the server.
+// ---------------------------------------------------------------------------
+describe('add-host-here / add-router-here in paused sim', () => {
+  beforeEach(() => {
+    Sim.state = 'paused';
+    Sim.patch = [];
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+  });
+  afterEach(() => {
+    Sim.state = 'idle';
+    Sim.patch = [];
+  });
+
+  it('add-host-here on lan1 records an add_host op attached to lan1', () => {
+    handleCtxAction('add-host-here', { kind: 'network', name: 'lan1' }, { x: 0, y: 0 });
+    const newName = Object.keys(state.hosts)[0];
+    expect(newName).toBeDefined();
+    expect(state.hosts[newName].network).toBe('lan1');
+    const op = Sim.patch.find(o => o.op === 'add_host' && o.name === newName);
+    expect(op).toBeDefined();
+    expect(op.network).toBe('lan1');
+  });
+
+  it('add-router-here on lan1 records an add_router op', () => {
+    handleCtxAction('add-router-here', { kind: 'network', name: 'lan1' }, { x: 0, y: 0 });
+    const newName = Object.keys(state.routers)[0];
+    expect(newName).toBeDefined();
+    const op = Sim.patch.find(o => o.op === 'add_router' && o.name === newName);
+    expect(op).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Editing the gateway of a host that was added during the current pause
+// window (i.e. has a pending add_host in Sim.patch) must NOT hit the server
+// via deviceCommand — the host doesn't exist there yet. The gateway must
+// land in local state and be carried by reconcilePatch on Resume.
+// ---------------------------------------------------------------------------
+// Same shape as the gateway-on-pending-host bug: editing the cost of an
+// interface on a freshly-added router used to queue an `update_cost` op
+// that referenced a router the server didn't know about yet, so Resume
+// raised "interface_not_found" during patch validation.
+describe('cost edit while router has a pending add_router', () => {
+  beforeEach(() => {
+    Sim.state = 'paused';
+    Sim.patch = [];
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+  });
+  afterEach(() => {
+    Sim.state = 'idle';
+    Sim.patch = [];
+  });
+
+  it('does not queue update_cost; cost still lands in local state for reconcilePatch', () => {
+    handleCtxAction('add-router-here', { kind: 'network', name: 'lan1' }, { x: 0, y: 0 });
+    const name = Object.keys(state.routers)[0];
+    state.selection = { kind: 'router', name };
+
+    renderRouterInsp(name, document.getElementById('inspector'));
+    const costInp = document.querySelector('[data-iface-cost="eth0"]');
+    costInp.value = '25';
+    costInp.dispatchEvent(new Event('input'));
+
+    // Update_cost MUST NOT have been queued — the server can't apply it
+    // until the add_router op has run, and they're validated together.
+    expect(Sim.patch.some(o => o.op === 'update_cost' && o.router === name)).toBe(false);
+    // Local state still reflects the new cost; reconcilePatch will fold it
+    // into the rebuilt add_router op on Resume.
+    expect(state.routers[name].interfaces.eth0.cost).toBe(25);
+  });
+});
+
+describe('host gateway edit while host has a pending add_host', () => {
+  beforeEach(() => {
+    Sim.state = 'paused';
+    Sim.patch = [];
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+  });
+  afterEach(() => {
+    Sim.state = 'idle';
+    Sim.patch = [];
+    vi.restoreAllMocks();
+  });
+
+  it('skips RuntimeClient.deviceCommand and updates state locally', async () => {
+    // Need a peer router on lan1 so the gateway dropdown includes 10.0.0.1
+    // as a selectable option.
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.0.0.1', cost: 5 } } },
+    };
+    // Drop in a host the way the right-click context menu would.
+    handleCtxAction('add-host-here', { kind: 'network', name: 'lan1' }, { x: 0, y: 0 });
+    const name = Object.keys(state.hosts)[0];
+    state.hosts[name].address = '10.0.0.5';
+    state.selection = { kind: 'host', name };
+    const spy = vi.spyOn(RuntimeClient, 'deviceCommand').mockResolvedValue({ ok: true, output: '' });
+
+    renderHostInsp(name, document.getElementById('inspector'));
+    const gw = document.getElementById('f-gw');
+    gw.value = '10.0.0.1';
+    gw.dispatchEvent(new Event('change'));
+    // The handler is async — drain microtasks before checking.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(state.hosts[name].gateway).toBe('10.0.0.1');
   });
 });
 
@@ -874,24 +991,92 @@ describe('renderHostInsp — inline IP validation', () => {
     expect(err.classList.contains('show')).toBe(false);
   });
 
-  it('shows error for invalid gateway in #f-gw', () => {
-    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', gateway: 'notanip', x: 0, y: 0 } };
-    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
-    const elI = document.getElementById('inspector');
-    renderHostInsp('h1', elI);
-    const err = elI.querySelector('#f-gw-err');
-    expect(err).not.toBeNull();
-    expect(err.classList.contains('show')).toBe(true);
-    expect(err.textContent).toBe('not a valid IPv4 address');
-  });
-
-  it('shows no error for empty #f-gw', () => {
+  it('renders #f-gw as a SELECT, not a free-text input', () => {
     state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
     state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
     const elI = document.getElementById('inspector');
     renderHostInsp('h1', elI);
-    const err = elI.querySelector('#f-gw-err');
-    expect(err.classList.contains('show')).toBe(false);
+    const gw = elI.querySelector('#f-gw');
+    expect(gw).not.toBeNull();
+    expect(gw.tagName).toBe('SELECT');
+  });
+
+  it('populates #f-gw with router interface IPs on the same fabric', () => {
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 }, lan2: { cidr: '20.0.0.0/24', x: 0, y: 0 } };
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.0.0.1', cost: 5 } } },
+      r2: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.0.0.254', cost: 5 } } },
+      // r3 is on lan2 — must NOT appear in lan1-host's gateway dropdown.
+      r3: { x: 0, y: 0, interfaces: { eth0: { network: 'lan2', address: '20.0.0.1', cost: 5 } } },
+    };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const gw = elI.querySelector('#f-gw');
+    const values = Array.from(gw.options).map(o => o.value);
+    expect(values).toContain('10.0.0.1');
+    expect(values).toContain('10.0.0.254');
+    expect(values).not.toContain('20.0.0.1');
+    // Empty value lets the user clear the gateway.
+    expect(values).toContain('');
+  });
+
+  it('omits the gateway field entirely for a link-attached host', () => {
+    // Hosts on a p2p link have no meaningful default-gateway choice — the
+    // peer's IP plays that role and the parser fills it in automatically.
+    // The field is removed from the DOM (not just hidden) when fabric=link.
+    state.hosts = { h1: { link: 'p2p1', address: '192.168.0.1', x: 0, y: 0 } };
+    state.links = { p2p1: { cidr: '192.168.0.0/30', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    expect(elI.querySelector('#f-gw')).toBeNull();
+    expect(elI.querySelector('#f-gw-field')).toBeNull();
+  });
+
+  it('renders the gateway field again after switching fabric type from link back to network', () => {
+    state.hosts = { h1: { link: 'p2p1', address: '192.168.0.1', x: 0, y: 0 } };
+    state.links = { p2p1: { cidr: '192.168.0.0/30', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.selection = { kind: 'host', name: 'h1' };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    expect(elI.querySelector('#f-gw')).toBeNull();
+    // User flips to network — the gateway field comes back.
+    const typeSel = elI.querySelector('#f-fabric-type');
+    typeSel.value = 'network';
+    typeSel.dispatchEvent(new Event('change'));
+    expect(elI.querySelector('#f-gw')).not.toBeNull();
+  });
+
+  it('clears any stored gateway when the host is moved to a link', () => {
+    // A gateway carried over from a previous network attachment can't match
+    // a p2p peer, so it would just become stale data. Drop it on switch.
+    state.hosts = { h1: {
+      network: 'lan1', address: '10.0.0.5', gateway: '10.0.0.1', x: 0, y: 0,
+    } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.links = { p2p1: { cidr: '192.168.0.0/30', x: 0, y: 0 } };
+    state.selection = { kind: 'host', name: 'h1' };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const typeSel = elI.querySelector('#f-fabric-type');
+    typeSel.value = 'link';
+    typeSel.dispatchEvent(new Event('change'));
+    expect(state.hosts.h1.gateway).toBeUndefined();
+  });
+
+  it('preserves a host gateway that has no matching peer as a stale option', () => {
+    // Host carries a gateway from a router that's been removed; the dropdown
+    // must keep the value selectable so the user can see and replace it.
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', gateway: '10.0.0.99', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.routers = {};
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const gw = elI.querySelector('#f-gw');
+    const values = Array.from(gw.options).map(o => o.value);
+    expect(values).toContain('10.0.0.99');
+    expect(gw.value).toBe('10.0.0.99');
   });
 });
 
@@ -946,6 +1131,193 @@ describe('renderRouterInsp — inline IP validation for iface address', () => {
     input.value = '10.0.0.1';
     input.dispatchEvent(new Event('input'));
     expect(err.classList.contains('show')).toBe(false);
+  });
+
+  it('flags an iface address that falls outside the network CIDR', () => {
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.50.50.1', cost: 5 } } },
+    };
+    state.networks = { lan1: { cidr: '200.100.0.0/24', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const err = elI.querySelector('[data-iface-addr-err="eth0"]');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toMatch(/lan1|200\.100\.0\.0/);
+  });
+});
+
+describe('renderHostInsp — host address must fall inside network CIDR', () => {
+  it('flags a host address outside the network CIDR', () => {
+    state.hosts = { h1: { network: 'lan1', address: '10.50.50.5', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '200.100.0.0/24', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const err = elI.querySelector('#f-addr-err');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toMatch(/lan1|200\.100\.0\.0/);
+  });
+
+  it('flags a link-attached host address outside the link CIDR', () => {
+    state.hosts = { h1: { link: 'p2p1', address: '10.0.0.5', x: 0, y: 0 } };
+    state.links = { p2p1: { cidr: '192.168.0.0/30', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const err = elI.querySelector('#f-addr-err');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toMatch(/p2p1|192\.168\.0\.0/);
+  });
+});
+
+describe('renderRouterInsp — iface on link address must fall inside link CIDR', () => {
+  it('flags a router-iface address outside the link CIDR', () => {
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { link: 'p2p1', address: '10.0.0.5', cost: 5 } } },
+    };
+    state.links = { p2p1: { cidr: '192.168.0.0/30', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const err = elI.querySelector('[data-iface-addr-err="eth0"]');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toMatch(/p2p1|192\.168\.0\.0/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Changing a host or router-iface's fabric (e.g. moving it from one link to
+// another) must re-validate the address against the *new* fabric's CIDR.
+// Without a re-wire of the field validator, a previously-valid address can
+// silently fall out of the new CIDR.
+// ---------------------------------------------------------------------------
+describe('host address is flagged when its fabric has no CIDR yet', () => {
+  it('flags a host address when the link CIDR is empty (cannot reach the address otherwise)', () => {
+    // The user's case: new link starts with cidr=''. Setting an address on a
+    // host attached to that link should fail validation immediately so the
+    // user sees the problem before hitting Resume.
+    state.hosts = { h1: { link: 'p2p1', address: '10.0.0.31', x: 0, y: 0 } };
+    state.links = { p2p1: { cidr: '', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const err = elI.querySelector('#f-addr-err');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toMatch(/p2p1/);
+  });
+
+  it('flags a host address when the network CIDR is empty', () => {
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const err = elI.querySelector('#f-addr-err');
+    expect(err.classList.contains('show')).toBe(true);
+    expect(err.textContent).toMatch(/lan1/);
+  });
+
+  it('stays silent when the host has no fabric set at all (unattached)', () => {
+    state.hosts = { h1: { network: '', address: '10.0.0.5', x: 0, y: 0 } };
+    state.networks = {};
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    const err = elI.querySelector('#f-addr-err');
+    expect(err.classList.contains('show')).toBe(false);
+  });
+});
+
+describe('switching a host between fabrics rechecks the address CIDR', () => {
+  it('flags the host address after the link selection changes to one with a different CIDR', () => {
+    state.hosts = { h1: { link: 'p2p1', address: '192.168.0.1', x: 0, y: 0 } };
+    state.links = {
+      p2p1: { cidr: '192.168.0.0/30', x: 0, y: 0 },
+      p2p2: { cidr: '10.0.0.0/30', x: 0, y: 0 },
+    };
+    // The fabric-name change handler re-renders via renderInspector, which
+    // routes off state.selection — set it so the re-render hits the host
+    // path and produces the #f-addr-err span we want to inspect.
+    state.selection = { kind: 'host', name: 'h1' };
+    const elI = document.getElementById('inspector');
+    renderHostInsp('h1', elI);
+    // Initially valid for p2p1.
+    expect(elI.querySelector('#f-addr-err').classList.contains('show')).toBe(false);
+    // User picks p2p2 from the link dropdown — same address now falls outside.
+    const sel = elI.querySelector('#f-fabric-name');
+    sel.value = 'p2p2';
+    sel.dispatchEvent(new Event('change'));
+    expect(elI.querySelector('#f-addr-err').classList.contains('show')).toBe(true);
+    expect(elI.querySelector('#f-addr-err').textContent).toMatch(/p2p2|10\.0\.0\.0/);
+  });
+});
+
+describe('renderRouterInsp — interface details stay open across a fabric change', () => {
+  // The fabric-type / fabric-name selects live inside an <details> block.
+  // Their change handlers call renderInspector(), which rewrites the
+  // whole panel; without preserving the open state, the user loses the
+  // edit context mid-edit.
+  beforeEach(() => {
+    state.networks = {
+      lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 },
+      lan2: { cidr: '10.0.1.0/24', x: 0, y: 0 },
+    };
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: {
+        eth0: { network: 'lan1', address: '10.0.0.1', cost: 5 },
+        eth1: { network: 'lan2', address: '10.0.1.1', cost: 5 },
+      } },
+    };
+    state.selection = { kind: 'router', name: 'r1' };
+  });
+
+  it('keeps eth0 expanded after the user picks a different network', () => {
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const details = elI.querySelector('details.iface[data-iface="eth0"]');
+    details.open = true;
+    const sel = elI.querySelector('[data-iface-fabric-name="eth0"]');
+    sel.value = 'lan2';
+    sel.dispatchEvent(new Event('change'));
+    // After re-render, the same iface must still be expanded.
+    expect(
+      elI.querySelector('details.iface[data-iface="eth0"]').open,
+    ).toBe(true);
+    // Sibling iface that was closed should remain closed.
+    expect(
+      elI.querySelector('details.iface[data-iface="eth1"]').open,
+    ).toBe(false);
+  });
+
+  it('keeps the expanded iface open after the fabric-type change', () => {
+    state.links = { p2p1: { cidr: '192.168.0.0/30', x: 0, y: 0 } };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const details = elI.querySelector('details.iface[data-iface="eth0"]');
+    details.open = true;
+    const sel = elI.querySelector('[data-iface-fabric-type="eth0"]');
+    sel.value = 'link';
+    sel.dispatchEvent(new Event('change'));
+    expect(
+      elI.querySelector('details.iface[data-iface="eth0"]').open,
+    ).toBe(true);
+  });
+});
+
+describe('switching a router interface between fabrics rechecks the address CIDR', () => {
+  it('flags the iface address after the fabric-name selection changes', () => {
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: {
+        eth0: { link: 'p2p1', address: '192.168.0.1', cost: 5 },
+      } },
+    };
+    state.links = {
+      p2p1: { cidr: '192.168.0.0/30', x: 0, y: 0 },
+      p2p2: { cidr: '10.0.0.0/30', x: 0, y: 0 },
+    };
+    state.selection = { kind: 'router', name: 'r1' };
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    expect(elI.querySelector('[data-iface-addr-err="eth0"]').classList.contains('show')).toBe(false);
+    const sel = elI.querySelector('[data-iface-fabric-name="eth0"]');
+    sel.value = 'p2p2';
+    sel.dispatchEvent(new Event('change'));
+    expect(elI.querySelector('[data-iface-addr-err="eth0"]').classList.contains('show')).toBe(true);
+    expect(elI.querySelector('[data-iface-addr-err="eth0"]').textContent).toMatch(/p2p2|10\.0\.0\.0/);
   });
 });
 
@@ -1037,9 +1409,11 @@ describe('renderRouterInsp — duplicate-address inline check', () => {
   });
 
   it('does NOT flag a router interface whose siblings sit on different LANs', () => {
+    // Both LAN CIDRs cover 10.0.0.5 so that the only effect under test is the
+    // cross-LAN duplicate-address check, not the in-CIDR containment check.
     state.networks = {
       lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 },
-      lan2: { cidr: '10.0.1.0/24', x: 0, y: 0 },
+      lan2: { cidr: '10.0.0.0/16', x: 0, y: 0 },
     };
     state.routers = {
       r1: { x: 0, y: 0, interfaces: {

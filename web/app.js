@@ -3,10 +3,11 @@
 // Entrypoint: imports (incl. exportYaml/importYaml from yaml-io.js), bus-bridge listeners,
 // modal helper, wire (DOM event handlers), init (boot), DOMContentLoaded guard.
 
-import { escapeHtml, toast } from './utils.js';
+import { toast } from './utils.js';
 import {
   state, bus, SAMPLE,
-  persist, restore, loadSample, markDirty, setSave,
+  persist, restore, markDirty, setSave,
+  defaultExportFilename,
 } from './state.js';
 import {
   Sim, RuntimeClient,
@@ -26,7 +27,9 @@ import {
 } from './inspector.js';
 import './terminals.js';
 import { PacketAnim } from './packets.js';
+import { PacketsPanel } from './packetspanel.js';
 import { importYaml as _importYaml, exportYaml } from './yaml-io.js';
+import { openImportPicker, runExportSave, fetchSourceName } from './file-picker.js';
 
 // Temporary bus wiring: bridges to module-local yaml exporter/importer. canvas.js,
 // inspector.js, terminals.js, and packets.js own their own listeners.
@@ -75,7 +78,6 @@ document.getElementById('tb-toggle-ifaces').addEventListener('click', () => {
     try {
       await RuntimeClient.setRefreshInterval(v);
       lastGood = v;
-      toast(`Keepalive set to ${v}s`, 'info', 'Keepalive');
     } catch (err) {
       toast(`Failed: ${err.message}`, 'error', 'Keepalive');
       inp.value = lastGood;
@@ -120,39 +122,6 @@ function importYaml(text) {
   return _importYaml(text, { ensurePositions, fitView, renderAll });
 }
 
-/* ---------- modal ---------- */
-function openModal({ title, text, primary, onPrimary, readonly = false }) {
-  const wrap = document.createElement('div');
-  wrap.className = 'modal-bg';
-  wrap.innerHTML = `
-    <div class="modal" role="dialog" aria-modal="true">
-      <div class="modal-head">
-        <div class="ttl">${escapeHtml(title)}</div>
-        <button class="x" aria-label="Close">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l8 8M12 4l-8 8"/></svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        <textarea spellcheck="false" ${readonly ? 'readonly' : ''}>${escapeHtml(text || '')}</textarea>
-      </div>
-      <div class="modal-foot">
-        <button class="btn outline cancel">Cancel</button>
-        <button class="btn primary go">${escapeHtml(primary)}</button>
-      </div>
-    </div>
-  `;
-  const close = () => wrap.remove();
-  wrap.querySelector('.x').addEventListener('click', close);
-  wrap.querySelector('.cancel').addEventListener('click', close);
-  wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
-  wrap.querySelector('.go').addEventListener('click', () => {
-    const v = wrap.querySelector('textarea').value;
-    if (onPrimary(v) !== false) close();
-  });
-  document.body.appendChild(wrap);
-  if (!readonly) wrap.querySelector('textarea').focus();
-}
-
 /* ---------- render coordinator ---------- */
 function renderAll() {
   bus.dispatchEvent(new CustomEvent('state:topology-changed'));
@@ -163,21 +132,19 @@ function wire() {
   document.querySelectorAll('[data-theme-btn]').forEach(b => {
     b.addEventListener('click', () => applyTheme(b.getAttribute('data-theme-btn')));
   });
-  document.getElementById('btn-sample').addEventListener('click', loadSample);
-  document.getElementById('btn-import').addEventListener('click', () => {
-    openModal({
-      title: 'Import YAML', text: '', primary: 'Parse & load',
-      onPrimary: importYaml,
-    });
+  const onImport = () => openImportPicker({
+    onLoad: (text, sourceName) => {
+      if (!importYaml(text)) return;
+      state.sourceName = sourceName || null;
+      persist();
+    },
   });
+  document.getElementById('btn-import').addEventListener('click', onImport);
+  bus.addEventListener('ui:import-requested', onImport);
   document.getElementById('btn-export').addEventListener('click', () => {
-    openModal({
-      title: 'Export YAML', text: exportYaml(),
-      primary: 'Copy to clipboard', readonly: true,
-      onPrimary: (v) => {
-        navigator.clipboard?.writeText(v).then(() => toast('YAML copied to clipboard', 'ok'));
-        return false;
-      },
+    runExportSave({
+      text: exportYaml(),
+      defaultName: defaultExportFilename(state.sourceName),
     });
   });
   document.getElementById('proj-name').addEventListener('change', e => {
@@ -208,7 +175,7 @@ function wire() {
   });
 
   document.getElementById('empty-add-net').addEventListener('click', () => addNew('network'));
-  document.getElementById('empty-sample').addEventListener('click', loadSample);
+  document.getElementById('empty-import').addEventListener('click', onImport);
 
   document.addEventListener('keydown', (e) => {
     const t = e.target.tagName;
@@ -226,6 +193,7 @@ function wire() {
   });
 
   wireCanvas();
+  PacketsPanel.wire();
 }
 
 /* ---------- init ---------- */
@@ -245,11 +213,20 @@ function init() {
   document.getElementById('proj-name').value = state.asName;
   setSave('autosaved');
   ensurePositions();
+  // Seed Export's default filename from the server's LOOM_TOPOLOGY basename
+  // when the user hasn't imported anything yet. Fire-and-forget — Export
+  // works either way (it falls back to "topology.session.yaml").
+  if (!state.sourceName) {
+    fetchSourceName().then(name => {
+      if (name && !state.sourceName) { state.sourceName = name; persist(); }
+    });
+  }
   wire();
   wireResizers();
   // reflect restored display toggles on the toolbar buttons
   syncToggleBtn('tb-toggle-costs',  state.display.showCosts);
   syncToggleBtn('tb-toggle-ifaces', state.display.showIfaces);
+  PacketsPanel.init();
   renderAll();
   // initial fit (after layout)
   requestAnimationFrame(() => {
