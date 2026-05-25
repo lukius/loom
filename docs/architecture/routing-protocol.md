@@ -196,26 +196,37 @@ graph = lsdb.build_graph(eligible_origins)
 ```
 
 `build_graph` always includes the local router's own LSA (if present), then
-adds each origin in `eligible_origins`. The eligibility filter is computed by
-`_rebuild_graph_and_recompute` in `protocol.py` as follows:
+adds each origin in `eligible_origins`.
 
-1. Direct TWO_WAY neighbours are always eligible.
-2. **Multi-hop trust extension**: if *any* TWO_WAY adjacency exists, origins
-   that are not direct neighbours (i.e. learned purely via flooding, never
-   exchanged Hellos directly) are also eligible. The guard is: they must not
-   appear in `NeighborTable.all()` (meaning we have never exchanged Hellos
-   with them at all), but they are present in the LSDB because some
-   intermediate router flooded their LSA to us. This is the extension that
-   allows a multi-hop graph to be fully populated when all intermediate hops
-   have at least one bidirectional link. Without it, only directly-adjacent
-   routers would contribute to the graph.
-3. If *no* TWO_WAY adjacency exists (empty `bidi` set), `eligible_origins` is
-   empty — no LSA from any remote origin is trusted until at least one
-   adjacency is verified.
+### Graph eligibility filter
 
-This deviates from RFC 2328's strict "Full" state requirement but is a
-deliberate simplification: loom-OSPF has no LSDB-sync handshake, so
-transitivity through known-bidirectional context is the practical substitute.
+The eligibility set is computed by `_rebuild_graph_and_recompute` in
+`protocol.py` using a three-state classifier based on the Hello-layer view of
+each origin:
+
+| Origin classification | Eligibility | Rationale |
+|---|---|---|
+| TWO_WAY-direct (in `bidirectional_peers`) | Always eligible | Confirmed bidirectional adjacency |
+| Direct-non-TWO_WAY (in `_neighbor_table.all()` ∖ `bidirectional_peers`) | Excluded | Direct neighbour but not yet fully adjacent — asymmetric, INIT-stuck |
+| Non-direct (never observed a Hello from this origin) | Eligible iff ≥1 TWO_WAY adjacency exists | Multi-hop LSA flooded by a trusted peer |
+
+The "non-direct" branch is the critical one for multi-hop convergence: if r1
+has a TWO_WAY adjacency with r2, and r2 floods r3's LSA to r1, r1 will include
+r3 in its graph even though it has never exchanged a Hello with r3 directly.
+Without this extension, only directly-adjacent routers would contribute to the
+graph and a chain r1—r2—r3 would never converge fully at r1.
+
+If no TWO_WAY adjacency exists at all (empty `bidi` set), `eligible_origins`
+is empty — no remote LSA is trusted until at least one adjacency is verified.
+
+**Deviation from RFC 2328.** Real OSPF uses flooder-based admission: an LSA
+is installed when a `Full`-state neighbour (the flooder) delivers it, regardless
+of the origin's own adjacency status. loom-OSPF does the inverse — it classifies
+by origin rather than by flooder. This is more permissive, but acceptable
+because the simulator has no adversarial LSA-injection threat, the simulation
+scale is small (a transient stale graph is corrected by the next genuine flood),
+and the per-origin approach naturally handles loom-OSPF's absence of an
+ExStart/Exchange/Loading/Full handshake.
 
 ---
 
