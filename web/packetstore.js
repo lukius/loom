@@ -152,8 +152,17 @@ function _chatterKey(evt) {
 function _handleChatterPacket(evt, st) {
   const key = _chatterKey(evt);
   if (PacketStore.chatter.has(key)) return;
+  // All emissions of one logical message share one #R id so the panel row's
+  // label matches every canvas badge it halos. Reuse an existing id if any
+  // other composite key with this payload_id is already in the map;
+  // otherwise allocate a fresh one.
+  let chatterId = null;
+  for (const [k, row] of PacketStore.chatter.entries()) {
+    if (k.split('|', 1)[0] === evt.payload_id) { chatterId = row.id; break; }
+  }
+  if (chatterId === null) chatterId = PacketStore._nextChatterId++;
   PacketStore.chatter.set(key, {
-    id: PacketStore._nextChatterId++,
+    id: chatterId,
     payloadId: key,
     type: 'routing_flood',
     srcDev: evt.src && evt.src.device,

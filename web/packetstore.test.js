@@ -622,6 +622,28 @@ describe('PacketStore — chatter grouping by payload_id', () => {
     const group = PacketStore.visibleChatterGroups()[0];
     expect(group.id).toBe(firstId);
   });
+
+  // All emissions of one logical message must share one #R id. Otherwise the
+  // panel row label (#RN, the group id) doesn't match the canvas badges
+  // (#R{emission.id}) on the dots it halos, and the user reads it as
+  // "highlighted unrelated messages". Distinct payload_ids must still get
+  // distinct ids.
+  it('all emissions of the same payload_id share one #R id', () => {
+    emit('msg-1', 'eth0', 'lan_a');
+    emit('msg-1', 'eth1', 'lan_b');
+    emit('msg-1', 'eth2', 'lan_c');
+    const ids = Array.from(PacketStore.chatter.values())
+      .filter(r => Array.from(PacketStore.chatter.entries()).find(([k, v]) => v === r)[0].startsWith('msg-1|'))
+      .map(r => r.id);
+    expect(new Set(ids).size).toBe(1);
+  });
+
+  it('distinct payload_ids get distinct #R ids', () => {
+    emit('msg-1', 'eth0', 'lan_a');
+    emit('msg-2', 'eth0', 'lan_a');
+    const ids = Array.from(PacketStore.chatter.values()).map(r => r.id);
+    expect(new Set(ids).size).toBe(2);
+  });
 });
 
 describe('PacketStore — chatter composite key (T29)', () => {
@@ -632,7 +654,7 @@ describe('PacketStore — chatter composite key (T29)', () => {
     } } };
   });
 
-  it('treats multiple emissions of the same payload_id as distinct chatter rows', () => {
+  it('treats multiple emissions of the same payload_id as distinct chatter rows sharing one #R id', () => {
     const sharedPayloadId = 'msg-1';
     bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
       type: 'routing_flood', payload_id: sharedPayloadId, network: 'lan_a',
@@ -647,13 +669,15 @@ describe('PacketStore — chatter composite key (T29)', () => {
       payload_src: '10.0.1.254', payload_dst: '255.255.255.255',
     } }));
     expect(PacketStore.chatter.size).toBe(2);
-    const rows = Array.from(PacketStore.chatter.values()).sort((a, b) => a.id - b.id);
-    expect(rows[0].id).not.toBe(rows[1].id);
-    expect(rows[0].network).toBe('lan_a');
-    expect(rows[1].network).toBe('lan_b');
+    const rows = Array.from(PacketStore.chatter.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    // Distinct composite keys (one row per emission) — but ONE shared id.
+    expect(rows[0][0]).not.toBe(rows[1][0]);
+    expect(rows[0][1].id).toBe(rows[1][1].id);
+    const networks = rows.map(([, r]) => r.network).sort();
+    expect(networks).toEqual(['lan_a', 'lan_b']);
   });
 
-  it('idFor returns the correct chatter id for each emission separately', () => {
+  it('idFor returns the same id for each emission of the same payload_id', () => {
     const sharedPayloadId = 'msg-1';
     bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
       type: 'routing_flood', payload_id: sharedPayloadId, network: 'lan_a',
@@ -676,8 +700,7 @@ describe('PacketStore — chatter composite key (T29)', () => {
       src: { device: 'r1', iface: 'eth1' },
     });
     expect(idA).not.toBe(null);
-    expect(idB).not.toBe(null);
-    expect(idA).not.toBe(idB);
+    expect(idB).toBe(idA);
   });
 
   it('chatter row payloadId is the composite key, not the bare payload_id', () => {
