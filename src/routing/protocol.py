@@ -190,16 +190,16 @@ class LinkStateProtocol(RoutingProtocol):
         self._recompute_if_dirty(changed)
 
         for _, interface in self._router.interfaces().items():
-            # BGP-FOLLOWUP: per-interface sequence is wrong for LSP semantics. Real
+            # OSPF-FOLLOWUP: per-interface sequence is wrong for LSP semantics. Real
             # LSP protocols use a single per-origin sequence so all neighbours
             # converge on one canonical view, and the originating router builds ONE
             # RoutingMessage per cycle (shared across all of its interface emissions)
             # instead of N. The current per-interface emission multiplies wire
             # traffic by `len(interfaces)`: a 3-iface router floods 3 logical
             # messages per cycle, each then re-flooded by neighbours. Fixing this
-            # needs the link-state extension work (single-sequence-per-origin)
-            # which is deferred until the BGP work makes the layering meaningful —
-            # see docs/superpowers/specs/2026-05-18-pre-external-routing-prep-design.md
+            # belongs to the OSPF work (single-sequence-per-origin, plus jitter on
+            # the keepalive timer so neighbours don't refresh in lockstep) — see
+            # docs/superpowers/specs/2026-05-18-pre-external-routing-prep-design.md
             # section 2.1.
             self._seqs[interface.name()] += 1
             seq = self._seqs[interface.name()]
