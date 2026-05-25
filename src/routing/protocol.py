@@ -242,11 +242,12 @@ class LinkStateProtocol(RoutingProtocol):
         )
         if transition is None:
             return
-        self._broadcast_neighbor_state_changed(transition)
-        if transition.went_down():
-            self._lsdb.purge(transition.neighbor().peer())
-        # State change → eligibility may have changed.
-        self._rebuild_graph_and_recompute()
+        with self._lock:
+            self._broadcast_neighbor_state_changed(transition)
+            if transition.went_down():
+                self._lsdb.purge(transition.neighbor().peer())
+            # State change → eligibility may have changed.
+            self._rebuild_graph_and_recompute()
 
     def _broadcast_neighbor_state_changed(self, transition):
         n = transition.neighbor()
