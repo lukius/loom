@@ -89,6 +89,32 @@ class LinkStateProtocol(RoutingProtocol):
             raise ValueError(f"keepalive interval must be positive (got {seconds!r})")
         self._keepalive_interval = float(seconds)
 
+    # Canonical ratios from the loom-OSPF spec.
+    _DEAD_INTERVAL_RATIO = 3
+    _MAX_AGE_RATIO = 2
+
+    def set_timers(self, hello_interval: float, lsa_refresh_interval: float):
+        """Update protocol timers in one shot.
+
+        Validates positivity and derives dead_interval = 3·hello and
+        max_age = 2·refresh from the canonical loom-OSPF ratios.
+        """
+        if not isinstance(hello_interval, (int, float)) or hello_interval <= 0:
+            raise ValueError(
+                f"hello_interval must be positive (got {hello_interval!r})"
+            )
+        if (
+            not isinstance(lsa_refresh_interval, (int, float))
+            or lsa_refresh_interval <= 0
+        ):
+            raise ValueError(
+                f"lsa_refresh_interval must be positive (got {lsa_refresh_interval!r})"
+            )
+        self._hello_interval = float(hello_interval)
+        self._lsa_refresh_interval = float(lsa_refresh_interval)
+        self._dead_interval = self._hello_interval * self._DEAD_INTERVAL_RATIO
+        self._max_age = self._lsa_refresh_interval * self._MAX_AGE_RATIO
+
     def lsdb(self):
         return self._lsdb
 

@@ -6,6 +6,8 @@ import threading
 import time
 import unittest
 
+import pytest
+
 from entities import (
     Address,
     Interface,
@@ -109,10 +111,9 @@ def test_set_keepalive_interval_rejects_non_positive():
     system = Parser(path).parse().single_as()
     try:
         r1 = system.routers()["r1"]
-        import pytest as _pt
-        with _pt.raises(ValueError):
+        with pytest.raises(ValueError):
             r1.protocol().set_keepalive_interval(0)
-        with _pt.raises(ValueError):
+        with pytest.raises(ValueError):
             r1.protocol().set_keepalive_interval(-1)
     finally:
         system.stop()
@@ -1365,3 +1366,39 @@ def test_peer_purges_lsa_on_receipt_of_withdrawal():
     finally:
         system.stop()
         os.unlink(path)
+
+
+def test_set_timers_derives_dead_and_max_age():
+    r = Router('r1')
+    proto = LinkStateProtocol(r)
+    proto.set_timers(hello_interval=5, lsa_refresh_interval=15)
+    assert proto._hello_interval == 5    # noqa: SLF001
+    assert proto._dead_interval == 15    # 3 * hello  # noqa: SLF001
+    assert proto._lsa_refresh_interval == 15  # noqa: SLF001
+    assert proto._max_age == 30          # 2 * refresh  # noqa: SLF001
+
+
+def test_set_timers_rejects_non_positive():
+    r = Router('r1')
+    proto = LinkStateProtocol(r)
+    with pytest.raises(ValueError):
+        proto.set_timers(hello_interval=0, lsa_refresh_interval=10)
+    with pytest.raises(ValueError):
+        proto.set_timers(hello_interval=5, lsa_refresh_interval=-1)
+
+
+def test_set_timers_invariant_max_age_must_exceed_refresh():
+    """The derived max_age (2 * refresh) is always > refresh, so this
+    invariant is satisfied by construction. Pin it via direct
+    attribute assignment to catch future regressions."""
+    r = Router('r1')
+    proto = LinkStateProtocol(r)
+    proto.set_timers(hello_interval=5, lsa_refresh_interval=15)
+    assert proto._max_age > proto._lsa_refresh_interval  # noqa: SLF001
+
+
+def test_set_timers_invariant_dead_must_exceed_hello():
+    r = Router('r1')
+    proto = LinkStateProtocol(r)
+    proto.set_timers(hello_interval=5, lsa_refresh_interval=15)
+    assert proto._dead_interval > proto._hello_interval  # noqa: SLF001
