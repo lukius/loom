@@ -347,7 +347,7 @@ def test_routing_table_changed_event_fires():
         events = []
         system = Parser(path).parse().single_as()
         EventTracer.subscribe(events.append)
-        # First keepalive within ~KEEPALIVE_INTERVAL; for a test, manually update.
+        # First keepalive within ~lsa_refresh_interval; for a test, manually update.
         system.router("r1").update_interface("eth0", 99)
         # nudge protocol to recompute by faking a keepalive call:
         system.router("r1").protocol()._handle_update()  # noqa: SLF001
@@ -366,7 +366,6 @@ def test_neighbor_state_changed_event_payload_shape():
 
     from entities.event import EventTracer
     from parser import Parser
-    from routing import LinkStateProtocol
 
     yaml_text = textwrap.dedent("""
     internet:
@@ -387,14 +386,15 @@ def test_neighbor_state_changed_event_payload_shape():
               interfaces:
                 eth0: {link: p2p, address: "200.0.0.2", cost: 1}
     """)
-    original = LinkStateProtocol.KEEPALIVE_INTERVAL
-    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(yaml_text)
         path = f.name
+    system = Parser(path).parse(start_routing=False).single_as()
+    for r in system.routers().values():
+        r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.3)
+        r.start()
     try:
         events = []
-        system = Parser(path).parse().single_as()
         EventTracer.subscribe(events.append)
 
         deadline = time.monotonic() + 5.0
@@ -425,4 +425,3 @@ def test_neighbor_state_changed_event_payload_shape():
         system.stop()
     finally:
         os.unlink(path)
-        LinkStateProtocol.KEEPALIVE_INTERVAL = original

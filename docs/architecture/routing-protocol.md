@@ -284,11 +284,11 @@ purge (it refreshes itself on every `lsa_refresh` tick).
 
 **How liveness maps to max-age**: if a router stops flooding (crash, network
 partition, or graceful stop without withdrawal), its LSA ages out within
-`max_age`. The default `max_age = 20s` (with `refresh = 10s`) means a failed
+`max_age`. The default `max_age = 60s` (with `refresh = 30s`) means a failed
 router is detected within two refresh cycles.
 
 The **dead interval** is a separate (shorter) signal at the Hello layer:
-`dead_interval = 3 × hello_interval = 10s` by default. A neighbour that stops
+`dead_interval = 3 × hello_interval = 30s` by default. A neighbour that stops
 sending Hellos is moved to `DOWN` within `dead_interval`, its LSA is purged
 from the LSDB, and the graph is rebuilt — well before max-age would fire.
 Together, Hello-based dead detection is the fast path; max-age is the safety net.
@@ -312,7 +312,7 @@ origin from `_by_origin` entirely. The `InstallResult` returns
 immediate SPF recompute on every receiving router. The flood propagates
 normally through `_flood_lsa`.
 
-Compared to waiting for max-age (up to 20s), withdrawal gives peers near-instant
+Compared to waiting for max-age (up to 60s), withdrawal gives peers near-instant
 convergence after a clean shutdown.
 
 ---
@@ -325,9 +325,9 @@ dispatches whichever timers have elapsed when it wakes:
 
 | Timer name | Default interval | Derived from | Purpose |
 |---|---|---|---|
-| `hello` | 3.33s | `keepalive / 3` | Emit Hellos; sweep dead neighbours |
-| `lsa_refresh` | 10s | `KEEPALIVE_INTERVAL` | Emit LSA flood; refresh own LSDB entry |
-| `maxage_check` | 10s | `= lsa_refresh` | Purge expired remote LSAs |
+| `hello` | 10s | production default | Emit Hellos; sweep dead neighbours |
+| `lsa_refresh` | 30s | production default | Emit LSA flood; refresh own LSDB entry |
+| `maxage_check` | 30s | `= lsa_refresh` | Purge expired remote LSAs |
 
 Derived relations (fixed ratios, not tunable separately):
 

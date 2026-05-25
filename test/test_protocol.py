@@ -97,7 +97,8 @@ def test_set_keepalive_interval_updates_protocol():
     system = Parser(path).parse().single_as()
     try:
         r1 = system.routers()["r1"]
-        assert r1.protocol().keepalive_interval() == 10
+        # Production default: lsa_refresh=30s, so shim reports 30.
+        assert r1.protocol().keepalive_interval() == 30
         r1.protocol().set_keepalive_interval(3)
         assert r1.protocol().keepalive_interval() == 3
     finally:
@@ -154,12 +155,13 @@ def test_routers_with_shared_iface_names_all_receive_lsas():
     """Regression: when two routers share an interface name (eth0/eth1), each
     one must still receive LSAs. Previously Network keyed interfaces by name,
     so later-added routers clobbered earlier ones on the same network."""
-    original = LinkStateProtocol.KEEPALIVE_INTERVAL
-    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(SAMPLE_THREE_ROUTERS_SHARED_NAMES)
         path = f.name
-    system = Parser(path).parse().single_as()
+    system = Parser(path).parse(start_routing=False).single_as()
+    for r in system.routers().values():
+        r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.3)
+        r.start()
     try:
         routers = system.routers()
 
@@ -177,7 +179,6 @@ def test_routers_with_shared_iface_names_all_receive_lsas():
     finally:
         system.stop()
         os.unlink(path)
-        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_stop_then_start_resumes_periodic_ticks():
@@ -225,12 +226,13 @@ def test_stop_then_start_resumes_periodic_ticks():
 def test_initial_broadcast_propagates_before_keepalive_interval():
     # Every router must learn the full topology after two keepalive ticks
     # (TWO_WAY adjacency requires both sides to list each other).
-    original = LinkStateProtocol.KEEPALIVE_INTERVAL
-    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(SAMPLE_TOPOLOGY)
         path = f.name
-    system = Parser(path).parse().single_as()
+    system = Parser(path).parse(start_routing=False).single_as()
+    for r in system.routers().values():
+        r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.3)
+        r.start()
     try:
         routers = system.routers()
         prefixes = {
@@ -255,7 +257,6 @@ def test_initial_broadcast_propagates_before_keepalive_interval():
     finally:
         system.stop()
         os.unlink(path)
-        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 class MockThread(object):
@@ -699,10 +700,11 @@ def _table_has_prefix(router, prefix_str):
 def test_two_routers_one_link_converge():
     """Two routers on a /30 link converge: each learns the peer's LAN and the
     link prefix as directly connected."""
-    original = LinkStateProtocol.KEEPALIVE_INTERVAL
-    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     path = _make_tmp_topology(TWO_ROUTERS_SLASH30)
-    system = Parser(path).parse().single_as()
+    system = Parser(path).parse(start_routing=False).single_as()
+    for r in system.routers().values():
+        r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.3)
+        r.start()
     try:
         r1 = system.routers()["r1"]
         r2 = system.routers()["r2"]
@@ -755,15 +757,15 @@ def test_two_routers_one_link_converge():
     finally:
         system.stop()
         os.unlink(path)
-        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_link_slash31_converge():
     """/31 link topology converges with identical table structure to /30."""
-    original = LinkStateProtocol.KEEPALIVE_INTERVAL
-    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     path = _make_tmp_topology(TWO_ROUTERS_SLASH31)
-    system = Parser(path).parse().single_as()
+    system = Parser(path).parse(start_routing=False).single_as()
+    for r in system.routers().values():
+        r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.3)
+        r.start()
     try:
         r1 = system.routers()["r1"]
         r2 = system.routers()["r2"]
@@ -812,7 +814,6 @@ def test_link_slash31_converge():
     finally:
         system.stop()
         os.unlink(path)
-        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_link_cost_propagates():
@@ -826,10 +827,11 @@ def test_link_cost_propagates():
         rather than the direct link (eth1, graph cost 5+9+1=15: r1→p2p1
         at 5, p2p1→r2 at r2's announced cost 9, r2→lan_r2 at 1).
     """
-    original = LinkStateProtocol.KEEPALIVE_INTERVAL
-    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     path = _make_tmp_topology(TWO_ROUTERS_ASYMMETRIC_COST)
-    system = Parser(path).parse().single_as()
+    system = Parser(path).parse(start_routing=False).single_as()
+    for r in system.routers().values():
+        r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.3)
+        r.start()
     try:
         r1 = system.routers()["r1"]
         r2 = system.routers()["r2"]
@@ -874,7 +876,6 @@ def test_link_cost_propagates():
     finally:
         system.stop()
         os.unlink(path)
-        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_handle_update_omits_private_prefixes_from_outbound_message():
@@ -955,8 +956,6 @@ def test_receiver_graph_never_learns_private_prefix():
     receiver wanted to learn about a private prefix, the sender never puts
     it on the wire.
     """
-    original = LinkStateProtocol.KEEPALIVE_INTERVAL
-    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     topology = textwrap.dedent("""
     internet:
       name: loom
@@ -981,7 +980,10 @@ def test_receiver_graph_never_learns_private_prefix():
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(topology)
         path = f.name
-    system = Parser(path).parse().single_as()
+    system = Parser(path).parse(start_routing=False).single_as()
+    for r in system.routers().values():
+        r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.3)
+        r.start()
     try:
         _r1 = system.routers()["r1"]
         r2 = system.routers()["r2"]
@@ -1000,15 +1002,12 @@ def test_receiver_graph_never_learns_private_prefix():
     finally:
         system.stop()
         os.unlink(path)
-        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_three_router_convergence_with_per_origin_seq():
     """Three-router convergence: every router's routing table contains
     a rule for every prefix after Hello-driven adjacency and LSA exchange.
     Pins that per-origin-seq + LSDB + TWO_WAY filter end-to-end behaviour."""
-    original = LinkStateProtocol.KEEPALIVE_INTERVAL
-    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     yaml = textwrap.dedent("""
     internet:
       name: loom
@@ -1038,7 +1037,10 @@ def test_three_router_convergence_with_per_origin_seq():
                 eth1: {network: lan4, address: "200.0.4.1", cost: 1}
     """)
     path = _make_tmp_topology(yaml)
-    system = Parser(path).parse().single_as()
+    system = Parser(path).parse(start_routing=False).single_as()
+    for r in system.routers().values():
+        r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.3)
+        r.start()
     try:
         assert _wait(lambda: all(
             _table_has_prefix(r, p)
@@ -1049,7 +1051,6 @@ def test_three_router_convergence_with_per_origin_seq():
     finally:
         system.stop()
         os.unlink(path)
-        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 class OutboundPolicyTest(unittest.TestCase):
@@ -1100,10 +1101,8 @@ def test_hello_emitted_on_every_interface_each_cycle():
 
 
 def test_two_router_convergence_reaches_two_way():
-    # Use a short keepalive interval so the second tick (which exchanges
-    # neighbour lists) arrives within the test timeout.
-    original = LinkStateProtocol.KEEPALIVE_INTERVAL
-    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
+    # Use short timers so the second tick (which exchanges neighbour lists)
+    # arrives within the test timeout.
     yaml = textwrap.dedent("""
     internet:
       name: loom
@@ -1124,7 +1123,10 @@ def test_two_router_convergence_reaches_two_way():
                 eth0: {link: p2p, address: "200.0.0.2", cost: 1}
     """)
     path = _make_tmp_topology(yaml)
-    system = Parser(path).parse().single_as()
+    system = Parser(path).parse(start_routing=False).single_as()
+    for r in system.routers().values():
+        r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.3)
+        r.start()
     try:
         r1 = system.routers()["r1"]
         r2 = system.routers()["r2"]
@@ -1140,7 +1142,6 @@ def test_two_router_convergence_reaches_two_way():
     finally:
         system.stop()
         os.unlink(path)
-        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_build_graph_excludes_lsas_from_non_two_way_peers():
@@ -1178,8 +1179,6 @@ def test_lan_with_three_routers_each_sees_two_neighbours_two_way():
     drives multi-peer adjacency: every router must have the other two
     in its bidirectional_peers set before the test times out.
     """
-    original = LinkStateProtocol.KEEPALIVE_INTERVAL
-    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     yaml = textwrap.dedent("""
     internet:
       name: loom
@@ -1206,7 +1205,10 @@ def test_lan_with_three_routers_each_sees_two_neighbours_two_way():
                 eth1: {network: lan_r3, address: "200.0.4.1", cost: 1}
     """)
     path = _make_tmp_topology(yaml)
-    system = Parser(path).parse().single_as()
+    system = Parser(path).parse(start_routing=False).single_as()
+    for r in system.routers().values():
+        r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.3)
+        r.start()
     try:
         routers = system.routers()
         r1 = routers["r1"]
@@ -1231,7 +1233,6 @@ def test_lan_with_three_routers_each_sees_two_neighbours_two_way():
     finally:
         system.stop()
         os.unlink(path)
-        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_silent_router_lsa_purged_after_max_age():
@@ -1263,13 +1264,10 @@ def test_silent_router_lsa_purged_after_max_age():
     internet = Parser(path).parse(start_routing=False)
     system = internet.single_as()
     try:
-        # Tune timers down before starting so the test is fast.
+        # Tune timers down before starting so the test is fast:
+        # hello=0.2s → dead=0.6s; refresh=0.6s → max_age=1.2s.
         for r in system.routers().values():
-            r.protocol()._hello_interval = 0.2   # noqa: SLF001
-            r.protocol()._dead_interval = 0.6    # noqa: SLF001
-            r.protocol()._lsa_refresh_interval = 0.6  # noqa: SLF001
-            r.protocol()._max_age = 1.2          # noqa: SLF001
-            r.protocol().set_keepalive_interval(0.2)
+            r.protocol().set_timers(hello_interval=0.2, lsa_refresh_interval=0.6)
             r.start()
         r1 = system.routers()["r1"]
         r2 = system.routers()["r2"]
@@ -1344,12 +1342,11 @@ def test_peer_purges_lsa_on_receipt_of_withdrawal():
                 eth1: {link: p2p, address: "200.0.0.2", cost: 1}
     """)
     path = _make_tmp_topology(yaml)
-    system = Parser(path).parse().single_as()
+    system = Parser(path).parse(start_routing=False).single_as()
+    for r in system.routers().values():
+        r.protocol().set_timers(hello_interval=0.2, lsa_refresh_interval=0.6)
+        r.start()
     try:
-        for r in system.routers().values():
-            r.protocol().set_keepalive_interval(0.2)
-            r.protocol()._hello_interval = 0.2  # noqa: SLF001
-            r.protocol()._dead_interval = 0.6   # noqa: SLF001
         r1 = system.routers()["r1"]
         r2 = system.routers()["r2"]
         # Wait for convergence.
@@ -1411,7 +1408,7 @@ def test_protocol_loop_dispatches_three_independent_timers():
     and ~2 refreshes per router.
 
     Uses start_routing=False so timers are configured before threads
-    launch; avoids order-dependent leakage from KEEPALIVE_INTERVAL mutations
+    launch; avoids order-dependent leakage from class-level timer mutations
     in other tests.
     """
     yaml = textwrap.dedent("""

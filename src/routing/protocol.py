@@ -49,8 +49,6 @@ class RoutingProtocol(ABC):
 
 class LinkStateProtocol(RoutingProtocol):
 
-    KEEPALIVE_INTERVAL = 10
-
     def __init__(self, router, outbound_policy=None):
         self._router = router
         self._lock = threading.Lock()
@@ -61,21 +59,18 @@ class LinkStateProtocol(RoutingProtocol):
         self._seq = 0
         self._lsdb = LSDB(router)
         self._neighbor_table = NeighborTable()
-        # Timer state — bootstrapped from KEEPALIVE_INTERVAL so that tests
-        # which set the class variable before construction get the right
-        # default cadence. _maxage_check_interval is derived by set_timers.
+        # Timer state — bootstrapped to the canonical loom-OSPF production
+        # defaults (hello=10s, refresh=30s, dead=30s, max_age=60s).
+        # _maxage_check_interval is derived by set_timers.
         self._hello_interval: float = 0.0        # overwritten below
         self._dead_interval: float = 0.0         # overwritten below
         self._lsa_refresh_interval: float = 0.0  # overwritten below
         self._max_age: float = 0.0               # overwritten below
         self._maxage_check_interval: float = 0.0 # overwritten below
-        self._keepalive_interval: float = float(self.KEEPALIVE_INTERVAL)
-        # Bootstrap via set_timers (uses canonical loom-OSPF ratios).
+        self._keepalive_interval: float = 30.0   # kept for set_keepalive_interval shim
+        # Bootstrap via set_timers.
         # _scheduler is not yet set; set_timers skips the scheduler block.
-        self.set_timers(
-            hello_interval=self._keepalive_interval / 3.0,
-            lsa_refresh_interval=self._keepalive_interval,
-        )
+        self.set_timers(hello_interval=10.0, lsa_refresh_interval=30.0)
         # Permit-all policy for the local LSA stored in the LSDB — local
         # connectivity (including RFC 1918 prefixes) must appear in the
         # local graph so Dijkstra can route to directly-connected networks.
@@ -98,7 +93,12 @@ class LinkStateProtocol(RoutingProtocol):
         return self._keepalive_interval
 
     def set_keepalive_interval(self, seconds):
-        """Deprecated. Sets lsa_refresh_interval; hello_interval scaled to /3."""
+        """Deprecated single-knob shim — prefer set_timers().
+
+        Sets lsa_refresh_interval = seconds and hello_interval = seconds / 3,
+        preserving the old loom single-knob semantics. New callers should use
+        set_timers(hello_interval=..., lsa_refresh_interval=...) directly.
+        """
         if not isinstance(seconds, (int, float)) or seconds <= 0:
             raise ValueError(f"keepalive interval must be positive (got {seconds!r})")
         self._keepalive_interval = float(seconds)
