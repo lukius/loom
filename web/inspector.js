@@ -120,8 +120,17 @@ function isOpen(key, defaultOpen = false) {
   return false;
 }
 
+function wireSectionToggles(root) {
+  root.querySelectorAll('details.insp-section').forEach(d => {
+    d.addEventListener('toggle', () => {
+      if (d.open) openSections.add(d.dataset.section);
+      else openSections.delete(d.dataset.section);
+    });
+  });
+}
+
 /* ---------- routing table section (synchronous placeholder) ---------- */
-function renderRoutingSection(deviceName, _openSet) {
+function renderRoutingSection(deviceName) {
   // Render an empty collapsible shell synchronously; refreshRoutes() fills in
   // the real rules once the async fetch completes.  The shell guarantees the
   // <details> exists at DOM insertion time so test queries and toggle-listeners
@@ -134,12 +143,6 @@ function renderRoutingSection(deviceName, _openSet) {
 }
 
 /* ---------- neighbours section ---------- */
-function formatAgo(_timestamp) {
-  // Server timestamps are monotonic seconds; without a synchronised clock
-  // we can only say "recent". A future enhancement could use server epoch.
-  return 'recent';
-}
-
 function renderNeighbourSection(device, router) {
   const data = (state.neighborsByDevice && state.neighborsByDevice[device]) || {};
   const ifaceNames = Object.keys(router.interfaces || {});
@@ -156,7 +159,8 @@ function renderNeighbourSection(device, router) {
     const rows = peerNames.map(peer => {
       const n = peers[peer];
       counts[n.state] = (counts[n.state] || 0) + 1;
-      const ago = n.last_hello_at != null ? `last hello ${formatAgo(n.last_hello_at)}` : '';
+      // TODO: replace 'recent' with a real "Ns ago" once clock sync is available.
+      const ago = n.last_hello_at != null ? 'last hello recent' : '';
       const stateClass = n.state || 'down';
       const stateLabel = (n.state || 'down').toUpperCase();
       return `<div class="neigh-row">` +
@@ -213,10 +217,7 @@ export const Inspector = {
           `<div class="insp-section-body"></div>` +
           `</details>`;
         details = sec.querySelector('details.insp-section');
-        details.addEventListener('toggle', () => {
-          if (details.open) openSections.add(details.dataset.section);
-          else openSections.delete(details.dataset.section);
-        });
+        wireSectionToggles(sec);
       }
       const hint = details.querySelector('.summary-hint');
       if (hint) hint.textContent = `(${ruleCount} ${ruleCount === 1 ? 'rule' : 'rules'})`;
@@ -276,12 +277,7 @@ export const Inspector = {
       `<div class="insp-section-body">` +
       `<table class="insp-table"><thead><tr><th>Original</th><th>Rewritten</th><th>Destination</th><th>Flow ID</th></tr></thead><tbody>${rows}</tbody></table>` +
       `</div></details>`;
-    sec.addEventListener('toggle', (e) => {
-      const d = e.target.closest('details.insp-section');
-      if (!d) return;
-      if (d.open) openSections.add(d.dataset.section);
-      else openSections.delete(d.dataset.section);
-    }, { capture: true });
+    wireSectionToggles(sec);
   },
 
   onNATChange(evt) {
@@ -937,7 +933,7 @@ export function renderRouterInsp(name, elI) {
       </div>
     </div>
     <div class="insp-neighbours">${renderNeighbourSection(name, router)}</div>
-    <div class="insp-routes" id="insp-routes">${renderRoutingSection(name, openSections)}</div>
+    <div class="insp-routes" id="insp-routes">${renderRoutingSection(name)}</div>
     <div class="insp-nat" id="insp-nat" hidden></div>
     <div class="insp-foot">
       <button class="dup" id="f-dup">Duplicate</button>
@@ -1082,12 +1078,7 @@ export function renderRouterInsp(name, elI) {
   elI.querySelector('#f-del').addEventListener('click', deleteSelected);
   elI.querySelector('#f-dup').addEventListener('click', () => duplicateRouter(name));
   // Persist open/closed state of top-level collapsible sections across re-renders.
-  elI.querySelectorAll('details.insp-section').forEach(d => {
-    d.addEventListener('toggle', () => {
-      if (d.open) openSections.add(d.dataset.section);
-      else openSections.delete(d.dataset.section);
-    });
-  });
+  wireSectionToggles(elI);
   Inspector.refreshRoutes(name);
   Inspector.refreshNAT(name);
 }
@@ -1283,12 +1274,7 @@ bus.addEventListener('sim:neighbor-state-changed', (e) => {
   // Re-render only the Neighbours section, preserving open/closed state.
   rememberOpen(elI);
   container.innerHTML = renderNeighbourSection(device, router);
-  container.querySelectorAll('details.insp-section').forEach(d => {
-    d.addEventListener('toggle', () => {
-      if (d.open) openSections.add(d.dataset.section);
-      else openSections.delete(d.dataset.section);
-    });
-  });
+  wireSectionToggles(container);
 });
 bus.addEventListener('canvas:contextmenu-requested', (e) => {
   openContextMenu(e.detail.clientX, e.detail.clientY, e.detail.target, e.detail.world);
