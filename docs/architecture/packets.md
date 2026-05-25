@@ -138,36 +138,52 @@ syntax does not support quoting or spaces. (The terminals use
 
 ### `RoutingMessage`
 
-The link-state advertisement:
+`RoutingMessage` is now an abstract base (`src/routing/lsa.py`). Two
+concrete subclasses carry the protocol wire traffic: `LSA` and `Hello`.
+
+#### `LSA`
 
 ```python
-class RoutingMessage(Message):
-    def __init__(self, src, seq: int):
-        super().__init__()
-        self._src = src               # the originating Interface
-        self._seq = seq               # monotonically increasing per source
-        self._dests = dict()          # NetworkAddress -> cost
-
+class LSA(RoutingMessage):
+    @classmethod
+    def from_router(cls, router, seq, policy) -> 'LSA': ...
+    @classmethod
+    def withdrawal(cls, router, seq) -> 'LSA': ...
+    def __init__(self, origin, seq, is_withdrawal=False): ...
+    def origin(self): return self._origin
     def seq(self): return self._seq
-    def src_address(self): return self._src.address()
-    def src_router(self): return self._src.device()
-    def destinations(self): return self._dests
-    def add_destination(self, prefix, cost): self._dests[prefix] = cost
+    def links(self): return dict(self._links)   # NetworkAddress -> cost
+    def add_link(self, prefix, cost): self._links[prefix] = cost
+    def is_withdrawal(self): return self._is_withdrawal
+    def is_newer_than(self, other): return self._seq > other.seq()
+    def has_same_links_as(self, other): return self._links == other._links
 ```
 
-Origination: `RoutingProtocol._handle_update` walks the local router's
-interfaces, builds one `RoutingMessage` per interface, fills its
-`_dests` dict with every directly-connected `(prefix, cost)`, and floods
-the broadcast address of each fabric.
+Origination: `LinkStateProtocol._emit_lsa_on_all_interfaces` builds
+**one shared `LSA`** per cycle via `LSA.from_router(router, seq,
+policy)`, installs it into the local LSDB, then sends that **same
+object** out every interface — so all N emissions carry the same `seq`.
 
-**The `_seq` field is per-interface**, not per-router — every interface
-has its own counter inside `_seqs`. The LSDB on each receiving router
-tracks the last seen sequence number per origin router, so a receiver
-deduplicates by `(origin_router, seq)` — a router with K interfaces
-produces K parallel streams that every peer tracks separately.
+#### `Hello`
+
+```python
+class Hello(RoutingMessage):
+    def __init__(self, originator, neighbours_heard): ...
+    def originator(self): return self._originator
+    def neighbours_heard(self): return list(self._neighbours_heard)
+```
+
+`_emit_hello_on_all_interfaces` builds **one `Hello` per interface**
+(each carries that interface's per-fabric `neighbours_heard` list).
+
+**`seq` is per-origin (one counter per router), not per-interface.**
+Receivers dedup at the LSDB by `(origin_router, seq)` via
+`is_newer_than`. A refresh with the same links is accepted and
+re-flooded (so downstream peers refresh too) but does NOT trigger SPF
+recompute (`InstallResult.changed_graph()` returns `False`).
+
 **See [`routing-protocol.md`](routing-protocol.md)** for the full
-flooding rules; the trap is that `seq` and the receiver's "last seen
-seq" are both **per originating interface**, not per source router.
+flooding rules.
 
 ### `PingRequest` and `PingReply`
 
