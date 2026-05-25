@@ -518,7 +518,7 @@ describe('PacketAnim — badge rendering', () => {
 });
 
 
-describe('PacketAnim — throttled chatter cleans up store row', () => {
+describe('PacketAnim — throttled chatter does not dispatch arrival', () => {
   beforeEach(() => {
     PacketStore._reset();
     PacketAnim._lastChatter.clear();
@@ -544,7 +544,7 @@ describe('PacketAnim — throttled chatter cleans up store row', () => {
     };
   }
 
-  it('dispatches sim:packet-arrived for throttled chatter so the store cleans up', () => {
+  it('throttled chatter does not dispatch sim:packet-arrived (store row persists via TTL)', () => {
     // First chatter from r1/lan_a passes through.
     bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('p1') }));
     expect(PacketStore.chatter.size).toBe(1);
@@ -556,13 +556,14 @@ describe('PacketAnim — throttled chatter cleans up store row', () => {
     // Second chatter from r1/lan_a within 200ms — throttled.
     bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('p2') }));
 
-    // Store briefly had two rows but the throttle path dispatched arrival
-    // for p2's composite key, which removed it. Only p1 remains.
-    const compositeP2 = 'p2|r1|eth0|lan_a';
-    const arrivalDetails = spy.mock.calls.map(c => c[0].detail);
-    expect(arrivalDetails.some(d => d.payloadId === compositeP2 && d.device === null)).toBe(true);
-    expect(PacketStore.chatter.has(compositeP2)).toBe(false);
+    // Throttling must NOT dispatch arrival: deleting by composite key would
+    // wipe rows for re-emissions of the original's key (self-flood loop) AND
+    // would discard distinct payload_ids that happen to land on the same
+    // (device, network) within 200ms. The 2s TTL in packetstore reclaims
+    // throttled rows naturally.
+    expect(spy).not.toHaveBeenCalled();
     expect(PacketStore.chatter.has('p1|r1|eth0|lan_a')).toBe(true);
+    expect(PacketStore.chatter.has('p2|r1|eth0|lan_a')).toBe(true);
   });
 
   it('dispatches sim:packet-arrived for muted chatter so the store cleans up', () => {
@@ -576,6 +577,74 @@ describe('PacketAnim — throttled chatter cleans up store row', () => {
     const arrivalDetails = spy.mock.calls.map(c => c[0].detail);
     expect(arrivalDetails.some(d => d.payloadId === compositeP1 && d.device === null)).toBe(true);
     expect(PacketStore.chatter.has(compositeP1)).toBe(false);
+  });
+});
+
+describe('PacketAnim — throttle preserves distinct chatter messages', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    PacketAnim._lastChatter.clear();
+    PacketAnim.muted = false;
+    delete document.body.dataset.chatterBadges;
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g data-kind="router" data-name="r1" transform="translate(100 100)"></g>
+        <g data-kind="router" data-name="r2" transform="translate(300 100)"></g>
+        <g data-kind="network" data-name="lan_a" transform="translate(200 100)"></g>
+      </g><g id="packet-layer"></g></svg>`;
+    state.networks = { lan_a: { cidr: '10.0.0.0/24', x: 200, y: 100 } };
+    state.hosts = {};
+    state.routers = {
+      r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.1', cost: 5 } } },
+      r2: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.2', cost: 5 } } },
+    };
+    state.links = {};
+  });
+
+  function chatter(payloadId, device = 'r1', iface = 'eth0', network = 'lan_a') {
+    return {
+      type: 'routing_flood', payload_id: payloadId, network,
+      src: { device, iface, address: '10.0.0.254' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '10.0.0.254', payload_dst: '255.255.255.255',
+    };
+  }
+
+  // Bug: with no jitter, three routers' keepalive ticks overlap and re-floods
+  // of one router's message arrive on a neighbour's (device, network) slot
+  // before that neighbour originates its own message. The (device, network)
+  // throttle then drops the neighbour's origination — even though it's a
+  // *distinct* logical message (different payload_id).
+  it('keeps distinct payload_ids from the same (device, network) within 200ms', () => {
+    // First emission: r1 re-floods someone else's message on lan_a.
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('reflood-msg') }));
+    expect(PacketStore.chatter.has('reflood-msg|r1|eth0|lan_a')).toBe(true);
+
+    // 11ms later: r1's own keepalive originates a *different* message on lan_a.
+    // The 200ms throttle keyed by (r1, lan_a) currently drops this — wrong,
+    // because it's a logically distinct message with its own payload_id.
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('origination-msg') }));
+
+    expect(PacketStore.chatter.has('reflood-msg|r1|eth0|lan_a')).toBe(true);
+    expect(PacketStore.chatter.has('origination-msg|r1|eth0|lan_a')).toBe(true);
+    expect(PacketStore.chatter.size).toBe(2);
+  });
+
+  // Bug: the routing protocol re-floods a message back into its origin iface
+  // (because `_seqs_by_address[my_addr]` starts at -1, so the originator
+  // doesn't recognize its own message coming back). The SPA sees a second
+  // sim:packet with the *same* composite key as the original. The throttle
+  // path's sim:packet-arrived dispatch deletes the original's row.
+  it('does not delete the original row when a re-emission shares its composite key', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('msg-1') }));
+    const composite = 'msg-1|r1|eth0|lan_a';
+    expect(PacketStore.chatter.has(composite)).toBe(true);
+
+    // Simulates the protocol's self-reflood loop: same payload_id arrives on
+    // the same (device, iface, network) a second time.
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('msg-1') }));
+
+    expect(PacketStore.chatter.has(composite)).toBe(true);
   });
 });
 

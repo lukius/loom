@@ -83,14 +83,26 @@ export const PacketAnim = {
   muted: false,
 
   play(evt) {
-    if (evt.type === 'routing_flood' && (this.muted || !this._chatterAllowed(evt))) {
-      // Throttled or muted: no animation will run. Dispatch arrival so the
-      // store cleans up the entry now instead of waiting 2s for the TTL.
-      const dotKey = `${evt.payload_id}|${(evt.src && evt.src.device) || '?'}|${(evt.src && evt.src.iface) || '?'}|${evt.network || '?'}`;
-      bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
-        detail: { payloadId: dotKey, device: null },
-      }));
-      return;
+    if (evt.type === 'routing_flood') {
+      if (this.muted) {
+        // Muted: drop the canvas animation AND the store row so the panel
+        // doesn't show chatter the user explicitly muted.
+        const dotKey = `${evt.payload_id}|${(evt.src && evt.src.device) || '?'}|${(evt.src && evt.src.iface) || '?'}|${evt.network || '?'}`;
+        bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
+          detail: { payloadId: dotKey, device: null },
+        }));
+        return;
+      }
+      if (!this._chatterAllowed(evt)) {
+        // Throttled: skip the canvas animation, but leave the store row
+        // alone. Two reasons: (a) a re-emission of the original's composite
+        // key (the protocol re-floods back through the origin iface) shares
+        // the row, and dispatching arrival here would delete the original;
+        // (b) a distinct payload_id throttled on the same (device, network)
+        // is still a logically distinct message — the panel must still
+        // group it. The row's 2s TTL in packetstore handles cleanup.
+        return;
+      }
     }
 
     if (evt.flow && this._SEQUENTIAL.has(evt.type)) {
