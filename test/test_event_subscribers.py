@@ -356,3 +356,73 @@ def test_routing_table_changed_event_fires():
         system.stop()
     finally:
         os.unlink(path)
+
+
+def test_neighbor_state_changed_event_payload_shape():
+    import os
+    import tempfile
+    import textwrap
+    import time
+
+    from entities.event import EventTracer
+    from parser import Parser
+    from routing import LinkStateProtocol
+
+    yaml_text = textwrap.dedent("""
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan1: "200.0.1.0/24"
+          links:
+            p2p: "200.0.0.0/30"
+          routers:
+            r1:
+              interfaces:
+                eth0: {network: lan1, address: "200.0.1.1", cost: 1}
+                eth1: {link: p2p, address: "200.0.0.1", cost: 1}
+            r2:
+              interfaces:
+                eth0: {link: p2p, address: "200.0.0.2", cost: 1}
+    """)
+    original = LinkStateProtocol.KEEPALIVE_INTERVAL
+    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_text)
+        path = f.name
+    try:
+        events = []
+        system = Parser(path).parse().single_as()
+        EventTracer.subscribe(events.append)
+
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            nsc = [e for e in events if e.get("kind") == "neighbor_state_changed"]
+            if nsc:
+                break
+            time.sleep(0.05)
+
+        nsc_events = [e for e in events if e.get("kind") == "neighbor_state_changed"]
+        assert nsc_events, "expected at least one neighbor_state_changed event"
+        evt = nsc_events[0]
+        # Required string fields.
+        assert isinstance(evt.get("device"), str), "device must be a str"
+        assert isinstance(evt.get("interface"), str), "interface must be a str"
+        assert isinstance(evt.get("peer"), str), "peer must be a str"
+        assert isinstance(evt.get("state"), str), "state must be a str"
+        assert evt["state"] in ("down", "init", "two_way"), (
+            f"state must be a valid NeighborState value, got {evt['state']!r}"
+        )
+        # Timestamp fields: float or None.
+        for field in ("last_hello_at", "peer_acked_at"):
+            assert field in evt, f"missing field {field!r}"
+            val = evt[field]
+            assert val is None or isinstance(val, float), (
+                f"{field} must be float or None, got {type(val)}"
+            )
+        system.stop()
+    finally:
+        os.unlink(path)
+        LinkStateProtocol.KEEPALIVE_INTERVAL = original

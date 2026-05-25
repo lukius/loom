@@ -1168,3 +1168,66 @@ def test_build_graph_excludes_lsas_from_non_two_way_peers():
 
     # r1's graph should NOT contain r2 (no TWO_WAY adjacency exists).
     assert r2 not in proto._graph  # noqa: SLF001
+
+
+def test_lan_with_three_routers_each_sees_two_neighbours_two_way():
+    """Three routers on a shared LAN each reach TWO_WAY with both peers.
+
+    Pins that Hello exchange on a broadcast segment (Network, not Link)
+    drives multi-peer adjacency: every router must have the other two
+    in its bidirectional_peers set before the test times out.
+    """
+    original = LinkStateProtocol.KEEPALIVE_INTERVAL
+    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
+    yaml = textwrap.dedent("""
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            shared_lan: "200.0.1.0/24"
+            lan_r1: "200.0.2.0/24"
+            lan_r2: "200.0.3.0/24"
+            lan_r3: "200.0.4.0/24"
+          routers:
+            r1:
+              interfaces:
+                eth0: {network: shared_lan, address: "200.0.1.1", cost: 1}
+                eth1: {network: lan_r1, address: "200.0.2.1", cost: 1}
+            r2:
+              interfaces:
+                eth0: {network: shared_lan, address: "200.0.1.2", cost: 1}
+                eth1: {network: lan_r2, address: "200.0.3.1", cost: 1}
+            r3:
+              interfaces:
+                eth0: {network: shared_lan, address: "200.0.1.3", cost: 1}
+                eth1: {network: lan_r3, address: "200.0.4.1", cost: 1}
+    """)
+    path = _make_tmp_topology(yaml)
+    system = Parser(path).parse().single_as()
+    try:
+        routers = system.routers()
+        r1 = routers["r1"]
+        r2 = routers["r2"]
+        r3 = routers["r3"]
+
+        def all_two_way():
+            now = time.monotonic()
+            for router in [r1, r2, r3]:
+                bidi = router.protocol()._neighbor_table.bidirectional_peers(  # noqa: SLF001
+                    dead_interval=router.protocol()._dead_interval,  # noqa: SLF001
+                    now=now,
+                )
+                others = {r for r in [r1, r2, r3] if r is not router}
+                if not others.issubset(bidi):
+                    return False
+            return True
+
+        assert _wait(all_two_way, timeout=10.0), (
+            "not all three routers reached TWO_WAY with each other within timeout"
+        )
+    finally:
+        system.stop()
+        os.unlink(path)
+        LinkStateProtocol.KEEPALIVE_INTERVAL = original
