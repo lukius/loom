@@ -1668,6 +1668,7 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 .pkt-swatch[data-type="ping_request"]  { background: #f59e0b; }
 .pkt-swatch[data-type="ping_reply"]    { background: #fbbf24; }
 .pkt-swatch[data-type="routing_flood"] { background: #94a3b8; }
+.pkt-swatch[data-type="hello"]         { background: #fcd34d; }
 .pkt-id { font-family: 'Geist Mono', monospace; font-weight: 600; }
 .pkt-type { font-family: 'Geist Mono', monospace; font-size: 11px; opacity: 0.8; }
 .pkt-route { opacity: 0.85; }

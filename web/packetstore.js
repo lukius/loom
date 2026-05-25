@@ -6,6 +6,7 @@
 // (#1, #2, #R1, ...) used both in the Packets panel and as on-canvas
 // badges. All state is reset when the simulator goes idle.
 import { bus, state } from './state.js';
+import { ROUTING_CHATTER_TYPES } from './packettypes.js';
 
 let _debounceTimer = null;
 let _simPaused = false;
@@ -70,7 +71,7 @@ bus.addEventListener('sim:status-changed', (e) => {
 });
 
 const USER_TYPES = new Set(['user_datagram', 'ping_request', 'ping_reply']);
-const CHATTER_TYPES = new Set(['routing_flood', 'hello']);
+const CHATTER_TYPES = ROUTING_CHATTER_TYPES;
 
 function resolveDeviceLabel(address, st) {
   if (!address) return null;

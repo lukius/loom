@@ -760,7 +760,12 @@ describe('PacketsPanel — hello chatter section', () => {
     expect(summary.textContent.toLowerCase()).toContain('routing chatter');
   });
 
-  it('expanding chatter shows hello row with data-type="hello" swatch', () => {
+  it('expanding chatter shows hello row with data-type="hello" swatch coloured amber', () => {
+    // Inject the relevant CSS rules so getComputedStyle reflects them.
+    const style = document.createElement('style');
+    style.textContent = '.pkt-swatch[data-type="hello"] { background: #fcd34d; }';
+    document.head.appendChild(style);
+
     PacketsPanel.wire();
     PacketsPanel.open();
     emitHello('h1');
@@ -770,6 +775,16 @@ describe('PacketsPanel — hello chatter section', () => {
     expect(rows.length).toBe(1);
     const swatch = rows[0].querySelector('.pkt-swatch[data-type="hello"]');
     expect(swatch).not.toBeNull();
+    // Verify the swatch actually has the amber colour — catching the case where
+    // the CSS rule in styles.css is missing (the original regression).
+    const bg = window.getComputedStyle(swatch).background ||
+               window.getComputedStyle(swatch).backgroundColor;
+    expect(bg).toBeTruthy();
+    expect(bg).not.toBe('');
+    expect(bg).not.toBe('rgba(0, 0, 0, 0)');
+    expect(bg).not.toBe('transparent');
+
+    document.head.removeChild(style);
   });
 
   it('hello and routing_flood both appear in chatter section together', () => {

@@ -3,7 +3,7 @@
 // sim:packet events emitted by sim.js and renders short tweened SVG dots over
 // the canvas. Reads Sim.state to freeze in-flight tweens while paused.
 import { bus, state, NODE } from './state.js';
-
+import { ROUTING_CHATTER_TYPES } from './packettypes.js';
 import { escapeHtml } from './utils.js';
 import { PacketStore } from './packetstore.js';
 import {
@@ -12,6 +12,12 @@ import {
   collectLinkEndpoints, clipToRect, linkBezier,
 } from './canvas.js';
 import { Sim } from './sim.js';
+
+// Build the selector at module-load time once. If a new type is added
+// to ROUTING_CHATTER_TYPES, this picks it up automatically.
+const ROUTING_CHATTER_SELECTOR = [...ROUTING_CHATTER_TYPES]
+    .map(t => `rect[data-packet-type="${t}"]`)
+    .join(',');
 
 // Packet glyph dimensions — wider than tall so the rectangle reads as a
 // "datagram" gliding along the wire (textbook convention).
@@ -75,9 +81,8 @@ export const PacketAnim = {
     ping_reply:     { fill: '#fbbf24', opacity: 1.0 },
   },
   // All routing-protocol chatter types (animated in parallel, throttled/muted
-  // as a group). New protocol message types (hello, future withdrawal hints,
-  // etc.) belong here.
-  _ROUTING_CHATTER_TYPES: new Set(['routing_flood', 'hello']),
+  // as a group). Defined in packettypes.js — import from there to stay in sync.
+  _ROUTING_CHATTER_TYPES: ROUTING_CHATTER_TYPES,
   // Types whose hops should be animated sequentially. Grouped by `flow` (the
   // unordered pair of endpoint addresses) so a ping_request and its ping_reply,
   // which share the same flow, animate one after the other instead of overlapping.
@@ -463,7 +468,7 @@ bus.addEventListener('packets:chatter-badges-changed', () => {
   const layer = document.getElementById('packet-layer');
   if (!layer) return;
   const chatterOn = document.body.dataset.chatterBadges === 'on';
-  const dots = layer.querySelectorAll('rect[data-packet-type="routing_flood"], rect[data-packet-type="hello"]');
+  const dots = layer.querySelectorAll(ROUTING_CHATTER_SELECTOR);
   dots.forEach(dot => {
     // dot.dataset.payloadId is already the composite key for chatter dots.
     // Look up the row directly rather than going through idFor (which would
