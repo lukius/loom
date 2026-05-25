@@ -7,9 +7,11 @@ from typing import Iterable
 from entities.address import NullAddress
 from entities.event import EventTracer
 
+from .hello import Hello
 from .lsa import LSA
 from .lsdb import LSDB
 from .messages import Datagram
+from .neighbor import NeighborTable
 from .policy import RFC1918_OUTBOUND, RouteMap
 
 
@@ -57,6 +59,9 @@ class LinkStateProtocol(RoutingProtocol):
 
         self._seq = 0
         self._lsdb = LSDB(router)
+        self._neighbor_table = NeighborTable()
+        self._hello_interval: float = 10.0
+        self._dead_interval: float = 30.0
         # Permit-all policy for the local LSA stored in the LSDB — local
         # connectivity (including RFC 1918 prefixes) must appear in the
         # local graph so Dijkstra can route to directly-connected networks.
@@ -111,9 +116,13 @@ class LinkStateProtocol(RoutingProtocol):
             self._keepalive_thread.join(timeout=2.0)
 
     def handle_incoming_message(self, msg, interface):
-        if not isinstance(msg, LSA):
+        if isinstance(msg, LSA):
+            self._handle_incoming_lsa(msg, interface)
             return
-        self._handle_incoming_lsa(msg, interface)
+        if isinstance(msg, Hello):
+            self._handle_incoming_hello(msg, interface)
+            return
+        # Unknown message kind — drop.
 
     def _handle_incoming_lsa(self, lsa, interface):
         now = time.monotonic()
@@ -128,6 +137,35 @@ class LinkStateProtocol(RoutingProtocol):
             self._flood_lsa(lsa, exclude=interface)
             if result.changed_graph():
                 self._rebuild_graph_and_recompute()
+
+    def _handle_incoming_hello(self, hello, interface):
+        now = time.monotonic()
+        peer_listed_us = self._router in hello.neighbours_heard()
+        transition = self._neighbor_table.record_hello(
+            interface, hello.originator(),
+            peer_listed_us=peer_listed_us,
+            dead_interval=self._dead_interval,
+            now=now,
+        )
+        if transition is None:
+            return
+        self._broadcast_neighbor_state_changed(transition)
+        if transition.went_down():
+            self._lsdb.purge(transition.neighbor().peer())
+        # State change → eligibility may have changed.
+        self._rebuild_graph_and_recompute()
+
+    def _broadcast_neighbor_state_changed(self, transition):
+        n = transition.neighbor()
+        EventTracer._broadcast({
+            "kind": "neighbor_state_changed",
+            "device": self._router.name(),
+            "interface": n.interface().name(),
+            "peer": n.peer().name(),
+            "state": transition.after().value,
+            "last_hello_at": n.last_hello_at(),
+            "peer_acked_at": n.peer_acked_at(),
+        })
 
     def _next_seq(self) -> int:
         self._seq += 1
@@ -158,28 +196,52 @@ class LinkStateProtocol(RoutingProtocol):
         return result.changed_graph()
 
     def _handle_update(self):
-        """Originate a fresh LSA cycle. Installs into local LSDB and
-        floods on all interfaces. Called by the keepalive loop."""
+        """Originate a fresh Hello + LSA cycle. Sweeps dead-interval
+        expiries, emits per-interface Hellos, and floods the local LSA.
+        Called by the keepalive loop."""
+        now = time.monotonic()
         with self._lock:
+            # Sweep neighbours: catch dead-interval expiries that no
+            # incoming hello can signal.
+            for transition in self._neighbor_table.sweep_transitions(
+                dead_interval=self._dead_interval, now=now,
+            ):
+                self._broadcast_neighbor_state_changed(transition)
+                if transition.went_down():
+                    self._lsdb.purge(transition.neighbor().peer())
+
+            # Build + install our LSA locally (permit-all so local graph
+            # includes all directly connected networks including RFC 1918).
             seq = self._next_seq()
-            # Local LSDB entry: permit-all so local graph includes all
-            # directly connected networks (including RFC 1918).
             local_lsa = LSA.from_router(
                 self._router, seq=seq, policy=self._local_policy,
             )
-            result = self._lsdb.install(local_lsa, now=time.monotonic())
+            result = self._lsdb.install(local_lsa, now=now)
             if result.is_accepted() and result.changed_graph():
                 self._rebuild_graph_and_recompute()
+
             # Flooded LSA: outbound policy applied — RFC 1918 prefixes omitted.
             flooded_lsa = LSA.from_router(
                 self._router, seq=seq, policy=self._outbound_policy,
             )
+            # Emit hellos (per-interface) + LSA (shared object).
             for _, iface in self._router.interfaces().items():
                 broadcast = iface.network().broadcast_address()
-                dgram = Datagram(
+                # Hello — per-interface content (lists non-DOWN neighbours heard
+                # on this interface).
+                listed = self._neighbor_table.neighbours_heard_on(
+                    iface, dead_interval=self._dead_interval, now=now,
+                )
+                hello = Hello(originator=self._router, neighbours_heard=listed)
+                hello_dgram = Datagram(
+                    src_addr=iface.address(), dst_addr=broadcast, payload=hello,
+                )
+                iface.send_to(hello_dgram, dst_addr=broadcast)
+                # LSA — shared object across all interfaces.
+                lsa_dgram = Datagram(
                     src_addr=iface.address(), dst_addr=broadcast, payload=flooded_lsa,
                 )
-                iface.send_to(dgram, dst_addr=broadcast)
+                iface.send_to(lsa_dgram, dst_addr=broadcast)
 
     def _flood_lsa(self, lsa, exclude):
         """Re-flood `lsa` out every interface except `exclude` (the inbound)."""
@@ -193,9 +255,23 @@ class LinkStateProtocol(RoutingProtocol):
             iface.send_to(dgram, dst_addr=broadcast)
 
     def _rebuild_graph_and_recompute(self):
-        # Phase 1: every non-local origin is considered eligible
-        # (Phase 2 will narrow this to TWO_WAY peers).
-        eligible = set(o for o in self._lsdb.origins() if o is not self._router)
+        now = time.monotonic()
+        bidi = self._neighbor_table.bidirectional_peers(
+            dead_interval=self._dead_interval, now=now,
+        )
+        # Eligible origins: direct TWO_WAY neighbours are always trusted. For
+        # non-adjacent origins (origins we've never exchanged Hellos with),
+        # trust them only when at least one TWO_WAY adjacency exists — this
+        # allows multi-hop LSA flooding to build the full graph while still
+        # excluding unverified LSAs injected with no adjacency context at all.
+        if bidi:
+            known_direct = {n.peer() for n in self._neighbor_table.all()}
+            eligible = {
+                o for o in self._lsdb.origins()
+                if o is not self._router and (o in bidi or o not in known_direct)
+            }
+        else:
+            eligible = bidi  # empty set — no trusted context yet
         self._graph = self._lsdb.build_graph(eligible_origins=eligible)
         self._recompute_routing_table()
 

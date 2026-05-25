@@ -9,6 +9,7 @@ import pytest
 from entities import Address, NetworkAddress
 from entities.event import EventTracer
 from parser import Parser
+from routing import LinkStateProtocol
 
 
 def _make_topology(yaml_text):
@@ -229,6 +230,8 @@ internet:
 
 def test_ping_host_behind_p2p_slash30_link():
     """h1 pings h2 across a /30 p2p link; expect non-None RTT."""
+    original = LinkStateProtocol.KEEPALIVE_INTERVAL
+    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     path = _make_topology(H1_SLASH30_LINK)
     system = Parser(path).parse().single_as()
     try:
@@ -240,17 +243,20 @@ def test_ping_host_behind_p2p_slash30_link():
         assert _wait(lambda: (
             _table_has_prefix(r1, "200.100.2.0/24")
             and _table_has_prefix(r2, "200.100.1.0/24")
-        )), "routers did not converge before ping (/30)"
+        ), timeout=5.0), "routers did not converge before ping (/30)"
         rtt = h1.ping(h2.address(), timeout=3.0)
         assert rtt is not None, "ping across /30 link returned None (timeout)"
         assert rtt < 1.0
     finally:
         system.stop()
         os.unlink(path)
+        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_ping_host_behind_p2p_slash31_link():
     """h1 pings h2 across a /31 p2p link; expect non-None RTT."""
+    original = LinkStateProtocol.KEEPALIVE_INTERVAL
+    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     path = _make_topology(H1_SLASH31_LINK)
     system = Parser(path).parse().single_as()
     try:
@@ -262,13 +268,14 @@ def test_ping_host_behind_p2p_slash31_link():
         assert _wait(lambda: (
             _table_has_prefix(r1, "200.100.2.0/24")
             and _table_has_prefix(r2, "200.100.1.0/24")
-        )), "routers did not converge before ping (/31)"
+        ), timeout=5.0), "routers did not converge before ping (/31)"
         rtt = h1.ping(h2.address(), timeout=3.0)
         assert rtt is not None, "ping across /31 link returned None (timeout)"
         assert rtt < 1.0
     finally:
         system.stop()
         os.unlink(path)
+        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_ping_host_on_link():
@@ -347,6 +354,8 @@ def test_multi_tenant_nat_e2e():
     """Two tenants share 192.168.1.0/24 behind their own routers. Both
     reach a shared public destination through r_core; each tenant's NAT
     rewrites its source on the way out. Tenants cannot reach each other."""
+    original = LinkStateProtocol.KEEPALIVE_INTERVAL
+    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     path = _make_topology(MULTI_TENANT_NAT)
     system = Parser(path).parse().single_as()
     try:
@@ -359,9 +368,9 @@ def test_multi_tenant_nat_e2e():
         # private LANs are not.)
         r_a = system.routers()["r_a"]
         r_b = system.routers()["r_b"]
-        assert _wait(lambda: _table_has_prefix(r_a, "200.100.0.0/24"), timeout=5.0), \
+        assert _wait(lambda: _table_has_prefix(r_a, "200.100.0.0/24"), timeout=10.0), \
             "r_a did not converge on public LAN"
-        assert _wait(lambda: _table_has_prefix(r_b, "200.100.0.0/24"), timeout=5.0), \
+        assert _wait(lambda: _table_has_prefix(r_b, "200.100.0.0/24"), timeout=10.0), \
             "r_b did not converge on public LAN"
 
         # Tenant A reaches the public host (NAT'd by r_a).
@@ -382,6 +391,7 @@ def test_multi_tenant_nat_e2e():
     finally:
         system.stop()
         os.unlink(path)
+        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_nat_ping_packet_events_share_one_flow():
@@ -392,6 +402,8 @@ def test_nat_ping_packet_events_share_one_flow():
     every emitted `packet` event must carry the same `flow` even when NAT
     rewrites the visible src/dst mid-path.
     """
+    original = LinkStateProtocol.KEEPALIVE_INTERVAL
+    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     path = _make_topology(MULTI_TENANT_NAT)
     events = []
     system = Parser(path).parse().single_as()
@@ -401,8 +413,8 @@ def test_nat_ping_packet_events_share_one_flow():
         h_pub = system.host("h_pub")
         r_a = system.routers()["r_a"]
         r_b = system.routers()["r_b"]
-        assert _wait(lambda: _table_has_prefix(r_a, "200.100.0.0/24"), timeout=5.0)
-        assert _wait(lambda: _table_has_prefix(r_b, "200.100.0.0/24"), timeout=5.0)
+        assert _wait(lambda: _table_has_prefix(r_a, "200.100.0.0/24"), timeout=10.0)
+        assert _wait(lambda: _table_has_prefix(r_b, "200.100.0.0/24"), timeout=10.0)
 
         # Clear out the routing-convergence chatter; we only want this ping's events.
         events.clear()
@@ -426,6 +438,7 @@ def test_nat_ping_packet_events_share_one_flow():
     finally:
         system.stop()
         os.unlink(path)
+        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_two_private_hosts_keep_distinct_nat_entries_for_same_destination():
@@ -461,6 +474,8 @@ def test_two_private_hosts_keep_distinct_nat_entries_for_same_destination():
                 eth0: {link: uplink, address: "198.51.100.2", cost: 1}
                 eth1: {network: lan_pub, address: "200.100.0.1", cost: 1}
     """)
+    original = LinkStateProtocol.KEEPALIVE_INTERVAL
+    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     path = _make_topology(topology)
     system = Parser(path).parse().single_as()
     try:
@@ -468,7 +483,7 @@ def test_two_private_hosts_keep_distinct_nat_entries_for_same_destination():
         h_y = system.host("h_y")
         h_pub = system.host("h_pub")
         r_nat = system.routers()["r_nat"]
-        assert _wait(lambda: _table_has_prefix(r_nat, "200.100.0.0/24"), timeout=5.0)
+        assert _wait(lambda: _table_has_prefix(r_nat, "200.100.0.0/24"), timeout=10.0)
         rtt_x = h_x.ping(h_pub.address(), timeout=2.0)
         rtt_y = h_y.ping(h_pub.address(), timeout=2.0)
         assert rtt_x is not None, "h_x → h_pub ping failed"
@@ -481,6 +496,7 @@ def test_two_private_hosts_keep_distinct_nat_entries_for_same_destination():
     finally:
         system.stop()
         os.unlink(path)
+        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 _TWO_HOPS_TO_R1 = textwrap.dedent("""

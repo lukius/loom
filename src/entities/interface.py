@@ -9,6 +9,7 @@ from .exception import InterfaceNotReadyException
 from .packet import Datagram, Frame, PingReply, PingRequest, RoutingMessage, UserMessage
 
 _PACKET_KIND = {
+    "Hello": "hello",
     "LSA": "routing_flood",
     "RoutingMessage": "routing_flood",
     "UserMessage": "user_datagram",
@@ -16,8 +17,9 @@ _PACKET_KIND = {
     "PingReply": "ping_reply",
 }
 
-# Deferred import: routing.lsa imports entities.packet.Message; placing
-# this import after module-level code avoids the circular-init race.
+# Deferred imports: routing.lsa / routing.hello import entities.packet.Message;
+# placing these after module-level code avoids the circular-init race.
+from routing.hello import Hello  # noqa: E402, PLC0415
 from routing.lsa import LSA  # noqa: E402, PLC0415
 
 
@@ -43,6 +45,11 @@ def _summarize_payload(payload) -> dict:
         return {"seq": payload.seq}
     if isinstance(payload, PingReply):
         return {"seq": payload.seq, "request_ts": payload.request_ts}
+    if isinstance(payload, Hello):
+        return {
+            "originator": payload.originator().name(),
+            "neighbours_heard": [r.name() for r in payload.neighbours_heard()],
+        }
     if isinstance(payload, LSA):
         return {
             "seq": payload.seq(),

@@ -15,7 +15,7 @@ from entities import (
     Router,
 )
 from parser import Parser
-from routing import LSA, LinkStateProtocol, RouteMap
+from routing import LSA, Hello, LinkStateProtocol, RouteMap
 from routing.policy import RFC1918_OUTBOUND
 
 
@@ -152,23 +152,30 @@ def test_routers_with_shared_iface_names_all_receive_lsas():
     """Regression: when two routers share an interface name (eth0/eth1), each
     one must still receive LSAs. Previously Network keyed interfaces by name,
     so later-added routers clobbered earlier ones on the same network."""
+    original = LinkStateProtocol.KEEPALIVE_INTERVAL
+    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(SAMPLE_THREE_ROUTERS_SHARED_NAMES)
         path = f.name
     system = Parser(path).parse().single_as()
     try:
-        time.sleep(1.5)
         routers = system.routers()
-        # every router's graph should know about every other router
-        for name, r in routers.items():
-            graph_routers = {x.name() for x in r.protocol()._graph._routers}  # noqa: SLF001
-            for other in routers:
-                assert other in graph_routers, (
-                    f"{name}'s graph missing {other}; has {graph_routers}"
-                )
+
+        def all_graphs_complete():
+            for name, r in routers.items():
+                graph_routers = {x.name() for x in r.protocol()._graph._routers}  # noqa: SLF001
+                for other in routers:
+                    if other not in graph_routers:
+                        return False
+            return True
+
+        assert _wait(all_graphs_complete, timeout=5.0), (
+            "not all routers converged within timeout"
+        )
     finally:
         system.stop()
         os.unlink(path)
+        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_stop_then_start_resumes_periodic_ticks():
@@ -217,31 +224,39 @@ def test_stop_then_start_resumes_periodic_ticks():
 
 
 def test_initial_broadcast_propagates_before_keepalive_interval():
-    # Every router must learn the full topology before the 10s keepalive elapses.
+    # Every router must learn the full topology after two keepalive ticks
+    # (TWO_WAY adjacency requires both sides to list each other).
+    original = LinkStateProtocol.KEEPALIVE_INTERVAL
+    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(SAMPLE_TOPOLOGY)
         path = f.name
     system = Parser(path).parse().single_as()
     try:
-        time.sleep(1.0)  # well under KEEPALIVE_INTERVAL=10
         routers = system.routers()
         prefixes = {
             iface.network().address()
             for r in routers.values()
             for iface in r.interfaces().values()
         }
-        for name, r in routers.items():
-            graph_prefixes = set(r.protocol()._graph.networks())  # noqa: SLF001
-            missing = prefixes - graph_prefixes
-            assert not missing, (
-                f"{name} missing prefixes {missing}; saw {graph_prefixes}"
-            )
-            graph_routers = set(r.protocol()._graph._routers)  # noqa: SLF001
-            assert routers["r1"] in graph_routers, f"{name} graph missing r1"
-            assert routers["r2"] in graph_routers, f"{name} graph missing r2"
+
+        def all_converged():
+            for name, r in routers.items():
+                graph_prefixes = set(r.protocol()._graph.networks())  # noqa: SLF001
+                if prefixes - graph_prefixes:
+                    return False
+                graph_routers = set(r.protocol()._graph._routers)  # noqa: SLF001
+                if routers["r1"] not in graph_routers:
+                    return False
+                if routers["r2"] not in graph_routers:
+                    return False
+            return True
+
+        assert _wait(all_converged, timeout=5.0), "routers did not converge in time"
     finally:
         system.stop()
         os.unlink(path)
+        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 class MockThread(object):
@@ -283,10 +298,19 @@ class ProtocolTest(unittest.TestCase):
         proto = LinkStateProtocol(router)
         proto._handle_update()
 
-        result = self._queue.get(timeout=0.1)
-        self.assertIsNotNone(result)
+        # _handle_update now emits a Hello then an LSA per interface; drain
+        # until we find the first LSA datagram.
+        datagram = None
+        dst_addr = None
+        for _ in range(self._queue.qsize() + 4):
+            item = self._queue.get(timeout=0.1)
+            self.assertIsNotNone(item)
+            pkt, addr = item
+            if isinstance(pkt.payload(), LSA):
+                datagram, dst_addr = pkt, addr
+                break
 
-        datagram, dst_addr = result
+        self.assertIsNotNone(datagram)
         self.assertEqual(dst_addr, '200.200.10.255')
         self.assertEqual(datagram.source(), '200.200.10.1')
         self.assertEqual(datagram.destination(), '200.200.10.255')
@@ -388,6 +412,11 @@ class ProtocolTest(unittest.TestCase):
 
         proto = LinkStateProtocol(r1)
         r1_eth1 = r1.interface('eth1')
+        # Seed TWO_WAY adjacency so r3's LSA is eligible for the graph.
+        proto._neighbor_table.record_hello(  # noqa: SLF001
+            r1_eth1, r3, peer_listed_us=True,
+            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+        )
 
         # First message from r3; new connectivity to lan5
         proto.handle_incoming_message(msg, r1_eth1)
@@ -423,6 +452,11 @@ class ProtocolTest(unittest.TestCase):
         msg.add_link(lan3.address(), r2_eth2.cost())
 
         r1_eth0 = r1.interface('eth0')
+        # Seed TWO_WAY adjacency so r2's LSA is eligible for the graph.
+        proto._neighbor_table.record_hello(  # noqa: SLF001
+            r1_eth0, r2, peer_listed_us=True,
+            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+        )
         proto.handle_incoming_message(msg, r1_eth0)
 
         result = r1_table.match(h2.address())
@@ -465,6 +499,11 @@ class ProtocolTest(unittest.TestCase):
         msg.add_link(lan6.address(), r4_eth1.cost())
         msg.add_link(lan2.address(), r4_eth2.cost())
 
+        # Seed TWO_WAY adjacency so r4's LSA is eligible for the graph.
+        proto._neighbor_table.record_hello(  # noqa: SLF001
+            r1_eth1, r4, peer_listed_us=True,
+            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+        )
         proto.handle_incoming_message(msg, r1_eth1)
 
         # No routing changes for h1, h3, h4 and h5 addresses
@@ -529,6 +568,16 @@ class ProtocolTest(unittest.TestCase):
         r3.add_interface(r3_eth1)
 
         proto = LinkStateProtocol(r1)
+
+        # Seed TWO_WAY adjacencies so r2 and r3 LSAs are eligible for the graph.
+        proto._neighbor_table.record_hello(  # noqa: SLF001
+            r1_eth1, r2, peer_listed_us=True,
+            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+        )
+        proto._neighbor_table.record_hello(  # noqa: SLF001
+            r1_eth2, r3, peer_listed_us=True,
+            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+        )
 
         msg_r2 = LSA(origin=r2, seq=1)
         msg_r2.add_link(net2.address(), r2_eth0.cost())
@@ -651,6 +700,8 @@ def _table_has_prefix(router, prefix_str):
 def test_two_routers_one_link_converge():
     """Two routers on a /30 link converge: each learns the peer's LAN and the
     link prefix as directly connected."""
+    original = LinkStateProtocol.KEEPALIVE_INTERVAL
+    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     path = _make_tmp_topology(TWO_ROUTERS_SLASH30)
     system = Parser(path).parse().single_as()
     try:
@@ -705,10 +756,13 @@ def test_two_routers_one_link_converge():
     finally:
         system.stop()
         os.unlink(path)
+        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_link_slash31_converge():
     """/31 link topology converges with identical table structure to /30."""
+    original = LinkStateProtocol.KEEPALIVE_INTERVAL
+    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     path = _make_tmp_topology(TWO_ROUTERS_SLASH31)
     system = Parser(path).parse().single_as()
     try:
@@ -759,6 +813,7 @@ def test_link_slash31_converge():
     finally:
         system.stop()
         os.unlink(path)
+        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_link_cost_propagates():
@@ -772,6 +827,8 @@ def test_link_cost_propagates():
         rather than the direct link (eth1, graph cost 5+9+1=15: r1→p2p1
         at 5, p2p1→r2 at r2's announced cost 9, r2→lan_r2 at 1).
     """
+    original = LinkStateProtocol.KEEPALIVE_INTERVAL
+    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     path = _make_tmp_topology(TWO_ROUTERS_ASYMMETRIC_COST)
     system = Parser(path).parse().single_as()
     try:
@@ -818,6 +875,7 @@ def test_link_cost_propagates():
     finally:
         system.stop()
         os.unlink(path)
+        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_handle_update_omits_private_prefixes_from_outbound_message():
@@ -897,6 +955,8 @@ def test_receiver_graph_never_learns_private_prefix():
     receiver wanted to learn about a private prefix, the sender never puts
     it on the wire.
     """
+    original = LinkStateProtocol.KEEPALIVE_INTERVAL
+    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     topology = textwrap.dedent("""
     internet:
       name: loom
@@ -940,13 +1000,15 @@ def test_receiver_graph_never_learns_private_prefix():
     finally:
         system.stop()
         os.unlink(path)
+        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 def test_three_router_convergence_with_per_origin_seq():
     """Three-router convergence: every router's routing table contains
-    a rule for every prefix after one keepalive cycle. Pins that
-    per-origin-seq + LSDB end-to-end behaviour matches the previous
-    per-interface scheme."""
+    a rule for every prefix after Hello-driven adjacency and LSA exchange.
+    Pins that per-origin-seq + LSDB + TWO_WAY filter end-to-end behaviour."""
+    original = LinkStateProtocol.KEEPALIVE_INTERVAL
+    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
     yaml = textwrap.dedent("""
     internet:
       name: loom
@@ -983,10 +1045,11 @@ def test_three_router_convergence_with_per_origin_seq():
             for r in system.routers().values()
             for p in ["200.0.1.0/24", "200.0.2.0/24",
                       "200.0.3.0/24", "200.0.4.0/24"]
-        )), "three-router topology did not converge in time"
+        ), timeout=5.0), "three-router topology did not converge in time"
     finally:
         system.stop()
         os.unlink(path)
+        LinkStateProtocol.KEEPALIVE_INTERVAL = original
 
 
 class OutboundPolicyTest(unittest.TestCase):
@@ -1013,3 +1076,95 @@ class OutboundPolicyTest(unittest.TestCase):
         proto = LinkStateProtocol(r, outbound_policy=permit_all)
         # Confirm the protocol holds the override, not the default.
         self.assertIs(proto._outbound_policy, permit_all)
+
+
+def test_hello_emitted_on_every_interface_each_cycle():
+    net1 = Network('lan1', NetworkAddress('200.0.10.0/24'))
+    net2 = Network('lan2', NetworkAddress('200.0.20.0/24'))
+    r = Router('r1')
+    r.add_interface(Interface('eth0', net1, Address('200.0.10.1'), cost=1))
+    r.add_interface(Interface('eth1', net2, Address('200.0.20.1'), cost=1))
+
+    sent = []
+    original_send = Interface.send_to
+    Interface.send_to = lambda self, pkt, dst_addr: sent.append(pkt)
+    try:
+        proto = LinkStateProtocol(r)
+        proto._handle_update()  # noqa: SLF001
+    finally:
+        Interface.send_to = original_send
+
+    hellos = [p.payload() for p in sent if isinstance(p.payload(), Hello)]
+    assert len(hellos) == 2  # one per interface
+
+
+def test_two_router_convergence_reaches_two_way():
+    # Use a short keepalive interval so the second tick (which exchanges
+    # neighbour lists) arrives within the test timeout.
+    original = LinkStateProtocol.KEEPALIVE_INTERVAL
+    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.3
+    yaml = textwrap.dedent("""
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan1: "200.0.1.0/24"
+          links:
+            p2p: "200.0.0.0/30"
+          routers:
+            r1:
+              interfaces:
+                eth0: {network: lan1, address: "200.0.1.1", cost: 1}
+                eth1: {link: p2p, address: "200.0.0.1", cost: 1}
+            r2:
+              interfaces:
+                eth0: {link: p2p, address: "200.0.0.2", cost: 1}
+    """)
+    path = _make_tmp_topology(yaml)
+    system = Parser(path).parse().single_as()
+    try:
+        r1 = system.routers()["r1"]
+        r2 = system.routers()["r2"]
+
+        def both_two_way():
+            r1_bidi = r1.protocol()._neighbor_table.bidirectional_peers(  # noqa: SLF001
+                dead_interval=r1.protocol()._dead_interval, now=time.monotonic())  # noqa: SLF001
+            r2_bidi = r2.protocol()._neighbor_table.bidirectional_peers(  # noqa: SLF001
+                dead_interval=r2.protocol()._dead_interval, now=time.monotonic())  # noqa: SLF001
+            return r2 in r1_bidi and r1 in r2_bidi
+
+        assert _wait(both_two_way, timeout=5.0), "did not reach TWO_WAY in time"
+    finally:
+        system.stop()
+        os.unlink(path)
+        LinkStateProtocol.KEEPALIVE_INTERVAL = original
+
+
+def test_build_graph_excludes_lsas_from_non_two_way_peers():
+    """Pin the eligibility filter: receive r2's LSA but with no
+    Hello-driven adjacency, r2's links must not appear in r1's graph."""
+    net1 = Network('lan1', NetworkAddress('200.0.1.0/24'))
+    net2 = Network('lan2', NetworkAddress('200.0.2.0/24'))
+    r1 = Router('r1')
+    r1_eth0 = Interface('eth0', net1, Address('200.0.1.1'), cost=1)
+    r1.add_interface(r1_eth0)
+    r1.add_interface(Interface('eth1', net2, Address('200.0.2.1'), cost=1))
+
+    r2 = Router('r2')
+    r2_eth0 = Interface('eth0', net2, Address('200.0.2.2'), cost=1)
+    r2.add_interface(r2_eth0)
+
+    original_send = Interface.send_to
+    Interface.send_to = lambda self, pkt, dst_addr: None
+    try:
+        proto = LinkStateProtocol(r1)
+        lsa_from_r2 = LSA(origin=r2, seq=1)
+        lsa_from_r2.add_link(net2.address(), 1)
+        proto.handle_incoming_message(lsa_from_r2, r1.interface('eth1'))
+    finally:
+        Interface.send_to = original_send
+
+    # r1's graph should NOT contain r2 (no TWO_WAY adjacency exists).
+    assert r2 not in proto._graph  # noqa: SLF001
