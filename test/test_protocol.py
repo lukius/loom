@@ -90,38 +90,6 @@ internet:
 """)
 
 
-def test_set_keepalive_interval_updates_protocol():
-    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
-        f.write(SAMPLE_TOPOLOGY)
-        path = f.name
-    system = Parser(path).parse().single_as()
-    try:
-        r1 = system.routers()["r1"]
-        # Production default: lsa_refresh=30s, so shim reports 30.
-        assert r1.protocol().keepalive_interval() == 30
-        r1.protocol().set_keepalive_interval(3)
-        assert r1.protocol().keepalive_interval() == 3
-    finally:
-        system.stop()
-        os.unlink(path)
-
-
-def test_set_keepalive_interval_rejects_non_positive():
-    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
-        f.write(SAMPLE_TOPOLOGY)
-        path = f.name
-    system = Parser(path).parse().single_as()
-    try:
-        r1 = system.routers()["r1"]
-        with pytest.raises(ValueError):
-            r1.protocol().set_keepalive_interval(0)
-        with pytest.raises(ValueError):
-            r1.protocol().set_keepalive_interval(-1)
-    finally:
-        system.stop()
-        os.unlink(path)
-
-
 SAMPLE_THREE_ROUTERS_SHARED_NAMES = textwrap.dedent("""
 internet:
   name: loom

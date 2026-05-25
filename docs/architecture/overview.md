@@ -137,7 +137,7 @@ gets populated in the first place.
 ## Data Flow: Routing Convergence
 
 When the simulation starts (or any router boots), `RoutingProtocol._keepalive_loop`
-ticks once immediately, then every `keepalive_interval` (default 10s,
+ticks once immediately, then every `hello_interval` (default 10s,
 live-tunable via the toolbar's refresh field):
 
 ```mermaid

@@ -67,7 +67,6 @@ class LinkStateProtocol(RoutingProtocol):
         self._lsa_refresh_interval: float = 0.0  # overwritten below
         self._max_age: float = 0.0               # overwritten below
         self._maxage_check_interval: float = 0.0 # overwritten below
-        self._keepalive_interval: float = 30.0   # kept for set_keepalive_interval shim
         # Bootstrap via set_timers.
         # _scheduler is not yet set; set_timers skips the scheduler block.
         self.set_timers(hello_interval=10.0, lsa_refresh_interval=30.0)
@@ -85,24 +84,6 @@ class LinkStateProtocol(RoutingProtocol):
         self._scheduler = Scheduler()
         self._protocol_thread = threading.Thread(
             target=self._protocol_loop, daemon=True,
-        )
-
-    def keepalive_interval(self):
-        return self._keepalive_interval
-
-    def set_keepalive_interval(self, seconds):
-        """Deprecated single-knob shim — prefer set_timers().
-
-        Sets lsa_refresh_interval = seconds and hello_interval = seconds / 3,
-        preserving the old loom single-knob semantics. New callers should use
-        set_timers(hello_interval=..., lsa_refresh_interval=...) directly.
-        """
-        if not isinstance(seconds, (int, float)) or seconds <= 0:
-            raise ValueError(f"keepalive interval must be positive (got {seconds!r})")
-        self._keepalive_interval = float(seconds)
-        self.set_timers(
-            hello_interval=float(seconds) / 3.0,
-            lsa_refresh_interval=float(seconds),
         )
 
     # Canonical ratios from the loom-OSPF spec.

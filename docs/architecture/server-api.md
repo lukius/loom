@@ -176,9 +176,9 @@ Change the routing-protocol keepalive interval **live**.
   `REFRESH_MAX=300`. Errors `400` outside range.
 - Requires `as_obj is not None` (sim must be loaded), else `409`.
 
-Applied via `router._protocol.set_keepalive_interval(seconds)` on every
+Applied via `proto.set_timers(hello_interval=..., lsa_refresh_interval=seconds)` on every
 router. The change takes effect at the next sleep boundary of each
-router's keepalive thread — at most one current-interval's delay.
+router's protocol thread — at most one current-interval's delay.
 
 ---
 
