@@ -51,6 +51,8 @@ The **Refresh** field is disabled when the sim is `idle` — there's
 nothing to apply the new interval to until a topology is loaded and
 running.
 
+![Toolbar showing all controls including the Protocol button](../images/toolbar.png)
+
 ### Protocol settings
 
 Click **Protocol** in the toolbar to open the Protocol settings popover.
@@ -71,6 +73,8 @@ Two derived values are shown read-only alongside the inputs:
 Press **Apply** (or <kbd>Enter</kbd> inside either field) to push the new
 values to the running simulation. The change takes effect on the next
 keepalive tick — no restart required.
+
+![Protocol settings popover with derived Dead interval and Max-age values](../images/protocol-popover.png)
 
 For the underlying mechanics, see
 [`docs/architecture/routing-protocol.md`](../architecture/routing-protocol.md).
@@ -262,6 +266,12 @@ A directly-connected route shows `0.0.0.0` as the next hop — that's
 the simulator's sentinel value meaning "deliver to the packet's
 destination on this interface." See [Routing tables](routing-tables.md)
 for what to read into this.
+
+The router inspector also shows a **Neighbours** section listing, per
+interface, every discovered peer and its adjacency state
+(`TWO_WAY`, `INIT`, or `DOWN`).
+
+![Router inspector showing Neighbours panel and collapsible Routing table section](../images/inspector-router.png)
 
 ## Terminals
 

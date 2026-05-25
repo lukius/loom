@@ -9,7 +9,7 @@ loom/
 ├── src/
 │   ├── loom.py            # Entry point — web UI (default) or 'shell' subcommand
 │   ├── entities/          # AS, Router, Host, Network, Interface, Address, Packet, Event
-│   ├── routing/           # RoutingProtocol (link-state) + NetworkGraph (Dijkstra)
+│   ├── routing/           # RoutingProtocol (loom-OSPF link-state) + LSDB → NetworkGraph (Dijkstra)
 │   ├── parser/            # YAML topology loader + SystemValidator
 │   └── shell/             # `cmd.Cmd`-based REPL (read/route/send/update_cost/exit)
 ├── test/
