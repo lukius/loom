@@ -161,11 +161,10 @@ interfaces, builds one `RoutingMessage` per interface, fills its
 the broadcast address of each fabric.
 
 **The `_seq` field is per-interface**, not per-router — every interface
-has its own counter inside `_seqs`. The `_seqs_by_address` table on each
-receiving router is keyed by `src_address` (the interface originating
-the flood), so a receiver accepts **one independent dedup stream per
-unique source interface address** — a router with K interfaces produces
-K parallel streams that every peer tracks separately.
+has its own counter inside `_seqs`. The LSDB on each receiving router
+tracks the last seen sequence number per origin router, so a receiver
+deduplicates by `(origin_router, seq)` — a router with K interfaces
+produces K parallel streams that every peer tracks separately.
 **See [`routing-protocol.md`](routing-protocol.md)** for the full
 flooding rules; the trap is that `seq` and the receiver's "last seen
 seq" are both **per originating interface**, not per source router.

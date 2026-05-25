@@ -631,8 +631,8 @@ describe('PacketAnim — throttle preserves distinct chatter messages', () => {
   });
 
   // Bug: the routing protocol re-floods a message back into its origin iface
-  // (because `_seqs_by_address[my_addr]` starts at -1, so the originator
-  // doesn't recognize its own message coming back). The SPA sees a second
+  // (because the LSDB dedup starts at -1, so the originator doesn't recognize
+  // its own message coming back). The SPA sees a second
   // sim:packet with the *same* composite key as the original. The throttle
   // path's sim:packet-arrived dispatch deletes the original's row.
   it('does not delete the original row when a re-emission shares its composite key', () => {

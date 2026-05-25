@@ -136,40 +136,41 @@ gets populated in the first place.
 
 ## Data Flow: Routing Convergence
 
-When the simulation starts (or any router boots), `RoutingProtocol._keepalive_loop`
-ticks once immediately, then every `hello_interval` (default 10s,
-live-tunable via the toolbar's refresh field):
+When the simulation starts (or any router boots), `LinkStateProtocol._protocol_loop`
+ticks once immediately, then on independent hello and refresh cadences
+(both live-tunable via the toolbar; see [`routing-protocol.md`](routing-protocol.md)
+for details):
 
 ```mermaid
 sequenceDiagram
-  participant R1KA as r1 keepalive thread
+  participant R1KA as r1 protocol thread
   participant R1 as Router r1
   participant LAN1 as Network lan1
-  participant R2 as Router r2 (RoutingProtocol)
+  participant R2 as Router r2 (LinkStateProtocol)
   participant R2GR as r2's NetworkGraph
 
   R1KA->>R1: _handle_update()
   R1->>R1: update_state()  (refresh self edges in graph)
-  R1->>R1: _recompute_if_dirty() if graph changed
+  R1->>R1: _rebuild_graph_and_recompute() if graph changed
   R1->>LAN1: For each iface: broadcast RoutingMessage(seq=N)
   LAN1->>R2: deliver frame (broadcast)
   R2->>R2: handle_incoming_message(msg, iface)
-  R2->>R2: seq > last seen? -> flood (out of every iface except inbound)
-  R2->>R2GR: _update_graph(msg)  (add neighbor edges, set weights)
-  R2->>R2: changed? -> rebuild routing_table via Dijkstra
+  R2->>R2: LSDB.install() -> per-origin dedup by (origin_router, seq)
+  R2->>R2GR: rebuild graph from LSDB if InstallResult.changed_graph()
+  R2->>R2: changed? -> _recompute_routing_table() via Dijkstra
   R2->>R2KA: emit {"kind":"routing_table_changed", "device":"r2", "rules":[...]}
 ```
 
-The flood is **receiver-side deduplicated** by `(src_address, seq)`. Each
-router maintains `_seqs_by_address[src] = last_seen_seq`; an incoming
-message with `seq <= last_seen_seq` is dropped. New messages are
-re-flooded out of **every interface except** the one they arrived on.
+The flood is **receiver-side deduplicated** per origin router: `LSDB.install()`
+tracks the last seen sequence number for each origin and drops messages with
+`seq <= last_seen_seq`. New messages are re-flooded out of **every interface
+except** the one they arrived on.
 
-Routing tables are only recomputed when the graph actually changes — the
-`_graph_updated` flag is set inside `update_state`, `_update_graph`, and
-`add_edge` calls, and `_recompute_if_dirty` is a no-op otherwise.
+Routing tables are only recomputed when the graph actually changes —
+`_rebuild_graph_and_recompute` calls `_recompute_routing_table` only when
+`InstallResult.changed_graph()` is true.
 **Preserve that guard** when editing the protocol; without it routing
-tables churn on every keepalive.
+tables churn on every protocol tick.
 
 ## State Machine: SimState
 
@@ -240,7 +241,7 @@ app startup and shared across the lifespan of the process.
 Event kinds currently emitted:
 
 - `packet` — every frame leaving an interface (`Interface.send_to`)
-- `routing_table_changed` — every recompute (`RoutingProtocol._recompute_if_dirty`)
+- `routing_table_changed` — every recompute (`LinkStateProtocol._recompute_routing_table`)
 - `sim_state` — every state transition (`SimState.start/pause/resume/stop`)
 
 ## What's Not in This Diagram
