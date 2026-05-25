@@ -86,6 +86,7 @@ class LinkStateProtocol(RoutingProtocol):
 
         self._stopped = False
         self._stop_event = threading.Event()
+        self._wake_event = threading.Event()
         self._scheduler = Scheduler()
         self._protocol_thread = threading.Thread(
             target=self._protocol_loop, daemon=True,
@@ -135,18 +136,37 @@ class LinkStateProtocol(RoutingProtocol):
         # stale LSA is caught within one refresh interval after it expires.
         self._maxage_check_interval = self._lsa_refresh_interval
         # Refresh the scheduler so a live config change takes effect on the
-        # next loop iteration. Re-uses the existing fire_at to avoid spurious
-        # immediate fires; only the cadence updates.
+        # next loop iteration. When the loop is running and the new interval
+        # is shorter than the remaining time on the existing deadline, reset
+        # fire_at to now+interval so the loop dispatches promptly after waking.
+        # When the loop is not yet running (bootstrap or pre-start), preserve
+        # the existing fire_at to avoid spurious immediate fires on start.
         if hasattr(self, '_scheduler') and self._scheduler is not None:
             now = time.monotonic()
+            loop_running = (
+                hasattr(self, '_protocol_thread')
+                and self._protocol_thread is not None
+                and self._protocol_thread.is_alive()
+            )
             for name, interval in (
                 ('hello', self._hello_interval),
                 ('lsa_refresh', self._lsa_refresh_interval),
                 ('maxage_check', self._maxage_check_interval),
             ):
                 existing = self._scheduler._deadlines.get(name)  # noqa: SLF001
-                fire_at = existing if existing is not None else (now + interval)
+                if existing is None:
+                    fire_at = now + interval
+                elif loop_running and (existing - now) > interval:
+                    # Old deadline is further away than the new interval;
+                    # reset so the loop fires at the new (shorter) cadence.
+                    fire_at = now + interval
+                else:
+                    fire_at = existing
                 self._scheduler.schedule(name, base_interval=interval, fire_at=fire_at)
+        # Wake a parked protocol loop so it picks up the new cadence promptly
+        # instead of waiting until the old timer fires.
+        if hasattr(self, '_wake_event') and self._wake_event is not None:
+            self._wake_event.set()
 
     def lsdb(self):
         return self._lsdb
@@ -175,6 +195,7 @@ class LinkStateProtocol(RoutingProtocol):
             traceback.print_exc()
         self._stopped = True
         self._stop_event.set()
+        self._wake_event.set()  # ensure a parked loop exits immediately
         if self._protocol_thread is not None and self._protocol_thread.is_alive():
             self._protocol_thread.join(timeout=2.0)
 
@@ -467,7 +488,9 @@ class LinkStateProtocol(RoutingProtocol):
         while not self._stopped:
             now = time.monotonic()
             wait_for = max(0.0, self._scheduler.next_deadline() - now)
-            if self._stop_event.wait(timeout=wait_for):
+            self._wake_event.wait(timeout=wait_for)
+            self._wake_event.clear()
+            if self._stopped:
                 break
             if gate is not None:
                 running, stopped = gate.wait_or_stop()

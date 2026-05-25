@@ -1404,7 +1404,12 @@ def test_set_timers_invariant_dead_must_exceed_hello():
 def test_protocol_loop_dispatches_three_independent_timers():
     """Pin that hello and lsa_refresh fire on independent cadences.
     With hello=0.1s and refresh=0.5s, after 1s we expect ~10 hellos
-    and ~2 refreshes per router."""
+    and ~2 refreshes per router.
+
+    Uses start_routing=False so timers are configured before threads
+    launch; avoids order-dependent leakage from KEEPALIVE_INTERVAL mutations
+    in other tests.
+    """
     yaml = textwrap.dedent("""
     internet:
       name: loom
@@ -1441,13 +1446,13 @@ def test_protocol_loop_dispatches_three_independent_timers():
     Interface.send_to = counting_send
 
     path = _make_tmp_topology(yaml)
+    system = None
     try:
-        system = Parser(path).parse().single_as()
+        system = Parser(path).parse(start_routing=False).single_as()
         for r in system.routers().values():
             r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.5)
-            # Disable jitter for deterministic count assertions.
             r.protocol()._scheduler = Scheduler(jitter_range=(1.0, 1.0))  # noqa: SLF001
-            r.protocol()._schedule_initial_deadlines()  # noqa: SLF001
+            r.start()
         time.sleep(1.0)
         # Two routers * (hello at 0.1s ≈ 10 per router) → ~20 hellos total.
         # Two routers * (refresh at 0.5s ≈ 2 per router) → ~4 LSAs total.
@@ -1457,7 +1462,8 @@ def test_protocol_loop_dispatches_three_independent_timers():
         assert counts['hello'] > counts['lsa']  # cadence ordering preserved
     finally:
         Interface.send_to = original_send
-        system.stop()
+        if system is not None:
+            system.stop()
         os.unlink(path)
 
 
@@ -1469,3 +1475,55 @@ def test_set_timers_live_updates_scheduler_cadence():
     # The scheduler's recorded base intervals should now reflect the new values.
     assert proto._scheduler._intervals['hello'] == 5  # noqa: SLF001
     assert proto._scheduler._intervals['lsa_refresh'] == 15  # noqa: SLF001
+
+
+def test_set_timers_wakes_parked_loop_to_apply_new_cadence():
+    """When set_timers is called on a running loop parked on a long
+    interval, the loop wakes and applies the new (shorter) cadence
+    promptly — within a few hundred milliseconds, not after the old
+    interval elapses."""
+    yaml = textwrap.dedent("""
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan_r1: "200.0.1.0/24"
+            lan_r2: "200.0.2.0/24"
+          links:
+            p2p: "200.0.0.0/30"
+          routers:
+            r1:
+              interfaces:
+                eth0: {network: lan_r1, address: "200.0.1.1", cost: 1}
+                eth1: {link: p2p, address: "200.0.0.1", cost: 1}
+            r2:
+              interfaces:
+                eth0: {link: p2p, address: "200.0.0.2", cost: 1}
+                eth1: {network: lan_r2, address: "200.0.2.1", cost: 1}
+    """)
+    sent = []
+    original_send = Interface.send_to
+    Interface.send_to = lambda self, pkt, dst_addr: sent.append(pkt)
+    path = _make_tmp_topology(yaml)
+    system = None
+    try:
+        # Start with the default 10s keepalive — loop parks for ~3.3s on hello.
+        system = Parser(path).parse().single_as()
+        time.sleep(0.2)  # let initial ticks fire and the loop park
+        sent_before = len(sent)
+        # Now drop the cadence to 0.1s hello — must take effect via wake event.
+        for r in system.routers().values():
+            r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.5)
+        # Within 0.5s we should see new emissions even though the OLD park
+        # was for several seconds.
+        time.sleep(0.5)
+        assert len(sent) > sent_before + 4, (
+            f"only {len(sent) - sent_before} new emissions; loop didn't wake"
+        )
+    finally:
+        Interface.send_to = original_send
+        if system is not None:
+            system.stop()
+        os.unlink(path)
