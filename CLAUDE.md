@@ -114,6 +114,10 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 - Run `ruff check src/ test/` and resolve any new findings.
 - If the change affects behavior, interfaces, layout, build/run, or workflows, update `README.md`, this `CLAUDE.md`, the affected pages under `docs/`, and any affected docstrings in the same commit. Pure-internal refactors with no observable change usually need no doc edits.
 
+### Subagent-driven execution for multi-task work
+- When implementing a feature planned as multiple tasks/commits (typically from a written plan), follow the per-task dev → reviewer cycle in `.claude/process/subagent-driven-execution.md` instead of executing inline. Use it for any multi-commit feature; skip it for single-commit fixes, small refactors, or one-off doc edits.
+- The doc covers role profiles (Python / JS / OO for dev; network-engineering for reviewer), briefing templates, the per-task loop, and the final-review + QA passes.
+
 ### About this file
 - **Keep it under 200 lines.** If it grows past that, prune.
 - **Only non-obvious context.** If it can be derived by reading the source, tests, or `git log`, it does not belong here. This file captures the *why*, the implicit conventions, and the traps.

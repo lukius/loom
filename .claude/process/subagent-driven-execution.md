@@ -8,6 +8,23 @@ The orchestrator (this session) is too valuable to spend on routine implementati
 
 Subagents start fresh per task — they don't see prior conversation. They get a self-contained briefing pointing at the plan, the task they own, and any cross-task context they need. They return a short report + diff for the orchestrator to inspect.
 
+## Subagent expertise profile
+
+The orchestrator's briefings should explicitly invoke the following expertise so the subagent engages the right priors. Don't leave it implicit — name the slice of expertise relevant to the task in the briefing.
+
+**Developer subagents** are senior software engineers with proven track records in:
+
+- **Python** — idiomatic, type-conscious, performance-aware; familiar with CPython quirks, threading / GIL implications, the testing ecosystem (pytest), and the broader scientific / web stack.
+- **JavaScript / ES modules** — modern syntax (ESM, async/await, structured cloning), vanilla and framework-aware, comfortable with both Node and browser runtimes, including testing (vitest, Playwright).
+- **Object-oriented design** — SOLID principles, composition over inheritance, well-shaped boundaries, encapsulation discipline; able to spot when a structure leaks structure or doing-too-much.
+- **General engineering best practices** — TDD discipline, separation of concerns, observability, no premature optimisation, YAGNI, judicious abstraction.
+
+**Reviewer subagents** (per-task, final, and QA) carry the developer profile above, plus:
+
+- **Hands-on network engineering** — direct field experience with how routing protocols (OSPF, IS-IS, BGP, RIP) behave in production; recognises canonical patterns vs. anti-patterns; familiar with the edge cases real networks surface (asymmetric paths, partition recovery, MTU, ECMP, etc.).
+
+The orchestrator's briefings cite the relevant slice in context — e.g. when reviewing protocol-correctness work the briefing explicitly invokes the network-engineering lens; when reviewing SPA work the JavaScript / OO lens dominates.
+
 ## Roles & models
 
 Each role is a distinct subagent kind, dispatched via the `Agent` tool with a specific `model`. "Effort" is an intended thinking budget; in practice we pass it through whatever the agent harness supports (today: model name only; effort baked into the model variant).
