@@ -62,6 +62,8 @@ class LinkStateProtocol(RoutingProtocol):
         self._neighbor_table = NeighborTable()
         self._hello_interval: float = 10.0
         self._dead_interval: float = 30.0
+        self._lsa_refresh_interval: float = 30.0
+        self._max_age: float = 60.0
         # Permit-all policy for the local LSA stored in the LSDB — local
         # connectivity (including RFC 1918 prefixes) must appear in the
         # local graph so Dijkstra can route to directly-connected networks.
@@ -209,6 +211,19 @@ class LinkStateProtocol(RoutingProtocol):
                 self._broadcast_neighbor_state_changed(transition)
                 if transition.went_down():
                     self._lsdb.purge(transition.neighbor().peer())
+
+            # Sweep expired LSAs: origins whose last refresh is older than
+            # max_age are purged. The local router's own LSA is excluded —
+            # it is always refreshed by this very loop.
+            expired = self._lsdb.expired_origins(max_age=self._max_age, now=now)
+            graph_dirty = False
+            for origin in expired:
+                if origin is self._router:
+                    continue
+                if self._lsdb.purge(origin):
+                    graph_dirty = True
+            if graph_dirty:
+                self._rebuild_graph_and_recompute()
 
             # Build + install our LSA locally (permit-all so local graph
             # includes all directly connected networks including RFC 1918).

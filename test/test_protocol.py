@@ -1231,3 +1231,61 @@ def test_lan_with_three_routers_each_sees_two_neighbours_two_way():
         system.stop()
         os.unlink(path)
         LinkStateProtocol.KEEPALIVE_INTERVAL = original
+
+
+def test_silent_router_lsa_purged_after_max_age():
+    """A router that goes silent (no hellos, no LSA refresh) has its
+    LSA purged from peers' LSDBs after max_age elapses, and peers
+    recompute without it."""
+    yaml = textwrap.dedent("""
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan_r1: "200.0.1.0/24"
+            lan_r2: "200.0.2.0/24"
+          links:
+            p2p: "200.0.0.0/30"
+          routers:
+            r1:
+              interfaces:
+                eth0: {network: lan_r1, address: "200.0.1.1", cost: 1}
+                eth1: {link: p2p, address: "200.0.0.1", cost: 1}
+            r2:
+              interfaces:
+                eth0: {network: lan_r2, address: "200.0.2.1", cost: 1}
+                eth1: {link: p2p, address: "200.0.0.2", cost: 1}
+    """)
+    path = _make_tmp_topology(yaml)
+    internet = Parser(path).parse(start_routing=False)
+    system = internet.single_as()
+    try:
+        # Tune timers down before starting so the test is fast.
+        for r in system.routers().values():
+            r.protocol()._hello_interval = 0.2   # noqa: SLF001
+            r.protocol()._dead_interval = 0.6    # noqa: SLF001
+            r.protocol()._lsa_refresh_interval = 0.6  # noqa: SLF001
+            r.protocol()._max_age = 1.2          # noqa: SLF001
+            r.protocol().set_keepalive_interval(0.2)
+            r.start()
+        r1 = system.routers()["r1"]
+        r2 = system.routers()["r2"]
+        # Wait for convergence.
+        assert _wait(
+            lambda: r2 in r1.protocol()._neighbor_table.bidirectional_peers(  # noqa: SLF001
+                dead_interval=r1.protocol()._dead_interval, now=time.monotonic()),  # noqa: SLF001
+            timeout=3.0,
+        )
+        # Now stop r2 silently (no withdrawal — kill the thread directly).
+        r2.protocol()._stopped = True  # noqa: SLF001
+        r2.protocol()._stop_event.set()  # noqa: SLF001
+        # Wait for r1 to purge r2's LSA.
+        assert _wait(
+            lambda: r2 not in r1.protocol()._lsdb.origins(),  # noqa: SLF001
+            timeout=5.0,
+        ), "r2's LSA was not purged after max_age"
+    finally:
+        system.stop()
+        os.unlink(path)
