@@ -69,10 +69,15 @@ export const PacketAnim = {
   DURATION_MS: 1800,
   COLORS: {
     routing_flood:  { fill: '#94a3b8', opacity: 0.6 },
+    hello:          { fill: '#fcd34d', opacity: 0.8 },
     user_datagram:  { fill: '#22c55e', opacity: 1.0 },
     ping_request:   { fill: '#f59e0b', opacity: 1.0 },
     ping_reply:     { fill: '#fbbf24', opacity: 1.0 },
   },
+  // All routing-protocol chatter types (animated in parallel, throttled/muted
+  // as a group). New protocol message types (hello, future withdrawal hints,
+  // etc.) belong here.
+  _ROUTING_CHATTER_TYPES: new Set(['routing_flood', 'hello']),
   // Types whose hops should be animated sequentially. Grouped by `flow` (the
   // unordered pair of endpoint addresses) so a ping_request and its ping_reply,
   // which share the same flow, animate one after the other instead of overlapping.
@@ -83,7 +88,7 @@ export const PacketAnim = {
   muted: false,
 
   play(evt) {
-    if (evt.type === 'routing_flood') {
+    if (this._ROUTING_CHATTER_TYPES.has(evt.type)) {
       if (this.muted) {
         // Muted: drop the canvas animation AND the store row so the panel
         // doesn't show chatter the user explicitly muted.
@@ -158,7 +163,8 @@ export const PacketAnim = {
     // simple point-tracking API; we translate into x/y at write time.
     // Chatter packets use a composite key so each interface emission gets its
     // own distinct dot↔row binding. User traffic continues to use bare payload_id.
-    const dotKey = evt.type === 'routing_flood'
+    const isChatter = this._ROUTING_CHATTER_TYPES.has(evt.type);
+    const dotKey = isChatter
       ? `${evt.payload_id}|${(evt.src && evt.src.device) || '?'}|${(evt.src && evt.src.iface) || '?'}|${evt.network || '?'}`
       : evt.payload_id;
 
@@ -186,9 +192,9 @@ export const PacketAnim = {
     let badge = null;
     const id = PacketStore.idFor(evt);
     const chatterBadgesOn = document.body.dataset.chatterBadges === 'on';
-    const wantBadge = id != null && (evt.type !== 'routing_flood' || chatterBadgesOn);
+    const wantBadge = id != null && (!isChatter || chatterBadgesOn);
     if (wantBadge) {
-      const label = evt.type === 'routing_flood' ? `#R${id}` : `#${id}`;
+      const label = isChatter ? `#R${id}` : `#${id}`;
       badge = makePacketBadge(dotKey, label, color.fill);
       layer.appendChild(badge);
     }
@@ -457,7 +463,7 @@ bus.addEventListener('packets:chatter-badges-changed', () => {
   const layer = document.getElementById('packet-layer');
   if (!layer) return;
   const chatterOn = document.body.dataset.chatterBadges === 'on';
-  const dots = layer.querySelectorAll('rect[data-packet-type="routing_flood"]');
+  const dots = layer.querySelectorAll('rect[data-packet-type="routing_flood"], rect[data-packet-type="hello"]');
   dots.forEach(dot => {
     // dot.dataset.payloadId is already the composite key for chatter dots.
     // Look up the row directly rather than going through idFor (which would

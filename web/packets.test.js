@@ -680,3 +680,68 @@ describe('PacketAnim — dot-appeared signal', () => {
     expect(spy.mock.calls[0][0].detail.payloadId).toBe('p1');
   });
 });
+
+describe('PacketAnim — colour map covers hello and routing_flood', () => {
+  it('routing_flood has a colour entry', () => {
+    expect(PacketAnim.COLORS['routing_flood']).toBeDefined();
+    expect(PacketAnim.COLORS['routing_flood'].fill).toBeTruthy();
+  });
+
+  it('hello has a colour entry distinct from routing_flood', () => {
+    expect(PacketAnim.COLORS['hello']).toBeDefined();
+    expect(PacketAnim.COLORS['hello'].fill).toBeTruthy();
+    expect(PacketAnim.COLORS['hello'].fill).not.toBe(PacketAnim.COLORS['routing_flood'].fill);
+  });
+
+  it('hello and routing_flood are listed in _ROUTING_CHATTER_TYPES', () => {
+    expect(PacketAnim._ROUTING_CHATTER_TYPES.has('hello')).toBe(true);
+    expect(PacketAnim._ROUTING_CHATTER_TYPES.has('routing_flood')).toBe(true);
+  });
+});
+
+describe('PacketAnim — hello chatter mute/throttle branches', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    PacketAnim._lastChatter.clear();
+    PacketAnim.muted = false;
+    delete document.body.dataset.chatterBadges;
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g data-kind="router" data-name="r1" transform="translate(100 100)"></g>
+        <g data-kind="network" data-name="lan_a" transform="translate(250 100)"></g>
+      </g><g id="packet-layer"></g></svg>`;
+    state.networks = { lan_a: { cidr: '10.0.0.0/24', x: 250, y: 100 } };
+    state.hosts = {};
+    state.routers = { r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 } } } };
+    state.links = {};
+  });
+
+  function helloEvt(payloadId) {
+    return {
+      type: 'hello', payload_id: payloadId, network: 'lan_a',
+      src: { device: 'r1', iface: 'eth0', address: '10.0.0.254' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '10.0.0.254', payload_dst: '255.255.255.255',
+    };
+  }
+
+  it('dispatches sim:packet-arrived for muted hello so the store cleans up', () => {
+    PacketAnim.muted = true;
+    const spy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', spy);
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: helloEvt('h1') }));
+    const arrivals = spy.mock.calls.map(c => c[0].detail);
+    expect(arrivals.some(d => d.payloadId && d.payloadId.startsWith('h1|') && d.device === null)).toBe(true);
+    PacketAnim.muted = false;
+    bus.removeEventListener('sim:packet-arrived', spy);
+  });
+
+  it('hello chatter badge uses #R prefix when chatter badges are on', () => {
+    document.body.dataset.chatterBadges = 'on';
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: helloEvt('h1') }));
+    const layer = document.getElementById('packet-layer');
+    const badges = layer.querySelectorAll('text.packet-badge');
+    expect(badges.length).toBeGreaterThanOrEqual(1);
+    expect(badges[0].textContent).toMatch(/^#R/);
+  });
+});

@@ -70,6 +70,7 @@ bus.addEventListener('sim:status-changed', (e) => {
 });
 
 const USER_TYPES = new Set(['user_datagram', 'ping_request', 'ping_reply']);
+const CHATTER_TYPES = new Set(['routing_flood', 'hello']);
 
 function resolveDeviceLabel(address, st) {
   if (!address) return null;
@@ -164,7 +165,7 @@ function _handleChatterPacket(evt, st) {
   PacketStore.chatter.set(key, {
     id: chatterId,
     payloadId: key,
-    type: 'routing_flood',
+    type: evt.type,
     srcDev: evt.src && evt.src.device,
     srcIface: evt.src && evt.src.iface,
     network: evt.network,
@@ -212,7 +213,7 @@ PacketStore.idFor = function (evt) {
     const row = this.inFlight.get(evt.payload_id);
     return row ? row.id : null;
   }
-  if (evt.type === 'routing_flood') {
+  if (CHATTER_TYPES.has(evt.type)) {
     const row = this.chatter.get(_chatterKey(evt));
     return row ? row.id : null;
   }
@@ -223,7 +224,7 @@ bus.addEventListener('sim:packet', (e) => {
   const evt = e.detail;
   if (!evt || !evt.payload_id) return;
   if (USER_TYPES.has(evt.type)) _handleUserPacket(evt, state);
-  else if (evt.type === 'routing_flood') _handleChatterPacket(evt, state);
+  else if (CHATTER_TYPES.has(evt.type)) _handleChatterPacket(evt, state);
 });
 
 bus.addEventListener('sim:packet-arrived', (e) => {
@@ -281,7 +282,7 @@ PacketStore.visibleChatterGroups = function () {
       group = {
         payloadId,                     // bare payload_id, used as the panel row's data-payload-id prefix
         id: row.id,                    // first emission's #R id — shown as the group label
-        type: 'routing_flood',
+        type: row.type,                // preserve the actual message type (routing_flood, hello, …)
         srcDev: row.srcDev,            // original emitter (from the first emission seen)
         network: row.network,
         iface: row.iface,

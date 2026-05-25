@@ -177,7 +177,7 @@ export const PacketsPanel = {
     return `
       <div class="pkt-row pkt-chatter-row" data-payload-id="${escapeHtml(group.payloadId)}" data-emission-keys="${escapeHtml(group.emissionKeys.join(' '))}">
         <button class="pkt-toggle" aria-expanded="${isOpen}">${isOpen ? '▾' : '▸'}</button>
-        <span class="pkt-swatch" data-type="routing_flood"></span>
+        <span class="pkt-swatch" data-type="${escapeHtml(group.type)}"></span>
         <span class="pkt-id">#R${group.id}</span>
         <span class="pkt-route">${escapeHtml(group.srcDev || '?')} → ${escapeHtml(group.network || '?')}</span>
         ${group.iface ? `<span class="pkt-hop-net">(${escapeHtml(group.iface)})</span>` : ''}
