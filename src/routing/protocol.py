@@ -107,15 +107,26 @@ class LinkStateProtocol(RoutingProtocol):
         self._keepalive_thread.start()
 
     def stop(self):
-        # Synchronous shutdown: setting `_stop_event` wakes the keepalive
-        # thread out of its interval wait, then we join. Callers (tests,
-        # server session reloads) can rely on the thread being fully
-        # unwound when stop() returns, so a subsequent start() — or a
-        # neighbouring test — can't race a stale tick.
+        # Best-effort: flood a withdrawal LSA out every interface BEFORE
+        # the thread is set up to exit, so peers can purge us immediately
+        # instead of waiting max_age.
+        try:
+            self._flood_withdrawal()
+        except Exception:
+            traceback.print_exc()
         self._stopped = True
         self._stop_event.set()
         if self._keepalive_thread is not None and self._keepalive_thread.is_alive():
             self._keepalive_thread.join(timeout=2.0)
+
+    def _flood_withdrawal(self):
+        lsa = LSA.withdrawal(self._router, seq=self._next_seq())
+        for _, iface in self._router.interfaces().items():
+            broadcast = iface.network().broadcast_address()
+            dgram = Datagram(
+                src_addr=iface.address(), dst_addr=broadcast, payload=lsa,
+            )
+            iface.send_to(dgram, dst_addr=broadcast)
 
     def handle_incoming_message(self, msg, interface):
         if isinstance(msg, LSA):

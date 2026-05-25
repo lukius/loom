@@ -1289,3 +1289,79 @@ def test_silent_router_lsa_purged_after_max_age():
     finally:
         system.stop()
         os.unlink(path)
+
+
+def test_protocol_stop_floods_withdrawal_lsa_on_every_interface():
+    """When LinkStateProtocol.stop() is called, the router floods a
+    withdrawal LSA (is_withdrawal()=True) out every interface before
+    the keepalive thread joins."""
+    net1 = Network('lan1', NetworkAddress('200.0.10.0/24'))
+    net2 = Network('lan2', NetworkAddress('200.0.20.0/24'))
+    r = Router('r1')
+    r.add_interface(Interface('eth0', net1, Address('200.0.10.1'), cost=1))
+    r.add_interface(Interface('eth1', net2, Address('200.0.20.1'), cost=1))
+
+    sent = []
+    original_send = Interface.send_to
+    Interface.send_to = lambda self, pkt, dst_addr: sent.append(pkt)
+    try:
+        proto = LinkStateProtocol(r)
+        proto.stop()
+    finally:
+        Interface.send_to = original_send
+
+    withdrawals = [
+        p.payload() for p in sent
+        if isinstance(p.payload(), LSA) and p.payload().is_withdrawal()
+    ]
+    assert len(withdrawals) == 2  # one per interface
+
+
+def test_peer_purges_lsa_on_receipt_of_withdrawal():
+    """End-to-end: r1 stops gracefully → r2's LSDB no longer has r1's
+    entry within one keepalive interval (much faster than max_age)."""
+    yaml = textwrap.dedent("""
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan_r1: "200.0.1.0/24"
+            lan_r2: "200.0.2.0/24"
+          links:
+            p2p: "200.0.0.0/30"
+          routers:
+            r1:
+              interfaces:
+                eth0: {network: lan_r1, address: "200.0.1.1", cost: 1}
+                eth1: {link: p2p, address: "200.0.0.1", cost: 1}
+            r2:
+              interfaces:
+                eth0: {network: lan_r2, address: "200.0.2.1", cost: 1}
+                eth1: {link: p2p, address: "200.0.0.2", cost: 1}
+    """)
+    path = _make_tmp_topology(yaml)
+    system = Parser(path).parse().single_as()
+    try:
+        for r in system.routers().values():
+            r.protocol().set_keepalive_interval(0.2)
+            r.protocol()._hello_interval = 0.2  # noqa: SLF001
+            r.protocol()._dead_interval = 0.6   # noqa: SLF001
+        r1 = system.routers()["r1"]
+        r2 = system.routers()["r2"]
+        # Wait for convergence.
+        assert _wait(
+            lambda: r1 in r2.protocol()._lsdb.origins(),  # noqa: SLF001
+            timeout=3.0,
+        )
+        # Gracefully stop r1 — should flood a withdrawal.
+        r1.protocol().stop()
+        # r2 should purge r1's LSA quickly (< 1s, no need to wait max_age).
+        assert _wait(
+            lambda: r1 not in r2.protocol()._lsdb.origins(),  # noqa: SLF001
+            timeout=2.0,
+        ), "r2 did not purge r1's LSA on graceful withdrawal"
+    finally:
+        system.stop()
+        os.unlink(path)
