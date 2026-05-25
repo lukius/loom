@@ -163,15 +163,15 @@ def test_paused_keepalive_does_not_tick():
     # (e.g., those leaked by test_parser tests that never call system.stop()).
     tick_count = [0]
     proto = r1.protocol()
-    proto.KEEPALIVE_INTERVAL = 0.05  # instance attribute overrides class attribute
+    proto.set_timers(hello_interval=0.05, lsa_refresh_interval=0.15)
 
-    original_handle_update = proto._handle_update
+    original_emit_hello = proto._emit_hello_on_all_interfaces
 
-    def counting_handle_update():
+    def counting_emit_hello(now):
         tick_count[0] += 1
-        original_handle_update()
+        original_emit_hello(now)
 
-    proto._handle_update = counting_handle_update
+    proto._emit_hello_on_all_interfaces = counting_emit_hello
 
     r1.start()
 
@@ -192,7 +192,7 @@ def test_paused_keepalive_does_not_tick():
     system.stop()
     # Join the keepalive thread so it fully exits before the next test,
     # preventing any lingering interface sends from polluting test mocks.
-    proto._keepalive_thread.join(timeout=1.0)
+    proto._protocol_thread.join(timeout=1.0)  # noqa: SLF001
 
 
 def test_router_protocol_restartable_after_stop():

@@ -17,7 +17,7 @@ from entities import (
     Router,
 )
 from parser import Parser
-from routing import LSA, Hello, LinkStateProtocol, RouteMap
+from routing import LSA, Hello, LinkStateProtocol, RouteMap, Scheduler
 from routing.policy import RFC1918_OUTBOUND
 
 
@@ -183,45 +183,42 @@ def test_stop_then_start_resumes_periodic_ticks():
     """Regression: SimState load/start hits start()->stop()->start(). The second
     start must reset _stopped or the alive-but-sleeping thread exits on next wake.
 
-    Count ticks per router instead of events: more deterministic.
+    Count hello emissions per router instead of _safe_tick: more deterministic
+    now that the protocol uses three independent scheduler timers.
     """
-    original = LinkStateProtocol.KEEPALIVE_INTERVAL
-    LinkStateProtocol.KEEPALIVE_INTERVAL = 0.4
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(SAMPLE_TOPOLOGY)
+        path = f.name
+    # Wrap _emit_hello_on_all_interfaces to count ticks per router instance.
+    tick_counts = {}
+    original_emit = LinkStateProtocol._emit_hello_on_all_interfaces
+
+    def counting_emit(self, now):
+        name = self._router.name()
+        tick_counts[name] = tick_counts.get(name, 0) + 1
+        original_emit(self, now)
+
+    LinkStateProtocol._emit_hello_on_all_interfaces = counting_emit
     try:
-        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
-            f.write(SAMPLE_TOPOLOGY)
-            path = f.name
-        # Wrap _safe_tick to count ticks per router instance.
-        tick_counts = {}
-        original_tick = LinkStateProtocol._safe_tick
-
-        def counting_tick(self):
-            name = self._router.name()
-            tick_counts[name] = tick_counts.get(name, 0) + 1
-            original_tick(self)
-
-        LinkStateProtocol._safe_tick = counting_tick
+        system = Parser(path).parse().single_as()
+        for r in system.routers().values():
+            r.protocol().set_timers(hello_interval=0.4, lsa_refresh_interval=1.2)
+            r.stop()
+        tick_counts.clear()  # ignore parser-time initial tick
+        for r in system.routers().values():
+            r.start()
         try:
-            system = Parser(path).parse().single_as()
-            for r in system.routers().values():
-                r.stop()
-            tick_counts.clear()  # ignore the parser-time initial tick
-            for r in system.routers().values():
-                r.start()
-            try:
-                time.sleep(2.0)  # expect ~5 ticks per router at 0.4s interval
-                for name in system.routers():
-                    count = tick_counts.get(name, 0)
-                    assert count >= 3, (
-                        f"{name} ticked only {count} times after restart"
-                    )
-            finally:
-                system.stop()
-                os.unlink(path)
+            time.sleep(2.0)  # expect ~5 hellos per router at 0.4s interval
+            for name in system.routers():
+                count = tick_counts.get(name, 0)
+                assert count >= 3, (
+                    f"{name} ticked only {count} times after restart"
+                )
         finally:
-            LinkStateProtocol._safe_tick = original_tick
+            system.stop()
+            os.unlink(path)
     finally:
-        LinkStateProtocol.KEEPALIVE_INTERVAL = original
+        LinkStateProtocol._emit_hello_on_all_interfaces = original_emit
 
 
 def test_initial_broadcast_propagates_before_keepalive_interval():
@@ -1402,3 +1399,73 @@ def test_set_timers_invariant_dead_must_exceed_hello():
     proto = LinkStateProtocol(r)
     proto.set_timers(hello_interval=5, lsa_refresh_interval=15)
     assert proto._dead_interval > proto._hello_interval  # noqa: SLF001
+
+
+def test_protocol_loop_dispatches_three_independent_timers():
+    """Pin that hello and lsa_refresh fire on independent cadences.
+    With hello=0.1s and refresh=0.5s, after 1s we expect ~10 hellos
+    and ~2 refreshes per router."""
+    yaml = textwrap.dedent("""
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan_r1: "200.0.1.0/24"
+            lan_r2: "200.0.2.0/24"
+          links:
+            p2p: "200.0.0.0/30"
+          routers:
+            r1:
+              interfaces:
+                eth0: {network: lan_r1, address: "200.0.1.1", cost: 1}
+                eth1: {link: p2p, address: "200.0.0.1", cost: 1}
+            r2:
+              interfaces:
+                eth0: {link: p2p, address: "200.0.0.2", cost: 1}
+                eth1: {network: lan_r2, address: "200.0.2.1", cost: 1}
+    """)
+    counts = {'hello': 0, 'lsa': 0}
+
+    original_send = Interface.send_to
+
+    def counting_send(self, pkt, dst_addr):
+        payload = pkt.payload()
+        if isinstance(payload, Hello):
+            counts['hello'] += 1
+        elif isinstance(payload, LSA) and not payload.is_withdrawal():
+            counts['lsa'] += 1
+        return original_send(self, pkt, dst_addr)
+
+    Interface.send_to = counting_send
+
+    path = _make_tmp_topology(yaml)
+    try:
+        system = Parser(path).parse().single_as()
+        for r in system.routers().values():
+            r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.5)
+            # Disable jitter for deterministic count assertions.
+            r.protocol()._scheduler = Scheduler(jitter_range=(1.0, 1.0))  # noqa: SLF001
+            r.protocol()._schedule_initial_deadlines()  # noqa: SLF001
+        time.sleep(1.0)
+        # Two routers * (hello at 0.1s ≈ 10 per router) → ~20 hellos total.
+        # Two routers * (refresh at 0.5s ≈ 2 per router) → ~4 LSAs total.
+        # Allow wide tolerance for thread scheduling.
+        assert counts['hello'] >= 10, counts
+        assert counts['lsa'] >= 2, counts
+        assert counts['hello'] > counts['lsa']  # cadence ordering preserved
+    finally:
+        Interface.send_to = original_send
+        system.stop()
+        os.unlink(path)
+
+
+def test_set_timers_live_updates_scheduler_cadence():
+    r = Router('r1')
+    proto = LinkStateProtocol(r)
+    proto._schedule_initial_deadlines()  # noqa: SLF001
+    proto.set_timers(hello_interval=5, lsa_refresh_interval=15)
+    # The scheduler's recorded base intervals should now reflect the new values.
+    assert proto._scheduler._intervals['hello'] == 5  # noqa: SLF001
+    assert proto._scheduler._intervals['lsa_refresh'] == 15  # noqa: SLF001

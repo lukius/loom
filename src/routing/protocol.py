@@ -13,6 +13,7 @@ from .lsdb import LSDB
 from .messages import Datagram
 from .neighbor import NeighborTable
 from .policy import RFC1918_OUTBOUND, RouteMap
+from .scheduler import Scheduler
 
 
 class RoutingProtocol(ABC):
@@ -60,10 +61,21 @@ class LinkStateProtocol(RoutingProtocol):
         self._seq = 0
         self._lsdb = LSDB(router)
         self._neighbor_table = NeighborTable()
-        self._hello_interval: float = 10.0
-        self._dead_interval: float = 30.0
-        self._lsa_refresh_interval: float = 30.0
-        self._max_age: float = 60.0
+        # Timer state — bootstrapped from KEEPALIVE_INTERVAL so that tests
+        # which set the class variable before construction get the right
+        # default cadence. _maxage_check_interval is derived by set_timers.
+        self._hello_interval: float = 0.0        # overwritten below
+        self._dead_interval: float = 0.0         # overwritten below
+        self._lsa_refresh_interval: float = 0.0  # overwritten below
+        self._max_age: float = 0.0               # overwritten below
+        self._maxage_check_interval: float = 0.0 # overwritten below
+        self._keepalive_interval: float = float(self.KEEPALIVE_INTERVAL)
+        # Bootstrap via set_timers (uses canonical loom-OSPF ratios).
+        # _scheduler is not yet set; set_timers skips the scheduler block.
+        self.set_timers(
+            hello_interval=self._keepalive_interval / 3.0,
+            lsa_refresh_interval=self._keepalive_interval,
+        )
         # Permit-all policy for the local LSA stored in the LSDB — local
         # connectivity (including RFC 1918 prefixes) must appear in the
         # local graph so Dijkstra can route to directly-connected networks.
@@ -74,9 +86,9 @@ class LinkStateProtocol(RoutingProtocol):
 
         self._stopped = False
         self._stop_event = threading.Event()
-        self._keepalive_interval = float(self.KEEPALIVE_INTERVAL)
-        self._keepalive_thread = threading.Thread(
-            target=self._keepalive_loop, daemon=True
+        self._scheduler = Scheduler()
+        self._protocol_thread = threading.Thread(
+            target=self._protocol_loop, daemon=True,
         )
 
         self._graph_updated = True
@@ -85,9 +97,14 @@ class LinkStateProtocol(RoutingProtocol):
         return self._keepalive_interval
 
     def set_keepalive_interval(self, seconds):
+        """Deprecated. Sets lsa_refresh_interval; hello_interval scaled to /3."""
         if not isinstance(seconds, (int, float)) or seconds <= 0:
             raise ValueError(f"keepalive interval must be positive (got {seconds!r})")
         self._keepalive_interval = float(seconds)
+        self.set_timers(
+            hello_interval=float(seconds) / 3.0,
+            lsa_refresh_interval=float(seconds),
+        )
 
     # Canonical ratios from the loom-OSPF spec.
     _DEAD_INTERVAL_RATIO = 3
@@ -114,6 +131,22 @@ class LinkStateProtocol(RoutingProtocol):
         self._lsa_refresh_interval = float(lsa_refresh_interval)
         self._dead_interval = self._hello_interval * self._DEAD_INTERVAL_RATIO
         self._max_age = self._lsa_refresh_interval * self._MAX_AGE_RATIO
+        # Max-age check runs at the same cadence as LSA refresh so that a
+        # stale LSA is caught within one refresh interval after it expires.
+        self._maxage_check_interval = self._lsa_refresh_interval
+        # Refresh the scheduler so a live config change takes effect on the
+        # next loop iteration. Re-uses the existing fire_at to avoid spurious
+        # immediate fires; only the cadence updates.
+        if hasattr(self, '_scheduler') and self._scheduler is not None:
+            now = time.monotonic()
+            for name, interval in (
+                ('hello', self._hello_interval),
+                ('lsa_refresh', self._lsa_refresh_interval),
+                ('maxage_check', self._maxage_check_interval),
+            ):
+                existing = self._scheduler._deadlines.get(name)  # noqa: SLF001
+                fire_at = existing if existing is not None else (now + interval)
+                self._scheduler.schedule(name, base_interval=interval, fire_at=fire_at)
 
     def lsdb(self):
         return self._lsdb
@@ -125,12 +158,12 @@ class LinkStateProtocol(RoutingProtocol):
         # threads) would otherwise see _stopped=True and exit on first wake.
         self._stopped = False
         self._stop_event.clear()
-        if self._keepalive_thread is not None and self._keepalive_thread.is_alive():
+        if self._protocol_thread is not None and self._protocol_thread.is_alive():
             return                                    # idempotent on running
-        self._keepalive_thread = threading.Thread(
-            target=self._keepalive_loop, daemon=True
+        self._protocol_thread = threading.Thread(
+            target=self._protocol_loop, daemon=True,
         )
-        self._keepalive_thread.start()
+        self._protocol_thread.start()
 
     def stop(self):
         # Best-effort: flood a withdrawal LSA out every interface BEFORE
@@ -142,8 +175,8 @@ class LinkStateProtocol(RoutingProtocol):
             traceback.print_exc()
         self._stopped = True
         self._stop_event.set()
-        if self._keepalive_thread is not None and self._keepalive_thread.is_alive():
-            self._keepalive_thread.join(timeout=2.0)
+        if self._protocol_thread is not None and self._protocol_thread.is_alive():
+            self._protocol_thread.join(timeout=2.0)
 
     def _flood_withdrawal(self):
         lsa = LSA.withdrawal(self._router, seq=self._next_seq())
@@ -235,65 +268,68 @@ class LinkStateProtocol(RoutingProtocol):
         return result.changed_graph()
 
     def _handle_update(self):
-        """Originate a fresh Hello + LSA cycle. Sweeps dead-interval
-        expiries, emits per-interface Hellos, and floods the local LSA.
-        Called by the keepalive loop."""
+        """Back-compat shim used by tests.
+
+        Runs all three actions in sequence, equivalent to one keepalive
+        cycle under the old single-timer model.
+        """
         now = time.monotonic()
+        self._sweep_dead_and_expired(now)
+        self._emit_hello_on_all_interfaces(now)
+        self._emit_lsa_on_all_interfaces(now)
+
+    def _sweep_dead_and_expired(self, now: float):
         with self._lock:
-            # Sweep neighbours: catch dead-interval expiries that no
-            # incoming hello can signal.
             for transition in self._neighbor_table.sweep_transitions(
                 dead_interval=self._dead_interval, now=now,
             ):
                 self._broadcast_neighbor_state_changed(transition)
                 if transition.went_down():
                     self._lsdb.purge(transition.neighbor().peer())
-
-            # Sweep expired LSAs: origins whose last refresh is older than
-            # max_age are purged. The local router's own LSA is excluded —
-            # it is always refreshed by this very loop.
             expired = self._lsdb.expired_origins(max_age=self._max_age, now=now)
-            graph_dirty = False
+            changed = False
             for origin in expired:
                 if origin is self._router:
                     continue
                 if self._lsdb.purge(origin):
-                    graph_dirty = True
-            if graph_dirty:
+                    changed = True
+            if changed:
                 self._rebuild_graph_and_recompute()
 
-            # Build + install our LSA locally (permit-all so local graph
-            # includes all directly connected networks including RFC 1918).
-            seq = self._next_seq()
-            local_lsa = LSA.from_router(
-                self._router, seq=seq, policy=self._local_policy,
-            )
-            result = self._lsdb.install(local_lsa, now=now)
-            if result.is_accepted() and result.changed_graph():
-                self._rebuild_graph_and_recompute()
-
-            # Flooded LSA: outbound policy applied — RFC 1918 prefixes omitted.
-            flooded_lsa = LSA.from_router(
-                self._router, seq=seq, policy=self._outbound_policy,
-            )
-            # Emit hellos (per-interface) + LSA (shared object).
+    def _emit_hello_on_all_interfaces(self, now: float):
+        with self._lock:
             for _, iface in self._router.interfaces().items():
                 broadcast = iface.network().broadcast_address()
-                # Hello — per-interface content (lists non-DOWN neighbours heard
-                # on this interface).
                 listed = self._neighbor_table.neighbours_heard_on(
                     iface, dead_interval=self._dead_interval, now=now,
                 )
                 hello = Hello(originator=self._router, neighbours_heard=listed)
-                hello_dgram = Datagram(
+                dgram = Datagram(
                     src_addr=iface.address(), dst_addr=broadcast, payload=hello,
                 )
-                iface.send_to(hello_dgram, dst_addr=broadcast)
-                # LSA — shared object across all interfaces.
-                lsa_dgram = Datagram(
+                iface.send_to(dgram, dst_addr=broadcast)
+
+    def _emit_lsa_on_all_interfaces(self, now: float):
+        with self._lock:
+            seq = self._next_seq()
+            # Install a permit-all LSA locally so the local graph includes
+            # all directly connected networks (including RFC 1918).
+            local_lsa = LSA.from_router(
+                self._router, seq=seq, policy=self._local_policy,
+            )
+            local_result = self._lsdb.install(local_lsa, now=now)
+            if local_result.is_accepted() and local_result.changed_graph():
+                self._rebuild_graph_and_recompute()
+            # Flood with outbound policy: RFC 1918 prefixes omitted.
+            flooded_lsa = LSA.from_router(
+                self._router, seq=seq, policy=self._outbound_policy,
+            )
+            for _, iface in self._router.interfaces().items():
+                broadcast = iface.network().broadcast_address()
+                dgram = Datagram(
                     src_addr=iface.address(), dst_addr=broadcast, payload=flooded_lsa,
                 )
-                iface.send_to(lsa_dgram, dst_addr=broadcast)
+                iface.send_to(dgram, dst_addr=broadcast)
 
     def _flood_lsa(self, lsa, exclude):
         """Re-flood `lsa` out every interface except `exclude` (the inbound)."""
@@ -398,35 +434,65 @@ class LinkStateProtocol(RoutingProtocol):
         """
         return list(self._router.routing_table().rules())
 
-    def _keepalive_loop(self):
+    def _schedule_initial_deadlines(self):
+        now = time.monotonic()
+        self._scheduler.schedule(
+            'hello',
+            base_interval=self._hello_interval,
+            fire_at=now + self._hello_interval,
+        )
+        self._scheduler.schedule(
+            'lsa_refresh', base_interval=self._lsa_refresh_interval,
+            fire_at=now + self._lsa_refresh_interval,
+        )
+        self._scheduler.schedule(
+            'maxage_check', base_interval=self._maxage_check_interval,
+            fire_at=now + self._maxage_check_interval,
+        )
+
+    def _protocol_loop(self):
         gate = self._router.gate()
-        # Initial tick so neighbors learn about us at t~0 instead of after one interval.
+        # Initial tick: hello + LSA at t≈0 (no jitter).
+        now = time.monotonic()
         if gate is not None:
             running, stopped = gate.wait_or_stop()
             if stopped:
                 return
             if running:
-                self._safe_tick()
+                self._safe_tick_initial(now)
         else:
-            self._safe_tick()
+            self._safe_tick_initial(now)
+        self._schedule_initial_deadlines()
+
         while not self._stopped:
-            # Sleep on the protocol's own stop event so that protocol.stop()
-            # (called e.g. by SimState.load_from_session without involving
-            # the AS-level gate) wakes the thread immediately. AS.stop() and
-            # protocol.stop() are paired by system.stop(), so AS-level
-            # shutdown still terminates promptly via the second call.
-            if self._stop_event.wait(timeout=self._keepalive_interval):
+            now = time.monotonic()
+            wait_for = max(0.0, self._scheduler.next_deadline() - now)
+            if self._stop_event.wait(timeout=wait_for):
                 break
             if gate is not None:
                 running, stopped = gate.wait_or_stop()
                 if stopped:
                     break
                 if not running:
-                    continue  # paused; loop again without ticking
-            self._safe_tick()
+                    continue
+            now = time.monotonic()
+            for name in self._scheduler.elapsed(now):
+                self._dispatch(name, now)
 
-    def _safe_tick(self):
+    def _safe_tick_initial(self, now: float):
         try:
-            self._handle_update()
+            self._emit_hello_on_all_interfaces(now)
+            self._emit_lsa_on_all_interfaces(now)
+        except Exception:
+            traceback.print_exc()
+
+    def _dispatch(self, name: str, now: float):
+        try:
+            if name == 'hello':
+                self._emit_hello_on_all_interfaces(now)
+            elif name == 'lsa_refresh':
+                self._emit_lsa_on_all_interfaces(now)
+            elif name == 'maxage_check':
+                self._sweep_dead_and_expired(now)
         except Exception:
             traceback.print_exc()
