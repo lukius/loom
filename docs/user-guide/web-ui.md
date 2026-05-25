@@ -38,7 +38,8 @@ From left to right:
 | Sim | **Start / Stop** (<kbd>Space</kbd>) | Toggle between `idle` and `running`. Starts: serializes YAML → POST `/topology` → POST `/sim/start`. |
 | Sim | **Pause / Resume** (<kbd>P</kbd>) | Toggle between `running` and `paused`. The label shows pending patch ops while paused. |
 | Sim | **Reset** | Idle-only: discard the session and re-clone from the source YAML. |
-| Sim | **Refresh** | Routing-protocol keepalive interval in seconds (1–300). Enabled while sim is loaded. |
+| Sim | **Refresh** | LSA-refresh interval in seconds (1–300) — shorthand for the **Protocol** popover's Refresh field. Enabled while sim is loaded. |
+| Sim | **Protocol** | Open the Protocol settings popover (Hello interval and LSA-refresh interval). |
 | Sim | **Packet speed** | Per-hop animation duration in ms (200–5000). Local to the SPA; doesn't talk to the server. |
 | View | **Chatter** | Mute or unmute routing-protocol packet animations. |
 | View | **Packets** | Open the Packets panel listing all packets currently traveling, with a numeric badge on each. Expand a row to see its hop history and any NAT translations along the way. |
@@ -49,6 +50,30 @@ From left to right:
 The **Refresh** field is disabled when the sim is `idle` — there's
 nothing to apply the new interval to until a topology is loaded and
 running.
+
+### Protocol settings
+
+Click **Protocol** in the toolbar to open the Protocol settings popover.
+This controls the two loom-OSPF timing parameters for the running simulation:
+
+- **Hello interval** — how often each router sends a Hello to its
+  neighbors to declare itself alive (seconds, 1–300).
+- **Refresh interval** — how often each router rebroadcasts its full
+  link-state advertisement (seconds, 1–300).
+
+Two derived values are shown read-only alongside the inputs:
+
+- **Dead interval** — four times the Hello interval. A neighbor silent
+  for this long is considered unreachable.
+- **Max age** — three times the Refresh interval. An LSA older than this
+  is expired from the link-state database.
+
+Press **Apply** (or <kbd>Enter</kbd> inside either field) to push the new
+values to the running simulation. The change takes effect on the next
+keepalive tick — no restart required.
+
+For the underlying mechanics, see
+[`docs/architecture/routing-protocol.md`](../architecture/routing-protocol.md).
 
 ### Keyboard shortcuts
 

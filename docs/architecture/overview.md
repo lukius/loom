@@ -37,7 +37,7 @@ responsibility and a narrow seam to its neighbors.
 │                                                                 │
 │  AS  Router  Host  Network  Link  Interface  Address  Packet    │
 │  PauseGate   EventTracer                                        │
-│  RoutingProtocol (link-state) + NetworkGraph (Dijkstra)         │
+│  RoutingProtocol (loom-OSPF link-state) + LSDB → NetworkGraph (Dijkstra)         │
 │                                                                 │
 │  One daemon thread per Interface, one per Network/Link, one     │
 │  keepalive thread per Router. All gate on PauseGate.            │

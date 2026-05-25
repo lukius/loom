@@ -1,11 +1,13 @@
 # Routing Tables, Neighbors, and Costs
 
 This guide explains what's in a router's routing table, how to inspect
-it, and how the link-state protocol gets it there.
+it, and how the **loom-OSPF** link-state protocol gets it there.
 
 A briefer explanation of the protocol from the user's perspective is
 inline here; the deep dive lives in
 [`docs/architecture/routing-protocol.md`](../architecture/routing-protocol.md).
+To tune Hello and LSA-refresh intervals, use the **Protocol** button in
+the toolbar — see [Web UI: Protocol settings](web-ui.md#protocol-settings).
 
 ## How routes appear
 
