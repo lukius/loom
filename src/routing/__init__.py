@@ -35,3 +35,4 @@ from .policy import (
 )
 from .protocol import LinkStateProtocol as LinkStateProtocol
 from .protocol import RoutingProtocol as RoutingProtocol
+from .scheduler import Scheduler as Scheduler
