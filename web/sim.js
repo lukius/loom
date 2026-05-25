@@ -36,7 +36,12 @@ export const RuntimeClient = {
   resume(patch)          { return this._json('POST', '/sim/resume', { patch: patch || [] }); },
   stop()                 { return this._json('POST', '/sim/stop', {}); },
   getState()             { return this._json('GET',  '/sim/state'); },
-  setRefreshInterval(s)  { return this._json('POST', '/sim/refresh_interval', { seconds: s }); },
+  setProtocolConfig({ hello, refresh }) {
+    return this._json('POST', '/sim/protocol_config', {
+      hello_interval: hello,
+      lsa_refresh_interval: refresh,
+    });
+  },
   deviceCommand(n, cmd)  { return this._json('POST', `/devices/${encodeURIComponent(n)}/command`, { cmd }); },
   deviceRoutes(n)        { return this._json('GET',  `/devices/${encodeURIComponent(n)}/routes`); },
   deviceInterfaces(n)    { return this._json('GET',  `/devices/${encodeURIComponent(n)}/interfaces`); },
@@ -224,8 +229,8 @@ export const Sim = {
       const el = document.getElementById(id);
       if (el) el.disabled = (this.state === 'running');
     });
-    const refresh = document.getElementById('tb-refresh');
-    if (refresh) refresh.disabled = (this.state === 'idle');
+    const protocol = document.getElementById('tb-protocol');
+    if (protocol) protocol.disabled = (this.state === 'idle');
   },
 
   async onPrimary() {

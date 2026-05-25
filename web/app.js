@@ -28,6 +28,7 @@ import {
 import './terminals.js';
 import { PacketAnim } from './packets.js';
 import { PacketsPanel } from './packetspanel.js';
+import { wireProtocolPopover } from './protocolpopover.js';
 import { importYaml as _importYaml, exportYaml } from './yaml-io.js';
 import { openImportPicker, runExportSave, fetchSourceName } from './file-picker.js';
 
@@ -64,26 +65,18 @@ document.getElementById('tb-toggle-ifaces').addEventListener('click', () => {
   bus.dispatchEvent(new CustomEvent('state:topology-changed'));
 });
 
-(() => {
-  const inp = document.getElementById('tb-refresh');
-  if (!inp) return;
-  let lastGood = parseInt(inp.value, 10) || 10;
-  inp.addEventListener('change', async () => {
-    const v = parseInt(inp.value, 10);
-    if (!Number.isFinite(v) || v < 1 || v > 300) {
-      toast(`Keepalive must be 1–300s`, 'error', 'Keepalive');
-      inp.value = lastGood;
-      return;
-    }
-    try {
-      await RuntimeClient.setRefreshInterval(v);
-      lastGood = v;
-    } catch (err) {
-      toast(`Failed: ${err.message}`, 'error', 'Keepalive');
-      inp.value = lastGood;
-    }
-  });
-})();
+wireProtocolPopover({
+  onApply: async ({ hello, refresh }) => {
+    await RuntimeClient.setProtocolConfig({ hello, refresh });
+    toast(`Protocol timers updated: hello ${hello}s, refresh ${refresh}s`);
+  },
+});
+
+bus.addEventListener('sim:status-changed', () => {
+  const enabled = Sim.state !== 'idle';
+  const protocol = document.getElementById('tb-protocol');
+  if (protocol) protocol.disabled = !enabled;
+});
 
 (() => {
   const inp = document.getElementById('tb-speed');
