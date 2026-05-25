@@ -11,6 +11,7 @@ from .graph import NetworkGraph as NetworkGraph
 from .lsa import LSA as LSA  # noqa: F401
 from .lsa import RoutingMessage as RoutingMessage
 from .lsdb import LSDB, InstallResult  # noqa: F401
+from .neighbor import Neighbor, NeighborState  # noqa: F401
 from .policy import (
     RFC1918_OUTBOUND as RFC1918_OUTBOUND,
 )
