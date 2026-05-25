@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Body, HTTPException, Request
 
+from routing import LinkStateProtocol
 from server.state import InvalidStateTransition
 
 router = APIRouter(prefix="/sim", tags=["sim"])
@@ -73,20 +74,27 @@ def get_state(request: Request):
     return {"state": s.state, "as_name": s.as_obj.name() if s.as_obj else None}
 
 
-REFRESH_MIN = 1
-REFRESH_MAX = 300
-
-
-@router.post("/refresh_interval")
-def set_refresh_interval(request: Request, body: dict = Body(...)):
-    seconds = body.get("seconds") if isinstance(body, dict) else None
-    if not isinstance(seconds, (int, float)) or isinstance(seconds, bool):
-        raise HTTPException(400, "seconds must be a number")
-    if seconds < REFRESH_MIN or seconds > REFRESH_MAX:
-        raise HTTPException(400, f"seconds must be in [{REFRESH_MIN}, {REFRESH_MAX}]")
+@router.post("/protocol_config")
+def set_protocol_config(request: Request, body: dict = Body(...)):
+    hello = body.get("hello_interval")
+    refresh = body.get("lsa_refresh_interval")
+    if hello is None or refresh is None:
+        raise HTTPException(
+            status_code=400,
+            detail="hello_interval and lsa_refresh_interval are required",
+        )
+    try:
+        hello = float(hello)
+        refresh = float(refresh)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="invalid numeric value")
+    if hello <= 0 or refresh <= 0:
+        raise HTTPException(status_code=400, detail="timers must be positive")
     s = _state(request)
     if s.as_obj is None:
-        raise HTTPException(409, "simulation not started")
+        raise HTTPException(status_code=409, detail="no system loaded")
     for r in s.as_obj.routers().values():
-        r.protocol().set_keepalive_interval(seconds)
-    return {"seconds": seconds}
+        for proto in r.protocols():
+            if isinstance(proto, LinkStateProtocol):
+                proto.set_timers(hello_interval=hello, lsa_refresh_interval=refresh)
+    return {"ok": True, "hello_interval": hello, "lsa_refresh_interval": refresh}

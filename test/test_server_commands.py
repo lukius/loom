@@ -126,32 +126,6 @@ def test_host_rejects_router_only_commands(client):
         assert "unknown command" in body["output"]
 
 
-def test_refresh_interval_endpoint_updates_all_routers(client):
-    r = client.post("/sim/refresh_interval", json={"seconds": 3})
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["seconds"] == 3
-    # confirm via server state
-    state = client.app.state.sim_state
-    for router in state.as_obj.routers().values():
-        assert router.protocol().keepalive_interval() == 3
-
-
-def test_refresh_interval_rejects_invalid_values(client):
-    for bad in (0, -5, 301, "abc", None):
-        r = client.post("/sim/refresh_interval", json={"seconds": bad})
-        assert r.status_code == 400, f"{bad!r} should be 400, got {r.status_code}"
-
-
-def test_refresh_interval_requires_started_sim(tmp_path, monkeypatch):
-    src = tmp_path / "src.yaml"
-    src.write_text(SAMPLE)
-    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
-    with TestClient(create_app()) as c:
-        # never started
-        r = c.post("/sim/refresh_interval", json={"seconds": 5})
-        assert r.status_code == 409
-
 
 def test_set_gateway_updates_host(client):
     r = client.post("/devices/h1/command", json={"cmd": "set_gateway 10.0.0.254"})
@@ -195,3 +169,54 @@ def test_router_rejects_host_only_commands(client):
         body = r.json()
         assert not body["ok"]
         assert "unknown command" in body["output"]
+
+
+def test_protocol_config_endpoint_sets_hello_and_refresh(client):
+    r = client.post(
+        "/sim/protocol_config",
+        json={"hello_interval": 5, "lsa_refresh_interval": 15},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["hello_interval"] == 5.0
+    assert body["lsa_refresh_interval"] == 15.0
+    # confirm via server state
+    state = client.app.state.sim_state
+    for router in state.as_obj.routers().values():
+        proto = router.protocol()
+        assert proto._hello_interval == 5.0  # noqa: SLF001
+        assert proto._lsa_refresh_interval == 15.0  # noqa: SLF001
+        assert proto._dead_interval == 15.0  # noqa: SLF001
+        assert proto._max_age == 30.0  # noqa: SLF001
+
+
+def test_protocol_config_endpoint_rejects_non_positive(client):
+    for bad in (
+        {"hello_interval": 0, "lsa_refresh_interval": 10},
+        {"hello_interval": -1, "lsa_refresh_interval": 10},
+        {"hello_interval": 5, "lsa_refresh_interval": 0},
+        {"hello_interval": 5, "lsa_refresh_interval": -3},
+    ):
+        r = client.post("/sim/protocol_config", json=bad)
+        assert r.status_code == 400, f"{bad!r} should be 400, got {r.status_code}"
+
+
+def test_protocol_config_endpoint_rejects_missing_keys(client):
+    for bad in (
+        {"hello_interval": 5},
+        {"lsa_refresh_interval": 10},
+        {},
+        {"hello_interval": None, "lsa_refresh_interval": 10},
+    ):
+        r = client.post("/sim/protocol_config", json=bad)
+        assert r.status_code == 400, f"{bad!r} should be 400, got {r.status_code}"
+
+
+def test_old_refresh_interval_endpoint_removed(client):
+    # StaticFiles catch-all returns 405 for non-GET on unmatched paths;
+    # 404 would appear without the html=True static mount. Either confirms
+    # the route no longer exists in the API router.
+    r = client.post("/sim/refresh_interval", json={"seconds": 5})
+    assert r.status_code in (404, 405), (
+        f"old endpoint should be gone, got {r.status_code}"
+    )
