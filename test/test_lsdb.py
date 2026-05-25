@@ -84,8 +84,6 @@ def test_install_newer_same_links_returns_accepted_changed_graph_false():
 def test_install_newer_different_links_returns_accepted_changed_graph_true():
     local = Router('local')
     origin_a = _router_with(['10.0.0.0/24'], [1])
-    origin_b = _router_with(['10.0.0.0/24', '10.0.1.0/24'], [1, 1])
-    origin_b._name = 'rx'  # share identity
     # Build two LSAs from the same router instance but with different links.
     lsa_a = LSA(origin=origin_a, seq=1)
     lsa_a.add_link(NetworkAddress('10.0.0.0/24'), 1)

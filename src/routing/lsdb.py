@@ -2,6 +2,7 @@ import threading
 from typing import Iterable, Optional
 
 from .graph import NetworkGraph
+from .lsa import LSA
 
 
 class InstallResult:
@@ -61,7 +62,7 @@ class LSDB:
             self._by_origin[lsa.origin()] = (lsa, now)
             return InstallResult.accepted(changed_graph=changed)
 
-    def lsa_for(self, origin) -> Optional:
+    def lsa_for(self, origin) -> Optional[LSA]:
         with self._lock:
             current = self._by_origin.get(origin)
             return current[0] if current is not None else None

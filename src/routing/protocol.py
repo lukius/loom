@@ -12,7 +12,7 @@ from .lsa import LSA
 from .lsdb import LSDB
 from .messages import Datagram
 from .neighbor import NeighborTable
-from .policy import RFC1918_OUTBOUND, RouteMap
+from .policy import PERMIT_ALL, RFC1918_OUTBOUND
 from .scheduler import Scheduler
 
 
@@ -76,7 +76,7 @@ class LinkStateProtocol(RoutingProtocol):
         # local graph so Dijkstra can route to directly-connected networks.
         # The outbound policy controls what gets FLOODED to peers, not what
         # goes into the local LSDB.
-        self._local_policy = RouteMap(rules=[], default='permit')
+        self._local_policy = PERMIT_ALL
         self._graph = self._lsdb.build_graph(eligible_origins=set())
 
         self._stopped = False
@@ -86,8 +86,6 @@ class LinkStateProtocol(RoutingProtocol):
         self._protocol_thread = threading.Thread(
             target=self._protocol_loop, daemon=True,
         )
-
-        self._graph_updated = True
 
     def keepalive_interval(self):
         return self._keepalive_interval
@@ -375,10 +373,10 @@ class LinkStateProtocol(RoutingProtocol):
         # allows multi-hop LSA flooding to build the full graph while still
         # excluding unverified LSAs injected with no adjacency context at all.
         if bidi:
-            known_direct = {n.peer() for n in self._neighbor_table.all()}
+            seen_direct_peers = {n.peer() for n in self._neighbor_table.all()}
             eligible = {
                 o for o in self._lsdb.origins()
-                if o is not self._router and (o in bidi or o not in known_direct)
+                if o is not self._router and (o in bidi or o not in seen_direct_peers)
             }
         else:
             eligible = bidi  # empty set — no trusted context yet

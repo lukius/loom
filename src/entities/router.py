@@ -141,7 +141,7 @@ class Router(NetworkDevice):
         # Importing at call time ensures both packages are fully loaded.
         from routing import LinkStateProtocol  # noqa: PLC0415
         # BGP-FOLLOWUP: today LinkStateProtocol writes rules directly into
-        # self._routing_table via _recompute_if_dirty. When BGP becomes the
+        # self._routing_table via _recompute_routing_table. When BGP becomes the
         # second protocol, introduce a RIB-level merge that walks
         # `self.protocols()`, collects each protocol's `installed_rules()`,
         # and applies administrative-distance ordering before writing to the
