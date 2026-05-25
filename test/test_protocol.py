@@ -13,11 +13,43 @@ from entities import (
     NetworkAddress,
     NullAddress,
     Router,
-    RoutingMessage,
 )
 from parser import Parser
-from routing import LinkStateProtocol, RouteMap
+from routing import LSA, LinkStateProtocol, RouteMap
 from routing.policy import RFC1918_OUTBOUND
+
+
+def test_one_cycle_emits_single_lsa_with_uniform_seq_across_interfaces():
+    """A router with N interfaces emits N datagrams in one cycle, all
+    carrying the same LSA object with the same seq."""
+    net1 = Network('lan1', NetworkAddress('200.0.10.0/24'))
+    net2 = Network('lan2', NetworkAddress('200.0.20.0/24'))
+    net3 = Network('lan3', NetworkAddress('200.0.30.0/24'))
+
+    r = Router('r1')
+    i1 = Interface('eth0', net1, Address('200.0.10.1'), cost=1)
+    i2 = Interface('eth1', net2, Address('200.0.20.1'), cost=1)
+    i3 = Interface('eth2', net3, Address('200.0.30.1'), cost=1)
+    r.add_interface(i1)
+    r.add_interface(i2)
+    r.add_interface(i3)
+
+    sent = []
+    original_send = Interface.send_to
+    Interface.send_to = lambda self, pkt, dst_addr: sent.append((self.name(), pkt))
+    try:
+        proto = LinkStateProtocol(r)
+        proto._handle_update()  # noqa: SLF001
+    finally:
+        Interface.send_to = original_send
+
+    lsa_payloads = [pkt.payload() for _, pkt in sent if isinstance(pkt.payload(), LSA)]
+    assert len(lsa_payloads) == 3
+    # Single LSA object reused.
+    assert all(p is lsa_payloads[0] for p in lsa_payloads[1:])
+    # Single seq.
+    seq = lsa_payloads[0].seq()
+    assert all(p.seq() == seq for p in lsa_payloads)
 
 
 def _wait(condition, timeout=3.0, interval=0.02):
@@ -260,17 +292,17 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(datagram.destination(), '200.200.10.255')
 
         msg = datagram.payload()
-        self.assertEqual(RoutingMessage, msg.type())
+        self.assertIsInstance(msg, LSA)
         self.assertEqual(msg.seq(), 1)
-        self.assertEqual(len(msg.destinations()), 2)
-        self.assertEqual(msg.src_address(), '200.200.10.1')
-        self.assertEqual(msg.src_router(), router)
+        links = msg.links()
+        self.assertEqual(len(links), 2)
+        self.assertIs(msg.origin(), router)
 
-        cost = msg.destinations().get(net1.address())
+        cost = links.get(net1.address())
         self.assertIsNotNone(cost)
         self.assertEqual(cost, 10)
 
-        cost = msg.destinations().get(net2.address())
+        cost = links.get(net2.address())
         self.assertIsNotNone(cost)
         self.assertEqual(cost, 20)
 
@@ -293,9 +325,9 @@ class ProtocolTest(unittest.TestCase):
         r2.add_interface(iface4)
         r2.add_interface(iface5)
 
-        msg = RoutingMessage(src=iface4, seq=1)
-        msg.add_destination(prefix=net2.address(), cost=iface4.cost())
-        msg.add_destination(prefix=net3.address(), cost=iface5.cost())
+        msg = LSA(origin=r2, seq=1)
+        msg.add_link(net2.address(), iface4.cost())
+        msg.add_link(net3.address(), iface5.cost())
 
         proto = LinkStateProtocol(r1)
         proto.handle_incoming_message(msg, iface2)
@@ -303,26 +335,23 @@ class ProtocolTest(unittest.TestCase):
         datagram1, dst_addr1 = self._queue.get(timeout=0.1)
         self.assertIn(dst_addr1, [net1.broadcast_address(), net3.broadcast_address()])
         payload1 = datagram1.payload()
-        self.assertEqual(payload1.src_address(), iface4.address())
-        self.assertEqual(payload1.src_router(), r2)
+        self.assertIs(payload1.origin(), r2)
         self.assertEqual(payload1.seq(), 1)
-        dests1 = payload1.destinations()
-        self.assertEqual(len(dests1), 2)
-        self.assertEqual(dests1.get(net2.address(), 0), iface4.cost())
-        self.assertEqual(dests1.get(net3.address(), 0), iface5.cost())
+        links1 = payload1.links()
+        self.assertEqual(len(links1), 2)
+        self.assertEqual(links1.get(net2.address(), 0), iface4.cost())
+        self.assertEqual(links1.get(net3.address(), 0), iface5.cost())
 
         datagram2, dst_addr2 = self._queue.get(timeout=0.1)
         self.assertIn(dst_addr2, [net1.broadcast_address(), net3.broadcast_address()])
         self.assertNotEqual(dst_addr1, dst_addr2)
         payload2 = datagram2.payload()
-        self.assertEqual(payload2.src_address(), iface4.address())
-        self.assertEqual(payload2.src_router(), r2)
+        self.assertIs(payload2.origin(), r2)
         self.assertEqual(payload2.seq(), 1)
-        self.assertEqual(len(payload2.destinations()), 2)
-        dests2 = payload2.destinations()
-        self.assertEqual(len(dests2), 2)
-        self.assertEqual(dests2.get(net2.address(), 0), iface4.cost())
-        self.assertEqual(dests2.get(net3.address(), 0), iface5.cost())
+        links2 = payload2.links()
+        self.assertEqual(len(links2), 2)
+        self.assertEqual(links2.get(net2.address(), 0), iface4.cost())
+        self.assertEqual(links2.get(net3.address(), 0), iface5.cost())
 
         with self.assertRaises(queue.Empty):
             self._queue.get(timeout=0.1)
@@ -353,9 +382,9 @@ class ProtocolTest(unittest.TestCase):
 
         r3_eth0 = r3.interface('eth0')
         r3_eth1 = r3.interface('eth1')
-        msg = RoutingMessage(src=r3_eth0, seq=1)
-        msg.add_destination(prefix=lan4.address(), cost=r3_eth0.cost())
-        msg.add_destination(prefix=lan5.address(), cost=r3_eth1.cost())
+        msg = LSA(origin=r3, seq=1)
+        msg.add_link(lan4.address(), r3_eth0.cost())
+        msg.add_link(lan5.address(), r3_eth1.cost())
 
         proto = LinkStateProtocol(r1)
         r1_eth1 = r1.interface('eth1')
@@ -388,10 +417,10 @@ class ProtocolTest(unittest.TestCase):
         r2_eth0 = r2.interface('eth0')
         r2_eth1 = r2.interface('eth1')
         r2_eth2 = r2.interface('eth2')
-        msg = RoutingMessage(src=r2_eth1, seq=1)
-        msg.add_destination(prefix=lan2.address(), cost=r2_eth0.cost())
-        msg.add_destination(prefix=lan1.address(), cost=r2_eth1.cost())
-        msg.add_destination(prefix=lan3.address(), cost=r2_eth2.cost())
+        msg = LSA(origin=r2, seq=1)
+        msg.add_link(lan2.address(), r2_eth0.cost())
+        msg.add_link(lan1.address(), r2_eth1.cost())
+        msg.add_link(lan3.address(), r2_eth2.cost())
 
         r1_eth0 = r1.interface('eth0')
         proto.handle_incoming_message(msg, r1_eth0)
@@ -431,10 +460,10 @@ class ProtocolTest(unittest.TestCase):
         r4_eth0 = r4.interface('eth0')
         r4_eth1 = r4.interface('eth1')
         r4_eth2 = r4.interface('eth2')
-        msg = RoutingMessage(src=r4_eth2, seq=1)
-        msg.add_destination(prefix=lan5.address(), cost=r4_eth0.cost())
-        msg.add_destination(prefix=lan6.address(), cost=r4_eth1.cost())
-        msg.add_destination(prefix=lan2.address(), cost=r4_eth2.cost())
+        msg = LSA(origin=r4, seq=1)
+        msg.add_link(lan5.address(), r4_eth0.cost())
+        msg.add_link(lan6.address(), r4_eth1.cost())
+        msg.add_link(lan2.address(), r4_eth2.cost())
 
         proto.handle_incoming_message(msg, r1_eth1)
 
@@ -501,14 +530,14 @@ class ProtocolTest(unittest.TestCase):
 
         proto = LinkStateProtocol(r1)
 
-        msg_r2 = RoutingMessage(src=r2_eth0, seq=1)
-        msg_r2.add_destination(prefix=net2.address(), cost=r2_eth0.cost())
-        msg_r2.add_destination(prefix=net4.address(), cost=r2_eth1.cost())
+        msg_r2 = LSA(origin=r2, seq=1)
+        msg_r2.add_link(net2.address(), r2_eth0.cost())
+        msg_r2.add_link(net4.address(), r2_eth1.cost())
         proto.handle_incoming_message(msg_r2, r1_eth1)
 
-        msg_r3 = RoutingMessage(src=r3_eth0, seq=1)
-        msg_r3.add_destination(prefix=net3.address(), cost=r3_eth0.cost())
-        msg_r3.add_destination(prefix=net4.address(), cost=r3_eth1.cost())
+        msg_r3 = LSA(origin=r3, seq=1)
+        msg_r3.add_link(net3.address(), r3_eth0.cost())
+        msg_r3.add_link(net4.address(), r3_eth1.cost())
         proto.handle_incoming_message(msg_r3, r1_eth2)
 
         result = r1.routing_table().match(Address('10.0.4.100'))
@@ -831,11 +860,11 @@ def test_handle_update_omits_private_prefixes_from_outbound_message():
         # below and double the captured-message count.
         r1.protocol().stop()
 
-        captured: list[RoutingMessage] = []
+        captured: list[LSA] = []
 
         original_send = Interface.send_to
         def capturing_send(self, pkt, dst_addr):
-            if isinstance(pkt.payload(), RoutingMessage):
+            if isinstance(pkt.payload(), LSA):
                 captured.append(pkt.payload())
             return original_send(self, pkt, dst_addr)
         Interface.send_to = capturing_send
@@ -845,10 +874,10 @@ def test_handle_update_omits_private_prefixes_from_outbound_message():
             Interface.send_to = original_send
 
         assert len(captured) == 2, (
-            f"expected one RoutingMessage per interface, got {len(captured)}"
+            f"expected one LSA per interface, got {len(captured)}"
         )
         for msg in captured:
-            prefixes = list(msg.destinations().keys())
+            prefixes = list(msg.links().keys())
             assert NetworkAddress('200.100.0.0/24') in prefixes, (
                 f"public prefix should be advertised, got {prefixes}"
             )

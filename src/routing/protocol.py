@@ -1,5 +1,5 @@
-import collections
 import threading
+import time
 import traceback
 from abc import ABC, abstractmethod
 from typing import Iterable
@@ -7,10 +7,10 @@ from typing import Iterable
 from entities.address import NullAddress
 from entities.event import EventTracer
 
-from .graph import NetworkGraph
-from .lsa import RoutingMessage
+from .lsa import LSA
+from .lsdb import LSDB
 from .messages import Datagram
-from .policy import RFC1918_OUTBOUND
+from .policy import RFC1918_OUTBOUND, RouteMap
 
 
 class RoutingProtocol(ABC):
@@ -55,17 +55,23 @@ class LinkStateProtocol(RoutingProtocol):
             outbound_policy if outbound_policy is not None else RFC1918_OUTBOUND
         )
 
-        self._seqs_by_address = collections.defaultdict(lambda: -1)
-        self._seqs = collections.defaultdict(lambda: 0)
+        self._seq = 0
+        self._lsdb = LSDB(router)
+        # Permit-all policy for the local LSA stored in the LSDB — local
+        # connectivity (including RFC 1918 prefixes) must appear in the
+        # local graph so Dijkstra can route to directly-connected networks.
+        # The outbound policy controls what gets FLOODED to peers, not what
+        # goes into the local LSDB.
+        self._local_policy = RouteMap(rules=[], default='permit')
+        self._graph = self._lsdb.build_graph(eligible_origins=set())
 
         self._stopped = False
         self._stop_event = threading.Event()
-        self._keepalive_interval = self.KEEPALIVE_INTERVAL
+        self._keepalive_interval = float(self.KEEPALIVE_INTERVAL)
         self._keepalive_thread = threading.Thread(
             target=self._keepalive_loop, daemon=True
         )
 
-        self._init_graph()
         self._graph_updated = True
 
     def keepalive_interval(self):
@@ -75,6 +81,9 @@ class LinkStateProtocol(RoutingProtocol):
         if not isinstance(seconds, (int, float)) or seconds <= 0:
             raise ValueError(f"keepalive interval must be positive (got {seconds!r})")
         self._keepalive_interval = float(seconds)
+
+    def lsdb(self):
+        return self._lsdb
 
     def start(self):
         # Always clear the stop flag first. A start() that follows a prior
@@ -90,47 +99,107 @@ class LinkStateProtocol(RoutingProtocol):
         )
         self._keepalive_thread.start()
 
-    def _init_graph(self):
-        self._graph = NetworkGraph()
-        self._graph.add_router(self._router)
+    def stop(self):
+        # Synchronous shutdown: setting `_stop_event` wakes the keepalive
+        # thread out of its interval wait, then we join. Callers (tests,
+        # server session reloads) can rely on the thread being fully
+        # unwound when stop() returns, so a subsequent start() — or a
+        # neighbouring test — can't race a stale tick.
+        self._stopped = True
+        self._stop_event.set()
+        if self._keepalive_thread is not None and self._keepalive_thread.is_alive():
+            self._keepalive_thread.join(timeout=2.0)
 
     def handle_incoming_message(self, msg, interface):
-        local_changed = self.update_state()
+        if not isinstance(msg, LSA):
+            return
+        self._handle_incoming_lsa(msg, interface)
 
-        src_addr = msg.src_address()
-        seq = msg.seq()
-
+    def _handle_incoming_lsa(self, lsa, interface):
+        now = time.monotonic()
         with self._lock:
-            if seq > self._seqs_by_address[src_addr]:
-                self._flood_msg(msg, interface)
-                self._seqs_by_address[src_addr] = seq
+            # Ensure local links are reflected in the LSDB before installing
+            # an external LSA so that _rebuild_graph_and_recompute always
+            # has a current view of local connectivity.
+            self._refresh_local_lsa()
+            result = self._lsdb.install(lsa, now=now)
+            if not result.is_accepted():
+                return
+            self._flood_lsa(lsa, exclude=interface)
+            if result.changed_graph():
+                self._rebuild_graph_and_recompute()
 
-                changed = self._update_graph(msg) or local_changed
-                self._recompute_if_dirty(changed)
+    def _next_seq(self) -> int:
+        self._seq += 1
+        return self._seq
 
     def update_state(self):
+        """Compatibility shim.
+
+        Today's tests call update_state() to force-refresh local-iface
+        info into the graph. After this task the local LSA carries
+        that info via the LSDB; calling update_state() now re-installs
+        the local LSA (with permit-all policy so all local networks are
+        reflected in the graph). Tests using update_state() continue to work.
+        """
         with self._lock:
-            self._graph_updated = False
+            return self._refresh_local_lsa()
 
+    def _refresh_local_lsa(self) -> bool:
+        # Local LSA uses permit-all so the local graph includes all directly
+        # connected networks (including RFC 1918). The outbound policy only
+        # controls what is flooded to peers in _handle_update.
+        lsa = LSA.from_router(
+            self._router, seq=self._next_seq(), policy=self._local_policy,
+        )
+        result = self._lsdb.install(lsa, now=time.monotonic())
+        if result.is_accepted() and result.changed_graph():
+            self._rebuild_graph_and_recompute()
+        return result.changed_graph()
+
+    def _handle_update(self):
+        """Originate a fresh LSA cycle. Installs into local LSDB and
+        floods on all interfaces. Called by the keepalive loop."""
+        with self._lock:
+            seq = self._next_seq()
+            # Local LSDB entry: permit-all so local graph includes all
+            # directly connected networks (including RFC 1918).
+            local_lsa = LSA.from_router(
+                self._router, seq=seq, policy=self._local_policy,
+            )
+            result = self._lsdb.install(local_lsa, now=time.monotonic())
+            if result.is_accepted() and result.changed_graph():
+                self._rebuild_graph_and_recompute()
+            # Flooded LSA: outbound policy applied — RFC 1918 prefixes omitted.
+            flooded_lsa = LSA.from_router(
+                self._router, seq=seq, policy=self._outbound_policy,
+            )
             for _, iface in self._router.interfaces().items():
-                prefix = iface.network().address()
-                cost = iface.cost()
+                broadcast = iface.network().broadcast_address()
+                dgram = Datagram(
+                    src_addr=iface.address(), dst_addr=broadcast, payload=flooded_lsa,
+                )
+                iface.send_to(dgram, dst_addr=broadcast)
 
-                if prefix not in self._graph:
-                    self._graph.add_network(prefix)
-                    self._graph_updated = True
+    def _flood_lsa(self, lsa, exclude):
+        """Re-flood `lsa` out every interface except `exclude` (the inbound)."""
+        for name, iface in self._router.interfaces().items():
+            if name == exclude.name():
+                continue
+            broadcast = iface.network().broadcast_address()
+            dgram = Datagram(
+                src_addr=iface.address(), dst_addr=broadcast, payload=lsa,
+            )
+            iface.send_to(dgram, dst_addr=broadcast)
 
-                prev_cost = self._graph.weight(src=self._router, dst=prefix)
-                if prev_cost != cost:
-                    self._graph_updated = True
-                    self._graph.add_edge(src=self._router, dst=prefix, weight=cost)
+    def _rebuild_graph_and_recompute(self):
+        # Phase 1: every non-local origin is considered eligible
+        # (Phase 2 will narrow this to TWO_WAY peers).
+        eligible = set(o for o in self._lsdb.origins() if o is not self._router)
+        self._graph = self._lsdb.build_graph(eligible_origins=eligible)
+        self._recompute_routing_table()
 
-            return self._graph_updated
-
-    def _recompute_if_dirty(self, changed: bool):
-        if not changed:
-            return
-
+    def _recompute_routing_table(self):
         routing_table = self._router.routing_table()
         routing_table.clear()
         paths = self._graph.shortest_paths(self._router)
@@ -186,82 +255,20 @@ class LinkStateProtocol(RoutingProtocol):
             }
         )
 
-    def _handle_update(self):
-        changed = self.update_state()
-        self._recompute_if_dirty(changed)
+    def installed_rules(self):
+        # BGP-FOLLOWUP: today this returns the full routing table because LS
+        # writes there directly. Once BGP is the second protocol, this should
+        # return only the rules THIS protocol contributed (so the Router-level
+        # RIB merge can apply administrative distance correctly).
+        """Yield rules currently installed by this protocol.
 
-        for _, interface in self._router.interfaces().items():
-            # OSPF-FOLLOWUP: per-interface sequence is wrong for LSP semantics. Real
-            # LSP protocols use a single per-origin sequence so all neighbours
-            # converge on one canonical view, and the originating router builds ONE
-            # RoutingMessage per cycle (shared across all of its interface emissions)
-            # instead of N. The current per-interface emission multiplies wire
-            # traffic by `len(interfaces)`: a 3-iface router floods 3 logical
-            # messages per cycle, each then re-flooded by neighbours. Fixing this
-            # belongs to the OSPF work (single-sequence-per-origin, plus jitter on
-            # the keepalive timer so neighbours don't refresh in lockstep) — see
-            # docs/superpowers/specs/2026-05-18-pre-external-routing-prep-design.md
-            # section 2.1.
-            self._seqs[interface.name()] += 1
-            seq = self._seqs[interface.name()]
-
-            msg = RoutingMessage(interface, seq)
-
-            for name, iface in self._router.interfaces().items():
-                prefix = iface.network().address()
-                decision = self._outbound_policy.apply(prefix)
-                if decision.is_denied():
-                    continue
-                cost = iface.cost()
-                msg.add_destination(decision.prefix(), cost)
-
-            net_broadcast = interface.network().broadcast_address()
-            datagram = Datagram(
-                src_addr=interface.address(), dst_addr=net_broadcast, payload=msg
-            )
-            interface.send_to(datagram, dst_addr=net_broadcast)
-
-    def _flood_msg(self, msg, interface):
-        for name, iface in self._router.interfaces().items():
-            if name == interface.name():
-                continue
-
-            net_broadcast = iface.network().broadcast_address()
-            datagram = Datagram(
-                src_addr=iface.address(), dst_addr=net_broadcast, payload=msg
-            )
-            iface.send_to(datagram, dst_addr=net_broadcast)
-
-    def _update_graph(self, msg):
-        self._graph_updated = False
-        src_router = msg.src_router()
-
-        if src_router not in self._graph:
-            self._graph.add_router(src_router)
-            self._graph_updated = True
-
-        for prefix, cost in msg.destinations().items():
-            if prefix not in self._graph:
-                self._graph.add_network(prefix)
-                self._graph_updated = True
-
-            current_cost = self._graph.weight(src=src_router, dst=prefix)
-            if current_cost != cost:
-                self._graph.add_edge(src=src_router, dst=prefix, weight=cost)
-                self._graph_updated = True
-
-        return self._graph_updated
-
-    def stop(self):
-        # Synchronous shutdown: setting `_stop_event` wakes the keepalive
-        # thread out of its interval wait, then we join. Callers (tests,
-        # server session reloads) can rely on the thread being fully
-        # unwound when stop() returns, so a subsequent start() — or a
-        # neighbouring test — can't race a stale tick.
-        self._stopped = True
-        self._stop_event.set()
-        if self._keepalive_thread is not None and self._keepalive_thread.is_alive():
-            self._keepalive_thread.join(timeout=2.0)
+        Today LinkStateProtocol writes directly into the router's
+        RoutingTable via _recompute_routing_table. This accessor returns
+        those rules so the Router-level RIB merge (introduced in D.1.c)
+        can see what each protocol contributes without changing the
+        current write path.
+        """
+        return list(self._router.routing_table().rules())
 
     def _keepalive_loop(self):
         gate = self._router.gate()
@@ -289,21 +296,6 @@ class LinkStateProtocol(RoutingProtocol):
                 if not running:
                     continue  # paused; loop again without ticking
             self._safe_tick()
-
-    def installed_rules(self):
-        # BGP-FOLLOWUP: today this returns the full routing table because LS
-        # writes there directly. Once BGP is the second protocol, this should
-        # return only the rules THIS protocol contributed (so the Router-level
-        # RIB merge can apply administrative distance correctly).
-        """Yield rules currently installed by this protocol.
-
-        Today LinkStateProtocol writes directly into the router's
-        RoutingTable via _recompute_if_dirty. This accessor returns
-        those rules so the Router-level RIB merge (introduced in D.1.c)
-        can see what each protocol contributes without changing the
-        current write path.
-        """
-        return list(self._router.routing_table().rules())
 
     def _safe_tick(self):
         try:

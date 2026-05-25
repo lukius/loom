@@ -220,7 +220,7 @@ class Router(NetworkDevice):
         super().handle_packet(packet, interface)
 
     def _handle_message(self, msg, interface, packet):
-        if msg.type() == RoutingMessage:
+        if isinstance(msg, RoutingMessage):
             self._handle_routing_message(msg, interface)
             return
         if isinstance(msg, PingRequest):
