@@ -335,7 +335,7 @@ test.describe('loom SPA - smoke', () => {
     const term = page.locator('div.term').first();
     await expect(term).toBeVisible({ timeout: 3000 });
     await expect(term.locator('.title')).toHaveText('h1@loom');
-    await expect(term.locator('input.term-in')).toBeVisible();
+    await expect(term.locator('textarea.term-in')).toBeVisible();
 
     // Close via the macOS-style traffic light close button.
     await term.locator('.light.close').click();
@@ -378,7 +378,7 @@ test.describe('loom SPA - smoke', () => {
     const term = page.locator('div.term').first();
     await expect(term).toBeVisible({ timeout: 3000 });
 
-    const input = term.locator('input.term-in');
+    const input = term.locator('textarea.term-in');
     await input.click();
     await input.fill('send h2 hello');
     await input.press('Enter');

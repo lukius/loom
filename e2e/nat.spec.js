@@ -71,7 +71,7 @@ test.describe('loom NAT - visual smoke', () => {
     await page.locator('#nodes-layer g.node.host[data-name="h_a"]').dblclick();
     const term = page.locator('div.term').first();
     await expect(term).toBeVisible({ timeout: 3000 });
-    const input = term.locator('input.term-in');
+    const input = term.locator('textarea.term-in');
     await input.click();
     await input.fill('send 200.100.0.10 hello');
     await input.press('Enter');
