@@ -200,19 +200,46 @@ export function initTheme() {
   applyTheme(t);
 }
 
-/* ---------- layout: assign defaults to objects without positions ---------- */
+/* ---------- layout: assign defaults to objects without positions ----------
+   Fresh import (no node has a position yet): run a force-directed (spring-
+   electric) simulation so the graph spreads organically — every node repels
+   every other, every edge pulls its endpoints toward a rest length. This
+   gives a usable layout for non-trivial topologies (e.g. samples/mesh.yaml)
+   that the previous two-column grid crowded into overlap.
+
+   Any other case (user has dragged things around, partial topology edit):
+   leave existing positions alone and fall back to the simple grid for the
+   nodes that lack coordinates — re-running force-directed would jump the
+   user's manual arrangement around. */
 export function ensurePositions() {
-  // simple grid fallback
+  if (!_anyNodePositioned()) {
+    _forceDirectedLayout();
+    return;
+  }
+  _gridFallback();
+}
+
+function _anyNodePositioned() {
+  for (const n of Object.values(state.networks || {}))
+    if (typeof n.x === 'number' && typeof n.y === 'number') return true;
+  for (const r of Object.values(state.routers || {}))
+    if (typeof r.x === 'number' && typeof r.y === 'number') return true;
+  for (const h of Object.values(state.hosts || {}))
+    if (typeof h.x === 'number' && typeof h.y === 'number') return true;
+  return false;
+}
+
+function _gridFallback() {
   const FALLBACK_X = 700, FALLBACK_Y = 200, GAP = 220;
   let i = 0;
-  for (const [n, nv] of Object.entries(state.networks)) {
+  for (const [, nv] of Object.entries(state.networks)) {
     if (typeof nv.x !== 'number' || typeof nv.y !== 'number') {
       nv.x = FALLBACK_X; nv.y = FALLBACK_Y + i * GAP;
     }
     i++;
   }
   i = 0;
-  for (const [hn, h] of Object.entries(state.hosts)) {
+  for (const [, h] of Object.entries(state.hosts)) {
     if (typeof h.x !== 'number' || typeof h.y !== 'number') {
       const target = state.networks[h.network];
       if (target) { h.x = target.x - 230; h.y = target.y + (i % 2 === 0 ? -20 : 20); }
@@ -221,7 +248,7 @@ export function ensurePositions() {
     i++;
   }
   i = 0;
-  for (const [rn, r] of Object.entries(state.routers)) {
+  for (const [, r] of Object.entries(state.routers)) {
     if (typeof r.x !== 'number' || typeof r.y !== 'number') {
       const ifs = Object.values(r.interfaces || {});
       const targetNets = ifs.map(f => state.networks[f.network]).filter(Boolean);
@@ -233,6 +260,124 @@ export function ensurePositions() {
       }
     }
     i++;
+  }
+}
+
+// Spring-electric layout. Tuned for the project's typical topology sizes
+// (≲ 30 nodes); larger graphs may benefit from more iterations.
+function _forceDirectedLayout() {
+  const nodes = [];
+  const idx = new Map();
+  function add(key, ref) { idx.set(key, nodes.length); nodes.push({ ref, x: 0, y: 0, fx: 0, fy: 0 }); }
+  // Sort keys for deterministic iteration order — same YAML → same layout.
+  for (const n of Object.keys(state.networks).sort()) add(`net:${n}`, state.networks[n]);
+  for (const n of Object.keys(state.routers).sort())  add(`rtr:${n}`, state.routers[n]);
+  for (const n of Object.keys(state.hosts).sort())    add(`host:${n}`, state.hosts[n]);
+  const N = nodes.length;
+  if (N === 0) return;
+
+  const edges = [];
+  for (const [hn, h] of Object.entries(state.hosts)) {
+    const hi = idx.get(`host:${hn}`);
+    if (h.network && idx.has(`net:${h.network}`)) edges.push([hi, idx.get(`net:${h.network}`)]);
+  }
+  for (const [rn, r] of Object.entries(state.routers)) {
+    const ri = idx.get(`rtr:${rn}`);
+    for (const iff of Object.values(r.interfaces || {})) {
+      if (iff.network && idx.has(`net:${iff.network}`)) edges.push([ri, idx.get(`net:${iff.network}`)]);
+    }
+  }
+  // p2p links contribute direct endpoint↔endpoint edges (the link object
+  // isn't a graph node — visually it's an edge between the two devices).
+  for (const linkName of Object.keys(state.links || {})) {
+    const endpoints = [];
+    for (const [rn, r] of Object.entries(state.routers)) {
+      for (const iff of Object.values(r.interfaces || {})) {
+        if (iff.link === linkName) { endpoints.push(`rtr:${rn}`); break; }
+      }
+    }
+    for (const [hn, h] of Object.entries(state.hosts)) {
+      if (h.link === linkName) endpoints.push(`host:${hn}`);
+    }
+    for (let i = 0; i < endpoints.length; i++) {
+      for (let j = i + 1; j < endpoints.length; j++) {
+        edges.push([idx.get(endpoints[i]), idx.get(endpoints[j])]);
+      }
+    }
+  }
+
+  // Deterministic initial layout: nodes evenly around a circle whose radius
+  // scales with N so dense graphs don't start at zero distance.
+  const initRadius = Math.max(200, N * 55);
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    nodes[i].x = initRadius * Math.cos(a);
+    nodes[i].y = initRadius * Math.sin(a);
+  }
+
+  const ITERATIONS = 400;
+  const REPULSION = 90000;     // inverse-square repulsion constant
+  const SPRING_K = 0.05;       // spring stiffness
+  const REST_LENGTH = 230;     // ideal edge length, px
+  const MAX_STEP = 60;         // per-iteration displacement cap, px
+
+  for (let iter = 0; iter < ITERATIONS; iter++) {
+    for (const n of nodes) { n.fx = 0; n.fy = 0; }
+    // Pairwise repulsion
+    for (let i = 0; i < N; i++) {
+      for (let j = i + 1; j < N; j++) {
+        const a = nodes[i], b = nodes[j];
+        let dx = a.x - b.x, dy = a.y - b.y;
+        let d2 = dx * dx + dy * dy;
+        if (d2 < 1) {
+          // Coincident: deterministic nudge based on index parity so the
+          // simulation can split them apart instead of dividing by zero.
+          dx = (i & 1) ? 0.5 : -0.5;
+          dy = (j & 1) ? 0.5 : -0.5;
+          d2 = dx * dx + dy * dy;
+        }
+        const d = Math.sqrt(d2);
+        const f = REPULSION / d2;
+        const fx = (dx / d) * f, fy = (dy / d) * f;
+        a.fx += fx; a.fy += fy;
+        b.fx -= fx; b.fy -= fy;
+      }
+    }
+    // Spring attraction
+    for (const [i, j] of edges) {
+      const a = nodes[i], b = nodes[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const d = Math.sqrt(dx * dx + dy * dy) || 0.001;
+      const f = SPRING_K * (d - REST_LENGTH);
+      const fx = (dx / d) * f, fy = (dy / d) * f;
+      a.fx += fx; a.fy += fy;
+      b.fx -= fx; b.fy -= fy;
+    }
+    // Cooling: shrink the effective step over time so late iterations
+    // settle nodes instead of overshooting.
+    const cooling = 1 - iter / ITERATIONS;
+    for (const n of nodes) {
+      let dx = n.fx * cooling, dy = n.fy * cooling;
+      const mag = Math.sqrt(dx * dx + dy * dy);
+      if (mag > MAX_STEP) { dx = (dx / mag) * MAX_STEP; dy = (dy / mag) * MAX_STEP; }
+      n.x += dx; n.y += dy;
+    }
+  }
+
+  // Re-center on a canvas-friendly point (away from the origin) so the
+  // initial fitView lands the graph somewhere visible.
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    if (n.x < minX) minX = n.x;
+    if (n.y < minY) minY = n.y;
+    if (n.x > maxX) maxX = n.x;
+    if (n.y > maxY) maxY = n.y;
+  }
+  const offsetX = 700 - (minX + maxX) / 2;
+  const offsetY = 400 - (minY + maxY) / 2;
+  for (const n of nodes) {
+    n.ref.x = Math.round(n.x + offsetX);
+    n.ref.y = Math.round(n.y + offsetY);
   }
 }
 
