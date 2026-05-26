@@ -293,8 +293,15 @@ measure different things:
 
 The `TWO_WAY`, `INIT`, and `DOWN` totals are per-adjacency states
 (peers and adjacencies are not states). State counts that are zero are
-omitted to keep the line compact. An interface with no peers yet shows
-up as one DOWN entry.
+omitted to keep the line compact.
+
+An interface attached to a fabric where no other router is connected
+(a stub — e.g. a LAN serving only hosts) is shown as `— no other routers`
+and is *not* counted as a `DOWN` adjacency: there is nothing on the
+other end to peer with, so flagging it as DOWN would be misleading. An
+interface that *should* have a peer but hasn't heard one yet (or whose
+peer's Hellos have stopped) is the real DOWN case and contributes to
+the count.
 
 ## Terminals
 

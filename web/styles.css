@@ -1840,6 +1840,7 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 .neigh-state.down { background: rgba(150, 150, 150, 0.2); color: var(--text-3); }
 .neigh-state.init { background: rgba(220, 165, 60, 0.25); color: #d2a23c; }
 .neigh-state.two_way { background: rgba(60, 200, 100, 0.22); color: #4dca7e; }
+.neigh-state.stub { background: rgba(150, 150, 150, 0.2); color: var(--text-3); }
 
 /* Collapsible inspector sections (top-level) */
 details.insp-section {

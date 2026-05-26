@@ -1790,7 +1790,16 @@ describe('renderRouterInsp — collapsible sections + Neighbors', () => {
   });
 
   it('counts interfaces with no peers as 0 peers but as DOWN entries', () => {
-    // No neighbor data at all — both interfaces show synthetic DOWN rows.
+    // Add a peer router on each LAN so both interfaces are *expected* to
+    // form an adjacency — without that, the new stub detection would
+    // (correctly) skip them. With peers present and no Hellos heard, both
+    // count as real DOWN.
+    state.routers.r2 = {
+      interfaces: { eth0: { network: 'lan1', address: '10.0.0.254', cost: 1 } },
+    };
+    state.routers.r3 = {
+      interfaces: { eth0: { network: 'lan2', address: '10.0.1.254', cost: 1 } },
+    };
     state.neighborsByDevice = {};
     renderRouterInsp('r1', document.getElementById('inspector'));
     const section = Array.from(document.querySelectorAll('details.insp-section'))
@@ -1799,6 +1808,58 @@ describe('renderRouterInsp — collapsible sections + Neighbors', () => {
     expect(summary).toMatch(/0 peers/);
     expect(summary).toMatch(/2 adjacencies/);
     expect(summary).toMatch(/2 DOWN/);
+  });
+
+  it('marks interfaces with no other routers on the fabric as stub (not DOWN)', () => {
+    // r1.eth0 → lan1 with r2 also attached → real adjacency surface
+    // r1.eth1 → lan2 with NO other router → stub interface
+    state.networks = { lan1: { address: '10.0.0.0/24' }, lan2: { address: '10.0.1.0/24' } };
+    state.routers = {
+      r1: {
+        interfaces: {
+          eth0: { network: 'lan1', address: '10.0.0.1', cost: 1 },
+          eth1: { network: 'lan2', address: '10.0.1.1', cost: 1 },
+        },
+      },
+      r2: {
+        interfaces: {
+          eth0: { network: 'lan1', address: '10.0.0.254', cost: 1 },
+        },
+      },
+    };
+    state.neighborsByDevice = {};  // no Hellos yet — r1.eth0 expects r2; r1.eth1 expects nothing
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const section = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbors'));
+    expect(section).toBeTruthy();
+    expect(section.textContent).toContain('no other routers');
+    // The stub interface must NOT contribute to DOWN or to the adjacency total.
+    const summary = section.querySelector('summary').textContent;
+    expect(summary).toMatch(/1 DOWN/);            // only eth0 is real DOWN
+    expect(summary).toMatch(/1 adjacency\b/);      // only eth0 counts
+    expect(summary).not.toMatch(/2 DOWN/);
+  });
+
+  it('uses the .stub CSS class on the stub badge', () => {
+    state.networks = { lan1: { address: '10.0.0.0/24' } };
+    state.routers = {
+      r1: { interfaces: { eth0: { network: 'lan1', address: '10.0.0.1', cost: 1 } } },
+    };
+    state.neighborsByDevice = {};
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    expect(document.querySelector('.neigh-state.stub')).toBeTruthy();
+  });
+
+  it('treats a link with no other endpoint as a stub interface', () => {
+    state.links = { p2p1: { cidr: '10.0.0.0/30' } };
+    state.routers = {
+      r1: { interfaces: { eth0: { link: 'p2p1', address: '10.0.0.1', cost: 1 } } },
+    };
+    state.neighborsByDevice = {};
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const section = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbors'));
+    expect(section.textContent).toContain('no other routers');
   });
 
   it('omits zero-count states from the summary to keep the line compact', () => {

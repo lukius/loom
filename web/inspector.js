@@ -143,18 +143,44 @@ function renderRoutingSection(deviceName) {
 }
 
 /* ---------- neighbors section ---------- */
+function _otherRouterOnFabric(thisDevice, ifaceObj) {
+  // True iff some router OTHER than `thisDevice` has an interface attached
+  // to the same network/link as `ifaceObj`. Used to distinguish a stub
+  // interface (only router on the fabric — nothing to peer with, mirrors
+  // real OSPF's empty neighbor table for such interfaces) from a real
+  // DOWN adjacency (a peer is expected but no Hello has arrived).
+  const fabricKey = ifaceObj && ifaceObj.network !== undefined ? 'network' : 'link';
+  const fabricName = ifaceObj && ifaceObj[fabricKey];
+  if (!fabricName) return false;
+  for (const [rn, r] of Object.entries(state.routers || {})) {
+    if (rn === thisDevice) continue;
+    for (const other of Object.values(r.interfaces || {})) {
+      if (other[fabricKey] === fabricName) return true;
+    }
+  }
+  return false;
+}
+
 function renderNeighborSection(device, router) {
   const data = (state.neighborsByDevice && state.neighborsByDevice[device]) || {};
   const ifaceNames = Object.keys(router.interfaces || {});
-  // peers = unique peer-router names; adjacencies = total per-interface entries
-  // (including synthetic DOWN rows for interfaces with no peers, so the math
-  // adjacencies = TWO_WAY + INIT + DOWN holds).
+  // peers = unique peer-router names; adjacencies = total per-interface
+  // entries that *represent an expected adjacency*. Stub interfaces (no
+  // other router on the fabric) don't count — there's nothing to peer
+  // with, so listing them as DOWN would falsely imply something is wrong.
   const peerSet = new Set();
   const counts = { down: 0, init: 0, two_way: 0 };
   const ifaceBlocks = ifaceNames.map(iface => {
     const peers = data[iface] || {};
     const peerNames = Object.keys(peers);
     if (peerNames.length === 0) {
+      const ifaceObj = (router.interfaces || {})[iface];
+      const isStub = !_otherRouterOnFabric(device, ifaceObj);
+      if (isStub) {
+        return `<div class="neigh-iface-block"><div class="iface-name">${escapeHtml(iface)}</div>` +
+          `<div class="neigh-row"><span class="peer">—</span>` +
+          `<span class="neigh-state stub">no other routers</span></div></div>`;
+      }
       counts.down += 1;
       return `<div class="neigh-iface-block"><div class="iface-name">${escapeHtml(iface)}</div>` +
         `<div class="neigh-row"><span class="peer">—</span>` +
