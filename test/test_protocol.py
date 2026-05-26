@@ -569,6 +569,94 @@ class ProtocolTest(unittest.TestCase):
         self.assertTrue(result.is_matched())
         self.assertEqual(result.interface().name(), 'eth2')
 
+    def test_update_interface_triggers_immediate_lsa_and_recompute(self):
+        # Same triangle as the previous test, but exercises the public
+        # Router.update_interface entry point (the one the shell and web
+        # `update_cost` op call into). A user-driven cost change must
+        # converge immediately: the local LSA must reflect the new cost
+        # and the local routing table must point at the new shortest
+        # path, without anyone pumping _handle_update() or waiting for
+        # the next periodic refresh tick. Public addresses so the
+        # default RFC1918_OUTBOUND policy doesn't strip them from the
+        # flooded LSA — we want to assert the cost reaches peers.
+        net2 = Network('lan2', NetworkAddress('200.0.2.0/24'))
+        net3 = Network('lan3', NetworkAddress('200.0.3.0/24'))
+        net4 = Network('lan4', NetworkAddress('200.0.4.0/24'))
+
+        r1 = Router('r1')
+        r1_eth1 = Interface('eth1', net2, Address('200.0.2.1'), cost=1)
+        r1_eth2 = Interface('eth2', net3, Address('200.0.3.1'), cost=5)
+        r1.add_interface(r1_eth1)
+        r1.add_interface(r1_eth2)
+
+        r2 = Router('r2')
+        r2_eth0 = Interface('eth0', net2, Address('200.0.2.2'), cost=1)
+        r2_eth1 = Interface('eth1', net4, Address('200.0.4.1'), cost=1)
+        r2.add_interface(r2_eth0)
+        r2.add_interface(r2_eth1)
+
+        r3 = Router('r3')
+        r3_eth0 = Interface('eth0', net3, Address('200.0.3.2'), cost=5)
+        r3_eth1 = Interface('eth1', net4, Address('200.0.4.2'), cost=1)
+        r3.add_interface(r3_eth0)
+        r3.add_interface(r3_eth1)
+
+        proto = r1.protocol()
+
+        proto._neighbor_table.record_hello(  # noqa: SLF001
+            r1_eth1, r2, peer_listed_us=True,
+            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+        )
+        proto._neighbor_table.record_hello(  # noqa: SLF001
+            r1_eth2, r3, peer_listed_us=True,
+            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+        )
+
+        msg_r2 = LSA(origin=r2, seq=1)
+        msg_r2.add_link(net2.address(), r2_eth0.cost())
+        msg_r2.add_link(net4.address(), r2_eth1.cost())
+        proto.handle_incoming_message(msg_r2, r1_eth1)
+
+        msg_r3 = LSA(origin=r3, seq=1)
+        msg_r3.add_link(net3.address(), r3_eth0.cost())
+        msg_r3.add_link(net4.address(), r3_eth1.cost())
+        proto.handle_incoming_message(msg_r3, r1_eth2)
+
+        # Pre-condition: net4 best reached via eth1 (1+1=2).
+        result = r1.routing_table().match(Address('200.0.4.100'))
+        self.assertTrue(result.is_matched())
+        self.assertEqual(result.interface().name(), 'eth1')
+
+        # Capture flooded LSAs (no real network plumbing here, so we
+        # intercept send_to to verify a fresh LSA was emitted).
+        sent = []
+        original_send = Interface.send_to
+        Interface.send_to = lambda self, pkt, dst_addr: sent.append(
+            (self.name(), pkt.payload()),
+        )
+        try:
+            # Use the public API the shell + server invoke.
+            r1.update_interface('eth1', 100)
+        finally:
+            Interface.send_to = original_send
+
+        # 1. Local LSDB must reflect the new cost immediately.
+        local_lsa = proto.lsdb().lsa_for(r1)
+        self.assertIsNotNone(local_lsa)
+        self.assertEqual(local_lsa.links()[net2.address()], 100)
+
+        # 2. Routing table must already point at the new shortest path
+        #    (eth2 via r3, 5+1=6 vs the old 100+1=101).
+        result = r1.routing_table().match(Address('200.0.4.100'))
+        self.assertTrue(result.is_matched())
+        self.assertEqual(result.interface().name(), 'eth2')
+
+        # 3. A fresh LSA must have been flooded out every interface so
+        #    peers can converge too.
+        flooded_lsas = [p for _, p in sent if isinstance(p, LSA)]
+        self.assertGreater(len(flooded_lsas), 0)
+        self.assertEqual(flooded_lsas[0].links()[net2.address()], 100)
+
 
 # ---------------------------------------------------------------------------
 # P2P link convergence tests
@@ -791,9 +879,14 @@ def test_link_cost_propagates():
     and r2 via two shared LANs at cost 1 each.  After convergence:
       - r1's graph stores weight 5 from r1 to the link prefix.
       - r2's graph stores weight 9 from r2 to the link prefix.
-      - r1 reaches r2's LAN (10.0.2.0/24) via r3 (eth2, cost 1+1+1+1+1=5)
-        rather than the direct link (eth1, graph cost 5+9+1=15: r1→p2p1
-        at 5, p2p1→r2 at r2's announced cost 9, r2→lan_r2 at 1).
+      - r1 reaches r2's LAN (10.0.2.0/24) via r3 (eth2) rather than the
+        direct link (eth1). Costs use the OSPF pseudonode model
+        (subnet→router edges are free):
+          - direct  : r1→p2p1 (5) + p2p1→r2 (0) + r2→lan_r2 (1) = 6
+          - via r3  : r1→lan_mid (1) + lan_mid→r3 (0) + r3→lan_mid2 (1)
+                      + lan_mid2→r2 (0) + r2→lan_r2 (1) = 3
+        r2's announced cost on the link (9) is irrelevant in the r1→r2
+        direction — it only matters going the other way.
     """
     path = _make_tmp_topology(TWO_ROUTERS_ASYMMETRIC_COST)
     system = Parser(path).parse(start_routing=False).single_as()
@@ -814,8 +907,8 @@ def test_link_cost_propagates():
         # Wait for full convergence: every router must have every prefix AND r1
         # must have settled on the cheaper path via r3 (eth2).  Checking only
         # prefix presence is not enough — the route may temporarily point at
-        # eth1 (direct link, cost 5+9+1=15) before r3's LSAs arrive and cause
-        # Dijkstra to prefer the cheaper path via r3 (cost 1+1+1+1+1=5).
+        # eth1 (direct link, OSPF cost 5+0+1=6) before r3's LSAs arrive and
+        # cause Dijkstra to prefer the cheaper path via r3 (cost 1+0+1+0+1=3).
         assert _wait(lambda: all(
             _table_has_prefix(r, p)
             for r in [r1, r2, r3]
@@ -832,8 +925,8 @@ def test_link_cost_propagates():
         r2_link_cost = r2.protocol()._graph.weight(r2, link_prefix)  # noqa: SLF001
         assert r2_link_cost == 9, f"expected r2→link cost 9, got {r2_link_cost}"
 
-        # r1 prefers r3's path (cost 1+1+1+1+1=5) over the direct link (cost
-        # 5+9+1=15) to reach lan_r2; verified by _wait above.
+        # r1 prefers r3's path (OSPF cost 1+0+1+0+1=3) over the direct
+        # link (cost 5+0+1=6) to reach lan_r2; verified by _wait above.
         # Double-check the final routing table entry.
         r1_to_lan_r2 = r1.routing_table().match(Address("200.0.2.100"))
         assert r1_to_lan_r2.is_matched()

@@ -189,6 +189,37 @@ def test_build_graph_with_eligible_origin_includes_its_links():
     assert g.weight(remote, NetworkAddress('10.0.2.0/24')) == 2
 
 
+def test_build_graph_uses_pseudonode_model_for_reverse_edges():
+    """The reverse edge (subnet → router) must carry weight 0.
+
+    OSPF interface costs are outgoing-only: '10' on iface eth0 means
+    'sending a packet out of eth0 onto its subnet costs 10'. There is
+    no corresponding incoming cost. OSPF models a multi-access network
+    as a pseudonode that advertises zero-cost links back to every
+    attached router — once a packet is on the wire, reaching any
+    router attached to that wire is free.
+
+    Without this, a single hop ROUTER → SUBNET → ROUTER would be
+    double-counted (cost = router's outgoing + router's outgoing), and
+    asymmetric link costs would behave incorrectly.
+    """
+    local = _router_with(['10.0.0.0/24'], [3], name='local')
+    remote = _router_with(['10.0.0.0/24', '10.0.1.0/24'], [7, 2], name='remote')
+    lsdb = LSDB(local)
+    lsdb.install(LSA.from_router(local, seq=1, policy=_PermitAll()), now=0.0)
+    lsdb.install(LSA.from_router(remote, seq=1, policy=_PermitAll()), now=0.0)
+    g = lsdb.build_graph(eligible_origins={remote})
+
+    shared = NetworkAddress('10.0.0.0/24')
+    # Outgoing (router → subnet) carries the router's own cost.
+    assert g.weight(local, shared) == 3
+    assert g.weight(remote, shared) == 7
+    # Reverse (subnet → router) is free, regardless of which router's
+    # interface cost happened to land there.
+    assert g.weight(shared, local) == 0
+    assert g.weight(shared, remote) == 0
+
+
 def test_build_graph_excludes_non_eligible_origin():
     local = _router_with(['10.0.0.0/24'], [1])
     noisy = Router('noisy')

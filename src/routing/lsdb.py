@@ -96,15 +96,22 @@ class LSDB:
     def build_graph(self, eligible_origins: set) -> NetworkGraph:
         graph = NetworkGraph()
         graph.add_router(self._local)
+        # OSPF pseudonode model: a router's interface cost is OUTGOING
+        # only ("sending out of this iface costs N"). The reverse —
+        # arriving at a router from its attached subnet — is free,
+        # because the cost was already paid when the sender put the
+        # frame on the wire. Each LSA link therefore contributes two
+        # directed edges: router → subnet at the advertised cost, and
+        # subnet → router at 0.
         with self._lock:
-            # Local router's own LSA is always eligible if installed.
             local_entry = self._by_origin.get(self._local)
             if local_entry is not None:
                 lsa, _ = local_entry
                 for prefix, cost in lsa.links().items():
                     if prefix not in graph:
                         graph.add_network(prefix)
-                    graph.add_edge(src=self._local, dst=prefix, weight=cost)
+                    graph.add_directed_edge(src=self._local, dst=prefix, weight=cost)
+                    graph.add_directed_edge(src=prefix, dst=self._local, weight=0)
 
             for origin, (lsa, _) in self._by_origin.items():
                 if origin is self._local:
@@ -116,5 +123,6 @@ class LSDB:
                 for prefix, cost in lsa.links().items():
                     if prefix not in graph:
                         graph.add_network(prefix)
-                    graph.add_edge(src=origin, dst=prefix, weight=cost)
+                    graph.add_directed_edge(src=origin, dst=prefix, weight=cost)
+                    graph.add_directed_edge(src=prefix, dst=origin, weight=0)
         return graph

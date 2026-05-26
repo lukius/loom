@@ -54,6 +54,20 @@ class NetworkGraph:
         self._costs[src][dst] = weight
         self._costs[dst][src] = weight
 
+    def add_directed_edge(self, src, dst, weight):
+        """Set the src→dst weight only; leave dst→src untouched.
+
+        Counterpart to add_edge (symmetric). Used by LSDB.build_graph
+        to encode OSPF-style asymmetric costs: a router's interface
+        cost is outgoing-only, and the reverse traversal (subnet back
+        onto an attached router) is a separate zero-weight edge.
+        """
+        if src not in self._costs or dst not in self._costs:
+            raise GraphConsistencyException(
+                f'add_directed_edge: missing endpoint(s) src={src} dst={dst}'
+            )
+        self._costs[src][dst] = weight
+
     def shortest_paths(self, src):
         distances, previous = self._shortest_paths(src)
         paths = dict()

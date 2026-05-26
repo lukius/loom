@@ -190,6 +190,15 @@ class Router(NetworkDevice):
         for proto in self._protocols:
             proto.stop()
 
+    def update_interface(self, iface_name: str, cost: int):
+        # Mutate cost via the base, then notify every protocol so any
+        # link-state advertisement is re-emitted immediately. Without
+        # this nudge, a cost change waits up to one lsa_refresh
+        # interval (~30s default + jitter) before propagating.
+        super().update_interface(iface_name, cost)
+        for proto in self._protocols:
+            proto.local_links_changed()
+
     def handle_packet(self, packet, interface):
         dst = packet.destination()
         on_public = not interface.network().address().is_private()

@@ -198,6 +198,44 @@ graph = lsdb.build_graph(eligible_origins)
 `build_graph` always includes the local router's own LSA (if present), then
 adds each origin in `eligible_origins`.
 
+### Cost model (OSPF pseudonode)
+
+Interface costs are **outgoing-only**: an interface cost `N` on router R's
+iface `eth_i` means "sending a packet out of `eth_i` onto its attached subnet
+S costs N." There is no corresponding incoming cost.
+
+`build_graph` encodes this with two directed edges per LSA link:
+
+- `R → S` at weight = R's advertised interface cost
+- `S → R` at weight = 0
+
+The zero-weight reverse edge models the OSPF "pseudonode": once a packet is on
+a multi-access subnet, reaching any router attached to that subnet is free —
+the cost was already paid by whoever put the frame on the wire. Without this,
+a single hop `R₁ → S → R₂` would double-count (`R₁`'s outgoing + `R₂`'s
+outgoing) and asymmetric link costs would behave incorrectly.
+
+A consequence worth knowing: with **symmetric** link costs (both ends set to
+the same value), changing only one side of a link changes the cost from that
+direction only. Changing v's iface cost from 4 to 6 affects `v → t` (now 6)
+but not `t → v` (still 4). To raise the cost symmetrically, update both
+endpoints.
+
+### Local-link change propagation
+
+`Router.update_interface(name, cost)` mutates the interface cost and then
+calls `proto.local_links_changed()` on every protocol. `LinkStateProtocol`
+overrides this to re-emit a fresh LSA, install it locally (recomputing SPF
+if links actually changed), and flood it out every interface immediately —
+the same actions a scheduled `lsa_refresh` tick would take, but without
+waiting for the timer. Without this, a user-driven cost change would only
+propagate at the next periodic refresh (up to `lsa_refresh_interval + jitter`
+later — ~37 s with defaults).
+
+The periodic `lsa_refresh` deadline is reset to `now + lsa_refresh_interval`
+after a manual emission, so a burst of edits collapses into one refresh
+cadence rather than a tail of identical periodic floods.
+
 ### Graph eligibility filter
 
 The eligibility set is computed by `_rebuild_graph_and_recompute` in

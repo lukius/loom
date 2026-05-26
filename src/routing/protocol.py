@@ -46,6 +46,14 @@ class RoutingProtocol(ABC):
         RIB's responsibility, not the protocol's.
         """
 
+    def local_links_changed(self) -> None:
+        """Local interface state (cost, neighbor reachability, …) changed.
+
+        Default no-op. Protocols that derive their advertisements from
+        local interface state override this to re-emit immediately
+        instead of waiting for the next periodic refresh.
+        """
+
 
 class LinkStateProtocol(RoutingProtocol):
 
@@ -309,6 +317,24 @@ class LinkStateProtocol(RoutingProtocol):
                     src_addr=iface.address(), dst_addr=broadcast, payload=hello,
                 )
                 iface.send_to(dgram, dst_addr=broadcast)
+
+    def local_links_changed(self) -> None:
+        # A locally-driven cost or interface change must propagate now,
+        # not at the next periodic lsa_refresh tick (which can be up to
+        # lsa_refresh_interval + jitter away — ~37s with defaults).
+        # Emit a fresh LSA, install it locally (recomputes SPF if links
+        # actually changed), and flood it out every interface so peers
+        # converge too.
+        now = time.monotonic()
+        self._emit_lsa_on_all_interfaces(now)
+        # Reset the periodic refresh deadline so a flurry of edits doesn't
+        # produce a tail of identical periodic refreshes right behind us.
+        if 'lsa_refresh' in self._scheduler._deadlines:  # noqa: SLF001
+            self._scheduler.schedule(
+                'lsa_refresh',
+                base_interval=self._lsa_refresh_interval,
+                fire_at=now + self._lsa_refresh_interval,
+            )
 
     def _emit_lsa_on_all_interfaces(self, now: float):
         with self._lock:
