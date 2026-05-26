@@ -726,7 +726,7 @@ describe('PacketStore — hello routing-chatter classification', () => {
       src: { device: srcDev, iface, address: '10.0.0.254' },
       dst: { device: null, address: '255.255.255.255' },
       payload_src: '10.0.0.254', payload_dst: '255.255.255.255',
-      payload: { originator: 'r1', neighbours_heard: [] },
+      payload: { originator: 'r1', neighbors_heard: [] },
     };
   }
 

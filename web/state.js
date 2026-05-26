@@ -26,7 +26,7 @@ export const state = {
   /* transient sim state — NAT snapshots keyed by device name; populated by
      the `nat_table_changed` WS event. Not persisted; reset on loadSample. */
   natTables: {},
-  /* Per-device neighbour state, keyed by device name.
+  /* Per-device neighbor state, keyed by device name.
      Value: { [ifaceName]: { [peerName]: { state, last_hello_at, peer_acked_at } } }
      Not persisted; transient sim state from `neighbor_state_changed` WS events. */
   neighborsByDevice: {},
@@ -181,7 +181,7 @@ export function loadSample() {
   toast('Sample topology loaded', 'ok');
 }
 
-/* ---------- neighbour state cache ---------- */
+/* ---------- neighbor state cache ---------- */
 export function applyNeighborStateChanged(ev) {
   const { device, interface: iface, peer, state: nState,
           last_hello_at, peer_acked_at } = ev;

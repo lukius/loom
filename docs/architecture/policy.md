@@ -26,7 +26,7 @@ BGP-era policy. The framework introduced here:
    and a `permit` default — observably identical to the previous
    behaviour, structurally one of many policies.
 2. **Reserves the BGP shape.** Set clauses, inbound application,
-   AS-path matchers, and per-neighbour route-maps are all named in the
+   AS-path matchers, and per-neighbor route-maps are all named in the
    design but unimplemented; the shape they slot into is fixed.
 
 ---
@@ -84,9 +84,9 @@ Each of these slots into the existing shape without redesigning it:
   type modelled. `RouteMapRule.match` will become a list of typed match
   clauses (`MatchPrefix`, `MatchCommunity`, `MatchASPath`) when BGP
   introduces non-prefix matches.
-- **Per-neighbour route-maps.** Link-state floods to broadcast, so one
+- **Per-neighbor route-maps.** Link-state floods to broadcast, so one
   outbound policy per protocol instance is enough. BGP advertises per
-  neighbour with potentially distinct route-maps per direction per peer —
+  neighbor with potentially distinct route-maps per direction per peer —
   that becomes a `dict[neighbor_id, RouteMap]` attribute on the BGP
   protocol when it lands.
 - **YAML configuration.** No YAML syntax for route-maps yet. When BGP

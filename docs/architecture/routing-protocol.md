@@ -60,13 +60,13 @@ LSA).
 
 ### `Hello`
 
-A Hello carries liveness from one interface, listing all non-DOWN neighbours
+A Hello carries liveness from one interface, listing all non-DOWN neighbors
 currently heard on that fabric. Fields:
 
 | Field | Type | Purpose |
 |---|---|---|
 | `_originator` | `Router` | The router sending the Hello |
-| `_neighbours_heard` | `list[Router]` | Routers heard on this fabric in the last dead interval |
+| `_neighbors_heard` | `list[Router]` | Routers heard on this fabric in the last dead interval |
 
 Hellos are **built per-interface** and are not shared across interfaces.
 
@@ -139,7 +139,7 @@ networks appear in the LSDB and graph; the `flooded_lsa` is built with
 it is sent out any interface.
 
 At start, `_protocol_loop` calls `_safe_tick_initial` before the first timer
-fires (t ≈ 0), so neighbouring routers learn about each other immediately
+fires (t ≈ 0), so neighboring routers learn about each other immediately
 instead of waiting one full refresh interval.
 
 ---
@@ -147,10 +147,10 @@ instead of waiting one full refresh interval.
 ## Hello protocol
 
 `_emit_hello_on_all_interfaces` runs on every hello-timer tick. For each
-interface it builds a `Hello` listing all non-DOWN neighbours currently heard
+interface it builds a `Hello` listing all non-DOWN neighbors currently heard
 on that fabric, then sends it as a broadcast Datagram.
 
-### Neighbour state machine
+### Neighbor state machine
 
 Each `(interface, peer)` pair has a `NeighborState`:
 
@@ -166,13 +166,13 @@ Each `(interface, peer)` pair has a `NeighborState`:
 | State | Meaning |
 |---|---|
 | `DOWN` | No recent Hello from peer (or never heard) |
-| `INIT` | Heard peer's Hello; peer has not yet included us in its neighbours list |
+| `INIT` | Heard peer's Hello; peer has not yet included us in its neighbors list |
 | `TWO_WAY` | Heard peer's Hello; peer listed us → bidirectional adjacency confirmed |
 
 State is derived (not stored) from timestamps in `Neighbor.state()`:
 - `_last_hello_at` is refreshed on every received Hello from this peer.
 - `_peer_acked_at` is refreshed when a received Hello lists us in its
-  `neighbours_heard`.
+  `neighbors_heard`.
 - Both must be more recent than `dead_interval` seconds ago for `TWO_WAY`.
 
 `NeighborTable.record_hello` returns a `NeighborTransition` when the state
@@ -207,7 +207,7 @@ each origin:
 | Origin classification | Eligibility | Rationale |
 |---|---|---|
 | TWO_WAY-direct (in `bidirectional_peers`) | Always eligible | Confirmed bidirectional adjacency |
-| Direct-non-TWO_WAY (in `_neighbor_table.all()` ∖ `bidirectional_peers`) | Excluded | Direct neighbour but not yet fully adjacent — asymmetric, INIT-stuck |
+| Direct-non-TWO_WAY (in `_neighbor_table.all()` ∖ `bidirectional_peers`) | Excluded | Direct neighbor but not yet fully adjacent — asymmetric, INIT-stuck |
 | Non-direct (never observed a Hello from this origin) | Eligible iff ≥1 TWO_WAY adjacency exists | Multi-hop LSA flooded by a trusted peer |
 
 The "non-direct" branch is the critical one for multi-hop convergence: if r1
@@ -220,7 +220,7 @@ If no TWO_WAY adjacency exists at all (empty `bidi` set), `eligible_origins`
 is empty — no remote LSA is trusted until at least one adjacency is verified.
 
 **Deviation from RFC 2328.** Real OSPF uses flooder-based admission: an LSA
-is installed when a `Full`-state neighbour (the flooder) delivers it, regardless
+is installed when a `Full`-state neighbor (the flooder) delivers it, regardless
 of the origin's own adjacency status. loom-OSPF does the inverse — it classifies
 by origin rather than by flooder. This is more permissive, but acceptable
 because the simulator has no adversarial LSA-injection threat, the simulation
@@ -299,7 +299,7 @@ partition, or graceful stop without withdrawal), its LSA ages out within
 router is detected within two refresh cycles.
 
 The **dead interval** is a separate (shorter) signal at the Hello layer:
-`dead_interval = 3 × hello_interval = 30s` by default. A neighbour that stops
+`dead_interval = 3 × hello_interval = 30s` by default. A neighbor that stops
 sending Hellos is moved to `DOWN` within `dead_interval`, its LSA is purged
 from the LSDB, and the graph is rebuilt — well before max-age would fire.
 Together, Hello-based dead detection is the fast path; max-age is the safety net.
@@ -336,7 +336,7 @@ dispatches whichever timers have elapsed when it wakes:
 
 | Timer name | Default interval | Derived from | Purpose |
 |---|---|---|---|
-| `hello` | 10s | production default | Emit Hellos; sweep dead neighbours |
+| `hello` | 10s | production default | Emit Hellos; sweep dead neighbors |
 | `lsa_refresh` | 30s | production default | Emit LSA flood; refresh own LSDB entry |
 | `maxage_check` | 30s | `= lsa_refresh` | Purge expired remote LSAs |
 
@@ -375,7 +375,7 @@ if not running:
     continue          # paused — re-park without ticking
 ```
 
-Pausing the simulation freezes Hellos, LSA floods, dead-neighbour sweeps, and
+Pausing the simulation freezes Hellos, LSA floods, dead-neighbor sweeps, and
 max-age checks. No bursts of catchup activity occur on resume; the next timer
 tick is simply the first event after unpausing.
 
@@ -390,7 +390,7 @@ tick is simply the first event after unpausing.
 | Datagram carrier | `src/routing/messages.py` | `Datagram` |
 | LSDB install + purge | `src/routing/lsdb.py` | `LSDB.install`, `LSDB.expired_origins` |
 | LSDB → graph | `src/routing/lsdb.py` | `LSDB.build_graph` |
-| Neighbour state machine | `src/routing/neighbor.py` | `Neighbor.state`, `NeighborTable` |
+| Neighbor state machine | `src/routing/neighbor.py` | `Neighbor.state`, `NeighborTable` |
 | Timer deadlines + jitter | `src/routing/scheduler.py` | `Scheduler` |
 | Protocol loop | `src/routing/protocol.py` | `LinkStateProtocol._protocol_loop` |
 | LSA origination | `src/routing/protocol.py` | `_emit_lsa_on_all_interfaces` |

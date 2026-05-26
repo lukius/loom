@@ -611,9 +611,9 @@ describe('PacketAnim — throttle preserves distinct chatter messages', () => {
   }
 
   // Bug: with no jitter, three routers' keepalive ticks overlap and re-floods
-  // of one router's message arrive on a neighbour's (device, network) slot
-  // before that neighbour originates its own message. The (device, network)
-  // throttle then drops the neighbour's origination — even though it's a
+  // of one router's message arrive on a neighbor's (device, network) slot
+  // before that neighbor originates its own message. The (device, network)
+  // throttle then drops the neighbor's origination — even though it's a
   // *distinct* logical message (different payload_id).
   it('keeps distinct payload_ids from the same (device, network) within 200ms', () => {
     // First emission: r1 re-floods someone else's message on lan_a.

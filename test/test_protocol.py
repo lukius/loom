@@ -1069,7 +1069,7 @@ def test_hello_emitted_on_every_interface_each_cycle():
 
 
 def test_two_router_convergence_reaches_two_way():
-    # Use short timers so the second tick (which exchanges neighbour lists)
+    # Use short timers so the second tick (which exchanges neighbor lists)
     # arrives within the test timeout.
     yaml = textwrap.dedent("""
     internet:
@@ -1140,7 +1140,7 @@ def test_build_graph_excludes_lsas_from_non_two_way_peers():
     assert r2 not in proto._graph  # noqa: SLF001
 
 
-def test_lan_with_three_routers_each_sees_two_neighbours_two_way():
+def test_lan_with_three_routers_each_sees_two_neighbors_two_way():
     """Three routers on a shared LAN each reach TWO_WAY with both peers.
 
     Pins that Hello exchange on a broadcast segment (Network, not Link)

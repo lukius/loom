@@ -55,7 +55,7 @@ class Neighbor:
 
 class NeighborTransition:
     """A computed state-change. Returned by NeighborTable when a
-    record_hello or sweep moves a neighbour between states. Drives
+    record_hello or sweep moves a neighbor between states. Drives
     the neighbor_state_changed event broadcast and the LSDB-purge
     side-effect on transitions to DOWN.
     """
@@ -80,7 +80,7 @@ class NeighborTransition:
 
 
 class NeighborTable:
-    """Per-router neighbour catalogue. Hides (interface, peer) keying."""
+    """Per-router neighbor catalogue. Hides (interface, peer) keying."""
 
     def __init__(self):
         self._neighbors: dict = {}        # (iface_name, peer) -> Neighbor
@@ -106,7 +106,7 @@ class NeighborTable:
                 return None
             return NeighborTransition(neighbor, before, after)
 
-    def neighbours_heard_on(self, interface, dead_interval: float, now: float):
+    def neighbors_heard_on(self, interface, dead_interval: float, now: float):
         with self._lock:
             result = []
             for key, neighbor in self._neighbors.items():

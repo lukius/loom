@@ -168,13 +168,13 @@ object** out every interface — so all N emissions carry the same `seq`.
 
 ```python
 class Hello(RoutingMessage):
-    def __init__(self, originator, neighbours_heard): ...
+    def __init__(self, originator, neighbors_heard): ...
     def originator(self): return self._originator
-    def neighbours_heard(self): return list(self._neighbours_heard)
+    def neighbors_heard(self): return list(self._neighbors_heard)
 ```
 
 `_emit_hello_on_all_interfaces` builds **one `Hello` per interface**
-(each carries that interface's per-fabric `neighbours_heard` list).
+(each carries that interface's per-fabric `neighbors_heard` list).
 
 **`seq` is per-origin (one counter per router), not per-interface.**
 Receivers dedup at the LSDB by `(origin_router, seq)` via

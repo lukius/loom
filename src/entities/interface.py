@@ -48,7 +48,7 @@ def _summarize_payload(payload) -> dict:
     if isinstance(payload, Hello):
         return {
             "originator": payload.originator().name(),
-            "neighbours_heard": [r.name() for r in payload.neighbours_heard()],
+            "neighbors_heard": [r.name() for r in payload.neighbors_heard()],
         }
     if isinstance(payload, LSA):
         return {

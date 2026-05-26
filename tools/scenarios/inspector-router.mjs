@@ -1,4 +1,4 @@
-// Scenario: start the simulation, select r1, and expand the Neighbours
+// Scenario: start the simulation, select r1, and expand the Neighbors
 // and Routing table collapsible sections. Used by docs/images/inspector-router.png.
 //
 // Invoke via:
@@ -29,8 +29,8 @@ state.selection = { kind: 'router', name: 'r1' };
 bus.dispatchEvent(new CustomEvent('state:selection-changed'));
 await new Promise(r => setTimeout(r, 400));
 
-// Open the Neighbours and Routing table collapsible sections.
-const neighbSection = document.querySelector('#inspector details.insp-section[data-section="neighbours"]');
+// Open the Neighbors and Routing table collapsible sections.
+const neighbSection = document.querySelector('#inspector details.insp-section[data-section="neighbors"]');
 if (neighbSection) neighbSection.open = true;
 const routingSection = document.querySelector('#inspector details.insp-section[data-section="routing"]');
 if (routingSection) routingSection.open = true;

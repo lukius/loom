@@ -212,7 +212,7 @@ class LinkStateProtocol(RoutingProtocol):
 
     def _handle_incoming_hello(self, hello, interface):
         now = time.monotonic()
-        peer_listed_us = self._router in hello.neighbours_heard()
+        peer_listed_us = self._router in hello.neighbors_heard()
         transition = self._neighbor_table.record_hello(
             interface, hello.originator(),
             peer_listed_us=peer_listed_us,
@@ -301,10 +301,10 @@ class LinkStateProtocol(RoutingProtocol):
         with self._lock:
             for _, iface in self._router.interfaces().items():
                 broadcast = iface.network().broadcast_address()
-                listed = self._neighbor_table.neighbours_heard_on(
+                listed = self._neighbor_table.neighbors_heard_on(
                     iface, dead_interval=self._dead_interval, now=now,
                 )
-                hello = Hello(originator=self._router, neighbours_heard=listed)
+                hello = Hello(originator=self._router, neighbors_heard=listed)
                 dgram = Datagram(
                     src_addr=iface.address(), dst_addr=broadcast, payload=hello,
                 )
@@ -348,7 +348,7 @@ class LinkStateProtocol(RoutingProtocol):
         bidi = self._neighbor_table.bidirectional_peers(
             dead_interval=self._dead_interval, now=now,
         )
-        # Eligible origins: direct TWO_WAY neighbours are always trusted. For
+        # Eligible origins: direct TWO_WAY neighbors are always trusted. For
         # non-adjacent origins (origins we've never exchanged Hellos with),
         # trust them only when at least one TWO_WAY adjacency exists — this
         # allows multi-hop LSA flooding to build the full graph while still

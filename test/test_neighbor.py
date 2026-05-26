@@ -118,9 +118,9 @@ def test_record_hello_init_to_two_way_transition():
     assert t.after() is NeighborState.TWO_WAY
 
 
-# ---------- NeighborTable.neighbours_heard_on ----------
+# ---------- NeighborTable.neighbors_heard_on ----------
 
-def test_neighbours_heard_on_returns_init_and_two_way_excludes_down():
+def test_neighbors_heard_on_returns_init_and_two_way_excludes_down():
     tbl = NeighborTable()
     iface = _iface()
     p1 = Router('p1')
@@ -130,9 +130,9 @@ def test_neighbours_heard_on_returns_init_and_two_way_excludes_down():
     tbl.record_hello(iface, p2, peer_listed_us=False, dead_interval=30.0, now=1.0)
     # p3: heard at the same time as p1/p2 — all expire at now=100
     tbl.record_hello(iface, p3, peer_listed_us=True, dead_interval=30.0, now=1.0)
-    heard = tbl.neighbours_heard_on(iface, dead_interval=30.0, now=100.0)
+    heard = tbl.neighbors_heard_on(iface, dead_interval=30.0, now=100.0)
     assert p1 not in heard and p2 not in heard and p3 not in heard
-    heard_at_2 = tbl.neighbours_heard_on(iface, dead_interval=30.0, now=2.0)
+    heard_at_2 = tbl.neighbors_heard_on(iface, dead_interval=30.0, now=2.0)
     assert p1 in heard_at_2 and p2 in heard_at_2 and p3 in heard_at_2
 
 
