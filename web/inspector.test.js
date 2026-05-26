@@ -1677,7 +1677,7 @@ describe('Inspector.onNATChange', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Collapsible inspector sections + Neighbours panel (Task 20)
+// Collapsible inspector sections + Neighbors panel (Task 20)
 // ---------------------------------------------------------------------------
 function setupRouter20() {
   state.routers = {
@@ -1695,28 +1695,28 @@ function setupRouter20() {
   state.neighborsByDevice = {};
 }
 
-describe('renderRouterInsp — collapsible sections + Neighbours', () => {
+describe('renderRouterInsp — collapsible sections + Neighbors', () => {
   beforeEach(() => {
     setupDOM();
     resetState();
     setupRouter20();
   });
 
-  it('renders top-level collapsible sections for Routing table and Neighbours', () => {
+  it('renders top-level collapsible sections for Routing table and Neighbors', () => {
     renderRouterInsp('r1', document.getElementById('inspector'));
     const sections = document.querySelectorAll('details.insp-section');
     const labels = Array.from(sections).map(s => s.querySelector('summary').textContent.trim());
     expect(labels.some(l => l.startsWith('Routing table'))).toBe(true);
-    expect(labels.some(l => l.startsWith('Neighbours'))).toBe(true);
+    expect(labels.some(l => l.startsWith('Neighbors'))).toBe(true);
   });
 
-  it('renders eth0 and eth1 in the Neighbours section when no neighbour data', () => {
+  it('renders eth0 and eth1 in the Neighbors section when no neighbor data', () => {
     renderRouterInsp('r1', document.getElementById('inspector'));
-    const neighbourSection = Array.from(document.querySelectorAll('details.insp-section'))
-      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbours'));
-    expect(neighbourSection).toBeTruthy();
-    expect(neighbourSection.textContent).toContain('eth0');
-    expect(neighbourSection.textContent).toContain('eth1');
+    const neighborSection = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbors'));
+    expect(neighborSection).toBeTruthy();
+    expect(neighborSection.textContent).toContain('eth0');
+    expect(neighborSection.textContent).toContain('eth1');
   });
 
   it('groups multiple peers on the same interface under one iface block', () => {
@@ -1750,9 +1750,54 @@ describe('renderRouterInsp — collapsible sections + Neighbours', () => {
     };
     renderRouterInsp('r1', document.getElementById('inspector'));
     const section = Array.from(document.querySelectorAll('details.insp-section'))
-      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbours'));
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbors'));
     const summary = section.querySelector('summary').textContent;
     expect(summary).toMatch(/1 TWO_WAY/);
     expect(summary).toMatch(/1 INIT/);
+  });
+
+  it('summary line leads with unique peers and total adjacencies', () => {
+    // Same peer router (r2) heard on both interfaces — one peer, two adjacencies.
+    state.neighborsByDevice = {
+      r1: {
+        eth0: { r2: { state: 'two_way' } },
+        eth1: { r2: { state: 'two_way' }, r3: { state: 'two_way' } },
+      },
+    };
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const section = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbors'));
+    const summary = section.querySelector('summary').textContent;
+    expect(summary).toMatch(/2 peers/);
+    expect(summary).toMatch(/3 adjacencies/);
+    expect(summary).toMatch(/3 TWO_WAY/);
+  });
+
+  it('uses singular "peer" / "adjacency" when count is 1', () => {
+    // Single-interface router with one peer — exercises singular forms.
+    state.routers = {
+      r1: { interfaces: { eth0: { network: 'lan1', address: '10.0.0.1', cost: 1 } } },
+    };
+    state.neighborsByDevice = {
+      r1: { eth0: { r2: { state: 'two_way' } } },
+    };
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const section = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbors'));
+    const summary = section.querySelector('summary').textContent;
+    expect(summary).toMatch(/1 peer\b/);
+    expect(summary).toMatch(/1 adjacency\b/);
+  });
+
+  it('counts interfaces with no peers as 0 peers but as DOWN entries', () => {
+    // No neighbor data at all — both interfaces show synthetic DOWN rows.
+    state.neighborsByDevice = {};
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const section = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbors'));
+    const summary = section.querySelector('summary').textContent;
+    expect(summary).toMatch(/0 peers/);
+    expect(summary).toMatch(/2 adjacencies/);
+    expect(summary).toMatch(/2 DOWN/);
   });
 });

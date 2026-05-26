@@ -1341,7 +1341,9 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 .fabric-name-row select { flex: 1; min-width: 0; }
 .fabric-name-row .btn-sec { white-space: nowrap; padding: 6px 10px; font-size: 12px; }
 
-.insp-routes {
+.insp-routes,
+.insp-neighbors,
+.insp-nat {
   padding: 14px 20px;
   border-top: 1px solid var(--border);
 }
@@ -1824,7 +1826,7 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 }
 .popover-actions .btn-sec:hover { color: var(--accent-text); border-color: var(--accent); background: var(--accent-bg); }
 
-/* Neighbour state badges */
+/* Neighbor state badges */
 .neigh-state {
   display: inline-block;
   padding: 1px 6px;
@@ -1869,7 +1871,7 @@ details.insp-section .summary-hint {
   font-weight: 400;
 }
 
-/* Neighbours table */
+/* Neighbors table */
 .neigh-list {
   display: flex;
   flex-direction: column;

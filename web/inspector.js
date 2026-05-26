@@ -54,7 +54,7 @@ function addressValidatorFor(fabricKind, fabricName, selfRef) {
     if (!isValidIpv4(v)) return { ok: false, reason: 'not a valid IPv4 address' };
     // Containment: an interface address only makes sense inside its fabric's
     // CIDR. Without this check, the user could attach a router to lan1 with an
-    // address from a different subnet — neighbours would still flood the bogus
+    // address from a different subnet — neighbors would still flood the bogus
     // route via link-state, but no traffic could ever reach it.
     if (fabricName) {
       const fabric = (fabricKind === 'link' ? state.links : state.networks)[fabricName];
@@ -104,7 +104,7 @@ function wireFieldValidation(input, errorEl, validateFn) {
 
 /* ---------- collapsible section helpers ----------
    Track which top-level sections are open across re-renders, mirroring the
-   existing per-iface openIfaces pattern. Values: 'routing' | 'nat' | 'neighbours'. */
+   existing per-iface openIfaces pattern. Values: 'routing' | 'nat' | 'neighbors'. */
 const openSections = new Set();
 
 function rememberOpen(elI) {
@@ -142,10 +142,14 @@ function renderRoutingSection(deviceName) {
     `</details>`;
 }
 
-/* ---------- neighbours section ---------- */
-function renderNeighbourSection(device, router) {
+/* ---------- neighbors section ---------- */
+function renderNeighborSection(device, router) {
   const data = (state.neighborsByDevice && state.neighborsByDevice[device]) || {};
   const ifaceNames = Object.keys(router.interfaces || {});
+  // peers = unique peer-router names; adjacencies = total per-interface entries
+  // (including synthetic DOWN rows for interfaces with no peers, so the math
+  // adjacencies = TWO_WAY + INIT + DOWN holds).
+  const peerSet = new Set();
   const counts = { down: 0, init: 0, two_way: 0 };
   const ifaceBlocks = ifaceNames.map(iface => {
     const peers = data[iface] || {};
@@ -159,6 +163,7 @@ function renderNeighbourSection(device, router) {
     const rows = peerNames.map(peer => {
       const n = peers[peer];
       counts[n.state] = (counts[n.state] || 0) + 1;
+      peerSet.add(peer);
       // TODO: replace 'recent' with a real "Ns ago" once clock sync is available.
       const ago = n.last_hello_at != null ? 'last hello recent' : '';
       const stateClass = n.state || 'down';
@@ -174,10 +179,15 @@ function renderNeighbourSection(device, router) {
       `${rows}` +
       `</div>`;
   }).join('');
-  const hint = `(${counts.two_way} TWO_WAY · ${counts.init} INIT · ${counts.down} DOWN)`;
-  const openAttr = isOpen('neighbours') ? ' open' : '';
-  return `<details class="insp-section" data-section="neighbours"${openAttr}>` +
-    `<summary>Neighbours <span class="summary-hint">${hint}</span></summary>` +
+  const peerCount = peerSet.size;
+  const adjCount = counts.two_way + counts.init + counts.down;
+  const peerWord = peerCount === 1 ? 'peer' : 'peers';
+  const adjWord = adjCount === 1 ? 'adjacency' : 'adjacencies';
+  const hint = `(${peerCount} ${peerWord} · ${adjCount} ${adjWord} · ` +
+    `${counts.two_way} TWO_WAY · ${counts.init} INIT · ${counts.down} DOWN)`;
+  const openAttr = isOpen('neighbors') ? ' open' : '';
+  return `<details class="insp-section" data-section="neighbors"${openAttr}>` +
+    `<summary>Neighbors <span class="summary-hint">${hint}</span></summary>` +
     `<div class="insp-section-body neigh-list">${ifaceBlocks}</div>` +
     `</details>`;
 }
@@ -932,7 +942,7 @@ export function renderRouterInsp(name, elI) {
         <button class="add-if" id="add-if" style="margin-top:8px;">+ Add interface</button>
       </div>
     </div>
-    <div class="insp-neighbours">${renderNeighbourSection(name, router)}</div>
+    <div class="insp-neighbors">${renderNeighborSection(name, router)}</div>
     <div class="insp-routes" id="insp-routes">${renderRoutingSection(name)}</div>
     <div class="insp-nat" id="insp-nat" hidden></div>
     <div class="insp-foot">
@@ -1269,11 +1279,11 @@ bus.addEventListener('sim:neighbor-state-changed', (e) => {
   const router = state.routers[device];
   if (!router) return;
   const elI = document.getElementById('inspector');
-  const container = elI && elI.querySelector('.insp-neighbours');
+  const container = elI && elI.querySelector('.insp-neighbors');
   if (!container) return;
-  // Re-render only the Neighbours section, preserving open/closed state.
+  // Re-render only the Neighbors section, preserving open/closed state.
   rememberOpen(elI);
-  container.innerHTML = renderNeighbourSection(device, router);
+  container.innerHTML = renderNeighborSection(device, router);
   wireSectionToggles(container);
 });
 bus.addEventListener('canvas:contextmenu-requested', (e) => {

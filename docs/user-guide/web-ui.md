@@ -195,7 +195,7 @@ first.
 For tracking multiple packets at once — or for keeping context while the simulation is still running — click **Packets** in the toolbar. A panel slides in from the right showing:
 
 - **In flight — user traffic.** One row per packet currently crossing the network, with a numeric badge (`#1`, `#2`, …). The same badge rides on the corresponding dot in the canvas, so a row and its packet are always paired by sight. Expand a row to see the packet's hop history and any NAT translations along the way.
-- **In flight — routing chatter.** Routing-protocol packets are summarised on a single line by default to keep the list readable. Expand the summary to see each one individually with its own `#R1`, `#R2`, … badge — handy when teaching how the protocol propagates updates.
+- **In flight — routing chatter.** Routing-protocol packets are summarised on a single line by default to keep the list readable. Expand the summary to see each one individually with its own `#R1`, `#R2`, … badge and a **Hello** / **LSA** label so the message type is clear at a glance — handy when teaching how the protocol propagates updates.
 - **Recent.** The last ten user-traffic packets that have completed, oldest dropped first. The same expand-for-detail behaviour applies.
 
 The panel works just as well while the sim is paused — frozen badges sit on the wires alongside the panel rows, making the badge-to-row mapping easy to read.
@@ -267,11 +267,31 @@ the simulator's sentinel value meaning "deliver to the packet's
 destination on this interface." See [Routing tables](routing-tables.md)
 for what to read into this.
 
-The router inspector also shows a **Neighbours** section listing, per
+The router inspector also shows a **Neighbors** section listing, per
 interface, every discovered peer and its adjacency state
-(`TWO_WAY`, `INIT`, or `DOWN`).
+(`TWO_WAY`, `INIT`, or `DOWN`). The summary line counts unique peer
+routers, total adjacencies, and a per-state breakdown — see
+[Neighbors counts](#neighbors-counts) below for the difference between
+peers and adjacencies.
 
-![Router inspector showing Neighbours panel and collapsible Routing table section](../images/inspector-router.png)
+![Router inspector showing Neighbors panel and collapsible Routing table section](../images/inspector-router.png)
+
+### Neighbors counts
+
+The summary line reads e.g.
+`(2 peers · 4 adjacencies · 4 TWO_WAY · 0 INIT · 0 DOWN)`. The two
+counts measure different things:
+
+- **Peers** — the number of *distinct neighbor routers* this router
+  has discovered, regardless of how many shared LANs or links they meet
+  on.
+- **Adjacencies** — one entry per interface a peer is reachable from.
+  Two routers that share both `lan1` and `lan2` count as **one peer /
+  two adjacencies**, because each LAN forms its own adjacency.
+
+The `TWO_WAY`, `INIT`, and `DOWN` totals are per-adjacency states
+(peers and adjacencies are not states). An interface with no peers yet
+shows up as one DOWN entry.
 
 ## Terminals
 

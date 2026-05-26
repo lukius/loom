@@ -745,7 +745,7 @@ describe('PacketsPanel — hello chatter section', () => {
       src: { device: 'r1', iface: 'eth0', address: '10.0.0.254' },
       dst: { device: null, address: '255.255.255.255' },
       payload_src: '10.0.0.254', payload_dst: '255.255.255.255',
-      payload: { originator: 'r1', neighbours_heard: [] },
+      payload: { originator: 'r1', neighbors_heard: [] },
     } }));
   }
 
@@ -802,5 +802,24 @@ describe('PacketsPanel — hello chatter section', () => {
     expect(summary).not.toBeNull();
     // 2 distinct logical messages in the chatter section
     expect(summary.textContent).toContain('2');
+  });
+
+  it('chatter rows show a friendly type label (Hello / LSA) next to the id', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitHello('h1');
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood', payload_id: 'lsa-1', network: 'lan_a',
+      src: { device: 'r1', iface: 'eth0', address: '10.0.0.254' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '10.0.0.254', payload_dst: '255.255.255.255',
+    } }));
+    PacketsPanel.render();
+    document.querySelector('.pkt-chatter-summary .pkt-toggle').click();
+    const rows = Array.from(document.querySelectorAll('.pkt-chatter-row'));
+    expect(rows.length).toBe(2);
+    const labels = rows.map(r => r.querySelector('.pkt-type')?.textContent);
+    expect(labels).toContain('Hello');
+    expect(labels).toContain('LSA');
   });
 });
