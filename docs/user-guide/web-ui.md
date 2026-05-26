@@ -278,9 +278,11 @@ peers and adjacencies.
 
 ### Neighbors counts
 
-The summary line reads e.g.
-`(2 peers · 4 adjacencies · 4 TWO_WAY · 0 INIT · 0 DOWN)`. The two
-counts measure different things:
+A fully-converged router shows e.g.
+`(2 peers · 4 adjacencies · 4 TWO_WAY)`; a router still settling or
+with some links unreachable might read
+`(2 peers · 4 adjacencies · 3 TWO_WAY · 1 INIT)`. The two counts
+measure different things:
 
 - **Peers** — the number of *distinct neighbor routers* this router
   has discovered, regardless of how many shared LANs or links they meet
@@ -290,8 +292,9 @@ counts measure different things:
   two adjacencies**, because each LAN forms its own adjacency.
 
 The `TWO_WAY`, `INIT`, and `DOWN` totals are per-adjacency states
-(peers and adjacencies are not states). An interface with no peers yet
-shows up as one DOWN entry.
+(peers and adjacencies are not states). State counts that are zero are
+omitted to keep the line compact. An interface with no peers yet shows
+up as one DOWN entry.
 
 ## Terminals
 

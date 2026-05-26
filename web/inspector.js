@@ -183,8 +183,15 @@ function renderNeighborSection(device, router) {
   const adjCount = counts.two_way + counts.init + counts.down;
   const peerWord = peerCount === 1 ? 'peer' : 'peers';
   const adjWord = adjCount === 1 ? 'adjacency' : 'adjacencies';
-  const hint = `(${peerCount} ${peerWord} · ${adjCount} ${adjWord} · ` +
-    `${counts.two_way} TWO_WAY · ${counts.init} INIT · ${counts.down} DOWN)`;
+  // Zero state counts are omitted so the hint stays on one row in the common
+  // (fully-converged) case. The full TWO_WAY/INIT/DOWN breakdown only shows
+  // up when there's actually something to report.
+  const stateParts = [];
+  if (counts.two_way) stateParts.push(`${counts.two_way} TWO_WAY`);
+  if (counts.init)    stateParts.push(`${counts.init} INIT`);
+  if (counts.down)    stateParts.push(`${counts.down} DOWN`);
+  const stateSuffix = stateParts.length ? ` · ${stateParts.join(' · ')}` : '';
+  const hint = `(${peerCount} ${peerWord} · ${adjCount} ${adjWord}${stateSuffix})`;
   const openAttr = isOpen('neighbors') ? ' open' : '';
   return `<details class="insp-section" data-section="neighbors"${openAttr}>` +
     `<summary>Neighbors <span class="summary-hint">${hint}</span></summary>` +

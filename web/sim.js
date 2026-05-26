@@ -117,7 +117,8 @@ export function updatePatchIndicator() {
   if (!pause) return;
   const lbl = pause.querySelector('.lbl');
   if (Sim.state === 'paused' && Sim.patch.length > 0) {
-    lbl.textContent = `Resume (${Sim.patch.length} edits)`;
+    const n = Sim.patch.length;
+    lbl.textContent = `Resume (${n} ${n === 1 ? 'edit' : 'edits'})`;
   } else if (Sim.state === 'paused') {
     lbl.textContent = 'Resume';
   }

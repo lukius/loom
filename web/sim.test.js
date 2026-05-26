@@ -392,6 +392,13 @@ describe('updatePatchIndicator', () => {
     expect(document.querySelector('#tb-pause .lbl').textContent).toBe('Resume');
   });
 
+  it('uses singular "edit" when patch count is 1', () => {
+    Sim.state = 'paused';
+    Sim.patch = [{ op: 'add_host' }];
+    updatePatchIndicator();
+    expect(document.querySelector('#tb-pause .lbl').textContent).toBe('Resume (1 edit)');
+  });
+
   it('is a no-op when the pause button is absent', () => {
     document.body.innerHTML = '';
     expect(() => updatePatchIndicator()).not.toThrow();

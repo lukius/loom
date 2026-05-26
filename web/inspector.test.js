@@ -1800,4 +1800,21 @@ describe('renderRouterInsp — collapsible sections + Neighbors', () => {
     expect(summary).toMatch(/2 adjacencies/);
     expect(summary).toMatch(/2 DOWN/);
   });
+
+  it('omits zero-count states from the summary to keep the line compact', () => {
+    state.neighborsByDevice = {
+      r1: {
+        eth0: { r2: { state: 'two_way' } },
+        eth1: { r2: { state: 'two_way' }, r3: { state: 'two_way' } },
+      },
+    };
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const section = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbors'));
+    const summary = section.querySelector('summary').textContent;
+    // All in TWO_WAY — INIT and DOWN should NOT appear.
+    expect(summary).toMatch(/3 TWO_WAY/);
+    expect(summary).not.toMatch(/INIT/);
+    expect(summary).not.toMatch(/DOWN/);
+  });
 });

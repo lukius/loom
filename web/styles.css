@@ -481,6 +481,7 @@ body.col-resizing * { cursor: col-resize !important; }
   font-weight: 500;
   color: var(--text-2);
   border-radius: 5px;
+  white-space: nowrap;
   transition: background .12s, color .12s;
 }
 .canv-toolbar .tb-btn:hover { background: var(--bg-3); color: var(--text); }
@@ -1869,6 +1870,7 @@ details.insp-section .summary-hint {
   font-size: 11px;
   color: var(--text-3);
   font-weight: 400;
+  white-space: nowrap;
 }
 
 /* Neighbors table */
