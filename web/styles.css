@@ -1797,17 +1797,6 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
   font-style: normal;
   font-size: 11px;
 }
-.popover-footer {
-  text-align: center;
-  font-size: 11px;
-  color: var(--text-3);
-  padding: 4px 0;
-}
-.popover-footer .brand {
-  color: var(--text);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
 .popover-actions {
   display: flex;
   justify-content: flex-end;
