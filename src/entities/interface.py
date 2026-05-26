@@ -53,6 +53,7 @@ def _summarize_payload(payload) -> dict:
     if isinstance(payload, LSA):
         return {
             "seq": payload.seq(),
+            "originator": payload.origin().name(),
             "destinations": [
                 {"prefix": str(p), "cost": c}
                 for p, c in payload.links().items()

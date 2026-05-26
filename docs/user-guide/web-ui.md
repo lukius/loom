@@ -195,7 +195,7 @@ first.
 For tracking multiple packets at once — or for keeping context while the simulation is still running — click **Packets** in the toolbar. A panel slides in from the right showing:
 
 - **In flight — user traffic.** One row per packet currently crossing the network, with a numeric badge (`#1`, `#2`, …). The same badge rides on the corresponding dot in the canvas, so a row and its packet are always paired by sight. Expand a row to see the packet's hop history and any NAT translations along the way.
-- **In flight — routing chatter.** Routing-protocol packets are summarised on a single line by default to keep the list readable. Expand the summary to see each one individually with its own `#R1`, `#R2`, … badge and a **Hello** / **LSA** label so the message type is clear at a glance — handy when teaching how the protocol propagates updates.
+- **In flight — routing chatter.** Routing-protocol packets are summarised on a single line by default to keep the list readable. Expand the summary to see each one individually with its own `#R1`, `#R2`, … badge and a **Hello** / **LSA** label so the message type is clear at a glance — handy when teaching how the protocol propagates updates. LSA flooding is staged per hop: the originator's emission animates first; each downstream re-flood only starts moving once its inbound hop has visually arrived at the re-flooder, so the flood ripples outward through the topology instead of all dots appearing at once.
 - **Recent.** The last ten user-traffic packets that have completed, oldest dropped first. The same expand-for-detail behaviour applies.
 
 The panel works just as well while the sim is paused — frozen badges sit on the wires alongside the panel rows, making the badge-to-row mapping easy to read.

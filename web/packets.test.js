@@ -745,3 +745,117 @@ describe('PacketAnim — hello chatter mute/throttle branches', () => {
     expect(badges[0].textContent).toMatch(/^#R/);
   });
 });
+
+describe('PacketAnim — LSA flooding is sequenced per-hop', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    PacketAnim._lastChatter.clear();
+    PacketAnim._lsaArrivedAt.clear();
+    PacketAnim._lsaPending.clear();
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g data-kind="router" data-name="r1" transform="translate(100 100)"></g>
+        <g data-kind="router" data-name="r2" transform="translate(250 100)"></g>
+        <g data-kind="router" data-name="r3" transform="translate(400 100)"></g>
+        <g data-kind="network" data-name="lan_a" transform="translate(175 200)"></g>
+        <g data-kind="network" data-name="lan_b" transform="translate(325 200)"></g>
+      </g><g id="packet-layer"></g></svg>`;
+    state.networks = {
+      lan_a: { cidr: '10.0.0.0/24', x: 175, y: 200 },
+      lan_b: { cidr: '10.0.1.0/24', x: 325, y: 200 },
+    };
+    state.hosts = {};
+    state.routers = {
+      r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.1', cost: 1 } } },
+      r2: { interfaces: {
+        eth0: { network: 'lan_a', address: '10.0.0.2', cost: 1 },
+        eth1: { network: 'lan_b', address: '10.0.1.1', cost: 1 },
+      } },
+      r3: { interfaces: { eth0: { network: 'lan_b', address: '10.0.1.2', cost: 1 } } },
+    };
+    state.links = {};
+  });
+
+  function originEvt() {
+    return {
+      type: 'routing_flood', payload_id: 'lsa-x', network: 'lan_a',
+      src: { device: 'r1', iface: 'eth0', address: '10.0.0.1' },
+      dst: { device: null, address: '10.0.0.255' },
+      payload_src: '10.0.0.1', payload_dst: '10.0.0.255',
+      payload: { originator: 'r1', seq: 7, destinations: [] },
+    };
+  }
+
+  function refloodEvt() {
+    return {
+      type: 'routing_flood', payload_id: 'lsa-x', network: 'lan_b',
+      src: { device: 'r2', iface: 'eth1', address: '10.0.1.1' },
+      dst: { device: null, address: '10.0.1.255' },
+      payload_src: '10.0.1.1', payload_dst: '10.0.1.255',
+      payload: { originator: 'r1', seq: 7, destinations: [] },
+    };
+  }
+
+  it('plays origin emission immediately (sender === originator)', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: originEvt() }));
+    const layer = document.getElementById('packet-layer');
+    expect(layer.querySelectorAll('rect').length).toBe(1);
+    expect(PacketAnim._lsaPending.size).toBe(0);
+  });
+
+  it('queues re-flood (sender !== originator) until inbound arrives at the re-flooder', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: refloodEvt() }));
+    const layer = document.getElementById('packet-layer');
+    // Re-flood is held back: no dot rendered yet
+    expect(layer.querySelectorAll('rect').length).toBe(0);
+    expect(PacketAnim._lsaPending.get('lsa-x|r2')).toHaveLength(1);
+  });
+
+  it('drains the queue once the origin emission arrives at the re-flooder', async () => {
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: refloodEvt() }));
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: originEvt() }));
+      // Wait for the origin emission's 1ms tween to complete; finish() should
+      // then mark r2 as having received and dispatch the queued re-flood.
+      await new Promise(r => setTimeout(r, 80));
+      // Both animations are now done; the queue should be empty and there
+      // should be no remaining dots.
+      expect(PacketAnim._lsaPending.has('lsa-x|r2')).toBe(false);
+      expect(PacketAnim._lsaArrivedAt.has('lsa-x|r2')).toBe(true);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+    }
+  });
+
+  it('plays re-flood immediately if origin already arrived at the re-flooder', () => {
+    // Simulate prior arrival
+    PacketAnim._lsaArrivedAt.add('lsa-x|r2');
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: refloodEvt() }));
+    const layer = document.getElementById('packet-layer');
+    expect(layer.querySelectorAll('rect').length).toBe(1);
+    expect(PacketAnim._lsaPending.size).toBe(0);
+  });
+
+  it('clears LSA arrival/pending state when the sim goes idle', () => {
+    PacketAnim._lsaArrivedAt.add('lsa-x|r2');
+    PacketAnim._lsaPending.set('lsa-y|r3', [refloodEvt()]);
+    bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: 'idle' } }));
+    expect(PacketAnim._lsaArrivedAt.size).toBe(0);
+    expect(PacketAnim._lsaPending.size).toBe(0);
+  });
+
+  it('Hello chatter is not affected by LSA sequencing (plays immediately)', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'hello', payload_id: 'h1', network: 'lan_a',
+      src: { device: 'r2', iface: 'eth0', address: '10.0.0.2' },
+      dst: { device: null, address: '10.0.0.255' },
+      payload_src: '10.0.0.2', payload_dst: '10.0.0.255',
+      payload: { originator: 'r2', neighbors_heard: [] },
+    } }));
+    const layer = document.getElementById('packet-layer');
+    expect(layer.querySelectorAll('rect').length).toBe(1);
+    expect(PacketAnim._lsaPending.size).toBe(0);
+  });
+});

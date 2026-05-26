@@ -214,6 +214,17 @@ The packet color/icon comes from the `type` field of the event:
 
 Each packet animation also creates a small `<text class="packet-badge">` element sibling to the dot, displaying the numeric id (`#N` for user traffic, `#R*` for routing chatter) assigned by `packetstore.js`. The badge rides with the dot via the same `setPacketAnchor` write-step and is removed on `finish()`. Chatter badges only render when `<body data-chatter-badges="on">` is set, which the panel toggles on chatter-group expand/collapse and signals via `packets:chatter-badges-changed`.
 
+### LSA flooding is sequenced per hop
+
+The simulator processes `LSA-receive → re-flood` with effectively zero wire latency, so without sequencing the origin dot and every downstream re-flood would ride the wires concurrently — visually confusing on anything larger than two routers. `PacketAnim` keeps the flooding tree visible by holding back each re-flood until its inbound hop has visually arrived at the re-flooder:
+
+- The `originator` field on the `packet` event's `payload` (added in `_summarize_payload`) lets the SPA classify each emission as origin (`evt.src.device === payload.originator`) vs re-flood.
+- Origin emissions play immediately.
+- Re-floods are queued in `PacketAnim._lsaPending` keyed by `"payload_id|sender"`.
+- When an LSA dot's `finish()` runs, `_markLSAArrivedOnFabric` walks every router listening on the dot's fabric (excluding the sender), marks `"payload_id|listener"` in `_lsaArrivedAt`, and drains the matching pending queue.
+- A re-flood whose listener already arrived (because the dot finished before the re-flood event was dispatched) plays immediately on dispatch.
+- The arrival/pending sets clear on `sim:status-changed` → `idle` so a fresh sim run starts clean.
+
 The NAT cache previously kept here moved to `packetstore.js` so the tooltip and the panel query the same source.
 
 ## Packet store (`web/packetstore.js`)

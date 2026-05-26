@@ -90,6 +90,13 @@ export const PacketAnim = {
   _SEQUENTIAL: new Set(['user_datagram', 'ping_request', 'ping_reply']),
   _lastChatter: new Map(),
   _queues: new Map(),               // flow -> { pending: [evt, ...] }
+  // LSA flooding sequencer: an LSA re-flood (sender !== originator) must
+  // wait until its inbound — the hop that triggered this re-flood — has
+  // visually arrived at the re-flooder. Otherwise origin + re-flood dots
+  // ride the wires concurrently, which doesn't reflect how the protocol
+  // actually propagates an update.
+  _lsaArrivedAt: new Set(),         // "payload_id|router" — visual arrival has fired
+  _lsaPending: new Map(),           // "payload_id|router" -> [evt, ...] re-floods waiting
   muted: false,
 
   play(evt) {
@@ -123,7 +130,50 @@ export const PacketAnim = {
       return;
     }
 
+    if (this._shouldDeferReflood(evt)) return;
+
     this._render(evt, null);
+  },
+
+  _shouldDeferReflood(evt) {
+    if (evt.type !== 'routing_flood') return false;
+    const originator = evt.payload && evt.payload.originator;
+    const sender = evt.src && evt.src.device;
+    if (!originator || !sender || sender === originator) return false;
+    const key = `${evt.payload_id}|${sender}`;
+    if (this._lsaArrivedAt.has(key)) return false;
+    let q = this._lsaPending.get(key);
+    if (!q) { q = []; this._lsaPending.set(key, q); }
+    q.push(evt);
+    return true;
+  },
+
+  // Called from finish() when an LSA's animation completes. Marks every
+  // router listener on the fabric as having received this LSA and drains
+  // any re-floods that were waiting on those routers.
+  _markLSAArrivedOnFabric(evt) {
+    if (evt.type !== 'routing_flood' || !evt.payload_id) return;
+    const senderDev = evt.src && evt.src.device;
+    const fabricName = evt.network;
+    if (!fabricName) return;
+    for (const [rn, r] of Object.entries(state.routers || {})) {
+      if (rn === senderDev) continue;
+      let onFabric = false;
+      for (const iff of Object.values(r.interfaces || {})) {
+        if (iff.network === fabricName || iff.link === fabricName) {
+          onFabric = true;
+          break;
+        }
+      }
+      if (!onFabric) continue;
+      const key = `${evt.payload_id}|${rn}`;
+      this._lsaArrivedAt.add(key);
+      const queued = this._lsaPending.get(key);
+      if (queued) {
+        this._lsaPending.delete(key);
+        for (const qEvt of queued) this._render(qEvt, null);
+      }
+    }
   },
 
   _onSegmentDone(flow) {
@@ -238,6 +288,9 @@ export const PacketAnim = {
         bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
           detail: { payloadId: dotKey, device: dstDeviceName },
         }));
+        // For LSAs, every router on the fabric has now visually received
+        // this hop — release any re-floods that were waiting on them.
+        PacketAnim._markLSAArrivedOnFabric(evt);
       }
       if (onDone) onDone();
     };
@@ -459,6 +512,16 @@ export function hidePacketTooltip() {
 // Bus wiring: replay each packet event emitted by sim.js. The inline module
 // used to wire this through a bridge listener; ownership now lives here.
 bus.addEventListener('sim:packet', (e) => { PacketAnim.play(e.detail); });
+
+// Reset the LSA sequencer when the sim goes idle so a fresh run doesn't
+// inherit stale arrival markers (which would let re-floods skip their wait).
+bus.addEventListener('sim:status-changed', (e) => {
+  const status = e.detail && e.detail.status;
+  if (status === 'idle') {
+    PacketAnim._lsaArrivedAt.clear();
+    PacketAnim._lsaPending.clear();
+  }
+});
 
 // Live chatter-badge toggle: when the body flag changes while chatter dots are
 // already in flight, add or remove their badges without waiting for a re-render.

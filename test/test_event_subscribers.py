@@ -310,6 +310,9 @@ def test_packet_event_for_routing_flood_carries_seq_and_destinations():
         assert flood_events, "expected at least one routing_flood packet event"
         payload = flood_events[0]["payload"]
         assert isinstance(payload["seq"], int)
+        # `originator` lets downstream subscribers tell an origin emission
+        # apart from a re-flood by the same LSA traversing other routers.
+        assert payload["originator"] == "r1"
         prefixes = {d["prefix"] for d in payload["destinations"]}
         assert prefixes == {"200.100.0.0/24", "200.100.1.0/24"}
         for dest in payload["destinations"]:
