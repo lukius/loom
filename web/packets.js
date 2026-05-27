@@ -170,7 +170,9 @@ export const PacketAnim = {
 
   // Called from finish() when an LSA's animation completes. Marks every
   // router listener on the fabric as having received this LSA and drains
-  // any re-floods that were waiting on those routers.
+  // any re-floods that were waiting on those routers. Used by the
+  // single-dot path; the broadcast-fan-out path marks per-listener as
+  // each clone arrives instead.
   _markLSAArrivedOnFabric(evt) {
     if (evt.type !== 'routing_flood' || !evt.payload_id) return;
     const senderDev = evt.src && evt.src.device;
@@ -186,14 +188,155 @@ export const PacketAnim = {
         }
       }
       if (!onFabric) continue;
-      const key = `${evt.payload_id}|${rn}`;
-      this._lsaArrivedAt.add(key);
-      const queued = this._lsaPending.get(key);
-      if (queued) {
-        this._lsaPending.delete(key);
-        for (const qEvt of queued) this._render(qEvt, null);
+      this._markLSAArrivedAt(evt.payload_id, rn);
+    }
+  },
+
+  _markLSAArrivedAt(payloadId, device) {
+    if (!payloadId || !device) return;
+    const key = `${payloadId}|${device}`;
+    this._lsaArrivedAt.add(key);
+    const queued = this._lsaPending.get(key);
+    if (queued) {
+      this._lsaPending.delete(key);
+      for (const qEvt of queued) this._render(qEvt, null);
+    }
+  },
+
+  // Routers + hosts attached to `fabricName` other than `senderDev`. Used
+  // by the broadcast-chatter fan-out to know who should receive a visual
+  // clone of the packet.
+  _collectFabricListeners(fabricName, senderDev) {
+    const listeners = [];
+    if (!fabricName) return listeners;
+    for (const [rn, r] of Object.entries(state.routers || {})) {
+      if (rn === senderDev) continue;
+      for (const iff of Object.values(r.interfaces || {})) {
+        if (iff.network === fabricName || iff.link === fabricName) {
+          listeners.push(rn);
+          break;
+        }
       }
     }
+    for (const [hn, h] of Object.entries(state.hosts || {})) {
+      if (hn === senderDev) continue;
+      if (h.network === fabricName || h.link === fabricName) listeners.push(hn);
+    }
+    return listeners;
+  },
+
+  // Build a packet dot identical to the original render path so the clone
+  // shares hover behaviour, halo selector keying, and tooltip. Returns
+  // { dot, badge } — badge may be null if the chatter-badge toggle is off.
+  _makeDotAndBadge(evt, color, isChatter, dotKey, layer) {
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    dot.setAttribute('width', PACKET_W);
+    dot.setAttribute('height', PACKET_H);
+    dot.setAttribute('rx', 2);
+    dot.setAttribute('fill', color.fill);
+    dot.setAttribute('opacity', color.opacity);
+    dot.setAttribute('stroke', 'rgba(0,0,0,0.35)');
+    dot.setAttribute('stroke-width', '1');
+    dot.style.pointerEvents = 'all';
+    dot.dataset.evt = JSON.stringify(evt);
+    dot.dataset.payloadId = dotKey;
+    dot.dataset.packetType = evt.type;
+    layer.appendChild(dot);
+    dot.addEventListener('mouseenter', () => showPacketTooltip(evt, dot));
+    dot.addEventListener('mouseleave', hidePacketTooltip);
+    let badge = null;
+    const id = PacketStore.idFor(evt);
+    const chatterBadgesOn = document.body.dataset.chatterBadges === 'on';
+    const wantBadge = id != null && (!isChatter || chatterBadgesOn);
+    if (wantBadge) {
+      const label = isChatter ? `#R${id}` : `#${id}`;
+      badge = makePacketBadge(dotKey, label, color.fill);
+      layer.appendChild(badge);
+    }
+    return { dot, badge };
+  },
+
+  // Broadcast-chatter rendering. Phase 1 animates the original dot from
+  // the sender to the source rail tap; Phase 2 spawns one clone per
+  // listener and animates each tap → listener tap → listener centre in
+  // parallel. Each clone fires its own sim:packet-arrived (device =
+  // listener) so the LSA reflood sequencer releases per-listener.
+  _renderBroadcastFanout(evt, srcNode, netNode, dot, badge, dotKey, color, listeners, onDone) {
+    const layer = document.getElementById('packet-layer');
+    const sender = evt.src && evt.src.device;
+    const fabricName = evt.network;
+    const srcCenter = getNodeCenter(srcNode);
+    const srcTap = railTapPoint(sender, fabricName) || getNodeCenter(netNode);
+    if (!srcCenter || !srcTap) {
+      // Geometry unresolved — fall back to single-arrival semantics so the
+      // chatter row still cleans up.
+      if (dot.parentNode) layer.removeChild(dot);
+      if (badge && badge.parentNode) layer.removeChild(badge);
+      if (dotKey) {
+        bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: dotKey, device: null } }));
+      }
+      if (onDone) onDone();
+      return;
+    }
+
+    // Phase split: short ride to the rail tap, then a longer fan-out so the
+    // simultaneous arrival at every listener reads clearly.
+    const PHASE1_FRACTION = 0.3;
+    const phase1Dur = this.DURATION_MS * PHASE1_FRACTION;
+    const phase2Dur = this.DURATION_MS * (1 - PHASE1_FRACTION);
+
+    const phase1 = { kind: 'bez', ...this._bezBetween(srcCenter, srcTap) };
+    const isChatter = this._ROUTING_CHATTER_TYPES.has(evt.type);
+
+    this._tweenBezier(dot, badge, phase1.p0, phase1.c1, phase1.c2, phase1.p3, phase1Dur, () => {
+      // Retire the source dot; clones will carry the visual onward.
+      if (dot.parentNode) layer.removeChild(dot);
+      if (badge && badge.parentNode) layer.removeChild(badge);
+
+      let remaining = listeners.length;
+      const cloneDone = () => {
+        remaining--;
+        if (remaining === 0 && onDone) onDone();
+      };
+
+      for (const lis of listeners) {
+        const lisNode = lookupDeviceNode(lis);
+        const lisCenter = lisNode ? getNodeCenter(lisNode) : null;
+        const lisTap = railTapPoint(lis, fabricName) || srcTap;
+        // Build the clone even when geometry is missing so we still fire
+        // arrival (and clean up the chatter row).
+        const { dot: cdot, badge: cbadge } = this._makeDotAndBadge(evt, color, isChatter, dotKey, layer);
+
+        const fireArrival = () => {
+          if (cdot.parentNode) layer.removeChild(cdot);
+          if (cbadge && cbadge.parentNode) layer.removeChild(cbadge);
+          if (dotKey) {
+            bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: dotKey, device: lis } }));
+          }
+          PacketAnim._markLSAArrivedAt(evt.payload_id, lis);
+          cloneDone();
+        };
+
+        if (!lisCenter || !lisTap) { fireArrival(); continue; }
+
+        // Position the clone at the source rail tap before animating.
+        setPacketAnchor(cdot, cbadge, srcTap.x, srcTap.y);
+
+        // Same total phase-2 duration for every clone so all listeners
+        // visually receive together (broadcast intuition), even though
+        // their path lengths differ.
+        const railSegLen = this._segLength({ kind: 'line', from: srcTap, to: lisTap });
+        const lisBez = this._bezBetween(lisTap, lisCenter);
+        const lisBezLen = this._segLength({ kind: 'bez', ...lisBez });
+        const tot = (railSegLen + lisBezLen) || 1;
+        const railDur = (railSegLen / tot) * phase2Dur;
+        const lisDur = (lisBezLen / tot) * phase2Dur;
+
+        this._tweenPoints(cdot, cbadge, srcTap, lisTap, railDur, () => {
+          this._tweenBezier(cdot, cbadge, lisBez.p0, lisBez.c1, lisBez.c2, lisBez.p3, lisDur, fireArrival);
+        });
+      }
+    });
   },
 
   _onSegmentDone(flow) {
@@ -287,6 +430,23 @@ export const PacketAnim = {
         : deviceNameForEndpointOnFabric(evt.dst, evt.network);
     } else {
       dstDeviceName = deviceNameForEndpointOnFabric(evt.dst, evt.network);
+    }
+
+    // Broadcast chatter (Hello / LSA on a LAN with broadcast dst) has no
+    // single destination device — the simulator emits one packet event but
+    // every listener on the fabric receives it. Without fan-out the dot
+    // would stop at the source rail tap. Spawn a clone per listener so the
+    // visual reaches every peer, and let each clone fire its own arrival
+    // so the LSA reflood sequencer releases per-listener (not all at once).
+    if (!isLink && isChatter && !dstDeviceName) {
+      const listeners = this._collectFabricListeners(evt.network, srcName);
+      if (listeners.length > 0) {
+        return this._renderBroadcastFanout(
+          evt, srcNode, netNode, dot, badge, dotKey, color, listeners, onDone,
+        );
+      }
+      // 0 listeners: fall through and use the single-segment path so the
+      // packet at least travels src → rail tap and fires one arrival.
     }
 
     const finish = () => {

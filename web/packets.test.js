@@ -846,6 +846,98 @@ describe('PacketAnim — LSA flooding is sequenced per-hop', () => {
     expect(PacketAnim._lsaPending.size).toBe(0);
   });
 
+  it('broadcast chatter fans out: each clone fires arrival with the listener device, not null', async () => {
+    const arrivedSpy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', arrivedSpy);
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: originEvt() }));
+      await new Promise(r => setTimeout(r, 120));
+      // Match on the exact dotKey for r1's origin emission so leftover
+      // animations from earlier tests (which share payload_id 'lsa-x' but
+      // are emitted from different src/iface/network) don't get counted.
+      const arrivals = arrivedSpy.mock.calls
+        .map(c => c[0].detail)
+        .filter(d => d.payloadId === 'lsa-x|r1|eth0|lan_a');
+      // r1 broadcasts on lan_a; only r2 listens there. Expect exactly one
+      // arrival, naming r2 as the device.
+      expect(arrivals.length).toBe(1);
+      expect(arrivals[0].device).toBe('r2');
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+      bus.removeEventListener('sim:packet-arrived', arrivedSpy);
+    }
+  });
+
+  it('drains the reflood queue only after the matching listener visually receives', async () => {
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      // Reflood from r2 arrives first, then the origin emit from r1.
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: refloodEvt() }));
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: originEvt() }));
+      // Before the origin clone arrives at r2, the reflood is still pending.
+      expect(PacketAnim._lsaPending.get('lsa-x|r2')).toHaveLength(1);
+      // Wait long enough for the origin fan-out clone to reach r2.
+      await new Promise(r => setTimeout(r, 120));
+      expect(PacketAnim._lsaArrivedAt.has('lsa-x|r2')).toBe(true);
+      expect(PacketAnim._lsaPending.has('lsa-x|r2')).toBe(false);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+    }
+  });
+
+  it('broadcast chatter with multiple listeners spawns one arrival per listener', async () => {
+    // Add a second listener on lan_a so r1's broadcast reaches both.
+    state.routers.rExtra = {
+      interfaces: { eth0: { network: 'lan_a', address: '10.0.0.99', cost: 1 } },
+    };
+    document.querySelector('#nodes-layer').insertAdjacentHTML(
+      'beforeend',
+      '<g data-kind="router" data-name="rExtra" transform="translate(120 50)"></g>',
+    );
+    const arrivedSpy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', arrivedSpy);
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: originEvt() }));
+      await new Promise(r => setTimeout(r, 120));
+      const devices = arrivedSpy.mock.calls
+        .map(c => c[0].detail)
+        .filter(d => d.payloadId === 'lsa-x|r1|eth0|lan_a')
+        .map(d => d.device);
+      expect(devices.sort()).toEqual(['r2', 'rExtra']);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+      bus.removeEventListener('sim:packet-arrived', arrivedSpy);
+    }
+  });
+
+  it('broadcast chatter with no listeners still animates to the rail and fires one arrival', async () => {
+    // Strip every router/host off lan_a except the sender r1.
+    delete state.routers.r2;
+    delete state.routers.r3;
+    const arrivedSpy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', arrivedSpy);
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: originEvt() }));
+      await new Promise(r => setTimeout(r, 80));
+      const arrivals = arrivedSpy.mock.calls
+        .map(c => c[0].detail)
+        .filter(d => d.payloadId === 'lsa-x|r1|eth0|lan_a');
+      // No listeners: just the single src→tap arrival, device unresolved.
+      expect(arrivals.length).toBe(1);
+      expect(arrivals[0].device).toBe(null);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+      bus.removeEventListener('sim:packet-arrived', arrivedSpy);
+    }
+  });
+
   it('Hello chatter is not affected by LSA sequencing (plays immediately)', () => {
     bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
       type: 'hello', payload_id: 'h1', network: 'lan_a',
