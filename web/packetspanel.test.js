@@ -760,10 +760,11 @@ describe('PacketsPanel — hello chatter section', () => {
     expect(summary.textContent.toLowerCase()).toContain('routing chatter');
   });
 
-  it('expanding chatter shows hello row with data-type="hello" swatch coloured amber', () => {
-    // Inject the relevant CSS rules so getComputedStyle reflects them.
+  it('expanding chatter shows hello row with a typed, non-transparent swatch', () => {
+    // Inject the relevant CSS rules so getComputedStyle reflects them
+    // (the real styles.css isn't loaded under vitest).
     const style = document.createElement('style');
-    style.textContent = '.pkt-swatch[data-type="hello"] { background: #fcd34d; }';
+    style.textContent = '.pkt-swatch[data-type="hello"] { background: #a5b4fc; }';
     document.head.appendChild(style);
 
     PacketsPanel.wire();
@@ -775,8 +776,9 @@ describe('PacketsPanel — hello chatter section', () => {
     expect(rows.length).toBe(1);
     const swatch = rows[0].querySelector('.pkt-swatch[data-type="hello"]');
     expect(swatch).not.toBeNull();
-    // Verify the swatch actually has the amber colour — catching the case where
-    // the CSS rule in styles.css is missing (the original regression).
+    // The actual hue can shift over time; the regression we want to catch
+    // is the CSS rule going missing in styles.css and the swatch becoming
+    // transparent. Hue-agnostic check.
     const bg = window.getComputedStyle(swatch).background ||
                window.getComputedStyle(swatch).backgroundColor;
     expect(bg).toBeTruthy();

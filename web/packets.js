@@ -73,9 +73,23 @@ function setPacketAnchor(rect, badge, cx, cy) {
 /* ---------- PacketAnim ---------- */
 export const PacketAnim = {
   DURATION_MS: 1800,
+  // Packet palette convention:
+  //   • Each routing protocol claims one narrow hue band (~ 2 Tailwind
+  //     shades). Hellos / liveness use the lighter tone; data-bearing
+  //     messages use the deeper tone, so siblings inside the same protocol
+  //     read as a family.
+  //   • Hue bands reserved so far:
+  //       - loom-OSPF      → indigo  (#6366f1 / #a5b4fc)   ← in use
+  //       - BGP (next)     → violet  (#8b5cf6 / #c4b5fd)   ← reserved
+  //       - any third      → cyan    (#06b6d4 / #67e8f9)   ← reserved
+  //     User traffic and pings sit in green and amber so cool hues stay
+  //     free for routing protocols.
+  //   • If you add a routing-protocol type here, also register it in
+  //     packettypes.js (`ROUTING_CHATTER_TYPES`) AND add the matching
+  //     `.pkt-swatch[data-type="..."]` rule in styles.css.
   COLORS: {
-    routing_flood:  { fill: '#94a3b8', opacity: 0.6 },
-    hello:          { fill: '#fcd34d', opacity: 0.8 },
+    routing_flood:  { fill: '#6366f1', opacity: 0.7 },  // loom-OSPF — LSA
+    hello:          { fill: '#a5b4fc', opacity: 0.9 },  // loom-OSPF — Hello
     user_datagram:  { fill: '#22c55e', opacity: 1.0 },
     ping_request:   { fill: '#f59e0b', opacity: 1.0 },
     ping_reply:     { fill: '#fbbf24', opacity: 1.0 },
