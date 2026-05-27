@@ -78,12 +78,18 @@ export const PacketAnim = {
   //     shades). Hellos / liveness use the lighter tone; data-bearing
   //     messages use the deeper tone, so siblings inside the same protocol
   //     read as a family.
-  //   • Hue bands reserved so far:
+  //   • Hue bands reserved so far (cool side of the wheel, all visually
+  //     distinguishable at small swatch sizes):
   //       - loom-OSPF      → indigo  (#6366f1 / #a5b4fc)   ← in use
   //       - BGP (next)     → violet  (#8b5cf6 / #c4b5fd)   ← reserved
-  //       - any third      → cyan    (#06b6d4 / #67e8f9)   ← reserved
+  //       - 3rd protocol   → cyan    (#06b6d4 / #67e8f9)   ← reserved
+  //       - 4th protocol   → sky     (#0ea5e9 / #7dd3fc)   ← reserved
+  //       - 5th protocol   → teal    (#14b8a6 / #5eead4)   ← reserved
   //     User traffic and pings sit in green and amber so cool hues stay
-  //     free for routing protocols.
+  //     free for routing protocols. Beyond five, neighbouring hues start
+  //     to read as the same band at swatch scale — the natural next axis
+  //     is shape / stroke (square vs triangle, solid vs dashed) rather
+  //     than splitting indigo further.
   //   • If you add a routing-protocol type here, also register it in
   //     packettypes.js (`ROUTING_CHATTER_TYPES`) AND add the matching
   //     `.pkt-swatch[data-type="..."]` rule in styles.css.
