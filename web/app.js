@@ -7,8 +7,9 @@ import { toast } from './utils.js';
 import {
   state, bus, SAMPLE,
   persist, restore, markDirty, setSave,
-  defaultExportFilename,
+  defaultExportFilename, clearTopology,
 } from './state.js';
+import { confirmModal } from './modal.js';
 import {
   Sim, RuntimeClient,
   setConnectionStatus,
@@ -125,6 +126,19 @@ function wire() {
   document.querySelectorAll('[data-theme-btn]').forEach(b => {
     b.addEventListener('click', () => applyTheme(b.getAttribute('data-theme-btn')));
   });
+  const onNew = async () => {
+    const ok = await confirmModal({
+      title: 'New topology',
+      body: 'Clear the current topology? This discards all networks, hosts, routers and links. Export first if you want to keep it.',
+      confirmLabel: 'Clear topology',
+      danger: true,
+    });
+    if (!ok) return;
+    // A fresh topology means no running simulation — stop one first if needed.
+    if (Sim.state !== 'idle') await Sim.onPrimary();
+    clearTopology();
+  };
+  document.getElementById('btn-new').addEventListener('click', onNew);
   const onImport = () => openImportPicker({
     onLoad: (text, sourceName) => {
       if (!importYaml(text)) return;

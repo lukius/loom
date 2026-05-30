@@ -181,6 +181,30 @@ export function loadSample() {
   toast('Sample topology loaded', 'ok');
 }
 
+/* Clear the topology back to an empty canvas so the user can start fresh.
+   Mirrors loadSample() but seeds nothing — the "no topology yet" empty state
+   then renders. Resets sourceName (no file backs a fresh topology) and uses a
+   neutral default AS name. */
+export function clearTopology() {
+  state.asName = 'loom';
+  state.networks = {};
+  state.hosts = {};
+  state.routers = {};
+  state.links = {};
+  state.selection = null;
+  state.sourceName = null;
+  state.view = { x: 0, y: 0, k: 1 };
+  state.display = { ...DISPLAY_DEFAULTS };
+  state.ui = { packetsPanelOpen: false, showChatter: true };
+  state.natTables = {};
+  const projName = document.getElementById('proj-name');
+  if (projName) projName.value = state.asName;
+  persist();
+  bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+  bus.dispatchEvent(new CustomEvent('state:topology-loaded'));
+  toast('New topology', 'ok');
+}
+
 /* ---------- neighbor state cache ---------- */
 export function applyNeighborStateChanged(ev) {
   const { device, interface: iface, peer, state: nState,

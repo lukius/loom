@@ -29,6 +29,7 @@ From left to right:
 | Group | Control | What it does |
 |---|---|---|
 | Project | **Project name** | Editable AS name. Persisted; round-trips to/from YAML. |
+| Project | **New** | Clear the current topology and start from an empty canvas. Asks for confirmation first, and stops the simulation if one is running. |
 | Project | **Import** | Open a picker listing the YAML topologies in `samples/`; click one to load it, or use **Browse local file…** to pick any `.yaml` on your computer. |
 | Project | **Export** | Open the browser's save dialog so you can pick a folder and filename for the current topology. The suggested name is the loaded source filename with a `.session` suffix (e.g. `sample.session.yaml`). |
 | Build | **LAN** (<kbd>N</kbd>) | Add a network rail at the canvas center. Disabled while running. |
@@ -52,6 +53,15 @@ nothing to apply the new interval to until a topology is loaded and
 running.
 
 ![Toolbar showing all controls including the Protocol button](../images/toolbar.png)
+
+### Starting fresh
+
+**New** wipes the whole topology so you can build one from scratch. Because
+that discards everything on the canvas, it asks you to confirm first — export
+the current topology beforehand if you want to keep it. Confirming leaves you
+on the empty canvas, ready to add your first LAN.
+
+![Confirming before New clears the topology](../images/06-new-confirm.png)
 
 ### Protocol settings
 

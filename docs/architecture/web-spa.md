@@ -18,6 +18,7 @@ web/
 ├── packetspanel.js      # Packets panel — toolbar button, mounts inside #inspector, row rendering, hover halo
 ├── sim.js               # Sim state machine + RuntimeClient + WS dispatcher
 ├── yaml-io.js           # YAML import / export
+├── modal.js             # confirmModal() — promise-based confirm dialog
 └── utils.js             # DOM helpers (el, escapeHtml, toast, ...)
 ```
 
@@ -52,7 +53,7 @@ module-to-module direct render calls.
 | Event | Emitted by | Consumed by | Trigger |
 |---|---|---|---|
 | `state:topology-changed` | `inspector`, `state`, `app` | `canvas`, `inspector` | Any mutation to networks/links/hosts/routers/display |
-| `state:topology-loaded` | `state` (loadSample), `yaml-io` (importYaml) | `canvas` (fitView), `inspector` | Wholesale topology replacement |
+| `state:topology-loaded` | `state` (loadSample/clearTopology), `yaml-io` (importYaml) | `canvas` (fitView), `inspector` | Wholesale topology replacement |
 | `state:selection-changed` | `canvas`, `inspector`, context menu | `inspector` | User selected a node |
 | `sim:status-changed` | `sim` | `inspector`, `canvas` | Sim transitioned (idle/running/paused) |
 | `sim:packet` | `sim` (from WS) | `packets` | Server emitted a packet event |

@@ -347,6 +347,16 @@ body.col-resizing * { cursor: col-resize !important; }
 :root[data-theme="dark"] .btn.primary {
   background: var(--text); color: var(--bg);
 }
+.btn.danger {
+  background: var(--neg);
+  color: #fff;
+  border-color: var(--neg);
+}
+.btn.danger:hover {
+  background: color-mix(in srgb, var(--neg) 86%, black);
+  border-color: color-mix(in srgb, var(--neg) 86%, black);
+  color: #fff;
+}
 .btn .ico { width: 13px; height: 13px; flex: none; }
 
 /* ============================================================
@@ -1430,6 +1440,14 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slide-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* confirm dialog (modal variant: a single message + confirm/cancel) */
+.modal-msg {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
 
 /* import-topology picker (modal variant: file list + local-file button) */
 .modal-picker .modal-body { display: flex; flex-direction: column; gap: 18px; }
