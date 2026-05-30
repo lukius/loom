@@ -18,6 +18,7 @@ web/
 ├── packetspanel.js      # Packets panel — toolbar button, mounts inside #inspector, row rendering, hover halo
 ├── sim.js               # Sim state machine + RuntimeClient + WS dispatcher
 ├── yaml-io.js           # YAML import / export
+├── preflight.js         # validateTopology() — pre-Start completeness check
 ├── modal.js             # confirmModal() — promise-based confirm dialog
 └── utils.js             # DOM helpers (el, escapeHtml, toast, ...)
 ```

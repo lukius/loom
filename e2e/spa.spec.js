@@ -170,6 +170,19 @@ test.describe('loom SPA - smoke', () => {
     await expect(page.locator('#nodes-layer g.node')).toHaveCount(9);
   });
 
+  test('Start on an incomplete topology is blocked with a message, not started', async ({ page }) => {
+    // Clear to an empty canvas via New, then try to Start.
+    await page.locator('#btn-new').click();
+    await page.locator('.modal-confirm .confirm').click();
+    await expect(page.locator('#nodes-layer g.node')).toHaveCount(0);
+
+    await page.locator('#tb-play').click();
+
+    // An error toast explains the problem and the sim never leaves idle.
+    await expect(page.locator('#toasts .toast.error', { hasText: 'start' })).toBeVisible();
+    await expect(page.locator('#tb-play')).not.toHaveClass(/running/, { timeout: 2000 });
+  });
+
   test('Import opens a picker listing samples/, and loading sample.yaml repopulates the canvas', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));

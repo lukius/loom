@@ -332,6 +332,41 @@ describe('Sim.refreshState', () => {
   });
 });
 
+// ---------- onPrimary preflight ----------
+describe('Sim.onPrimary preflight', () => {
+  function postCalls() {
+    return RuntimeClient._json.mock.calls.map((c) => `${c[0]} ${c[1]}`);
+  }
+
+  it('blocks Start on an incomplete topology and never POSTs it', async () => {
+    Sim.state = 'idle';
+    // beforeEach leaves networks/hosts/routers empty → incomplete.
+    await Sim.onPrimary();
+    expect(postCalls()).not.toContain('POST /topology');
+    expect(Sim.state).toBe('idle');
+    expect(document.querySelector('#toasts .toast')).not.toBeNull();
+  });
+
+  it('selects the offending entity so it surfaces in the inspector', async () => {
+    Sim.state = 'idle';
+    state.networks = { lan1: { cidr: '' } };
+    await Sim.onPrimary();
+    expect(state.selection).toEqual({ kind: 'network', name: 'lan1' });
+  });
+
+  it('proceeds to load + start when the topology is complete', async () => {
+    Sim.state = 'idle';
+    state.networks = { lan1: { cidr: '192.168.0.0/24' } };
+    state.hosts = { h1: { network: 'lan1', address: '192.168.0.2' } };
+    const onExport = (e) => { e.detail.yaml = 'internet: {}'; };
+    bus.addEventListener('sim:yaml-export-requested', onExport);
+    listenerCleanups.push(() => bus.removeEventListener('sim:yaml-export-requested', onExport));
+    await Sim.onPrimary();
+    expect(postCalls()).toContain('POST /topology');
+    expect(postCalls()).toContain('POST /sim/start');
+  });
+});
+
 // ---------- isTopologyLocked ----------
 describe('isTopologyLocked', () => {
   it('is false when Sim.state is idle', () => {

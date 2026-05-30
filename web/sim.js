@@ -9,6 +9,7 @@
    =========================================================== */
 import { state, bus, applyNeighborStateChanged } from './state.js';
 import { toast } from './utils.js';
+import { validateTopology } from './preflight.js';
 
 /* ---------- RuntimeClient — REST + WS wrapper ---------- */
 export const RuntimeClient = {
@@ -235,6 +236,20 @@ export const Sim = {
   },
 
   async onPrimary() {
+    if (this.state === 'idle') {
+      // Catch incomplete topologies here so the user gets a clear, actionable
+      // message pointing at the offending entity, instead of the server's
+      // wire-level parser error.
+      const check = validateTopology(state);
+      if (!check.ok) {
+        toast(check.message, 'error', "Can't start");
+        if (check.selection) {
+          state.selection = check.selection;
+          bus.dispatchEvent(new CustomEvent('state:selection-changed'));
+        }
+        return;
+      }
+    }
     try {
       if (this.state === 'idle') {
         // exportYaml/importYaml live in still-inline modules; bridge via bus
