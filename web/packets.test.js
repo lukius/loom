@@ -544,26 +544,22 @@ describe('PacketAnim — throttled chatter does not dispatch arrival', () => {
     };
   }
 
-  it('throttled chatter does not dispatch sim:packet-arrived (store row persists via TTL)', () => {
-    // First chatter from r1/lan_a passes through.
+  it('a same-message re-emission is throttled and does not dispatch arrival', () => {
+    // First emission of p1 from r1/lan_a passes through and animates.
     bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('p1') }));
     expect(PacketStore.chatter.size).toBe(1);
 
-    // Spy on sim:packet-arrived BEFORE the second event (which will be throttled).
+    // Spy on sim:packet-arrived BEFORE the throttled re-emission.
     const spy = vi.fn();
     bus.addEventListener('sim:packet-arrived', spy);
 
-    // Second chatter from r1/lan_a within 200ms — throttled.
-    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('p2') }));
+    // The protocol re-floods the SAME message back through the origin iface
+    // within 200ms — same composite key. It's throttled, and throttling must
+    // NOT dispatch arrival, which would wipe the original's still-animating row.
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('p1') }));
 
-    // Throttling must NOT dispatch arrival: deleting by composite key would
-    // wipe rows for re-emissions of the original's key (self-flood loop) AND
-    // would discard distinct payload_ids that happen to land on the same
-    // (device, network) within 200ms. The 2s TTL in packetstore reclaims
-    // throttled rows naturally.
     expect(spy).not.toHaveBeenCalled();
     expect(PacketStore.chatter.has('p1|r1|eth0|lan_a')).toBe(true);
-    expect(PacketStore.chatter.has('p2|r1|eth0|lan_a')).toBe(true);
   });
 
   it('dispatches sim:packet-arrived for muted chatter so the store cleans up', () => {
@@ -645,6 +641,27 @@ describe('PacketAnim — throttle preserves distinct chatter messages', () => {
     bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('msg-1') }));
 
     expect(PacketStore.chatter.has(composite)).toBe(true);
+  });
+});
+
+describe('PacketAnim._chatterAllowed — throttle keys on message identity', () => {
+  beforeEach(() => { PacketAnim._lastChatter.clear(); });
+
+  function flood(payloadId, device = 'r1', network = 'lan_a') {
+    return { type: 'routing_flood', payload_id: payloadId, network, src: { device, iface: 'eth0' } };
+  }
+
+  it('allows distinct payload_ids from the same device+network within 200ms', () => {
+    // A router re-floods several distinct LSAs out one interface in a burst —
+    // each is a real message and must be allowed to animate.
+    expect(PacketAnim._chatterAllowed(flood('lsa-a'))).toBe(true);
+    expect(PacketAnim._chatterAllowed(flood('lsa-b'))).toBe(true);
+    expect(PacketAnim._chatterAllowed(flood('lsa-c'))).toBe(true);
+  });
+
+  it('throttles a repeat of the same payload_id within 200ms', () => {
+    expect(PacketAnim._chatterAllowed(flood('lsa-a'))).toBe(true);
+    expect(PacketAnim._chatterAllowed(flood('lsa-a'))).toBe(false);
   });
 });
 
@@ -844,6 +861,51 @@ describe('PacketAnim — LSA flooding is sequenced per-hop', () => {
     bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: 'idle' } }));
     expect(PacketAnim._lsaArrivedAt.size).toBe(0);
     expect(PacketAnim._lsaPending.size).toBe(0);
+  });
+
+  it('empties the packet layer when the sim goes idle so nothing dangles', () => {
+    // Simulate dots/badges left in flight (or frozen by a pause) at stop time.
+    const layer = document.getElementById('packet-layer');
+    layer.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'rect'));
+    layer.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'text'));
+    PacketAnim._lastChatter.set('r1:lan_a:lsa-x', 123);
+    bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: 'idle' } }));
+    expect(layer.children.length).toBe(0);
+    expect(PacketAnim._lastChatter.size).toBe(0);
+  });
+
+  it('force-renders a deferred re-flood whose inbound never arrives (no strand)', async () => {
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;   // fallback floor is max(3, 100) = 100ms
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: refloodEvt() }));
+      // Deferred: held in _lsaPending, nothing rendered, no arrival will come.
+      expect(PacketAnim._lsaPending.get('lsa-x|r2')).toHaveLength(1);
+      await new Promise(r => setTimeout(r, 160));   // past the fallback floor
+      // The fallback force-rendered it, draining the queue.
+      expect(PacketAnim._lsaPending.has('lsa-x|r2')).toBe(false);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+    }
+  });
+
+  it('an in-flight fan-out does not repopulate the layer after the sim goes idle', async () => {
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 40;   // phase-1 ≈ 12ms
+    try {
+      // r1 floods lan_a (broadcast); r2 listens there, so a fan-out clone is
+      // spawned in the phase-1 completion callback.
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: originEvt() }));
+      // Go idle mid phase-1: the layer is cleared and the generation bumped.
+      await new Promise(r => setTimeout(r, 3));
+      bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: 'idle' } }));
+      // Let the (now-stale) phase-1 callback run; it must NOT spawn clones.
+      await new Promise(r => setTimeout(r, 80));
+      const layer = document.getElementById('packet-layer');
+      expect(layer.querySelectorAll('rect').length).toBe(0);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+    }
   });
 
   it('broadcast chatter fans out: each clone fires arrival with the listener device, not null', async () => {

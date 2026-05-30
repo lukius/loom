@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PacketStore } from './packetstore.js';
 import { state, bus } from './state.js';
 
@@ -312,6 +312,54 @@ describe('PacketStore — routing chatter', () => {
       payload_id: 'c1', type: 'routing_flood',
       src: { device: 'r1', iface: 'eth0' }, network: 'lan_a',
     })).toBe(1);
+  });
+});
+
+describe('PacketStore — chatter row pinning (animation owns cleanup)', () => {
+  beforeEach(() => {
+    state.routers = { r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 } } } };
+  });
+
+  it('evicts an unpinned chatter row after the fallback budget', () => {
+    vi.useFakeTimers();
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatterEvt({ payload_id: 'c1', srcDev: 'r1', network: 'lan_a' }) }));
+      const key = chatterKey('c1', 'r1', 'eth0', 'lan_a');
+      expect(PacketStore.chatter.has(key)).toBe(true);
+      vi.advanceTimersByTime(2500);
+      expect(PacketStore.chatter.has(key)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a pinned row past the fallback budget (deferred re-flood renders late)', () => {
+    vi.useFakeTimers();
+    try {
+      const key = chatterKey('c1', 'r1', 'eth0', 'lan_a');
+      // Pin arrives before the row is created (the animation layer committed
+      // to animating this re-flood, but it is deferred for several hops).
+      bus.dispatchEvent(new CustomEvent('packets:chatter-pin', { detail: { key } }));
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatterEvt({ payload_id: 'c1', srcDev: 'r1', network: 'lan_a' }) }));
+      vi.advanceTimersByTime(10000);
+      // Survives — its arrival, not a timer, will clean it up.
+      expect(PacketStore.chatter.has(key)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels the fallback when a row is pinned after creation', () => {
+    vi.useFakeTimers();
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatterEvt({ payload_id: 'c1', srcDev: 'r1', network: 'lan_a' }) }));
+      const key = chatterKey('c1', 'r1', 'eth0', 'lan_a');
+      bus.dispatchEvent(new CustomEvent('packets:chatter-pin', { detail: { key } }));
+      vi.advanceTimersByTime(10000);
+      expect(PacketStore.chatter.has(key)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

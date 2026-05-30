@@ -117,6 +117,11 @@ export const PacketAnim = {
   // actually propagates an update.
   _lsaArrivedAt: new Set(),         // "payload_id|router" — visual arrival has fired
   _lsaPending: new Map(),           // "payload_id|router" -> [evt, ...] re-floods waiting
+  // Bumped whenever the sim goes idle. Multi-phase animations (the broadcast
+  // fan-out) capture the generation when they start and abort their later
+  // phases if it has changed — otherwise a fan-out mid-flight at stop time
+  // would spawn fresh clones onto the just-cleared layer and dangle there.
+  _gen: 0,
   muted: false,
 
   play(evt) {
@@ -124,22 +129,24 @@ export const PacketAnim = {
       if (this.muted) {
         // Muted: drop the canvas animation AND the store row so the panel
         // doesn't show chatter the user explicitly muted.
-        const dotKey = `${evt.payload_id}|${(evt.src && evt.src.device) || '?'}|${(evt.src && evt.src.iface) || '?'}|${evt.network || '?'}`;
         bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
-          detail: { payloadId: dotKey, device: null },
+          detail: { payloadId: this._chatterDotKey(evt), device: null },
         }));
         return;
       }
       if (!this._chatterAllowed(evt)) {
-        // Throttled: skip the canvas animation, but leave the store row
-        // alone. Two reasons: (a) a re-emission of the original's composite
-        // key (the protocol re-floods back through the origin iface) shares
-        // the row, and dispatching arrival here would delete the original;
-        // (b) a distinct payload_id throttled on the same (device, network)
-        // is still a logically distinct message — the panel must still
-        // group it. The row's 2s TTL in packetstore handles cleanup.
+        // Throttled: a near-instant repeat of the *same* message on the same
+        // interface (the protocol re-floods back through the origin iface).
+        // Skip the canvas animation; the original emission's row covers it.
         return;
       }
+      // Committed to animating this chatter packet (now, queued, or deferred).
+      // Pin its store row so packetstore's fallback timer can't evict it
+      // before a deferred re-flood gets its (possibly much later) turn to
+      // render — its sim:packet-arrived will clean up the row instead.
+      bus.dispatchEvent(new CustomEvent('packets:chatter-pin', {
+        detail: { key: this._chatterDotKey(evt) },
+      }));
     }
 
     if (evt.flow && this._SEQUENTIAL.has(evt.type)) {
@@ -155,6 +162,16 @@ export const PacketAnim = {
     this._render(evt, null);
   },
 
+  // Composite key identifying one chatter emission (one RoutingMessage out one
+  // interface). Matches packetstore's _chatterKey so the store row, on-canvas
+  // dot, and arrival signal all share one identity.
+  _chatterDotKey(evt) {
+    const dev = (evt.src && evt.src.device) || '?';
+    const iface = (evt.src && evt.src.iface) || '?';
+    const net = evt.network || '?';
+    return `${evt.payload_id}|${dev}|${iface}|${net}`;
+  },
+
   _shouldDeferReflood(evt) {
     if (evt.type !== 'routing_flood') return false;
     const originator = evt.payload && evt.payload.originator;
@@ -165,7 +182,24 @@ export const PacketAnim = {
     let q = this._lsaPending.get(key);
     if (!q) { q = []; this._lsaPending.set(key, q); }
     q.push(evt);
+    // Safety net: if the inbound that should release this re-flood is dropped
+    // (muted, or geometry it never animated over) and never fires an arrival,
+    // force-render after a bounded wait so the re-flood still animates and its
+    // store row is cleaned up, instead of stranding in _lsaPending until idle.
+    this._scheduleRefloodFallback(key, evt);
     return true;
+  },
+
+  _scheduleRefloodFallback(key, evt) {
+    setTimeout(() => {
+      const q = this._lsaPending.get(key);
+      if (!q) return;                       // already released by an arrival
+      const i = q.indexOf(evt);
+      if (i === -1) return;
+      q.splice(i, 1);
+      if (q.length === 0) this._lsaPending.delete(key);
+      this._render(evt, null);
+    }, Math.max(this.DURATION_MS * 3, 100));
   },
 
   // Called from finish() when an LSA's animation completes. Marks every
@@ -263,6 +297,7 @@ export const PacketAnim = {
   // listener) so the LSA reflood sequencer releases per-listener.
   _renderBroadcastFanout(evt, srcNode, netNode, dot, badge, dotKey, color, listeners, onDone) {
     const layer = document.getElementById('packet-layer');
+    const gen = this._gen;
     const sender = evt.src && evt.src.device;
     const fabricName = evt.network;
     const srcCenter = getNodeCenter(srcNode);
@@ -292,6 +327,16 @@ export const PacketAnim = {
       // Retire the source dot; clones will carry the visual onward.
       if (dot.parentNode) layer.removeChild(dot);
       if (badge && badge.parentNode) layer.removeChild(badge);
+
+      // The sim stopped (or reset) mid fan-out: the layer has been cleared, so
+      // spawning clones now would just dangle them. Clean up the row and stop.
+      if (gen !== this._gen) {
+        if (dotKey) {
+          bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: dotKey, device: null } }));
+        }
+        if (onDone) onDone();
+        return;
+      }
 
       let remaining = listeners.length;
       const cloneDone = () => {
@@ -351,11 +396,21 @@ export const PacketAnim = {
   },
 
   _render(evt, onDone) {
-    const srcNode = lookupDeviceNode(evt.src && evt.src.device);
-    if (!srcNode) {
+    const isChatterEvt = this._ROUTING_CHATTER_TYPES.has(evt.type);
+    // Geometry can't be resolved (device/network node missing): bail out, but
+    // for chatter still fire arrival so the pinned store row gets cleaned up
+    // instead of leaking until idle.
+    const bail = () => {
+      if (isChatterEvt) {
+        bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
+          detail: { payloadId: this._chatterDotKey(evt), device: null },
+        }));
+      }
       if (onDone) onDone();
-      return;
-    }
+    };
+
+    const srcNode = lookupDeviceNode(evt.src && evt.src.device);
+    if (!srcNode) { bail(); return; }
 
     // Two fabric kinds: multi-access Networks have a visible rail node;
     // point-to-point Links are a direct device↔device edge with no fabric
@@ -363,16 +418,10 @@ export const PacketAnim = {
     // animation along the right geometry.
     const isLink = !!(state.links && state.links[evt.network]);
     const netNode = isLink ? null : lookupNetworkNode(evt.network);
-    if (!isLink && !netNode) {
-      if (onDone) onDone();
-      return;
-    }
+    if (!isLink && !netNode) { bail(); return; }
 
     const layer = document.getElementById('packet-layer');
-    if (!layer) {
-      if (onDone) onDone();
-      return;
-    }
+    if (!layer) { bail(); return; }
 
     const color = this.COLORS[evt.type] || { fill: '#777', opacity: 1.0 };
     // Packets render as small rounded rectangles — the typical "datagram"
@@ -381,10 +430,8 @@ export const PacketAnim = {
     // simple point-tracking API; we translate into x/y at write time.
     // Chatter packets use a composite key so each interface emission gets its
     // own distinct dot↔row binding. User traffic continues to use bare payload_id.
-    const isChatter = this._ROUTING_CHATTER_TYPES.has(evt.type);
-    const dotKey = isChatter
-      ? `${evt.payload_id}|${(evt.src && evt.src.device) || '?'}|${(evt.src && evt.src.iface) || '?'}|${evt.network || '?'}`
-      : evt.payload_id;
+    const isChatter = isChatterEvt;
+    const dotKey = isChatter ? this._chatterDotKey(evt) : evt.payload_id;
 
     const dot = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     dot.setAttribute('width', PACKET_W);
@@ -597,7 +644,12 @@ export const PacketAnim = {
   },
 
   _chatterAllowed(evt) {
-    const key = `${evt.src && evt.src.device}:${evt.network}`;
+    // Key on the message identity, not just (device, network): a router
+    // re-floods several *distinct* LSAs out one interface in a tight burst
+    // during convergence, and each is a real message that should animate.
+    // Including payload_id collapses only true repeats of the *same* message
+    // (the protocol's self-reflood back through the origin iface).
+    const key = `${evt.src && evt.src.device}:${evt.network}:${evt.payload_id}`;
     const now = performance.now();
     const last = this._lastChatter.get(key) || 0;
     if (now - last < 200) return false;
@@ -693,13 +745,21 @@ export function hidePacketTooltip() {
 // used to wire this through a bridge listener; ownership now lives here.
 bus.addEventListener('sim:packet', (e) => { PacketAnim.play(e.detail); });
 
-// Reset the LSA sequencer when the sim goes idle so a fresh run doesn't
-// inherit stale arrival markers (which would let re-floods skip their wait).
+// Reset all animation state when the sim goes idle. A fresh run must not
+// inherit stale sequencer markers (which would let re-floods skip their wait),
+// and — crucially — any dots/badges still in flight (or frozen by a pause)
+// when the sim stops must be cleared from the canvas, otherwise they dangle
+// permanently because nothing else empties the packet layer.
 bus.addEventListener('sim:status-changed', (e) => {
   const status = e.detail && e.detail.status;
   if (status === 'idle') {
+    PacketAnim._gen++;   // invalidate any in-flight multi-phase animation
     PacketAnim._lsaArrivedAt.clear();
     PacketAnim._lsaPending.clear();
+    PacketAnim._queues.clear();
+    PacketAnim._lastChatter.clear();
+    const layer = document.getElementById('packet-layer');
+    if (layer) layer.replaceChildren();
   }
 });
 

@@ -42,6 +42,7 @@ export const PacketStore = {
     }
     _simPaused = false;
     _pendingChatterDeletes.clear();
+    _pinnedChatter.clear();
   },
 };
 
@@ -163,7 +164,7 @@ function _handleChatterPacket(evt, st) {
     if (k.split('|', 1)[0] === evt.payload_id) { chatterId = row.id; break; }
   }
   if (chatterId === null) chatterId = PacketStore._nextChatterId++;
-  PacketStore.chatter.set(key, {
+  const row = {
     id: chatterId,
     payloadId: key,
     type: evt.type,
@@ -172,22 +173,47 @@ function _handleChatterPacket(evt, st) {
     network: evt.network,
     iface: _resolveIface(evt.src && evt.src.device, evt.network, st),
     payload: (evt.payload && typeof evt.payload === 'object') ? evt.payload : {},
-  });
-  // TTL: muted or throttled chatter has no canvas animation, so no
-  // sim:packet-arrived will fire. Clean up after the visual budget so
-  // the chatter map doesn't grow without bound. For chatter that does
-  // animate, finish() will dispatch sim:packet-arrived earlier and this
-  // becomes a no-op. If paused at fire time, defer the deletion so the
-  // panel stays frozen until resume.
-  setTimeout(() => {
-    if (_simPaused) {
-      _pendingChatterDeletes.add(key);
-      return;
-    }
-    if (PacketStore.chatter.delete(key)) _scheduleEmit();
-  }, 2000);
+    _ttl: null,
+  };
+  PacketStore.chatter.set(key, row);
+  // Row lifetime: chatter that animates is cleaned up by its sim:packet-arrived
+  // (which the animation layer pins, see below). The fallback timer only
+  // reclaims rows whose packet never animates (e.g. muted). It is deliberately
+  // NOT started for rows the animation layer has already pinned — a deferred
+  // re-flood can render seconds later than this fixed budget, and evicting its
+  // row early is exactly what strips its label and panel entry.
+  if (_pinnedChatter.has(key)) {
+    _pinnedChatter.delete(key);
+  } else {
+    row._ttl = setTimeout(() => {
+      row._ttl = null;
+      if (_simPaused) {
+        _pendingChatterDeletes.add(key);
+        return;
+      }
+      if (PacketStore.chatter.delete(key)) _scheduleEmit();
+    }, CHATTER_ROW_FALLBACK_MS);
+  }
   _scheduleEmit();
 }
+
+// Keys the animation layer has signalled will animate (so their arrival, not a
+// timer, cleans the row up). Holds pins that arrive before the row is created.
+const _pinnedChatter = new Set();
+const CHATTER_ROW_FALLBACK_MS = 2000;
+
+bus.addEventListener('packets:chatter-pin', (e) => {
+  const key = e.detail && e.detail.key;
+  if (!key) return;
+  const row = PacketStore.chatter.get(key);
+  if (row) {
+    if (row._ttl != null) { clearTimeout(row._ttl); row._ttl = null; }
+  } else {
+    // Pin arrived before _handleChatterPacket created the row; remember it so
+    // the fallback timer is never started for this key.
+    _pinnedChatter.add(key);
+  }
+});
 
 PacketStore._NAT_CACHE_LIMIT = 1024;
 
