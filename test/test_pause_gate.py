@@ -165,13 +165,13 @@ def test_paused_keepalive_does_not_tick():
     proto = r1.protocol()
     proto.set_timers(hello_interval=0.05, lsa_refresh_interval=0.15)
 
-    original_emit_hello = proto._emit_hello_on_all_interfaces
+    original_emit_hello = proto._emit_hello_on_up_interfaces
 
     def counting_emit_hello(now):
         tick_count[0] += 1
         original_emit_hello(now)
 
-    proto._emit_hello_on_all_interfaces = counting_emit_hello
+    proto._emit_hello_on_up_interfaces = counting_emit_hello
 
     r1.start()
 

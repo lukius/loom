@@ -16,6 +16,7 @@ from entities import (
     NullAddress,
     Router,
 )
+from entities.event import EventTracer
 from parser import Parser
 from routing import LSA, Hello, LinkStateProtocol, RouteMap, Scheduler
 from routing.policy import RFC1918_OUTBOUND
@@ -159,16 +160,16 @@ def test_stop_then_start_resumes_periodic_ticks():
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(SAMPLE_TOPOLOGY)
         path = f.name
-    # Wrap _emit_hello_on_all_interfaces to count ticks per router instance.
+    # Wrap _emit_hello_on_up_interfaces to count ticks per router instance.
     tick_counts = {}
-    original_emit = LinkStateProtocol._emit_hello_on_all_interfaces
+    original_emit = LinkStateProtocol._emit_hello_on_up_interfaces
 
     def counting_emit(self, now):
         name = self._router.name()
         tick_counts[name] = tick_counts.get(name, 0) + 1
         original_emit(self, now)
 
-    LinkStateProtocol._emit_hello_on_all_interfaces = counting_emit
+    LinkStateProtocol._emit_hello_on_up_interfaces = counting_emit
     try:
         system = Parser(path).parse().single_as()
         for r in system.routers().values():
@@ -188,7 +189,7 @@ def test_stop_then_start_resumes_periodic_ticks():
             system.stop()
             os.unlink(path)
     finally:
-        LinkStateProtocol._emit_hello_on_all_interfaces = original_emit
+        LinkStateProtocol._emit_hello_on_up_interfaces = original_emit
 
 
 def test_initial_broadcast_propagates_before_keepalive_interval():
@@ -1537,6 +1538,38 @@ def test_set_timers_live_updates_scheduler_cadence():
     # The scheduler's recorded base intervals should now reflect the new values.
     assert proto._scheduler._intervals['hello'] == 5  # noqa: SLF001
     assert proto._scheduler._intervals['lsa_refresh'] == 15  # noqa: SLF001
+
+
+def _router_two_ifaces_for_emit():
+    r = Router("r1")
+    for nm, cidr, addr in (
+        ("eth0", "10.0.0.0/24", "10.0.0.1"),
+        ("eth1", "10.0.1.0/24", "10.0.1.1"),
+    ):
+        net = Network(nm + "net", NetworkAddress(cidr))
+        iface = Interface(nm, net, Address(addr), cost=1)
+        iface._set_out_queue(queue.Queue())  # noqa: SLF001
+        r.add_interface(iface)
+        net.add_interface(iface)
+    return r
+
+
+def test_emit_skips_down_interfaces():
+    r = _router_two_ifaces_for_emit()
+    r.interface("eth1").disable()
+    proto = r.protocol()
+    sent = []
+    unsub = EventTracer.subscribe(
+        lambda e: sent.append(e) if e.get("kind") == "packet" else None
+    )
+    try:
+        proto._emit_hello_on_up_interfaces(time.monotonic())  # noqa: SLF001
+        proto._emit_lsa_on_up_interfaces(time.monotonic())    # noqa: SLF001
+    finally:
+        unsub()
+    ifaces_used = {e["src"]["iface"] for e in sent}
+    assert "eth0" in ifaces_used
+    assert "eth1" not in ifaces_used
 
 
 def test_set_timers_wakes_parked_loop_to_apply_new_cadence():

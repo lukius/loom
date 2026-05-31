@@ -284,8 +284,8 @@ class LinkStateProtocol(RoutingProtocol):
         """
         now = time.monotonic()
         self._sweep_dead_and_expired(now)
-        self._emit_hello_on_all_interfaces(now)
-        self._emit_lsa_on_all_interfaces(now)
+        self._emit_hello_on_up_interfaces(now)
+        self._emit_lsa_on_up_interfaces(now)
 
     def _sweep_dead_and_expired(self, now: float):
         with self._lock:
@@ -305,9 +305,11 @@ class LinkStateProtocol(RoutingProtocol):
             if changed:
                 self._rebuild_graph_and_recompute()
 
-    def _emit_hello_on_all_interfaces(self, now: float):
+    def _emit_hello_on_up_interfaces(self, now: float):
         with self._lock:
             for _, iface in self._router.interfaces().items():
+                if not iface.is_up():
+                    continue
                 broadcast = iface.network().broadcast_address()
                 listed = self._neighbor_table.neighbors_heard_on(
                     iface, dead_interval=self._dead_interval, now=now,
@@ -323,10 +325,10 @@ class LinkStateProtocol(RoutingProtocol):
         # not at the next periodic lsa_refresh tick (which can be up to
         # lsa_refresh_interval + jitter away — ~37s with defaults).
         # Emit a fresh LSA, install it locally (recomputes SPF if links
-        # actually changed), and flood it out every interface so peers
+        # actually changed), and flood it out every up interface so peers
         # converge too.
         now = time.monotonic()
-        self._emit_lsa_on_all_interfaces(now)
+        self._emit_lsa_on_up_interfaces(now)
         # Reset the periodic refresh deadline so a flurry of edits doesn't
         # produce a tail of identical periodic refreshes right behind us.
         if 'lsa_refresh' in self._scheduler._deadlines:  # noqa: SLF001
@@ -336,7 +338,7 @@ class LinkStateProtocol(RoutingProtocol):
                 fire_at=now + self._lsa_refresh_interval,
             )
 
-    def _emit_lsa_on_all_interfaces(self, now: float):
+    def _emit_lsa_on_up_interfaces(self, now: float):
         with self._lock:
             seq = self._next_seq()
             # Install a permit-all LSA locally so the local graph includes
@@ -352,6 +354,8 @@ class LinkStateProtocol(RoutingProtocol):
                 self._router, seq=seq, policy=self._outbound_policy,
             )
             for _, iface in self._router.interfaces().items():
+                if not iface.is_up():
+                    continue
                 broadcast = iface.network().broadcast_address()
                 dgram = Datagram(
                     src_addr=iface.address(), dst_addr=broadcast, payload=flooded_lsa,
@@ -510,17 +514,17 @@ class LinkStateProtocol(RoutingProtocol):
 
     def _safe_tick_initial(self, now: float):
         try:
-            self._emit_hello_on_all_interfaces(now)
-            self._emit_lsa_on_all_interfaces(now)
+            self._emit_hello_on_up_interfaces(now)
+            self._emit_lsa_on_up_interfaces(now)
         except Exception:
             traceback.print_exc()
 
     def _dispatch(self, name: str, now: float):
         try:
             if name == 'hello':
-                self._emit_hello_on_all_interfaces(now)
+                self._emit_hello_on_up_interfaces(now)
             elif name == 'lsa_refresh':
-                self._emit_lsa_on_all_interfaces(now)
+                self._emit_lsa_on_up_interfaces(now)
             elif name == 'maxage_check':
                 self._sweep_dead_and_expired(now)
         except Exception:

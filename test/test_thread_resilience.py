@@ -136,7 +136,7 @@ class RoutingProtocolThreadResilienceTest(unittest.TestCase):
         call_count = 0
         completed = threading.Event()
 
-        original_emit_hello = protocol._emit_hello_on_all_interfaces
+        original_emit_hello = protocol._emit_hello_on_up_interfaces
 
         def patched_emit_hello(now):
             nonlocal call_count
@@ -146,7 +146,7 @@ class RoutingProtocolThreadResilienceTest(unittest.TestCase):
             original_emit_hello(now)
             completed.set()
 
-        protocol._emit_hello_on_all_interfaces = patched_emit_hello
+        protocol._emit_hello_on_up_interfaces = patched_emit_hello
         # Use no-jitter scheduler with zero-interval to fire immediately.
         protocol._scheduler = Scheduler(jitter_range=(0.0, 0.0))
         protocol.set_timers(hello_interval=0.01, lsa_refresh_interval=0.05)
