@@ -113,6 +113,11 @@ export function isValidLinkCidr(s) {
  * fabric's CIDR, and not already used by another host or router-interface on
  * that fabric.
  *
+ * Note: when `fabricName` is provided but the fabric is not present in `st`
+ * (the `if (fabric)` guard is skipped), the CIDR and duplicate checks are
+ * bypassed and the address is treated as valid here. A missing-fabric
+ * condition is caught later by the server/reconcile path.
+ *
  * @param {string} addr        - Address to validate.
  * @param {string} fabricKind  - 'network' | 'link'.
  * @param {string} fabricName  - Key into `st.networks` or `st.links`.
