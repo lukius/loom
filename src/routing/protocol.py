@@ -450,6 +450,25 @@ class LinkStateProtocol(RoutingProtocol):
             }
         )
 
+    def withdraw(self) -> None:
+        """Flood a withdrawal LSA out every interface (graceful departure).
+
+        Called before interfaces are disabled, so the withdrawal actually
+        transmits — peers purge this origin immediately instead of waiting
+        for max_age.
+        """
+        self._flood_withdrawal()
+
+    def announce(self) -> None:
+        """Emit Hello + LSA on every up interface right now (re-announce).
+
+        Used on restore so a re-enabled interface / resumed router rejoins
+        at t~=0 rather than after a full interval.
+        """
+        now = time.monotonic()
+        self._emit_hello_on_up_interfaces(now)
+        self._emit_lsa_on_up_interfaces(now)
+
     def installed_rules(self):
         # BGP-FOLLOWUP: today this returns the full routing table because LS
         # writes there directly. Once BGP is the second protocol, this should

@@ -1572,6 +1572,36 @@ def test_emit_skips_down_interfaces():
     assert "eth1" not in ifaces_used
 
 
+def test_withdraw_floods_withdrawal_on_each_interface():
+    r = _router_two_ifaces_for_emit()
+    proto = r.protocol()
+    floods = []
+    unsub = EventTracer.subscribe(
+        lambda e: floods.append(e) if e.get("kind") == "packet" else None
+    )
+    try:
+        proto.withdraw()
+    finally:
+        unsub()
+    withdrawals = [e for e in floods if e["type"] == "routing_flood"]
+    assert len(withdrawals) == 2  # one per interface
+
+
+def test_announce_emits_hello_and_lsa():
+    r = _router_two_ifaces_for_emit()
+    proto = r.protocol()
+    pkts = []
+    unsub = EventTracer.subscribe(
+        lambda e: pkts.append(e["type"]) if e.get("kind") == "packet" else None
+    )
+    try:
+        proto.announce()
+    finally:
+        unsub()
+    assert "hello" in pkts
+    assert "routing_flood" in pkts
+
+
 def test_set_timers_wakes_parked_loop_to_apply_new_cadence():
     """When set_timers is called on a running loop parked on a long
     interval, the loop wakes and applies the new (shorter) cadence
