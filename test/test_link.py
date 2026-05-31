@@ -382,3 +382,86 @@ class NetworkUnlimitedEndpointsTest(unittest.TestCase):
             iface = Interface(f"eth{i}", self.net, Address(f"10.0.0.{i + 1}"))
             self.net.add_interface(iface)
         self.assertEqual(len(self.net._interfaces), 5)
+
+
+class LinkIterationConcurrencyTest(unittest.TestCase):
+    """Test 12 — Link._dispatch_packet, peer_of, has_device, and devices()
+    must tolerate a concurrent structural mutation without raising
+    'RuntimeError: dictionary changed size during iteration'.
+
+    The race: add_interface can run on the server's edit thread while
+    _dispatch_packet / peer_of runs on the Link's packet-loop thread.
+    CPython raises RuntimeError when a dict is mutated between two
+    successive __next__ calls on the same iterator.
+
+    Fix: wrap all four iterations with list(self._interfaces.values()) so a
+    GIL-atomic C-level snapshot is taken before the Python for-loop starts.
+
+    Test strategy:
+    * test_dispatch_packet_tolerates_receive_injecting_new_interface mirrors
+      DispatchBroadcastConcurrencyTest from test_packet_handling.py.
+    * test_unprotected_iteration_raises_on_concurrent_insert is a focused
+      unit test that proves the raw iteration mechanism fails without list();
+      this documents the exact CPython behaviour the fix guards against.
+    * test_list_snapshot_is_immune_to_concurrent_insert confirms list() is
+      the correct remedy.
+    """
+
+    def test_dispatch_packet_tolerates_receive_injecting_new_interface(self):
+        """Mirrors DispatchBroadcastConcurrencyTest for Link.
+
+        A _MutatingIface injects a new key into _interfaces inside receive().
+        With list() in _dispatch_packet the loop snapshot is taken before
+        receive() is called, so the mutation does not affect the iteration.
+        """
+        link = Link("p2p", NetworkAddress("10.0.0.0/30"))
+        net  = Network("dummy", NetworkAddress("10.0.0.0/30"))
+
+        class _MutatingIface(Interface):
+            def __init__(self, *a, fabric=None, **kw):
+                super().__init__(*a, **kw)
+                self._fabric = fabric
+
+            def receive(self, frame):
+                extra = Interface("ethX", net, Address("10.0.0.3"))
+                self._fabric._interfaces[extra.address()] = extra
+
+        iface_a = Interface("eth0", net, Address("10.0.0.1"))
+        iface_b = _MutatingIface("eth1", net, Address("10.0.0.2"), fabric=link)
+
+        link._interfaces[iface_a.address()] = iface_a
+        link._interfaces[iface_b.address()] = iface_b
+
+        frame = _make_frame(Address("10.0.0.1"), Address("10.0.0.2"))
+
+        # Must not raise regardless of dict growth inside receive().
+        link._dispatch_packet(frame)
+
+        link.stop()
+        link.join()
+        net.stop()
+
+    def test_unprotected_iteration_raises_on_concurrent_insert(self):
+        """Proves the mechanism: iterating dict.values() without list()
+        raises RuntimeError when the dict grows mid-iteration.
+
+        This is the exact error Link._dispatch_packet, peer_of, has_device,
+        and devices() are vulnerable to without the list() snapshot fix.
+        The test uses a plain dict (no threading needed) to reproduce it
+        deterministically."""
+        d = {1: "a", 2: "b"}
+        it = iter(d.values())
+        next(it)       # consume first entry
+        d[3] = "c"    # mutate — simulates concurrent add_interface
+        with self.assertRaises(RuntimeError):
+            next(it)   # raises: dict changed size during iteration
+
+    def test_list_snapshot_is_immune_to_concurrent_insert(self):
+        """Proves the fix: list(d.values()) takes a GIL-atomic C-level
+        snapshot before any Python bytecode yields, so a mutation that
+        arrives after the snapshot does not affect the iteration."""
+        d = {1: "a", 2: "b"}
+        snapshot = list(d.values())
+        d[3] = "c"    # mutate after snapshot
+        result = list(snapshot)
+        self.assertEqual(len(result), 2)  # snapshot sees only 2 items

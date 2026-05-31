@@ -223,8 +223,8 @@ their ops.
 
 ### Snapshot-on-read on the dispatch hot path
 
-The multi-access `Network` dispatch paths (`_dispatch_broadcast`,
-`devices`, `has_device`) iterate over attached interfaces with:
+Both `Network` and `Link` dispatch paths iterate over attached interfaces
+with:
 
 ```python
 for iface in list(self._interfaces.values()):
@@ -238,10 +238,13 @@ during iteration`. Frames in transit to an interface that is concurrently
 removed are simply dropped at their destination — an acceptable
 transitional artifact.
 
-Point-to-point `Link._dispatch_packet` iterates `self._interfaces.values()`
-directly (no snapshot), which is safe because a Link has at most two
-endpoints and the Python dict iteration is GIL-atomic for the small,
-bounded iteration involved.
+Note: the GIL does NOT protect a Python-level `for x in d.values():`
+loop from concurrent inserts. CPython raises RuntimeError whenever a
+dict's internal version changes between two successive `__next__` calls
+on the same iterator — regardless of the dict's size. The `list(...)` fix
+works because `list()` is implemented in C and drains the values view in
+a single, uninterrupted C-level pass before yielding control back to
+Python bytecode.
 
 ### Removal-detach ordering
 

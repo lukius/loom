@@ -50,18 +50,18 @@ class Link(_FabricBase):
     def devices(self) -> dict:
         return {
             interface.device().name(): interface.device()
-            for interface in self._interfaces.values()
+            for interface in list(self._interfaces.values())
         }
 
     def has_device(self, device: NetworkDevice) -> bool:
-        for iface in self._interfaces.values():
+        for iface in list(self._interfaces.values()):
             if iface.device() == device:
                 return True
         return False
 
     def peer_of(self, interface):
         """Return the other endpoint Interface, or None if it hasn't joined yet."""
-        for iface in self._interfaces.values():
+        for iface in list(self._interfaces.values()):
             if iface is not interface:
                 return iface
         return None
@@ -74,7 +74,7 @@ class Link(_FabricBase):
         """
         src = frame.source()
         target = None
-        for iface in self._interfaces.values():
+        for iface in list(self._interfaces.values()):
             if iface.address() != src:
                 target = iface
                 break
