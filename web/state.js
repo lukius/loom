@@ -26,6 +26,11 @@ export const state = {
   /* transient sim state — NAT snapshots keyed by device name; populated by
      the `nat_table_changed` WS event. Not persisted; reset on loadSample. */
   natTables: {},
+  /* Per-device admin down-state, transient (not persisted; from
+     interface_state_changed / device_state_changed WS events).
+     downInterfaces[device] = Set of down iface names; haltedDevices = Set-like. */
+  downInterfaces: {},
+  haltedDevices: {},
   /* Per-device neighbor state, keyed by device name.
      Value: { [ifaceName]: { [peerName]: { state, last_hello_at, peer_acked_at } } }
      Not persisted; transient sim state from `neighbor_state_changed` WS events. */
@@ -173,6 +178,8 @@ export function loadSample() {
   state.display = { ...DISPLAY_DEFAULTS };
   state.ui = { packetsPanelOpen: false, showChatter: true };
   state.natTables = {};
+  state.downInterfaces = {};
+  state.haltedDevices = {};
   const projName = document.getElementById('proj-name');
   if (projName) projName.value = state.asName;
   persist();
@@ -197,6 +204,8 @@ export function clearTopology() {
   state.display = { ...DISPLAY_DEFAULTS };
   state.ui = { packetsPanelOpen: false, showChatter: true };
   state.natTables = {};
+  state.downInterfaces = {};
+  state.haltedDevices = {};
   const projName = document.getElementById('proj-name');
   if (projName) projName.value = state.asName;
   persist();
@@ -217,6 +226,40 @@ export function applyNeighborStateChanged(ev) {
   bus.dispatchEvent(new CustomEvent('sim:neighbor-state-changed', {
     detail: { device, iface, peer, state: nState },
   }));
+}
+
+/* ---------- admin down-state cache ---------- */
+export function applyInterfaceStateChanged(ev) {
+  const { device, interface: iface, up } = ev;
+  if (!device || !iface) return;
+  const set = (state.downInterfaces[device] ??= new Set());
+  if (up) set.delete(iface); else set.add(iface);
+  bus.dispatchEvent(new CustomEvent('sim:interface-state-changed', {
+    detail: { device, iface, up },
+  }));
+}
+
+export function applyDeviceStateChanged(ev) {
+  const { device, up } = ev;
+  if (!device) return;
+  if (up) delete state.haltedDevices[device];
+  else state.haltedDevices[device] = true;
+  bus.dispatchEvent(new CustomEvent('sim:device-state-changed', {
+    detail: { device, up },
+  }));
+}
+
+export function isInterfaceDown(device, iface) {
+  return !!state.downInterfaces[device]?.has(iface);
+}
+
+export function isDeviceHalted(device) {
+  return !!state.haltedDevices[device];
+}
+
+export function resetDownState() {
+  state.downInterfaces = {};
+  state.haltedDevices = {};
 }
 
 /* ---------- mark dirty ---------- */

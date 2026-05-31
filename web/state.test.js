@@ -1,10 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, test } from 'vitest';
 import {
   state, bus,
   STORAGE_KEY, THEME_KEY, LAYOUT_KEY, LAYOUT_DEF, LAYOUT_LIMITS, SAMPLE,
   NODE, HIT_PAD,
   persist, restore, loadSample, clearTopology, markDirty, setSave,
   defaultExportFilename,
+  applyInterfaceStateChanged, applyDeviceStateChanged,
+  isInterfaceDown, isDeviceHalted,
 } from './state.js';
 import { importYaml, exportYaml } from './yaml-io.js';
 
@@ -884,4 +886,18 @@ internet:
     importYaml(yaml);
     expect(state.asName).toBe('my_legacy_as');
   });
+});
+
+test('interface down-state is tracked and queryable', () => {
+  applyInterfaceStateChanged({ device: 'r1', interface: 'eth0', up: false });
+  expect(isInterfaceDown('r1', 'eth0')).toBe(true);
+  applyInterfaceStateChanged({ device: 'r1', interface: 'eth0', up: true });
+  expect(isInterfaceDown('r1', 'eth0')).toBe(false);
+});
+
+test('device halted-state is tracked and queryable', () => {
+  applyDeviceStateChanged({ device: 'r2', up: false });
+  expect(isDeviceHalted('r2')).toBe(true);
+  applyDeviceStateChanged({ device: 'r2', up: true });
+  expect(isDeviceHalted('r2')).toBe(false);
 });
