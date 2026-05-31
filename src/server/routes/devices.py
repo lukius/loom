@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Body, HTTPException, Request
 
+from entities import Router
 from server.command.dispatch import dispatch
 
 router = APIRouter(prefix="/devices", tags=["devices"])
@@ -74,3 +75,23 @@ def nat_table(name: str, request: Request):
     if table is None:
         return {"entries": []}
     return {"entries": table().snapshot()}
+
+
+@router.post("/{name}/fail")
+def fail(name: str, request: Request, body: dict | None = Body(default=None)):
+    """Crash a router (silent failure): no withdrawal, peers detect via timers.
+
+    No body / no ``interface`` key -> crash the whole router.
+    ``{"interface": "eth0"}`` -> crash that one interface. Routers only.
+    """
+    device = _device_or_404(request, name)
+    if not isinstance(device, Router):
+        raise HTTPException(400, "fail is only supported on routers")
+    iface = (body or {}).get("interface")
+    if iface:
+        if iface not in device.interfaces():
+            raise HTTPException(404, f"unknown interface: {iface}")
+        device.disable_interface(iface, graceful=False)
+    else:
+        device.halt(graceful=False)
+    return {"ok": True}

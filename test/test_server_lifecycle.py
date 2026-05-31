@@ -4,8 +4,10 @@ from pathlib import Path
 
 import pytest
 import yaml as _yaml
+from fastapi.testclient import TestClient
 
 from entities.event import EventTracer
+from server.app import create_app
 from server.state import SimState
 
 SAMPLE = textwrap.dedent("""
@@ -142,10 +144,6 @@ def test_stop_then_start_works(source_yaml):
 
 
 def test_topology_endpoint_loads_yaml(tmp_path, monkeypatch):
-    from fastapi.testclient import TestClient
-
-    from server.app import create_app
-
     src = tmp_path / "src.yaml"
     src.write_text(SAMPLE)
     monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
@@ -159,10 +157,6 @@ def test_topology_endpoint_loads_yaml(tmp_path, monkeypatch):
 
 
 def test_lifecycle_via_rest(tmp_path, monkeypatch):
-    from fastapi.testclient import TestClient
-
-    from server.app import create_app
-
     src = tmp_path / "src.yaml"
     src.write_text(SAMPLE)
     monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
@@ -295,13 +289,61 @@ def test_persisted_yaml_preserves_links_for_round_trip(tmp_path):
 
 
 def test_invalid_yaml_returns_400(tmp_path, monkeypatch):
-    from fastapi.testclient import TestClient
-
-    from server.app import create_app
-
     src = tmp_path / "src.yaml"
     src.write_text("not yaml :::")
     monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
     with TestClient(create_app()) as c:
         r = c.post("/topology", json={"yaml": "as:\n  rubbish"})
         assert r.status_code == 400
+
+
+SAMPLE_WITH_ROUTER = textwrap.dedent("""
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: "10.0.0.0/24"
+      hosts:
+        h1: {network: lan1, address: "10.0.0.1"}
+      routers:
+        r1: {interfaces: {eth0: {network: lan1, address: "10.0.0.254", cost: 1}}}
+""")
+
+
+@pytest.fixture
+def running_client(tmp_path, monkeypatch):
+    src = tmp_path / "src.yaml"
+    src.write_text(SAMPLE_WITH_ROUTER)
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
+    with TestClient(create_app()) as c:
+        c.post("/topology", json={"yaml": SAMPLE_WITH_ROUTER})
+        c.post("/sim/start")
+        sim = c.app.state.sim_state
+        yield c, sim
+
+
+def test_fail_router_crashes_silently(running_client):
+    client, sim = running_client
+    name = next(iter(sim.as_obj.routers()))
+    resp = client.post(f"/devices/{name}/fail")
+    assert resp.status_code == 200
+    assert sim.as_obj.router(name).is_halted() is True
+
+
+def test_fail_single_interface(running_client):
+    client, sim = running_client
+    name = next(iter(sim.as_obj.routers()))
+    iface_name = next(iter(sim.as_obj.router(name).interfaces()))
+    resp = client.post(f"/devices/{name}/fail", json={"interface": iface_name})
+    assert resp.status_code == 200
+    assert sim.as_obj.router(name).interface(iface_name).is_up() is False
+    assert sim.as_obj.router(name).is_halted() is False  # only one iface failed
+
+
+def test_fail_on_host_is_rejected(running_client):
+    client, sim = running_client
+    host = next(iter(sim.as_obj.hosts()))
+    resp = client.post(f"/devices/{host}/fail")
+    assert resp.status_code == 400
