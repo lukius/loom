@@ -76,6 +76,7 @@ class Interface(Entity):
         self._cost = cost
         self._gate = gate
         self._device = None
+        self._up = True
 
         self._in_queue = queue.Queue()
         self._out_queue = None
@@ -98,6 +99,27 @@ class Interface(Entity):
 
     def set_cost(self, cost: int):
         self._cost = cost
+
+    def is_up(self) -> bool:
+        return self._up
+
+    def disable(self) -> None:
+        self._up = False
+        self._emit_state()
+
+    def enable(self) -> None:
+        self._up = True
+        self._emit_state()
+
+    def _emit_state(self) -> None:
+        EventTracer._broadcast(
+            {
+                "kind": "interface_state_changed",
+                "device": self._device.name() if self._device else None,
+                "interface": self._name,
+                "up": self._up,
+            }
+        )
 
     def stop(self):
         self._in_queue.put(None)

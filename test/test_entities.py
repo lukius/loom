@@ -1,6 +1,7 @@
 import unittest
 
 from entities import Address, Host, Interface, Network, NetworkAddress, Router
+from entities.event import EventTracer
 
 
 class EntitiesTest(unittest.TestCase):
@@ -72,3 +73,40 @@ class EntitiesTest(unittest.TestCase):
 
         self.assertIn('host1', self._network1.devices())
         self.assertIn('host2', self._network1.devices())
+
+
+def _make_iface(name="eth0"):
+    net = Network("lan", NetworkAddress("10.0.0.0/24"))
+    return Interface(name, net, Address("10.0.0.1"))
+
+
+def test_interface_defaults_to_up():
+    iface = _make_iface()
+    assert iface.is_up() is True
+
+
+def test_disable_enable_toggles_is_up():
+    iface = _make_iface()
+    iface.disable()
+    assert iface.is_up() is False
+    iface.enable()
+    assert iface.is_up() is True
+
+
+def test_disable_enable_emit_interface_state_changed():
+    iface = _make_iface()
+    events = []
+    unsub = EventTracer.subscribe(events.append)
+    try:
+        iface.disable()
+        iface.enable()
+    finally:
+        unsub()
+    kinds = [
+        (e["kind"], e["up"]) for e in events if e["kind"] == "interface_state_changed"
+    ]
+    assert kinds == [
+        ("interface_state_changed", False),
+        ("interface_state_changed", True),
+    ]
+    assert events[0]["interface"] == "eth0"
