@@ -1991,3 +1991,67 @@ describe('renderRouterInsp — per-interface action buttons (sim running)', () =
     expect(spy).toHaveBeenCalledWith('r1', 'ifconfig eth0 down');
   });
 });
+
+// ---------------------------------------------------------------------------
+// B2: deleteSelected — in-use LAN guard while running
+// ---------------------------------------------------------------------------
+describe('deleteSelected (B2): blocks in-use LAN delete while sim is running', () => {
+  beforeEach(() => {
+    Sim.state = 'running';
+  });
+
+  afterEach(() => {
+    Sim.state = 'idle';
+  });
+
+  it('does NOT delete the network and does NOT call applyEdit when a host is attached and sim is running', async () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.2', x: 0, y: 0 } };
+    state.selection = { kind: 'network', name: 'lan1' };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    deleteSelected();
+
+    expect(state.networks.lan1).toBeDefined();       // NOT deleted locally
+    expect(editSpy).not.toHaveBeenCalled();           // NOT POSTed
+    editSpy.mockRestore();
+  });
+
+  it('shows an error toast explaining why the delete was blocked', () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.2', x: 0, y: 0 } };
+    state.selection = { kind: 'network', name: 'lan1' };
+
+    deleteSelected();
+
+    const toastEl = document.querySelector('.toast.error');
+    expect(toastEl).not.toBeNull();
+    expect(toastEl.textContent.toLowerCase()).toContain('detach');
+  });
+
+  it('does NOT block deleting an unattached LAN while running', async () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.hosts = {};
+    state.routers = {};
+    state.selection = { kind: 'network', name: 'lan1' };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    deleteSelected();
+
+    expect(state.networks.lan1).toBeUndefined();     // deleted normally
+    editSpy.mockRestore();
+  });
+
+  it('does NOT block deleting an in-use LAN when the sim is paused (paused uses patch)', async () => {
+    Sim.state = 'paused';
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.2', x: 0, y: 0 } };
+    state.selection = { kind: 'network', name: 'lan1' };
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
+
+    deleteSelected();
+
+    expect(state.networks.lan1).toBeUndefined();     // deletion allowed while paused
+    vi.restoreAllMocks();
+  });
+});

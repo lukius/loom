@@ -36,7 +36,12 @@ import { openImportPicker, runExportSave, fetchSourceName } from './file-picker.
 // Temporary bus wiring: bridges to module-local yaml exporter/importer. canvas.js,
 // inspector.js, terminals.js, and packets.js own their own listeners.
 bus.addEventListener('sim:yaml-export-requested', (e) => { e.detail.yaml = exportYaml(); });
-bus.addEventListener('sim:topology-import-requested', (e) => { importYaml(e.detail.yaml); });
+bus.addEventListener('sim:topology-import-requested', (e) => {
+  importYaml(e.detail.yaml, {
+    preserveView:      !!e.detail.preserveView,
+    preserveSelection: !!e.detail.preserveSelection,
+  });
+});
 
 /* ===========================================================
    loom — interactive topology canvas
@@ -112,8 +117,10 @@ RuntimeClient.connectEvents(_onEvent);
 // exportYaml is imported from yaml-io.js above.
 // importYaml wraps the yaml-io function, injecting canvas helpers that are
 // unavailable in the yaml-io module (which has no DOM/canvas dependencies).
-function importYaml(text) {
-  return _importYaml(text, { ensurePositions, fitView, renderAll });
+// preserveView / preserveSelection are forwarded for live-edit resyncs so the
+// user's viewport and inspector focus survive server-confirmed topology updates.
+function importYaml(text, { preserveView = false, preserveSelection = false } = {}) {
+  return _importYaml(text, { ensurePositions, fitView, renderAll, preserveView, preserveSelection });
 }
 
 /* ---------- render coordinator ---------- */

@@ -142,7 +142,7 @@ export function exportYaml() {
    After populating state, calls ensureLinkPositions() and the canvas
    ensurePositions (imported via the fitView/renderAll path in app.js).
    -------------------------------------------------------------------------- */
-export function importYaml(text, { ensurePositions, fitView, renderAll } = {}) {
+export function importYaml(text, { ensurePositions, fitView, renderAll, preserveView = false, preserveSelection = false } = {}) {
   let parsed;
   try { parsed = jsyaml().load(text); } catch (e) {
     toast(e.message || 'Failed to parse YAML', 'error', 'Parse error'); return false;
@@ -167,18 +167,52 @@ export function importYaml(text, { ensurePositions, fitView, renderAll } = {}) {
   state.asName = (internetName && internetName !== 'loom')
     ? internetName
     : asShortName;
+
+  // Snapshot selection before the destructive state reset so it can be
+  // restored by-name when preserveSelection is requested.
+  const savedSelection = preserveSelection ? state.selection : null;
+  // Snapshot the view transform too so preserveView can leave it untouched.
+  const savedView = preserveView ? { ...state.view } : null;
+
+  // Snapshot existing positions by name per kind before the destructive
+  // replace below. After rebuilding each entity we reapply saved x/y so
+  // that a live-edit reimport preserves user-placed coordinates. Only
+  // genuinely-new entities (absent from the snapshot) fall through to
+  // ensurePositions → _anyNodePositioned sees positioned nodes and runs
+  // _gridFallback instead of the disruptive force-directed layout.
+  const savedPos = {
+    networks: {},
+    hosts:    {},
+    routers:  {},
+    links:    {},
+  };
+  for (const [n, v] of Object.entries(state.networks || {}))
+    if (typeof v.x === 'number' && typeof v.y === 'number')
+      savedPos.networks[n] = { x: v.x, y: v.y };
+  for (const [n, v] of Object.entries(state.hosts || {}))
+    if (typeof v.x === 'number' && typeof v.y === 'number')
+      savedPos.hosts[n] = { x: v.x, y: v.y };
+  for (const [n, v] of Object.entries(state.routers || {}))
+    if (typeof v.x === 'number' && typeof v.y === 'number')
+      savedPos.routers[n] = { x: v.x, y: v.y };
+  for (const [n, v] of Object.entries(state.links || {}))
+    if (typeof v.x === 'number' && typeof v.y === 'number')
+      savedPos.links[n] = { x: v.x, y: v.y };
+
   state.networks = {}; state.hosts = {}; state.routers = {}; state.links = {};
   state.natTables = {};
 
   if (node.networks && typeof node.networks === 'object') {
     for (const [n, cidr] of Object.entries(node.networks)) {
       state.networks[n] = { cidr: typeof cidr === 'string' ? cidr : String(cidr || '') };
+      if (savedPos.networks[n]) { state.networks[n].x = savedPos.networks[n].x; state.networks[n].y = savedPos.networks[n].y; }
     }
   }
 
   if (node.links && typeof node.links === 'object') {
     for (const [n, cidr] of Object.entries(node.links)) {
       state.links[n] = { cidr: typeof cidr === 'string' ? cidr : String(cidr || '') };
+      if (savedPos.links[n]) { state.links[n].x = savedPos.links[n].x; state.links[n].y = savedPos.links[n].y; }
     }
   }
 
@@ -193,6 +227,7 @@ export function importYaml(text, { ensurePositions, fitView, renderAll } = {}) {
         if (v?.gateway) h.gateway = v.gateway;
         state.hosts[n] = h;
       }
+      if (savedPos.hosts[n]) { state.hosts[n].x = savedPos.hosts[n].x; state.hosts[n].y = savedPos.hosts[n].y; }
     }
   }
 
@@ -217,6 +252,7 @@ export function importYaml(text, { ensurePositions, fitView, renderAll } = {}) {
         }
       }
       state.routers[n] = { interfaces: ifaces };
+      if (savedPos.routers[n]) { state.routers[n].x = savedPos.routers[n].x; state.routers[n].y = savedPos.routers[n].y; }
     }
   }
 
@@ -225,10 +261,25 @@ export function importYaml(text, { ensurePositions, fitView, renderAll } = {}) {
   if (ensurePositions) ensurePositions();
   ensureLinkPositions();
 
-  state.selection = null;
+  if (preserveSelection && savedSelection) {
+    // Restore selection only when the entity survived the reimport (it could
+    // have been removed by the topology mutation we just received).
+    const kind = savedSelection.kind;
+    const name = savedSelection.name;
+    const store = { network: state.networks, host: state.hosts, router: state.routers, link: state.links }[kind];
+    state.selection = (store && store[name]) ? { kind, name } : null;
+  } else {
+    state.selection = null;
+  }
+  if (preserveView && savedView) {
+    // Restore view transform in place so the canvas does not jump.
+    state.view.x = savedView.x;
+    state.view.y = savedView.y;
+    state.view.k = savedView.k;
+  }
   const projName = document.getElementById('proj-name');
   if (projName) projName.value = state.asName;
-  if (fitView) fitView();
+  if (!preserveView && fitView) fitView();
   persist();
   if (renderAll) renderAll();
   toast('Topology imported', 'ok');

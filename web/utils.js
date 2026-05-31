@@ -98,6 +98,68 @@ export function addressInCidr(addr, cidr) {
   return ((toInt(addr) & maskInt) >>> 0) === ((toInt(addrPart) & maskInt) >>> 0);
 }
 
+/**
+ * Validates a link CIDR: must be /30 or /31, syntactically valid, and a true
+ * network address (no host bits set). Thin specialisation of isValidNetworkCidr.
+ * Returned shape: `{ ok: true }` or `{ ok: false, reason }`.
+ */
+export function isValidLinkCidr(s) {
+  return isValidNetworkCidr(s, { allowMaskMin: 30, allowMaskMax: 31 });
+}
+
+/**
+ * Validates an IP address against its fabric (network or link).
+ * Returns `{ ok: true }` when the address is syntactically valid, within the
+ * fabric's CIDR, and not already used by another host or router-interface on
+ * that fabric.
+ *
+ * @param {string} addr        - Address to validate.
+ * @param {string} fabricKind  - 'network' | 'link'.
+ * @param {string} fabricName  - Key into `st.networks` or `st.links`.
+ * @param {object|null} selfRef - `{ kind, name[, ifaceName] }` of the entity
+ *   being edited; its own current address is excluded from the duplicate check.
+ * @param {object} st          - The state snapshot (must expose .hosts,
+ *   .routers, .networks, .links).
+ */
+export function validateAddressOnFabric(addr, fabricKind, fabricName, selfRef, st) {
+  if (!isValidIpv4(addr)) return { ok: false, reason: 'not a valid IPv4 address' };
+  if (fabricName) {
+    const fabric = (fabricKind === 'link' ? st.links : st.networks)[fabricName];
+    if (fabric) {
+      if (!fabric.cidr) {
+        return { ok: false, reason: `${fabricName} has no CIDR set yet` };
+      }
+      if (!addressInCidr(addr, fabric.cidr)) {
+        return { ok: false, reason: `not in ${fabricName} (${fabric.cidr})` };
+      }
+    }
+  }
+  const owner = _findAddressOwner(addr, fabricKind, fabricName, selfRef, st);
+  if (owner) return { ok: false, reason: `already used by ${owner}` };
+  return { ok: true };
+}
+
+/**
+ * Returns the label of the host or router-interface that already uses `addr`
+ * on the given fabric, excluding `selfRef`. Returns '' when the address is free.
+ */
+function _findAddressOwner(addr, fabricKind, fabricName, selfRef, st) {
+  if (!fabricKind || !fabricName) return '';
+  for (const [hname, h] of Object.entries(st.hosts)) {
+    if (selfRef && selfRef.kind === 'host' && selfRef.name === hname) continue;
+    const hf = fabricKind === 'link' ? h.link : h.network;
+    if (hf === fabricName && h.address === addr) return hname;
+  }
+  for (const [rname, r] of Object.entries(st.routers)) {
+    for (const [ifn, iff] of Object.entries(r.interfaces || {})) {
+      if (selfRef && selfRef.kind === 'router' && selfRef.name === rname && selfRef.ifaceName === ifn) continue;
+      const rf = fabricKind === 'link' ? iff.link : iff.network;
+      if (rf === fabricName && iff.address === addr) return `${rname}/${ifn}`;
+    }
+  }
+  return '';
+}
+
 // RFC1918 ranges. A CIDR is "private" iff *every* address it covers falls
 // inside one of these blocks — i.e. the CIDR's network range is wholly
 // contained in the private block (matches src/entities/address.is_private).

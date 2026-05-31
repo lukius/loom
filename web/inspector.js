@@ -3,13 +3,13 @@
 // the canvas right-click context menu. Listens on the shared bus for topology
 // and selection changes, and re-renders accordingly.
 import { state, bus, markDirty, isDeviceHalted, isInterfaceDown } from './state.js';
-import { escapeHtml, uniqueName, uniqueIface, pad2, toast, cssEscape, isValidIpv4, isValidNetworkCidr, addressInCidr } from './utils.js';
+import { escapeHtml, uniqueName, uniqueIface, pad2, toast, cssEscape, isValidNetworkCidr, isValidLinkCidr, validateAddressOnFabric } from './utils.js';
 import {
   canvasEl, applyView, clientToWorld, fitView,
   renderCanvas, toggleNetworkOrientation, collectLinkEndpoints,
   startLinkWizard,
 } from './canvas.js';
-import { Sim, RuntimeClient, isTopologyLocked, recordPatchOp, hasPendingAdd } from './sim.js';
+import { Sim, RuntimeClient, isTopologyLocked, recordPatchOp, hasPendingAdd, applyEdit, finalizePendingAdd } from './sim.js';
 
 /* ---------- Inline validation helpers ---------- */
 
@@ -22,58 +22,15 @@ import { Sim, RuntimeClient, isTopologyLocked, recordPatchOp, hasPendingAdd } fr
  * input is neither valid-styled nor invalid-styled, matching the draft-state
  * convention where an empty field is deliberately allowed.
  */
-/**
- * Find the host / router-interface that owns `addr` on the given fabric,
- * excluding `selfRef` (the entity being edited, so its own current value
- * doesn't false-positive). Returns the label to show the user
- * (`<host>` or `<router>/<iface>`), or `''` if the address is free.
- *
- * Mirrors the server's `_address_owner` check at the patch-validator layer
- * (`src/server/state.py`) — the SPA surfaces the same rule inline so the
- * user catches the collision before Resume rejects it.
- */
-function findAddressOwner(addr, fabricKind, fabricName, selfRef) {
-  if (!fabricKind || !fabricName) return '';
-  for (const [hname, h] of Object.entries(state.hosts)) {
-    if (selfRef && selfRef.kind === 'host' && selfRef.name === hname) continue;
-    const hf = fabricKind === 'link' ? h.link : h.network;
-    if (hf === fabricName && h.address === addr) return hname;
-  }
-  for (const [rname, r] of Object.entries(state.routers)) {
-    for (const [ifn, iff] of Object.entries(r.interfaces || {})) {
-      if (selfRef && selfRef.kind === 'router' && selfRef.name === rname && selfRef.ifaceName === ifn) continue;
-      const rf = fabricKind === 'link' ? iff.link : iff.network;
-      if (rf === fabricName && iff.address === addr) return `${rname}/${ifn}`;
-    }
-  }
-  return '';
-}
 
+/**
+ * Returns a validator function for an IP address field tied to a specific
+ * fabric (network or link). Delegates to `validateAddressOnFabric` from
+ * utils.js so the inspector and the finalize-gate share exactly the same
+ * predicate — visual-valid == POST-valid by construction.
+ */
 function addressValidatorFor(fabricKind, fabricName, selfRef) {
-  return (v) => {
-    if (!isValidIpv4(v)) return { ok: false, reason: 'not a valid IPv4 address' };
-    // Containment: an interface address only makes sense inside its fabric's
-    // CIDR. Without this check, the user could attach a router to lan1 with an
-    // address from a different subnet — neighbors would still flood the bogus
-    // route via link-state, but no traffic could ever reach it.
-    if (fabricName) {
-      const fabric = (fabricKind === 'link' ? state.links : state.networks)[fabricName];
-      if (fabric) {
-        if (!fabric.cidr) {
-          // Flagging an empty-CIDR fabric is the early-warning the user wants:
-          // without it, the server's patch validator only catches the bad
-          // address on Resume, which is much later.
-          return { ok: false, reason: `${fabricName} has no CIDR set yet` };
-        }
-        if (!addressInCidr(v, fabric.cidr)) {
-          return { ok: false, reason: `not in ${fabricName} (${fabric.cidr})` };
-        }
-      }
-    }
-    const owner = findAddressOwner(v, fabricKind, fabricName, selfRef);
-    if (owner) return { ok: false, reason: `already used by ${owner}` };
-    return { ok: true };
-  };
+  return (v) => validateAddressOnFabric(v, fabricKind, fabricName, selfRef, state);
 }
 
 function wireFieldValidation(input, errorEl, validateFn) {
@@ -449,7 +406,6 @@ export function handleCtxAction(act, target, world, arg) {
     RuntimeClient.fail(target.name).catch(showErr);
     return;
   }
-  if (isTopologyLocked()) return;
   switch (act) {
     case 'new-net':    addNew('network', world); break;
     case 'new-host':   addNew('host', world); break;
@@ -467,7 +423,7 @@ export function handleCtxAction(act, target, world, arg) {
       const name = uniqueName('h', state.hosts);
       state.hosts[name] = { network: target.name, address: '', x: net.x - 280, y: net.y };
       state.selection = { kind:'host', name };
-      recordPatchOp({ op: 'add_host', name, network: target.name, address: '' });
+      applyEdit({ op: 'add_host', name, network: target.name, address: '' });
       markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
       break;
     }
@@ -479,7 +435,7 @@ export function handleCtxAction(act, target, world, arg) {
         interfaces: { eth0: { network: target.name, address: '', cost: 10 } },
       };
       state.selection = { kind:'router', name };
-      recordPatchOp({ op: 'add_router', name, interfaces: [] });
+      applyEdit({ op: 'add_router', name, interfaces: [] });
       markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
       break;
     }
@@ -648,7 +604,17 @@ export function renderNetworkInsp(name, elI) {
   `;
   elI.querySelector('#f-name').addEventListener('change', e => renameNetwork(name, e.target.value.trim()));
   elI.querySelector('#f-cidr').addEventListener('input', e => {
-    if (isTopologyLocked()) return;
+    if (isTopologyLocked()) {
+      // Allow editing CIDR for a pending-add network while running so the
+      // user can complete it and trigger the deferred POST.
+      if (!state.networks[name]) return;  // guard: entity removed by a concurrent resync
+      const cidr = e.target.value.trim();
+      state.networks[name].cidr = cidr;
+      markDirty(); renderCanvas(); renderNav();
+      finalizePendingAdd('network', name);
+      return;
+    }
+    if (!state.networks[name]) return;
     state.networks[name].cidr = e.target.value.trim();
     markDirty(); renderCanvas(); renderNav();
   });
@@ -707,14 +673,22 @@ export function renderLinkInsp(name, elI) {
   `;
   elI.querySelector('#f-name').addEventListener('change', e => renameLink(name, e.target.value.trim()));
   elI.querySelector('#f-cidr').addEventListener('input', e => {
-    if (isTopologyLocked()) return;
+    if (isTopologyLocked()) {
+      if (!state.links[name]) return;  // guard: entity removed by a concurrent resync
+      const cidr = e.target.value.trim();
+      state.links[name].cidr = cidr;
+      markDirty(); renderCanvas(); renderNav();
+      finalizePendingAdd('link', name);
+      return;
+    }
+    if (!state.links[name]) return;
     state.links[name].cidr = e.target.value.trim();
     markDirty(); renderCanvas(); renderNav();
   });
   wireFieldValidation(
     elI.querySelector('#f-cidr'),
     elI.querySelector('#f-cidr-err'),
-    v => isValidNetworkCidr(v, { allowMaskMin: 30, allowMaskMax: 31 }),
+    isValidLinkCidr,
   );
   elI.querySelector('#f-del').addEventListener('click', deleteSelected);
   elI.querySelector('#f-dup').addEventListener('click', () => duplicateLink(name));
@@ -855,7 +829,15 @@ export function renderHostInsp(name, elI) {
     });
   }
   elI.querySelector('#f-addr').addEventListener('input', e => {
-    if (isTopologyLocked()) return;
+    if (isTopologyLocked()) {
+      if (!state.hosts[name]) return;  // guard: entity removed by a concurrent resync
+      const addr = e.target.value.trim();
+      state.hosts[name].address = addr;
+      markDirty(); renderCanvas(); renderNav();
+      finalizePendingAdd('host', name);
+      return;
+    }
+    if (!state.hosts[name]) return;
     state.hosts[name].address = e.target.value.trim();
     markDirty(); renderCanvas(); renderNav();
   });
@@ -1113,8 +1095,16 @@ export function renderRouterInsp(name, elI) {
   });
   elI.querySelectorAll('[data-iface-addr]').forEach(i => {
     i.addEventListener('input', () => {
-      if (isTopologyLocked()) return;
-      state.routers[name].interfaces[i.getAttribute('data-iface-addr')].address = i.value.trim();
+      const ifn = i.getAttribute('data-iface-addr');
+      if (isTopologyLocked()) {
+        if (!state.routers[name] || !state.routers[name].interfaces[ifn]) return;  // guard: removed by concurrent resync
+        state.routers[name].interfaces[ifn].address = i.value.trim();
+        markDirty(); renderCanvas();
+        finalizePendingAdd('router', name);
+        return;
+      }
+      if (!state.routers[name] || !state.routers[name].interfaces[ifn]) return;
+      state.routers[name].interfaces[ifn].address = i.value.trim();
       markDirty(); renderCanvas();
     });
     const ifn = i.getAttribute('data-iface-addr');
@@ -1139,7 +1129,7 @@ export function renderRouterInsp(name, elI) {
       // doesn't know about it yet, and reconcilePatch will fold the latest
       // cost into the rebuilt add_router op on Resume.
       if (!isNaN(v) && v > 0 && !hasPendingAdd('router', name)) {
-        recordPatchOp({ op: 'update_cost', router: name, iface: ifn, cost: v });
+        applyEdit({ op: 'update_cost', router: name, iface: ifn, cost: v });
       }
       markDirty(); renderCanvas();
     });
@@ -1200,21 +1190,19 @@ export function renameRouter(oldName, newName) {
   markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
 }
 export function duplicateNetwork(name) {
-  if (isTopologyLocked()) return;
   const newName = uniqueName(name + '_', state.networks);
   const src = state.networks[name];
   state.networks[newName] = { ...src, x: src.x + 30, y: src.y + 30 };
   state.selection = { kind: 'network', name: newName };
-  recordPatchOp({ op: 'add_network', name: newName, address: src.cidr || '' });
+  applyEdit({ op: 'add_network', name: newName, address: src.cidr || '' });
   markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
 }
 export function duplicateHost(name) {
-  if (isTopologyLocked()) return;
   const newName = uniqueName(name + '_', state.hosts);
   const src = state.hosts[name];
   state.hosts[newName] = { ...src, x: src.x + 30, y: src.y + 30 };
   state.selection = { kind: 'host', name: newName };
-  recordPatchOp({ op: 'add_host', name: newName, network: src.network || '', address: src.address || '' });
+  applyEdit({ op: 'add_host', name: newName, network: src.network || '', address: src.address || '' });
   markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
 }
 export function renameLink(oldName, newName) {
@@ -1240,17 +1228,15 @@ export function duplicateLink(name) {
   toast(`Link "${newName}" created (no endpoints — attach routers/hosts to use it)`, '', 'Duplicate');
 }
 export function duplicateRouter(name) {
-  if (isTopologyLocked()) return;
   const newName = uniqueName(name + '_', state.routers);
   const src = state.routers[name];
   state.routers[newName] = JSON.parse(JSON.stringify(src));
   state.routers[newName].x = src.x + 30; state.routers[newName].y = src.y + 30;
   state.selection = { kind: 'router', name: newName };
-  recordPatchOp({ op: 'add_router', name: newName, interfaces: [] });
+  applyEdit({ op: 'add_router', name: newName, interfaces: [] });
   markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
 }
 export function deleteSelected() {
-  if (isTopologyLocked()) return;
   if (!state.selection) return;
   const { kind, name } = state.selection;
   if (kind === 'network') {
@@ -1259,11 +1245,18 @@ export function deleteSelected() {
     Object.entries(state.routers).forEach(([rn, r]) => {
       Object.entries(r.interfaces || {}).forEach(([ifn, iff]) => { if (iff.network === name) usedBy.push(`${rn}/${ifn}`); });
     });
+    // While running, block deleting a LAN that still has attached devices —
+    // the server would reject remove_network with network_in_use, but we'd
+    // already have locally removed it → silent divergence.
+    if (isTopologyLocked() && usedBy.length) {
+      toast(`Detach hosts/routers before deleting this LAN while running`, 'error', `Delete LAN`);
+      return;
+    }
     if (usedBy.length && !confirm(`LAN "${name}" is used by:\n  ${usedBy.join('\n  ')}\n\nDelete anyway? Their network field will be cleared.`)) return;
     Object.values(state.hosts).forEach(h => { if (h.network === name) h.network = ''; });
     Object.values(state.routers).forEach(r => Object.values(r.interfaces || {}).forEach(i => { if (i.network === name) i.network = ''; }));
     delete state.networks[name];
-    recordPatchOp({ op: 'remove_network', name });
+    applyEdit({ op: 'remove_network', name });
   } else if (kind === 'link') {
     const linkUsedBy = [];
     Object.entries(state.hosts).forEach(([hn, h]) => { if (h.link === name) linkUsedBy.push(`host ${hn}`); });
@@ -1279,34 +1272,33 @@ export function deleteSelected() {
     delete state.links[name];
   } else if (kind === 'host') {
     delete state.hosts[name];
-    recordPatchOp({ op: 'remove_host', name });
+    applyEdit({ op: 'remove_host', name });
   } else if (kind === 'router') {
     delete state.routers[name];
-    recordPatchOp({ op: 'remove_router', name });
+    applyEdit({ op: 'remove_router', name });
   }
   state.selection = null;
   markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
   toast(`${kind === 'network' ? 'LAN' : kind} "${name}" deleted`, 'ok');
 }
 export function addNew(kind, world) {
-  if (isTopologyLocked()) return;
   const def = world || worldCenter();
   if (kind === 'network') {
     const name = uniqueName('lan', state.networks);
     state.networks[name] = { cidr: '', x: def.x, y: def.y };
     state.selection = { kind, name };
-    recordPatchOp({ op: 'add_network', name, address: '' });
+    applyEdit({ op: 'add_network', name, address: '' });
   } else if (kind === 'link') {
     const name = uniqueName('p2p', state.links);
     state.links[name] = { cidr: '', x: def.x, y: def.y };
     state.selection = { kind, name };
-    recordPatchOp({ op: 'add_link', name, address: '' });
+    applyEdit({ op: 'add_link', name, address: '' });
     toast(`Created ${name} — assign two router/host interfaces to use it`, '', 'new link');
   } else if (kind === 'host') {
     const name = uniqueName('h', state.hosts);
     state.hosts[name] = { network: '', address: '', x: def.x, y: def.y };
     state.selection = { kind, name };
-    recordPatchOp({ op: 'add_host', name, network: '', address: '' });
+    applyEdit({ op: 'add_host', name, network: '', address: '' });
     if (Object.keys(state.networks).length > 0) {
       toast(`Created ${name} — drag onto a LAN to attach`, '', 'orphan host');
     }
@@ -1314,7 +1306,7 @@ export function addNew(kind, world) {
     const name = uniqueName('r', state.routers);
     state.routers[name] = { x: def.x, y: def.y, interfaces: {} };
     state.selection = { kind, name };
-    recordPatchOp({ op: 'add_router', name, interfaces: [] });
+    applyEdit({ op: 'add_router', name, interfaces: [] });
     if (Object.keys(state.networks).length > 0) {
       toast(`Created ${name} — drag onto LANs to add interfaces`, '', 'orphan router');
     }

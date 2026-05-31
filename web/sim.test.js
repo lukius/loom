@@ -3,6 +3,7 @@ import { state, bus, isInterfaceDown, isDeviceHalted, resetDownState } from './s
 import {
   Sim, RuntimeClient,
   setConnectionStatus, isTopologyLocked, recordPatchOp, updatePatchIndicator, reconcilePatch,
+  applyEdit, finalizePendingAdd, pendingLiveAdds,
   _onEvent, _resetPendingNAT, recoverDownState,
 } from './sim.js';
 
@@ -970,5 +971,515 @@ describe('recoverDownState', () => {
     await recoverDownState();
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+// ---------- applyEdit ----------
+describe('applyEdit', () => {
+  beforeEach(() => {
+    Sim.patch = [];
+    RuntimeClient._json = vi.fn(async () => ({}));
+  });
+
+  it('when running: calls editTopology with the reconciled op (not recordPatchOp)', async () => {
+    Sim.state = 'running';
+    state.networks.lan1 = { cidr: '10.0.0.0/24', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await applyEdit({ op: 'add_network', name: 'lan1' });
+
+    expect(editSpy).toHaveBeenCalledWith([
+      { op: 'add_network', name: 'lan1', address: '10.0.0.0/24' },
+    ]);
+    expect(Sim.patch).toEqual([]);  // NOT accumulated
+    editSpy.mockRestore();
+  });
+
+  it('when paused: accumulates the op into Sim.patch (does NOT call editTopology)', async () => {
+    Sim.state = 'paused';
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await applyEdit({ op: 'remove_host', name: 'h1' });
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(Sim.patch).toEqual([{ op: 'remove_host', name: 'h1' }]);
+    editSpy.mockRestore();
+  });
+
+  it('when idle: is a no-op (does NOT call editTopology, does NOT accumulate)', async () => {
+    Sim.state = 'idle';
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await applyEdit({ op: 'add_router', name: 'r1', interfaces: [] });
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(Sim.patch).toEqual([]);
+    editSpy.mockRestore();
+  });
+
+  it('when running: a failed editTopology surfaces as a toast (does not throw)', async () => {
+    Sim.state = 'running';
+    state.networks.lan1 = { cidr: '10.0.0.0/24', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockRejectedValue(new Error('edit failed'));
+
+    await applyEdit({ op: 'add_network', name: 'lan1' });  // must not throw
+
+    const toastEl = document.querySelector('.toast.error');
+    expect(toastEl).not.toBeNull();
+    expect(toastEl.textContent).toContain('edit failed');
+    expect(toastEl.textContent).toContain('Live edit');
+    editSpy.mockRestore();
+  });
+
+  it('when running: reconcilePatch is called — remove_router passes through verbatim', async () => {
+    Sim.state = 'running';
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await applyEdit({ op: 'remove_router', name: 'r1' });
+
+    expect(editSpy).toHaveBeenCalledWith([{ op: 'remove_router', name: 'r1' }]);
+    editSpy.mockRestore();
+  });
+
+  it('when running: update_cost passes through reconcilePatch verbatim', async () => {
+    Sim.state = 'running';
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await applyEdit({ op: 'update_cost', router: 'r1', iface: 'eth0', cost: 15 });
+
+    expect(editSpy).toHaveBeenCalledWith([
+      { op: 'update_cost', router: 'r1', iface: 'eth0', cost: 15 },
+    ]);
+    editSpy.mockRestore();
+  });
+});
+
+// ---------- B1: pendingLiveAdds — deferred incomplete adds ----------
+describe('applyEdit (B1): defers incomplete adds while running', () => {
+  beforeEach(() => {
+    Sim.state = 'running';
+    Sim.patch = [];
+    pendingLiveAdds.clear();
+    RuntimeClient._json = vi.fn(async () => ({}));
+  });
+
+  it('does NOT call editTopology for an add_network with empty CIDR', async () => {
+    state.networks.lan1 = { cidr: '', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await applyEdit({ op: 'add_network', name: 'lan1' });
+
+    expect(editSpy).not.toHaveBeenCalled();
+    editSpy.mockRestore();
+  });
+
+  it('records the entity in pendingLiveAdds when the add is deferred', async () => {
+    state.networks.lan1 = { cidr: '', x: 0, y: 0 };
+    vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await applyEdit({ op: 'add_network', name: 'lan1' });
+
+    expect(pendingLiveAdds.has('network:lan1')).toBe(true);
+    vi.restoreAllMocks();
+  });
+
+  it('does NOT defer an add_network with a complete CIDR', async () => {
+    state.networks.lan1 = { cidr: '10.0.0.0/24', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await applyEdit({ op: 'add_network', name: 'lan1' });
+
+    expect(editSpy).toHaveBeenCalled();
+    expect(pendingLiveAdds.has('network:lan1')).toBe(false);
+    editSpy.mockRestore();
+  });
+
+  it('defers an add_host with empty address', async () => {
+    state.hosts.h1 = { network: 'lan1', address: '', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await applyEdit({ op: 'add_host', name: 'h1' });
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(pendingLiveAdds.has('host:h1')).toBe(true);
+    editSpy.mockRestore();
+  });
+
+  it('defers an add_router with no interfaces', async () => {
+    state.routers.r1 = { x: 0, y: 0, interfaces: {} };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await applyEdit({ op: 'add_router', name: 'r1' });
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(pendingLiveAdds.has('router:r1')).toBe(true);
+    editSpy.mockRestore();
+  });
+
+  it('defers an add_link with empty CIDR', async () => {
+    state.links.p2p1 = { cidr: '', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await applyEdit({ op: 'add_link', name: 'p2p1' });
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(pendingLiveAdds.has('link:p2p1')).toBe(true);
+    editSpy.mockRestore();
+  });
+});
+
+// ---------- B1: finalizePendingAdd ----------
+describe('finalizePendingAdd', () => {
+  beforeEach(() => {
+    Sim.state = 'running';
+    Sim.patch = [];
+    pendingLiveAdds.clear();
+    RuntimeClient._json = vi.fn(async () => ({}));
+  });
+
+  it('is a no-op when the entity is not in pendingLiveAdds', async () => {
+    state.networks.lan1 = { cidr: '10.0.0.0/24', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('network', 'lan1');
+
+    expect(editSpy).not.toHaveBeenCalled();
+    editSpy.mockRestore();
+  });
+
+  it('posts the complete add when the entity is pending and now has a CIDR', async () => {
+    pendingLiveAdds.add('network:lan1');
+    state.networks.lan1 = { cidr: '10.0.0.0/24', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('network', 'lan1');
+
+    expect(editSpy).toHaveBeenCalledWith([
+      { op: 'add_network', name: 'lan1', address: '10.0.0.0/24' },
+    ]);
+    expect(pendingLiveAdds.has('network:lan1')).toBe(false);
+    editSpy.mockRestore();
+  });
+
+  it('does NOT post if the entity is still incomplete (no CIDR yet)', async () => {
+    pendingLiveAdds.add('network:lan1');
+    state.networks.lan1 = { cidr: '', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('network', 'lan1');
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(pendingLiveAdds.has('network:lan1')).toBe(true);  // still pending
+    editSpy.mockRestore();
+  });
+
+  it('posts an add_host when the host address is filled in', async () => {
+    pendingLiveAdds.add('host:h1');
+    state.hosts.h1 = { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('host', 'h1');
+
+    expect(editSpy).toHaveBeenCalledWith([
+      { op: 'add_host', name: 'h1', network: 'lan1', address: '10.0.0.5' },
+    ]);
+    expect(pendingLiveAdds.has('host:h1')).toBe(false);
+    editSpy.mockRestore();
+  });
+
+  it('cleans up pendingLiveAdds without POSTing when sim is no longer running', async () => {
+    pendingLiveAdds.add('network:lan1');
+    state.networks.lan1 = { cidr: '10.0.0.0/24', x: 0, y: 0 };
+    Sim.state = 'idle';  // sim stopped between add and finalize
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('network', 'lan1');
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(pendingLiveAdds.has('network:lan1')).toBe(false);
+    editSpy.mockRestore();
+  });
+
+  // Validity-gated finalize: partial/invalid values must NOT trigger a POST.
+  // This prevents the "type '1' → POST → server rejects → resync removes entity" bug.
+  it('does NOT call editTopology when network CIDR is partial/invalid mid-keystroke ("1")', async () => {
+    pendingLiveAdds.add('network:lan1');
+    state.networks.lan1 = { cidr: '1', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('network', 'lan1');
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(pendingLiveAdds.has('network:lan1')).toBe(true);  // still pending
+    editSpy.mockRestore();
+  });
+
+  it('does NOT call editTopology when network CIDR is partial ("10.0")', async () => {
+    pendingLiveAdds.add('network:lan1');
+    state.networks.lan1 = { cidr: '10.0', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('network', 'lan1');
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(pendingLiveAdds.has('network:lan1')).toBe(true);
+    editSpy.mockRestore();
+  });
+
+  it('does NOT call editTopology when network CIDR has trailing slash ("10.0.0.0/")', async () => {
+    pendingLiveAdds.add('network:lan1');
+    state.networks.lan1 = { cidr: '10.0.0.0/', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('network', 'lan1');
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(pendingLiveAdds.has('network:lan1')).toBe(true);
+    editSpy.mockRestore();
+  });
+
+  it('POSTs exactly once when network CIDR becomes a valid value ("10.0.0.0/24")', async () => {
+    pendingLiveAdds.add('network:lan1');
+    state.networks.lan1 = { cidr: '10.0.0.0/24', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('network', 'lan1');
+
+    expect(editSpy).toHaveBeenCalledTimes(1);
+    expect(pendingLiveAdds.has('network:lan1')).toBe(false);
+    editSpy.mockRestore();
+  });
+
+  it('does NOT call editTopology when host address is partial ("10.0.0")', async () => {
+    pendingLiveAdds.add('host:h1');
+    state.hosts.h1 = { network: 'lan1', address: '10.0.0', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('host', 'h1');
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(pendingLiveAdds.has('host:h1')).toBe(true);
+    editSpy.mockRestore();
+  });
+
+  it('POSTs exactly once when host address becomes a valid IPv4 ("10.0.0.5")', async () => {
+    pendingLiveAdds.add('host:h1');
+    state.hosts.h1 = { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('host', 'h1');
+
+    expect(editSpy).toHaveBeenCalledTimes(1);
+    expect(pendingLiveAdds.has('host:h1')).toBe(false);
+    editSpy.mockRestore();
+  });
+
+  // --- Link CIDR mask-range gate ---
+  // The inspector shows red for /24 on a link (must be /30 or /31).
+  // finalizePendingAdd must apply the same rule.
+
+  it('does NOT POST add_link when CIDR is /24 (too wide — links need /30 or /31)', async () => {
+    pendingLiveAdds.add('link:p2p1');
+    state.links.p2p1 = { cidr: '10.0.0.0/24', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('link', 'p2p1');
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(pendingLiveAdds.has('link:p2p1')).toBe(true);  // still deferred
+    editSpy.mockRestore();
+  });
+
+  it('POSTs exactly once when link CIDR becomes a valid /30', async () => {
+    pendingLiveAdds.add('link:p2p1');
+    state.links.p2p1 = { cidr: '10.0.0.0/30', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('link', 'p2p1');
+
+    expect(editSpy).toHaveBeenCalledTimes(1);
+    expect(pendingLiveAdds.has('link:p2p1')).toBe(false);
+    editSpy.mockRestore();
+  });
+
+  it('POSTs exactly once when link CIDR becomes a valid /31', async () => {
+    pendingLiveAdds.add('link:p2p1');
+    state.links.p2p1 = { cidr: '10.0.0.4/31', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('link', 'p2p1');
+
+    expect(editSpy).toHaveBeenCalledTimes(1);
+    expect(pendingLiveAdds.has('link:p2p1')).toBe(false);
+    editSpy.mockRestore();
+  });
+
+  // --- Host: out-of-subnet address ---
+  // The inspector shows red when the address is a syntactically valid IPv4
+  // but lies outside the fabric's CIDR.
+
+  it('does NOT POST add_host when address is a valid IPv4 but outside the fabric CIDR', async () => {
+    pendingLiveAdds.add('host:h1');
+    state.networks.lan1 = { cidr: '10.0.0.0/24', x: 0, y: 0 };
+    state.hosts.h1 = { network: 'lan1', address: '192.168.0.5', x: 0, y: 0 };  // not in 10.0.0.0/24
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('host', 'h1');
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(pendingLiveAdds.has('host:h1')).toBe(true);
+    editSpy.mockRestore();
+  });
+
+  it('does NOT POST add_host when fabric has no CIDR yet (address cannot be validated)', async () => {
+    pendingLiveAdds.add('host:h1');
+    state.networks.lan1 = { cidr: '', x: 0, y: 0 };
+    state.hosts.h1 = { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('host', 'h1');
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(pendingLiveAdds.has('host:h1')).toBe(true);
+    editSpy.mockRestore();
+  });
+
+  // --- Host: duplicate address on the same fabric ---
+
+  it('does NOT POST add_host when address is already used by another host on the same fabric', async () => {
+    pendingLiveAdds.add('host:h2');
+    state.networks.lan1 = { cidr: '10.0.0.0/24', x: 0, y: 0 };
+    state.hosts.h1 = { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 };   // already exists
+    state.hosts.h2 = { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 };   // duplicate
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('host', 'h2');
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(pendingLiveAdds.has('host:h2')).toBe(true);
+    editSpy.mockRestore();
+  });
+
+  it('does NOT POST add_host when address is already used by a router-interface on the same fabric', async () => {
+    pendingLiveAdds.add('host:h1');
+    state.networks.lan1 = { cidr: '10.0.0.0/24', x: 0, y: 0 };
+    state.routers.r1 = { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.0.0.5', cost: 10 } } };
+    state.hosts.h1 = { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 };   // collides with r1/eth0
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('host', 'h1');
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(pendingLiveAdds.has('host:h1')).toBe(true);
+    editSpy.mockRestore();
+  });
+
+  it('POSTs add_host when address is in-subnet and free (no collision)', async () => {
+    pendingLiveAdds.add('host:h1');
+    state.networks.lan1 = { cidr: '10.0.0.0/24', x: 0, y: 0 };
+    state.routers.r1 = { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.0.0.1', cost: 10 } } };
+    state.hosts.h1 = { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 };   // free
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('host', 'h1');
+
+    expect(editSpy).toHaveBeenCalledTimes(1);
+    expect(pendingLiveAdds.has('host:h1')).toBe(false);
+    editSpy.mockRestore();
+  });
+
+  // --- Router: interface address must pass the same fabric-aware check ---
+
+  it('does NOT POST add_router when an interface address is outside the fabric CIDR', async () => {
+    pendingLiveAdds.add('router:r1');
+    state.networks.lan1 = { cidr: '10.0.0.0/24', x: 0, y: 0 };
+    state.routers.r1 = {
+      x: 0, y: 0,
+      interfaces: { eth0: { network: 'lan1', address: '192.168.0.1', cost: 10 } },  // out of subnet
+    };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('router', 'r1');
+
+    expect(editSpy).not.toHaveBeenCalled();
+    expect(pendingLiveAdds.has('router:r1')).toBe(true);
+    editSpy.mockRestore();
+  });
+
+  it('POSTs add_router when all interface addresses are in-subnet and free', async () => {
+    pendingLiveAdds.add('router:r1');
+    state.networks.lan1 = { cidr: '10.0.0.0/24', x: 0, y: 0 };
+    state.routers.r1 = {
+      x: 0, y: 0,
+      interfaces: { eth0: { network: 'lan1', address: '10.0.0.1', cost: 10 } },
+    };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+
+    await finalizePendingAdd('router', 'r1');
+
+    expect(editSpy).toHaveBeenCalledTimes(1);
+    expect(pendingLiveAdds.has('router:r1')).toBe(false);
+    editSpy.mockRestore();
+  });
+});
+
+// ---------- B3: resync-on-failure ----------
+describe('applyEdit (B3): resyncs topology on POST failure', () => {
+  beforeEach(() => {
+    Sim.state = 'running';
+    Sim.patch = [];
+    pendingLiveAdds.clear();
+    RuntimeClient._json = vi.fn(async () => ({}));
+  });
+
+  it('dispatches sim:topology-import-requested after a failed editTopology', async () => {
+    state.routers.r1 = { x: 0, y: 0, interfaces: {} };
+    const editSpy = vi.spyOn(RuntimeClient, 'editTopology').mockRejectedValue(new Error('network_in_use'));
+    vi.spyOn(RuntimeClient, 'getTopology').mockResolvedValue({ yaml: 'resync-yaml' });
+
+    const importEvents = [];
+    const handler = (e) => importEvents.push(e.detail);
+    bus.addEventListener('sim:topology-import-requested', handler);
+
+    await applyEdit({ op: 'remove_router', name: 'r1' });
+    bus.removeEventListener('sim:topology-import-requested', handler);
+
+    // B3 resyncs preserve view + selection so a mid-compose user doesn't lose focus.
+    expect(importEvents.length).toBe(1);
+    expect(importEvents[0].yaml).toBe('resync-yaml');
+    expect(importEvents[0].preserveView).toBe(true);
+    expect(importEvents[0].preserveSelection).toBe(true);
+    editSpy.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it('does NOT resync when editTopology succeeds', async () => {
+    state.routers.r1 = { x: 0, y: 0, interfaces: {} };
+    vi.spyOn(RuntimeClient, 'editTopology').mockResolvedValue({});
+    const getTopologySpy = vi.spyOn(RuntimeClient, 'getTopology').mockResolvedValue({ yaml: '' });
+
+    const importEvents = [];
+    const handler = (e) => importEvents.push(e.detail);
+    bus.addEventListener('sim:topology-import-requested', handler);
+
+    await applyEdit({ op: 'remove_router', name: 'r1' });
+    bus.removeEventListener('sim:topology-import-requested', handler);
+
+    expect(getTopologySpy).not.toHaveBeenCalled();
+    expect(importEvents).toEqual([]);
+    vi.restoreAllMocks();
+  });
+
+  it('still shows the error toast even when getTopology also fails during resync', async () => {
+    state.networks.lan1 = { cidr: '10.0.0.0/24', x: 0, y: 0 };
+    vi.spyOn(RuntimeClient, 'editTopology').mockRejectedValue(new Error('server error'));
+    vi.spyOn(RuntimeClient, 'getTopology').mockRejectedValue(new Error('offline'));
+
+    await applyEdit({ op: 'remove_network', name: 'lan1' });  // must not throw
+
+    const toastEl = document.querySelector('.toast.error');
+    expect(toastEl).not.toBeNull();
+    expect(toastEl.textContent).toContain('server error');
+    vi.restoreAllMocks();
   });
 });

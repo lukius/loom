@@ -10,7 +10,7 @@
 import { state, bus, applyNeighborStateChanged,
          applyInterfaceStateChanged, applyDeviceStateChanged,
          resetDownState } from './state.js';
-import { toast } from './utils.js';
+import { toast, isValidNetworkCidr, isValidLinkCidr, validateAddressOnFabric } from './utils.js';
 import { validateTopology } from './preflight.js';
 
 /* ---------- RuntimeClient — REST + WS wrapper ---------- */
@@ -104,6 +104,134 @@ export function recordPatchOp(op) {
   if (Sim && Sim.state === 'paused') {
     Sim.patch.push(op);
     updatePatchIndicator();
+  }
+}
+
+/* Module-level set of entities added locally while the sim is running but
+ * not yet POSTed to the server because the entity was incomplete at add time.
+ * Keys are `kind:name` strings. Entries are removed when the entity is
+ * finalized (complete cidr/address) or deleted. */
+export const pendingLiveAdds = new Set();
+
+/* Returns true when the given add_* op has a VALID, complete payload that is
+ * safe to POST to the server. Gates on VALIDITY (not just non-emptiness):
+ * a mid-keystroke value like '1' or '10.0.0.0/' is non-empty but still
+ * invalid — posting it would cause a server rejection followed by a B3 resync
+ * that deletes the entity the user is still composing.
+ *
+ * Uses the same validators as the inspector's wireFieldValidation — imported
+ * from utils.js — so that "visual-valid == POST-valid" is guaranteed by a
+ * shared code path. */
+function _isCompleteValidAdd(op) {
+  if (op.op === 'add_network') {
+    const net = state.networks[op.name];
+    if (!net || !net.cidr) return false;
+    return isValidNetworkCidr(net.cidr, { allowMaskMin: 0, allowMaskMax: 32 }).ok;
+  }
+  if (op.op === 'add_link') {
+    const lk = state.links[op.name];
+    if (!lk || !lk.cidr) return false;
+    // Links must be /30 or /31 — mirrors the inspector's link-CIDR field validator.
+    return isValidLinkCidr(lk.cidr).ok;
+  }
+  if (op.op === 'add_host') {
+    const host = state.hosts[op.name];
+    if (!host || !host.address) return false;
+    // Mirrors the inspector's address field: fabric CIDR must be set, address
+    // must be inside it, and no duplicate on the same fabric.
+    const fabricKind = host.link !== undefined ? 'link' : 'network';
+    const fabricName = host[fabricKind];
+    return validateAddressOnFabric(host.address, fabricKind, fabricName, { kind: 'host', name: op.name }, state).ok;
+  }
+  if (op.op === 'add_router') {
+    // A router is complete when it has at least one interface whose address
+    // passes the same fabric-aware check the inspector shows green.
+    const router = state.routers[op.name];
+    if (!router) return false;
+    const ifaces = Object.entries(router.interfaces || {});
+    if (ifaces.length === 0) return false;
+    return ifaces.every(([ifn, iff]) => {
+      if (!iff.address) return false;
+      const fabricKind = iff.link !== undefined ? 'link' : 'network';
+      const fabricName = iff[fabricKind];
+      return validateAddressOnFabric(
+        iff.address, fabricKind, fabricName,
+        { kind: 'router', name: op.name, ifaceName: ifn },
+        state,
+      ).ok;
+    });
+  }
+  return true;
+}
+
+/* Returns true when the given add_* op has an incomplete or invalid payload
+ * that must NOT be POSTed yet. Inverse of _isCompleteValidAdd. */
+function _isIncompleteAdd(op) {
+  return !_isCompleteValidAdd(op);
+}
+
+/* Route a single mutation op: if the sim is running, POST it live via
+ * /sim/edit; if paused, accumulate in the patch buffer as before (reconcile
+ * on Resume); if idle, no-op. Callers supply the raw op object — the same
+ * shape that recordPatchOp accepted.
+ *
+ * When running: incomplete add_* ops (empty cidr/address) are kept local only
+ * and registered in pendingLiveAdds — they will be POSTed when the entity is
+ * finalized. On POST failure, the topology is resynced from the server so any
+ * local divergence heals back to server truth. */
+export async function applyEdit(op) {
+  if (!isTopologyLocked()) { recordPatchOp(op); return; }
+  // Defer incomplete adds: keep them local and register in pendingLiveAdds.
+  const isAddOp = op.op === 'add_network' || op.op === 'add_link' ||
+                  op.op === 'add_host'    || op.op === 'add_router';
+  if (isAddOp && _isIncompleteAdd(op)) {
+    const kind = op.op.replace('add_', '');
+    pendingLiveAdds.add(`${kind}:${op.name}`);
+    return;
+  }
+  const resolved = reconcilePatch([op]);
+  try {
+    await RuntimeClient.editTopology(resolved);
+  } catch (err) {
+    toast(err.message || String(err), 'error', 'Live edit');
+    // Resync: heal local divergence back to server truth. Preserve the user's
+    // current viewport and selection so a compose-by-typing flow is not
+    // interrupted (the field they're typing in must not lose focus).
+    try {
+      const { yaml } = await RuntimeClient.getTopology();
+      bus.dispatchEvent(new CustomEvent('sim:topology-import-requested', {
+        detail: { yaml, preserveView: true, preserveSelection: true },
+      }));
+    } catch (_) {}
+  }
+}
+
+/* Called from inspector when a field that completes a pending live add is
+ * committed (e.g. CIDR on a network, address on a host/router). If the entity
+ * is now complete AND is in pendingLiveAdds, POST it and remove from pending. */
+export async function finalizePendingAdd(kind, name) {
+  const key = `${kind}:${name}`;
+  if (!pendingLiveAdds.has(key)) return;
+  if (!isTopologyLocked()) {
+    // Sim is no longer running (user stopped between add and finalize) — the
+    // pending add is irrelevant now. Just clean up the registry.
+    pendingLiveAdds.delete(key);
+    return;
+  }
+  const op = { op: `add_${kind}`, name };
+  if (_isIncompleteAdd(op)) return;  // still incomplete — wait for more input
+  pendingLiveAdds.delete(key);
+  const resolved = reconcilePatch([op]);
+  try {
+    await RuntimeClient.editTopology(resolved);
+  } catch (err) {
+    toast(err.message || String(err), 'error', 'Live edit');
+    try {
+      const { yaml } = await RuntimeClient.getTopology();
+      bus.dispatchEvent(new CustomEvent('sim:topology-import-requested', {
+        detail: { yaml, preserveView: true, preserveSelection: true },
+      }));
+    } catch (_) {}
   }
 }
 
@@ -255,7 +383,7 @@ export const Sim = {
       if (pauseIcon) pauseIcon.setAttribute('href', '#ui-play');
       reset.disabled = true;
     }
-    const lockable = ['tb-add-net', 'tb-add-host', 'tb-add-router'];
+    const lockable = [];  // live-edit unlocks tb-add-net/tb-add-host/tb-add-router while running
     lockable.forEach(id => {
       const el = document.getElementById(id);
       if (el) el.disabled = (this.state === 'running');
@@ -292,6 +420,7 @@ export const Sim = {
       } else {
         await RuntimeClient.stop();
         this.patch = [];
+        pendingLiveAdds.clear();
       }
     } catch (err) {
       toast(err.message || String(err), 'error', this.state === 'idle' ? 'Start' : 'Stop');
@@ -435,3 +564,21 @@ export function _onEvent(evt) {
     return;
   }
 }
+
+/* Resync canvas when the server confirms a topology mutation. For local edits
+ * the SPA has already updated its own model; re-fetching keeps the two in
+ * sync if another client also edits. The import path (sim:topology-import-
+ * requested → importYaml) only rebuilds local state and never calls applyEdit,
+ * so there is no feedback loop.
+ *
+ * preserveView + preserveSelection: the user may be mid-compose (typing a CIDR
+ * or address). Yanking the viewport or selection on every confirmed edit would
+ * lose their focus — so live-edit resyncs always keep both. */
+bus.addEventListener('sim:topology-changed', async () => {
+  try {
+    const { yaml } = await RuntimeClient.getTopology();
+    bus.dispatchEvent(new CustomEvent('sim:topology-import-requested', {
+      detail: { yaml, preserveView: true, preserveSelection: true },
+    }));
+  } catch (_) {}
+});
