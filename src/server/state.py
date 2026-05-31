@@ -391,11 +391,12 @@ class SimState:
 
     def stop(self):
         """Transition any state -> idle. No-op if already idle."""
-        with self._lock:
-            if self._state == "idle":
-                return
-            if self._internet is not None:
-                self._internet.stop()
-                self._internet = None
-                self._as = None
-            self._state = "idle"
+        with self._edit_lock:
+            with self._lock:
+                if self._state == "idle":
+                    return
+                if self._internet is not None:
+                    self._internet.stop()
+                    self._internet = None
+                    self._as = None
+                self._state = "idle"
