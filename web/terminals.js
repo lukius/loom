@@ -171,3 +171,15 @@ type 'help' for commands
 /* ---------- bus listeners ---------- */
 bus.addEventListener('sim:status-changed', () => Terminals._applySimState(Sim.state));
 bus.addEventListener('canvas:terminal-requested', (e) => { Terminals.open(e.detail.name); });
+bus.addEventListener('sim:ping-result', (e) => {
+  const { device, dst, seq, rtt_ms } = e.detail;
+  const w = Terminals._active.get(device);
+  if (!w) return;  // sender's terminal not open — nothing to stream into
+  const out = w.querySelector('.term-out');
+  if (!out) return;
+  const line = rtt_ms == null
+    ? `seq=${seq} ${dst}: timeout\n`
+    : `seq=${seq} ${dst}: time=${rtt_ms.toFixed(2)} ms\n`;
+  out.textContent += line;
+  out.scrollTop = out.scrollHeight;
+});

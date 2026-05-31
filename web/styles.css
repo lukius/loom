@@ -756,6 +756,14 @@ svg.canvas.linking { cursor: crosshair; }
   opacity: 1;
 }
 
+/* admin-down state — gray out nodes and edges that are halted/down */
+.canvas .node.down { opacity: .45; filter: grayscale(1); }
+.canvas .edge.down { opacity: .35; stroke-dasharray: 4 4; }
+
+/* interface action buttons (inspector iface rows) */
+.iface-act { font: inherit; cursor: pointer; }
+.iface-act.danger { color: var(--neg); }
+
 /* endpoint devices highlighted when the p2p edge or midpoint label is hovered */
 .canvas .node.host.p2p-hovered .icon,
 .canvas .node.router.p2p-hovered .icon {
