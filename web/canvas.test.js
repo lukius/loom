@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, deviceNameForEndpointOnFabric, lookupAddressNodeOnFabric, renderCanvas, lookupLinkMidpoint, lookupDeviceNode, shiftLinkLabelsForDeviceMove, startLinkWizard, cancelLinkWizard, finishLinkWizard, getLinkWizard, linkBezier, ensurePositions } from './canvas.js';
+import { describe, it, test, expect, beforeEach } from 'vitest';
+import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, deviceNameForEndpointOnFabric, lookupAddressNodeOnFabric, renderCanvas, lookupLinkMidpoint, lookupDeviceNode, shiftLinkLabelsForDeviceMove, startLinkWizard, cancelLinkWizard, finishLinkWizard, getLinkWizard, linkBezier, ensurePositions, drawNode } from './canvas.js';
 import {
   state, bus,
   RAIL_DEFAULT_WIDTH, RAIL_THICKNESS, RAIL_TICK_INSET,
 } from './state.js';
+import { applyDeviceStateChanged, resetDownState } from './state.js';
 
 const W = RAIL_DEFAULT_WIDTH; // 180
 const H = RAIL_THICKNESS;     // 10
@@ -1167,5 +1168,36 @@ describe('ensurePositions — auto-layout for a fresh topology', () => {
     // Nodes render at ~80 px tall; 90 px is roughly one node-width apart
     // — below this they visually overlap on the canvas.
     expect(minDist).toBeGreaterThan(90);
+  });
+});
+
+/* -----------------------------------------------------------------------
+   drawNode — halted device gets the .down class
+   ----------------------------------------------------------------------- */
+
+describe('drawNode — .down class for halted devices', () => {
+  beforeEach(() => {
+    document.body.innerHTML =
+      '<svg id="canvas"><g id="edges-layer"></g><g id="nodes-layer"></g></svg>';
+    state.selection = null;
+    state.display = { showCosts: true, showIfaces: true };
+    resetDownState();
+  });
+
+  test('drawNode adds .down class for a halted device', () => {
+    state.routers = { r1: { x: 100, y: 100, interfaces: {} } };
+    applyDeviceStateChanged({ device: 'r1', up: false });
+    drawNode('router', 'r1', state.routers.r1);
+    const g = document.querySelector('#nodes-layer g[data-name="r1"]');
+    expect(g).not.toBeNull();
+    expect(g.classList.contains('down')).toBe(true);
+  });
+
+  test('drawNode omits .down for an up device', () => {
+    state.routers = { r2: { x: 100, y: 100, interfaces: {} } };
+    drawNode('router', 'r2', state.routers.r2);
+    const g = document.querySelector('#nodes-layer g[data-name="r2"]');
+    expect(g).not.toBeNull();
+    expect(g.classList.contains('down')).toBe(false);
   });
 });

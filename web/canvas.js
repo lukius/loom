@@ -8,6 +8,7 @@ import {
   RAIL_DEFAULT_WIDTH, RAIL_MIN_WIDTH, RAIL_MAX_WIDTH,
   RAIL_THICKNESS, RAIL_ENDCAP_LEN, RAIL_HANDLE_LEN,
   RAIL_TICK_INSET, RAIL_TICK_LEN, RAIL_LABEL_GAP,
+  isDeviceHalted, isInterfaceDown,
 } from './state.js';
 import { el, escapeHtml, cssEscape, uniqueIface, uniqueName, toast, isPrivateCidr } from './utils.js';
 import { isTopologyLocked } from './sim.js';
@@ -25,6 +26,21 @@ export function lookupNetworkNode(name) {
 export function lookupLinkMidpoint(name) {
   if (!name) return null;
   return document.querySelector(`#edges-layer g[data-kind="link"][data-name="${cssEscape(name)}"]`);
+}
+
+export function lookupLinkEdge(name) {
+  if (!name) return null;
+  return document.querySelector(`#edges-layer path.edge[data-kind="link"][data-name="${cssEscape(name)}"]`);
+}
+
+// The edge element for a router interface: for a p2p link it's the link
+// edge path (data-name=fabricName); for a LAN it's the device→network path
+// tagged with data-device/data-iface (set by Task 4).
+export function lookupInterfaceEdge(device, iface, fabricName, isLink) {
+  if (isLink) return lookupLinkEdge(fabricName);
+  return document.querySelector(
+    `#edges-layer path.edge[data-device="${cssEscape(device)}"][data-iface="${cssEscape(iface)}"]`,
+  );
 }
 
 export function lookupAddressNode(address) {
@@ -850,10 +866,11 @@ export function drawNode(kind, name, obj) {
   // RFC1918 LANs get a `private` modifier so the rail + its labels can
   // render in a muted tone — a visual cue that the subnet sits behind NAT.
   const isPrivate = kind === 'network' && isPrivateCidr(obj.cidr);
+  const isDown = kind !== 'network' && isDeviceHalted(name);
 
   // group is centered at obj.x, obj.y
   const g = el('g', {
-    class: `node ${kind}${isPrivate ? ' private' : ''}${isSel ? ' selected' : ''}`,
+    class: `node ${kind}${isPrivate ? ' private' : ''}${isSel ? ' selected' : ''}${isDown ? ' down' : ''}`,
     transform: `translate(${obj.x} ${obj.y})`,
     'data-kind': kind,
     'data-name': name,
