@@ -1576,7 +1576,9 @@ describe('Inspector.refreshNAT', () => {
     expect(sec.innerHTML).toContain('8.8.8.8');
     expect(sec.innerHTML).toContain('7');
     expect(sec.innerHTML).toContain('NAT table');
-    expect(sec.innerHTML).toContain('r_a');
+    // The section is now a collapsible <details> — the device name lives in
+    // the outer inspector header, not inside the NAT section itself.
+    expect(sec.querySelector('details.insp-section')).not.toBeNull();
   });
 
   it('truncates long string flow_ids (UUIDs) to a short prefix, full value in title', () => {
@@ -1671,5 +1673,209 @@ describe('Inspector.onNATChange', () => {
     Inspector.onNATChange({ device: 'r_a' });
     // Panel stays hidden because refreshNAT was never called for r_a.
     expect(document.getElementById('insp-nat').hidden).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Collapsible inspector sections + Neighbors panel (Task 20)
+// ---------------------------------------------------------------------------
+function setupRouter20() {
+  state.routers = {
+    r1: {
+      interfaces: {
+        eth0: { network: 'lan1', address: '10.0.0.1', cost: 1 },
+        eth1: { network: 'lan2', address: '10.0.1.1', cost: 5 },
+      },
+    },
+  };
+  state.networks = { lan1: { address: '10.0.0.0/24' }, lan2: { address: '10.0.1.0/24' } };
+  state.links = {};
+  state.routingTables = {};
+  state.natTables = {};
+  state.neighborsByDevice = {};
+}
+
+describe('renderRouterInsp — collapsible sections + Neighbors', () => {
+  beforeEach(() => {
+    setupDOM();
+    resetState();
+    setupRouter20();
+  });
+
+  it('renders top-level collapsible sections for Routing table and Neighbors', () => {
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const sections = document.querySelectorAll('details.insp-section');
+    const labels = Array.from(sections).map(s => s.querySelector('summary').textContent.trim());
+    expect(labels.some(l => l.startsWith('Routing table'))).toBe(true);
+    expect(labels.some(l => l.startsWith('Neighbors'))).toBe(true);
+  });
+
+  it('renders eth0 and eth1 in the Neighbors section when no neighbor data', () => {
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const neighborSection = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbors'));
+    expect(neighborSection).toBeTruthy();
+    expect(neighborSection.textContent).toContain('eth0');
+    expect(neighborSection.textContent).toContain('eth1');
+  });
+
+  it('groups multiple peers on the same interface under one iface block', () => {
+    state.neighborsByDevice = {
+      r1: {
+        eth0: {
+          r2: { state: 'two_way', last_hello_at: 1, peer_acked_at: 1 },
+          r3: { state: 'two_way', last_hello_at: 1, peer_acked_at: 1 },
+          r4: { state: 'init', last_hello_at: 1, peer_acked_at: null },
+        },
+      },
+    };
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const ifaceBlocks = document.querySelectorAll('.neigh-iface-block');
+    expect(ifaceBlocks.length).toBeGreaterThanOrEqual(2);  // eth0 + eth1
+    const eth0Block = Array.from(ifaceBlocks).find(b => b.textContent.includes('eth0'));
+    expect(eth0Block).toBeTruthy();
+    expect(eth0Block.querySelectorAll('.neigh-row').length).toBe(3);
+    expect(eth0Block.textContent).toContain('r2');
+    expect(eth0Block.textContent).toContain('r3');
+    expect(eth0Block.textContent).toContain('r4');
+    expect(eth0Block.textContent).toContain('TWO_WAY');
+    expect(eth0Block.textContent).toContain('INIT');
+  });
+
+  it('summary line carries TWO_WAY / INIT counts', () => {
+    state.neighborsByDevice = {
+      r1: {
+        eth0: { r2: { state: 'two_way' }, r3: { state: 'init' } },
+      },
+    };
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const section = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbors'));
+    const summary = section.querySelector('summary').textContent;
+    expect(summary).toMatch(/1 TWO_WAY/);
+    expect(summary).toMatch(/1 INIT/);
+  });
+
+  it('summary line leads with unique peers and total adjacencies', () => {
+    // Same peer router (r2) heard on both interfaces — one peer, two adjacencies.
+    state.neighborsByDevice = {
+      r1: {
+        eth0: { r2: { state: 'two_way' } },
+        eth1: { r2: { state: 'two_way' }, r3: { state: 'two_way' } },
+      },
+    };
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const section = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbors'));
+    const summary = section.querySelector('summary').textContent;
+    expect(summary).toMatch(/2 peers/);
+    expect(summary).toMatch(/3 adjacencies/);
+    expect(summary).toMatch(/3 TWO_WAY/);
+  });
+
+  it('uses singular "peer" / "adjacency" when count is 1', () => {
+    // Single-interface router with one peer — exercises singular forms.
+    state.routers = {
+      r1: { interfaces: { eth0: { network: 'lan1', address: '10.0.0.1', cost: 1 } } },
+    };
+    state.neighborsByDevice = {
+      r1: { eth0: { r2: { state: 'two_way' } } },
+    };
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const section = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbors'));
+    const summary = section.querySelector('summary').textContent;
+    expect(summary).toMatch(/1 peer\b/);
+    expect(summary).toMatch(/1 adjacency\b/);
+  });
+
+  it('counts interfaces with no peers as 0 peers but as DOWN entries', () => {
+    // Add a peer router on each LAN so both interfaces are *expected* to
+    // form an adjacency — without that, the new stub detection would
+    // (correctly) skip them. With peers present and no Hellos heard, both
+    // count as real DOWN.
+    state.routers.r2 = {
+      interfaces: { eth0: { network: 'lan1', address: '10.0.0.254', cost: 1 } },
+    };
+    state.routers.r3 = {
+      interfaces: { eth0: { network: 'lan2', address: '10.0.1.254', cost: 1 } },
+    };
+    state.neighborsByDevice = {};
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const section = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbors'));
+    const summary = section.querySelector('summary').textContent;
+    expect(summary).toMatch(/0 peers/);
+    expect(summary).toMatch(/2 adjacencies/);
+    expect(summary).toMatch(/2 DOWN/);
+  });
+
+  it('marks interfaces with no other routers on the fabric as stub (not DOWN)', () => {
+    // r1.eth0 → lan1 with r2 also attached → real adjacency surface
+    // r1.eth1 → lan2 with NO other router → stub interface
+    state.networks = { lan1: { address: '10.0.0.0/24' }, lan2: { address: '10.0.1.0/24' } };
+    state.routers = {
+      r1: {
+        interfaces: {
+          eth0: { network: 'lan1', address: '10.0.0.1', cost: 1 },
+          eth1: { network: 'lan2', address: '10.0.1.1', cost: 1 },
+        },
+      },
+      r2: {
+        interfaces: {
+          eth0: { network: 'lan1', address: '10.0.0.254', cost: 1 },
+        },
+      },
+    };
+    state.neighborsByDevice = {};  // no Hellos yet — r1.eth0 expects r2; r1.eth1 expects nothing
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const section = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbors'));
+    expect(section).toBeTruthy();
+    expect(section.textContent).toContain('no other routers');
+    // The stub interface must NOT contribute to DOWN or to the adjacency total.
+    const summary = section.querySelector('summary').textContent;
+    expect(summary).toMatch(/1 DOWN/);            // only eth0 is real DOWN
+    expect(summary).toMatch(/1 adjacency\b/);      // only eth0 counts
+    expect(summary).not.toMatch(/2 DOWN/);
+  });
+
+  it('uses the .stub CSS class on the stub badge', () => {
+    state.networks = { lan1: { address: '10.0.0.0/24' } };
+    state.routers = {
+      r1: { interfaces: { eth0: { network: 'lan1', address: '10.0.0.1', cost: 1 } } },
+    };
+    state.neighborsByDevice = {};
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    expect(document.querySelector('.neigh-state.stub')).toBeTruthy();
+  });
+
+  it('treats a link with no other endpoint as a stub interface', () => {
+    state.links = { p2p1: { cidr: '10.0.0.0/30' } };
+    state.routers = {
+      r1: { interfaces: { eth0: { link: 'p2p1', address: '10.0.0.1', cost: 1 } } },
+    };
+    state.neighborsByDevice = {};
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const section = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbors'));
+    expect(section.textContent).toContain('no other routers');
+  });
+
+  it('omits zero-count states from the summary to keep the line compact', () => {
+    state.neighborsByDevice = {
+      r1: {
+        eth0: { r2: { state: 'two_way' } },
+        eth1: { r2: { state: 'two_way' }, r3: { state: 'two_way' } },
+      },
+    };
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const section = Array.from(document.querySelectorAll('details.insp-section'))
+      .find(s => s.querySelector('summary').textContent.trim().startsWith('Neighbors'));
+    const summary = section.querySelector('summary').textContent;
+    // All in TWO_WAY — INIT and DOWN should NOT appear.
+    expect(summary).toMatch(/3 TWO_WAY/);
+    expect(summary).not.toMatch(/INIT/);
+    expect(summary).not.toMatch(/DOWN/);
   });
 });

@@ -43,7 +43,7 @@ test.describe('loom SPA - smoke', () => {
     const modules = [
       'app.js', 'state.js', 'utils.js', 'sim.js',
       'canvas.js', 'inspector.js', 'terminals.js', 'packets.js',
-      'yaml-io.js', 'file-picker.js',
+      'yaml-io.js', 'file-picker.js', 'modal.js',
     ];
     for (const m of modules) {
       const r = responses.find((x) => x.url.endsWith(`/${m}`));
@@ -144,6 +144,43 @@ test.describe('loom SPA - smoke', () => {
     // The Import + Export pair is still present.
     await expect(page.locator('#btn-import')).toBeVisible();
     await expect(page.locator('#btn-export')).toBeVisible();
+  });
+
+  test('New clears the topology after confirmation, leaving the empty canvas', async ({ page }) => {
+    // Starts from the SAMPLE topology (3+3+3 nodes).
+    await expect(page.locator('#nodes-layer g.node')).toHaveCount(9);
+
+    await page.locator('#btn-new').click();
+    const confirm = page.locator('.modal-confirm');
+    await expect(confirm).toBeVisible();
+
+    await confirm.locator('.confirm').click();
+    await expect(confirm).toHaveCount(0);
+
+    // Canvas is now empty and the "no topology yet" prompt is shown.
+    await expect(page.locator('#nodes-layer g.node')).toHaveCount(0);
+    await expect(page.locator('#empty-add-net')).toBeVisible();
+  });
+
+  test('New can be cancelled, leaving the topology intact', async ({ page }) => {
+    await expect(page.locator('#nodes-layer g.node')).toHaveCount(9);
+    await page.locator('#btn-new').click();
+    await page.locator('.modal-confirm .cancel').click();
+    await expect(page.locator('.modal-confirm')).toHaveCount(0);
+    await expect(page.locator('#nodes-layer g.node')).toHaveCount(9);
+  });
+
+  test('Start on an incomplete topology is blocked with a message, not started', async ({ page }) => {
+    // Clear to an empty canvas via New, then try to Start.
+    await page.locator('#btn-new').click();
+    await page.locator('.modal-confirm .confirm').click();
+    await expect(page.locator('#nodes-layer g.node')).toHaveCount(0);
+
+    await page.locator('#tb-play').click();
+
+    // An error toast explains the problem and the sim never leaves idle.
+    await expect(page.locator('#toasts .toast.error', { hasText: 'start' })).toBeVisible();
+    await expect(page.locator('#tb-play')).not.toHaveClass(/running/, { timeout: 2000 });
   });
 
   test('Import opens a picker listing samples/, and loading sample.yaml repopulates the canvas', async ({ page }) => {

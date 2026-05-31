@@ -544,26 +544,22 @@ describe('PacketAnim — throttled chatter does not dispatch arrival', () => {
     };
   }
 
-  it('throttled chatter does not dispatch sim:packet-arrived (store row persists via TTL)', () => {
-    // First chatter from r1/lan_a passes through.
+  it('a same-message re-emission is throttled and does not dispatch arrival', () => {
+    // First emission of p1 from r1/lan_a passes through and animates.
     bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('p1') }));
     expect(PacketStore.chatter.size).toBe(1);
 
-    // Spy on sim:packet-arrived BEFORE the second event (which will be throttled).
+    // Spy on sim:packet-arrived BEFORE the throttled re-emission.
     const spy = vi.fn();
     bus.addEventListener('sim:packet-arrived', spy);
 
-    // Second chatter from r1/lan_a within 200ms — throttled.
-    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('p2') }));
+    // The protocol re-floods the SAME message back through the origin iface
+    // within 200ms — same composite key. It's throttled, and throttling must
+    // NOT dispatch arrival, which would wipe the original's still-animating row.
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('p1') }));
 
-    // Throttling must NOT dispatch arrival: deleting by composite key would
-    // wipe rows for re-emissions of the original's key (self-flood loop) AND
-    // would discard distinct payload_ids that happen to land on the same
-    // (device, network) within 200ms. The 2s TTL in packetstore reclaims
-    // throttled rows naturally.
     expect(spy).not.toHaveBeenCalled();
     expect(PacketStore.chatter.has('p1|r1|eth0|lan_a')).toBe(true);
-    expect(PacketStore.chatter.has('p2|r1|eth0|lan_a')).toBe(true);
   });
 
   it('dispatches sim:packet-arrived for muted chatter so the store cleans up', () => {
@@ -611,9 +607,9 @@ describe('PacketAnim — throttle preserves distinct chatter messages', () => {
   }
 
   // Bug: with no jitter, three routers' keepalive ticks overlap and re-floods
-  // of one router's message arrive on a neighbour's (device, network) slot
-  // before that neighbour originates its own message. The (device, network)
-  // throttle then drops the neighbour's origination — even though it's a
+  // of one router's message arrive on a neighbor's (device, network) slot
+  // before that neighbor originates its own message. The (device, network)
+  // throttle then drops the neighbor's origination — even though it's a
   // *distinct* logical message (different payload_id).
   it('keeps distinct payload_ids from the same (device, network) within 200ms', () => {
     // First emission: r1 re-floods someone else's message on lan_a.
@@ -631,8 +627,8 @@ describe('PacketAnim — throttle preserves distinct chatter messages', () => {
   });
 
   // Bug: the routing protocol re-floods a message back into its origin iface
-  // (because `_seqs_by_address[my_addr]` starts at -1, so the originator
-  // doesn't recognize its own message coming back). The SPA sees a second
+  // (because the LSDB dedup starts at -1, so the originator doesn't recognize
+  // its own message coming back). The SPA sees a second
   // sim:packet with the *same* composite key as the original. The throttle
   // path's sim:packet-arrived dispatch deletes the original's row.
   it('does not delete the original row when a re-emission shares its composite key', () => {
@@ -645,6 +641,27 @@ describe('PacketAnim — throttle preserves distinct chatter messages', () => {
     bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatter('msg-1') }));
 
     expect(PacketStore.chatter.has(composite)).toBe(true);
+  });
+});
+
+describe('PacketAnim._chatterAllowed — throttle keys on message identity', () => {
+  beforeEach(() => { PacketAnim._lastChatter.clear(); });
+
+  function flood(payloadId, device = 'r1', network = 'lan_a') {
+    return { type: 'routing_flood', payload_id: payloadId, network, src: { device, iface: 'eth0' } };
+  }
+
+  it('allows distinct payload_ids from the same device+network within 200ms', () => {
+    // A router re-floods several distinct LSAs out one interface in a burst —
+    // each is a real message and must be allowed to animate.
+    expect(PacketAnim._chatterAllowed(flood('lsa-a'))).toBe(true);
+    expect(PacketAnim._chatterAllowed(flood('lsa-b'))).toBe(true);
+    expect(PacketAnim._chatterAllowed(flood('lsa-c'))).toBe(true);
+  });
+
+  it('throttles a repeat of the same payload_id within 200ms', () => {
+    expect(PacketAnim._chatterAllowed(flood('lsa-a'))).toBe(true);
+    expect(PacketAnim._chatterAllowed(flood('lsa-a'))).toBe(false);
   });
 });
 
@@ -678,5 +695,321 @@ describe('PacketAnim — dot-appeared signal', () => {
     } }));
     expect(spy).toHaveBeenCalled();
     expect(spy.mock.calls[0][0].detail.payloadId).toBe('p1');
+  });
+});
+
+describe('PacketAnim — colour map covers hello and routing_flood', () => {
+  it('routing_flood has a colour entry', () => {
+    expect(PacketAnim.COLORS['routing_flood']).toBeDefined();
+    expect(PacketAnim.COLORS['routing_flood'].fill).toBeTruthy();
+  });
+
+  it('hello has a colour entry distinct from routing_flood', () => {
+    expect(PacketAnim.COLORS['hello']).toBeDefined();
+    expect(PacketAnim.COLORS['hello'].fill).toBeTruthy();
+    expect(PacketAnim.COLORS['hello'].fill).not.toBe(PacketAnim.COLORS['routing_flood'].fill);
+  });
+
+  it('hello and routing_flood are listed in _ROUTING_CHATTER_TYPES', () => {
+    expect(PacketAnim._ROUTING_CHATTER_TYPES.has('hello')).toBe(true);
+    expect(PacketAnim._ROUTING_CHATTER_TYPES.has('routing_flood')).toBe(true);
+  });
+});
+
+describe('PacketAnim — hello chatter mute/throttle branches', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    PacketAnim._lastChatter.clear();
+    PacketAnim.muted = false;
+    delete document.body.dataset.chatterBadges;
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g data-kind="router" data-name="r1" transform="translate(100 100)"></g>
+        <g data-kind="network" data-name="lan_a" transform="translate(250 100)"></g>
+      </g><g id="packet-layer"></g></svg>`;
+    state.networks = { lan_a: { cidr: '10.0.0.0/24', x: 250, y: 100 } };
+    state.hosts = {};
+    state.routers = { r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 } } } };
+    state.links = {};
+  });
+
+  function helloEvt(payloadId) {
+    return {
+      type: 'hello', payload_id: payloadId, network: 'lan_a',
+      src: { device: 'r1', iface: 'eth0', address: '10.0.0.254' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '10.0.0.254', payload_dst: '255.255.255.255',
+    };
+  }
+
+  it('dispatches sim:packet-arrived for muted hello so the store cleans up', () => {
+    PacketAnim.muted = true;
+    const spy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', spy);
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: helloEvt('h1') }));
+    const arrivals = spy.mock.calls.map(c => c[0].detail);
+    expect(arrivals.some(d => d.payloadId && d.payloadId.startsWith('h1|') && d.device === null)).toBe(true);
+    PacketAnim.muted = false;
+    bus.removeEventListener('sim:packet-arrived', spy);
+  });
+
+  it('hello chatter badge uses #R prefix when chatter badges are on', () => {
+    document.body.dataset.chatterBadges = 'on';
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: helloEvt('h1') }));
+    const layer = document.getElementById('packet-layer');
+    const badges = layer.querySelectorAll('text.packet-badge');
+    expect(badges.length).toBeGreaterThanOrEqual(1);
+    expect(badges[0].textContent).toMatch(/^#R/);
+  });
+});
+
+describe('PacketAnim — LSA flooding is sequenced per-hop', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    PacketAnim._lastChatter.clear();
+    PacketAnim._lsaArrivedAt.clear();
+    PacketAnim._lsaPending.clear();
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g data-kind="router" data-name="r1" transform="translate(100 100)"></g>
+        <g data-kind="router" data-name="r2" transform="translate(250 100)"></g>
+        <g data-kind="router" data-name="r3" transform="translate(400 100)"></g>
+        <g data-kind="network" data-name="lan_a" transform="translate(175 200)"></g>
+        <g data-kind="network" data-name="lan_b" transform="translate(325 200)"></g>
+      </g><g id="packet-layer"></g></svg>`;
+    state.networks = {
+      lan_a: { cidr: '10.0.0.0/24', x: 175, y: 200 },
+      lan_b: { cidr: '10.0.1.0/24', x: 325, y: 200 },
+    };
+    state.hosts = {};
+    state.routers = {
+      r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.1', cost: 1 } } },
+      r2: { interfaces: {
+        eth0: { network: 'lan_a', address: '10.0.0.2', cost: 1 },
+        eth1: { network: 'lan_b', address: '10.0.1.1', cost: 1 },
+      } },
+      r3: { interfaces: { eth0: { network: 'lan_b', address: '10.0.1.2', cost: 1 } } },
+    };
+    state.links = {};
+  });
+
+  function originEvt() {
+    return {
+      type: 'routing_flood', payload_id: 'lsa-x', network: 'lan_a',
+      src: { device: 'r1', iface: 'eth0', address: '10.0.0.1' },
+      dst: { device: null, address: '10.0.0.255' },
+      payload_src: '10.0.0.1', payload_dst: '10.0.0.255',
+      payload: { originator: 'r1', seq: 7, destinations: [] },
+    };
+  }
+
+  function refloodEvt() {
+    return {
+      type: 'routing_flood', payload_id: 'lsa-x', network: 'lan_b',
+      src: { device: 'r2', iface: 'eth1', address: '10.0.1.1' },
+      dst: { device: null, address: '10.0.1.255' },
+      payload_src: '10.0.1.1', payload_dst: '10.0.1.255',
+      payload: { originator: 'r1', seq: 7, destinations: [] },
+    };
+  }
+
+  it('plays origin emission immediately (sender === originator)', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: originEvt() }));
+    const layer = document.getElementById('packet-layer');
+    expect(layer.querySelectorAll('rect').length).toBe(1);
+    expect(PacketAnim._lsaPending.size).toBe(0);
+  });
+
+  it('queues re-flood (sender !== originator) until inbound arrives at the re-flooder', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: refloodEvt() }));
+    const layer = document.getElementById('packet-layer');
+    // Re-flood is held back: no dot rendered yet
+    expect(layer.querySelectorAll('rect').length).toBe(0);
+    expect(PacketAnim._lsaPending.get('lsa-x|r2')).toHaveLength(1);
+  });
+
+  it('drains the queue once the origin emission arrives at the re-flooder', async () => {
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: refloodEvt() }));
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: originEvt() }));
+      // Wait for the origin emission's 1ms tween to complete; finish() should
+      // then mark r2 as having received and dispatch the queued re-flood.
+      await new Promise(r => setTimeout(r, 80));
+      // Both animations are now done; the queue should be empty and there
+      // should be no remaining dots.
+      expect(PacketAnim._lsaPending.has('lsa-x|r2')).toBe(false);
+      expect(PacketAnim._lsaArrivedAt.has('lsa-x|r2')).toBe(true);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+    }
+  });
+
+  it('plays re-flood immediately if origin already arrived at the re-flooder', () => {
+    // Simulate prior arrival
+    PacketAnim._lsaArrivedAt.add('lsa-x|r2');
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: refloodEvt() }));
+    const layer = document.getElementById('packet-layer');
+    expect(layer.querySelectorAll('rect').length).toBe(1);
+    expect(PacketAnim._lsaPending.size).toBe(0);
+  });
+
+  it('clears LSA arrival/pending state when the sim goes idle', () => {
+    PacketAnim._lsaArrivedAt.add('lsa-x|r2');
+    PacketAnim._lsaPending.set('lsa-y|r3', [refloodEvt()]);
+    bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: 'idle' } }));
+    expect(PacketAnim._lsaArrivedAt.size).toBe(0);
+    expect(PacketAnim._lsaPending.size).toBe(0);
+  });
+
+  it('empties the packet layer when the sim goes idle so nothing dangles', () => {
+    // Simulate dots/badges left in flight (or frozen by a pause) at stop time.
+    const layer = document.getElementById('packet-layer');
+    layer.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'rect'));
+    layer.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'text'));
+    PacketAnim._lastChatter.set('r1:lan_a:lsa-x', 123);
+    bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: 'idle' } }));
+    expect(layer.children.length).toBe(0);
+    expect(PacketAnim._lastChatter.size).toBe(0);
+  });
+
+  it('force-renders a deferred re-flood whose inbound never arrives (no strand)', async () => {
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;   // fallback floor is max(3, 100) = 100ms
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: refloodEvt() }));
+      // Deferred: held in _lsaPending, nothing rendered, no arrival will come.
+      expect(PacketAnim._lsaPending.get('lsa-x|r2')).toHaveLength(1);
+      await new Promise(r => setTimeout(r, 160));   // past the fallback floor
+      // The fallback force-rendered it, draining the queue.
+      expect(PacketAnim._lsaPending.has('lsa-x|r2')).toBe(false);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+    }
+  });
+
+  it('an in-flight fan-out does not repopulate the layer after the sim goes idle', async () => {
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 40;   // phase-1 ≈ 12ms
+    try {
+      // r1 floods lan_a (broadcast); r2 listens there, so a fan-out clone is
+      // spawned in the phase-1 completion callback.
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: originEvt() }));
+      // Go idle mid phase-1: the layer is cleared and the generation bumped.
+      await new Promise(r => setTimeout(r, 3));
+      bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: 'idle' } }));
+      // Let the (now-stale) phase-1 callback run; it must NOT spawn clones.
+      await new Promise(r => setTimeout(r, 80));
+      const layer = document.getElementById('packet-layer');
+      expect(layer.querySelectorAll('rect').length).toBe(0);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+    }
+  });
+
+  it('broadcast chatter fans out: each clone fires arrival with the listener device, not null', async () => {
+    const arrivedSpy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', arrivedSpy);
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: originEvt() }));
+      await new Promise(r => setTimeout(r, 120));
+      // Match on the exact dotKey for r1's origin emission so leftover
+      // animations from earlier tests (which share payload_id 'lsa-x' but
+      // are emitted from different src/iface/network) don't get counted.
+      const arrivals = arrivedSpy.mock.calls
+        .map(c => c[0].detail)
+        .filter(d => d.payloadId === 'lsa-x|r1|eth0|lan_a');
+      // r1 broadcasts on lan_a; only r2 listens there. Expect exactly one
+      // arrival, naming r2 as the device.
+      expect(arrivals.length).toBe(1);
+      expect(arrivals[0].device).toBe('r2');
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+      bus.removeEventListener('sim:packet-arrived', arrivedSpy);
+    }
+  });
+
+  it('drains the reflood queue only after the matching listener visually receives', async () => {
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      // Reflood from r2 arrives first, then the origin emit from r1.
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: refloodEvt() }));
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: originEvt() }));
+      // Before the origin clone arrives at r2, the reflood is still pending.
+      expect(PacketAnim._lsaPending.get('lsa-x|r2')).toHaveLength(1);
+      // Wait long enough for the origin fan-out clone to reach r2.
+      await new Promise(r => setTimeout(r, 120));
+      expect(PacketAnim._lsaArrivedAt.has('lsa-x|r2')).toBe(true);
+      expect(PacketAnim._lsaPending.has('lsa-x|r2')).toBe(false);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+    }
+  });
+
+  it('broadcast chatter with multiple listeners spawns one arrival per listener', async () => {
+    // Add a second listener on lan_a so r1's broadcast reaches both.
+    state.routers.rExtra = {
+      interfaces: { eth0: { network: 'lan_a', address: '10.0.0.99', cost: 1 } },
+    };
+    document.querySelector('#nodes-layer').insertAdjacentHTML(
+      'beforeend',
+      '<g data-kind="router" data-name="rExtra" transform="translate(120 50)"></g>',
+    );
+    const arrivedSpy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', arrivedSpy);
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: originEvt() }));
+      await new Promise(r => setTimeout(r, 120));
+      const devices = arrivedSpy.mock.calls
+        .map(c => c[0].detail)
+        .filter(d => d.payloadId === 'lsa-x|r1|eth0|lan_a')
+        .map(d => d.device);
+      expect(devices.sort()).toEqual(['r2', 'rExtra']);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+      bus.removeEventListener('sim:packet-arrived', arrivedSpy);
+    }
+  });
+
+  it('broadcast chatter with no listeners still animates to the rail and fires one arrival', async () => {
+    // Strip every router/host off lan_a except the sender r1.
+    delete state.routers.r2;
+    delete state.routers.r3;
+    const arrivedSpy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', arrivedSpy);
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: originEvt() }));
+      await new Promise(r => setTimeout(r, 80));
+      const arrivals = arrivedSpy.mock.calls
+        .map(c => c[0].detail)
+        .filter(d => d.payloadId === 'lsa-x|r1|eth0|lan_a');
+      // No listeners: just the single src→tap arrival, device unresolved.
+      expect(arrivals.length).toBe(1);
+      expect(arrivals[0].device).toBe(null);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+      bus.removeEventListener('sim:packet-arrived', arrivedSpy);
+    }
+  });
+
+  it('Hello chatter is not affected by LSA sequencing (plays immediately)', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'hello', payload_id: 'h1', network: 'lan_a',
+      src: { device: 'r2', iface: 'eth0', address: '10.0.0.2' },
+      dst: { device: null, address: '10.0.0.255' },
+      payload_src: '10.0.0.2', payload_dst: '10.0.0.255',
+      payload: { originator: 'r2', neighbors_heard: [] },
+    } }));
+    const layer = document.getElementById('packet-layer');
+    expect(layer.querySelectorAll('rect').length).toBe(1);
+    expect(PacketAnim._lsaPending.size).toBe(0);
   });
 });

@@ -9,7 +9,7 @@ loom/
 ├── src/
 │   ├── loom.py            # Entry point — web UI (default) or 'shell' subcommand
 │   ├── entities/          # AS, Router, Host, Network, Interface, Address, Packet, Event
-│   ├── routing/           # RoutingProtocol (link-state) + NetworkGraph (Dijkstra)
+│   ├── routing/           # RoutingProtocol (loom-OSPF link-state) + LSDB → NetworkGraph (Dijkstra)
 │   ├── parser/            # YAML topology loader + SystemValidator
 │   └── shell/             # `cmd.Cmd`-based REPL (read/route/send/update_cost/exit)
 ├── test/
@@ -114,6 +114,10 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 - Run `ruff check src/ test/` and resolve any new findings.
 - If the change affects behavior, interfaces, layout, build/run, or workflows, update `README.md`, this `CLAUDE.md`, the affected pages under `docs/`, and any affected docstrings in the same commit. Pure-internal refactors with no observable change usually need no doc edits.
 
+### Subagent-driven execution for multi-task work
+- When implementing a feature planned as multiple tasks/commits (typically from a written plan), follow the per-task dev → reviewer cycle in `.claude/process/subagent-driven-execution.md` instead of executing inline. Use it for any multi-commit feature; skip it for single-commit fixes, small refactors, or one-off doc edits.
+- The doc covers role profiles (Python / JS / OO for dev; network-engineering for reviewer), briefing templates, the per-task loop, and the final-review + QA passes.
+
 ### About this file
 - **Keep it under 200 lines.** If it grows past that, prune.
 - **Only non-obvious context.** If it can be derived by reading the source, tests, or `git log`, it does not belong here. This file captures the *why*, the implicit conventions, and the traps.
@@ -124,7 +128,7 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 
 - **AS YAML shape: `as:` at the top, `name:` inside.** The parser requires the literal top-level key `as:` and reads the AS name from a nested `name:` field (falling back to `unnamed_entity_N`). `samples/sample.yaml` follows this convention and loads cleanly. Anything that emits topology YAML (the SPA, future tools) must produce the same shape.
 
-- **Link-state with sequence-numbered flooding.** `RoutingProtocol` (`src/routing/protocol.py`) broadcasts a `RoutingMessage` from every interface every `_keepalive_interval` (defaults to `KEEPALIVE_INTERVAL = 10s`, editable per-instance via `set_keepalive_interval`) on a daemon thread per router. The loop ticks **once at start** before the first sleep, so neighbors converge at t~0 instead of after one full interval. Receivers re-flood out of every interface *except* the one the message arrived on, deduplicated by `(src_address, seq)`. Recompute paths only when the local `NetworkGraph` actually changes — preserve that guard when editing, otherwise routing tables churn on every keepalive.
+- **loom-OSPF: per-origin sequence flooding.** `LinkStateProtocol` (`src/routing/protocol.py`) emits one Hello per interface and one shared `LSA` (re-used across every interface) per refresh cycle, on a single daemon thread per router (`_protocol_loop`). Timers are tunable via `proto.set_timers(hello_interval=, lsa_refresh_interval=)` — defaults 10s / 30s, with `dead = 3 × hello` and `max_age = 2 × refresh` derived by construction. The loop emits initial Hello + LSA at t≈0 (unjittered); subsequent ticks carry per-tick jitter `[0.75·T, 1.25·T]`. Receivers re-flood every accepted LSA out every interface *except* the inbound, deduplicated per-origin in the `LSDB`. SPF recomputes only when an LSA's links actually change (`InstallResult.changed_graph()`); a refresh with identical links is re-flooded but does not recompute.
 
 - **`Network._interfaces` is keyed by interface IP address, not by `iface.name()`.** Interface names are only unique within a single device (every router happens to call its first interface `eth0`), so keying by name would clobber siblings on the same LAN. The parser/validator enforces IP-address uniqueness within each network, which is what makes the address a safe key. Anything new that joins interfaces to networks must follow this rule.
 
@@ -142,7 +146,7 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 
 - **All user-facing strings and docstrings are in English.** This includes shell `do_*` help strings, terminal command output, and exception messages. The codebase used to mix Spanish (shell help) with English (everything else); that's been normalized.
 
-- **`PauseGate` gates packet propagation and keepalive.** `AS` owns one `PauseGate` (`src/entities/clock.py`). `Interface._pkt_loop` and `Network._pkt_loop` call `gate.wait_or_stop()` after each dequeue; `RoutingProtocol._keepalive_loop` waits on it instead of `time.sleep`. `AS.stop()` triggers the stop event, which wakes any blocked workers. New worker threads must follow the same pattern or they won't pause cleanly.
+- **`PauseGate` gates packet propagation and the protocol loop.** `AS` owns one `PauseGate` (`src/entities/clock.py`). `Interface._pkt_loop` and `Network._pkt_loop` call `gate.wait_or_stop()` after each dequeue; `LinkStateProtocol._protocol_loop` waits on it instead of `time.sleep`. `AS.stop()` triggers the stop event, which wakes any blocked workers. New worker threads must follow the same pattern or they won't pause cleanly.
 
 - **Web SPA uses native ES modules + an EventTarget bus.** `web/state.js` exports a singleton `bus = new EventTarget()`. Cross-component coordination (re-render after mutation, react to sim status changes) flows through bus events: `state:topology-changed`, `state:topology-loaded`, `state:selection-changed`, `sim:status-changed`, `sim:packet`, `sim:routing-table-changed`, `sim:packet-arrived`, `packets:list-changed`, `packets:chatter-badges-changed`, `view:changed`. Synchronous queries and DOM helpers (`canvas.lookupDeviceNode`, `utils.el`, etc.) are direct imports. The rule: state mutations + cross-component re-renders → bus; sync queries + DOM helpers → direct import. Don't reintroduce module-to-module direct render calls.
 

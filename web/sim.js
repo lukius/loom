@@ -7,8 +7,9 @@
    packet animation, route re-fetch) flow through `bus`; intra-namespace
    calls like `Sim._renderToolbar()` stay direct.
    =========================================================== */
-import { state, bus } from './state.js';
+import { state, bus, applyNeighborStateChanged } from './state.js';
 import { toast } from './utils.js';
+import { validateTopology } from './preflight.js';
 
 /* ---------- RuntimeClient — REST + WS wrapper ---------- */
 export const RuntimeClient = {
@@ -36,7 +37,12 @@ export const RuntimeClient = {
   resume(patch)          { return this._json('POST', '/sim/resume', { patch: patch || [] }); },
   stop()                 { return this._json('POST', '/sim/stop', {}); },
   getState()             { return this._json('GET',  '/sim/state'); },
-  setRefreshInterval(s)  { return this._json('POST', '/sim/refresh_interval', { seconds: s }); },
+  setProtocolConfig({ hello, refresh }) {
+    return this._json('POST', '/sim/protocol_config', {
+      hello_interval: hello,
+      lsa_refresh_interval: refresh,
+    });
+  },
   deviceCommand(n, cmd)  { return this._json('POST', `/devices/${encodeURIComponent(n)}/command`, { cmd }); },
   deviceRoutes(n)        { return this._json('GET',  `/devices/${encodeURIComponent(n)}/routes`); },
   deviceInterfaces(n)    { return this._json('GET',  `/devices/${encodeURIComponent(n)}/interfaces`); },
@@ -112,7 +118,8 @@ export function updatePatchIndicator() {
   if (!pause) return;
   const lbl = pause.querySelector('.lbl');
   if (Sim.state === 'paused' && Sim.patch.length > 0) {
-    lbl.textContent = `Resume (${Sim.patch.length} edits)`;
+    const n = Sim.patch.length;
+    lbl.textContent = `Resume (${n} ${n === 1 ? 'edit' : 'edits'})`;
   } else if (Sim.state === 'paused') {
     lbl.textContent = 'Resume';
   }
@@ -224,11 +231,25 @@ export const Sim = {
       const el = document.getElementById(id);
       if (el) el.disabled = (this.state === 'running');
     });
-    const refresh = document.getElementById('tb-refresh');
-    if (refresh) refresh.disabled = (this.state === 'idle');
+    const protocol = document.getElementById('tb-protocol');
+    if (protocol) protocol.disabled = (this.state === 'idle');
   },
 
   async onPrimary() {
+    if (this.state === 'idle') {
+      // Catch incomplete topologies here so the user gets a clear, actionable
+      // message pointing at the offending entity, instead of the server's
+      // wire-level parser error.
+      const check = validateTopology(state);
+      if (!check.ok) {
+        toast(check.message, 'error', "Can't start");
+        if (check.selection) {
+          state.selection = check.selection;
+          bus.dispatchEvent(new CustomEvent('state:selection-changed'));
+        }
+        return;
+      }
+    }
     try {
       if (this.state === 'idle') {
         // exportYaml/importYaml live in still-inline modules; bridge via bus
@@ -360,6 +381,10 @@ export function _onEvent(evt) {
     // subscribers (packets.js) can cache by payload_id and decorate the
     // reply's tooltip.
     bus.dispatchEvent(new CustomEvent('sim:router-intercept', { detail: evt }));
+    return;
+  }
+  if (evt.kind === 'neighbor_state_changed') {
+    applyNeighborStateChanged(evt);
     return;
   }
 }

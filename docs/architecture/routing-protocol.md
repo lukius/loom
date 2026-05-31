@@ -1,398 +1,421 @@
-# Routing Protocol
+# loom-OSPF — simplified link-state routing
 
-`loom` implements a **link-state** routing protocol with sequence-numbered
-flooding and Dijkstra shortest-path computation. The protocol lives in
-`src/routing/protocol.py`; the underlying graph (and the Dijkstra
-implementation) lives in `src/routing/graph.py`.
-
-This document describes both, with sequence diagrams for the two paths
-that matter: keepalive flooding and convergence after a topology change.
+`loom` implements a link-state routing protocol deliberately modelled after
+OSPF's core mechanics while shedding the protocol machinery that does not make
+sense in a single-area, broadcast-free simulator. The protocol lives in
+`src/routing/` and is split across six modules: `lsa.py`, `lsdb.py`,
+`hello.py`, `neighbor.py`, `scheduler.py`, and `protocol.py`.
 
 ---
 
 ## Overview
 
-Every router runs a `RoutingProtocol` instance, accessed as
-`router._protocol`. The protocol owns:
+The protocol is named **loom-OSPF** to signal the inheritance. What it models:
 
-- A **`NetworkGraph`** — the router's local view of the AS topology
-  (routers + networks + weighted edges).
-- A **keepalive thread** that floods a `RoutingMessage` from every
-  interface every `_keepalive_interval` seconds (default 10s,
-  live-tunable via the toolbar).
-- Two sequence-number tables, both `collections.defaultdict`:
-  - `_seqs_by_address[src_address] = last_seen_seq` — receiver-side
-    flood deduplication.
-  - `_seqs[iface_name] = current_seq` — sender-side per-interface
-    monotonic counters.
-- A dirty flag (`_graph_updated`) that gates `_recompute_if_dirty`. The
-  routing table is only rebuilt when the graph actually changed.
+- Per-router **Link-State Advertisements (LSAs)** describing directly-connected
+  networks and their costs.
+- **Sequence-numbered flooding** to propagate LSAs across the AS.
+- A **Hello protocol** for bidirectional liveness detection between adjacent
+  routers on a shared fabric.
+- An **LSDB** (link-state database) as the canonical view of topology; the
+  `NetworkGraph` and routing tables are both derived from it.
+- **LSA age + max-age purge** for implicit failure detection (no keepalive →
+  stale LSA → graph pruned).
+- **Graceful withdrawal** on shutdown: a zero-link LSA floods peers before the
+  router exits so they purge it immediately rather than waiting for max-age.
+- **Timer jitter** to avoid synchronised floods on restart.
 
-The receiver-side dedup is keyed on the **source interface's IP**, not
-on the source router. When router R floods from each of its K interfaces,
-every peer keeps K separate `(last-seen-seq)` entries — one per source
-interface address — even though all K floods originate from the same
-router R. So don't conflate `src_router` (used to add a node to the
-graph) with `src_address` (used to dedup floods); the protocol uses
-both, for different purposes.
+What it deliberately does **not** model (see [What's deliberately deferred](#whats-deliberately-deferred)):
 
----
-
-## Originating a flood
-
-`_handle_update` runs on every keepalive tick. It floods the router's
-local view to every neighbor:
-
-```mermaid
-sequenceDiagram
-  participant KA as keepalive thread (r1)
-  participant R1 as RoutingProtocol (r1)
-  participant G as r1._graph
-  participant IF as r1.interfaces
-  participant LAN as connected fabrics
-
-  KA->>R1: _handle_update()
-  R1->>R1: update_state()
-  R1->>G: for each local iface: add_network(prefix)?, add_edge(self -> prefix, cost)?
-  Note over G: returns _graph_updated bool
-  R1->>R1: _recompute_if_dirty(changed)
-  alt graph changed
-    R1->>R1: routing_table.clear()
-    R1->>G: shortest_paths(self)
-    R1->>R1: rebuild rules from paths
-    R1->>R1: EventTracer._broadcast({"kind":"routing_table_changed", ...})
-  end
-  loop for each iface
-    R1->>R1: seqs[iface.name] += 1
-    R1->>R1: msg = RoutingMessage(iface, seq)
-    R1->>R1: for each local iface: msg.add_destination(prefix, cost)
-    R1->>IF: send_to(Datagram(payload=msg, dst=broadcast))
-    IF->>LAN: Frame -> _in_queue
-  end
-```
-
-Three subtleties:
-
-1. `update_state()` is called **before** the recompute and the send.
-   That ensures a fresh local edge (e.g. after `update_interface`)
-   is in the graph *before* the new advertisement goes out.
-2. The recompute is **inside** the same critical section as the
-   send. There is no observable interval where the routing table
-   is stale relative to what the router is announcing.
-3. The first tick happens at `t ≈ 0`, not after one full interval —
-   `_keepalive_loop` does an initial `_safe_tick` before its first
-   `gate.sleep`. Neighbors learn about a new router immediately
-   instead of waiting up to 10 seconds.
-
-When building the destination list, routers silently omit any
-directly-connected prefix that falls within the RFC 1918 private
-ranges (10.0.0.0/8, 172.16.0.0/12, and 192.168.0.0/16). Peers
-therefore never learn about another router's private LANs through
-the routing protocol. The originating router's own routing table
-still contains directly-connected rules for those interfaces — the
-filter applies only to what is advertised outward, not to the local
-graph. This is what makes overlapping private CIDRs safe across
-tenants: their address spaces remain invisible to every other
-router. Cross-tenant reachability for the public destinations they
-need is recovered at the egress router by source NAT — see
-[nat.md](nat.md).
+- Areas, ABRs, virtual links, stub/NSSA areas.
+- DR/BDR election on broadcast networks.
+- OSPFv3 / IPv6.
+- Full OSPF adjacency states — loom-OSPF's terminal state is `TWO_WAY`.
+- DBD/LSR/LSU LSDB-synchronisation handshake.
+- External LSAs (Type 5).
+- ECMP / multipath, authentication.
 
 ---
 
-## Receiving a flood
+## Wire protocol
 
-`handle_incoming_message` runs on the **inbound interface's packet
-thread** — not on the protocol's own keepalive thread, despite living
-in `RoutingProtocol`. The class boundary doesn't match the thread
-boundary: only `_keepalive_loop` (and the `_handle_update` it calls)
-runs on the keepalive thread; everything else in `RoutingProtocol` is
-invoked synchronously from whichever thread happened to call it. The
-inbound call chain:
+All protocol messages are subclasses of `RoutingMessage` (in `lsa.py`), which
+itself subclasses `entities.packet.Message`. Two concrete message types exist:
 
-```
-Interface._pkt_loop  (per-interface daemon)
-  → device.handle_packet
-    → Router._handle_message
-      → Router._handle_routing_message
-        → RoutingProtocol.handle_incoming_message  ← runs here
-```
+### `LSA`
 
-So in this sequence:
+An LSA carries one router's signed view of its own directly-connected links.
+Fields:
 
-```mermaid
-sequenceDiagram
-  participant Net as fabric
-  participant IF2 as r2.eth0 (inbound)
-  participant R2 as Router r2
-  participant P2 as RoutingProtocol (r2)
-  participant G2 as r2._graph
-  participant Other as other ifaces (r2.eth1, eth2)
-
-  Net->>IF2: Frame
-  IF2->>R2: handle_packet(datagram, iface=eth0)
-  R2->>R2: _handle_routing_message(msg, eth0)
-  R2->>P2: handle_incoming_message(msg, eth0)
-  P2->>P2: local_changed = update_state()
-  P2->>P2: lock acquired
-  alt seq > _seqs_by_address[src_address]
-    P2->>Other: _flood_msg(msg, exclude=eth0)
-    Note over P2: _seqs_by_address[src_address] = seq
-    P2->>G2: _update_graph(msg) -> True/False
-    P2->>P2: _recompute_if_dirty(changed)
-  else seq already seen
-    Note over P2: drop silently
-  end
-```
-
-The dedup test is the bedrock of flooding correctness:
-
-```python
-if seq > self._seqs_by_address[src_addr]:
-    self._flood_msg(msg, interface)
-    self._seqs_by_address[src_addr] = seq
-    changed = self._update_graph(msg) or local_changed
-    self._recompute_if_dirty(changed)
-```
-
-`_seqs_by_address` defaults to `-1` (via `defaultdict(lambda: -1)`), so
-the first message from any source is always accepted (it has `seq=1` at
-minimum).
-
-`_flood_msg(msg, interface)` re-sends the message out of every interface
-**except** the one it arrived on:
-
-```python
-for name, iface in self._router.interfaces().items():
-    if name == interface.name():
-        continue
-    net_broadcast = iface.network().broadcast_address()
-    datagram = Datagram(src_addr=iface.address(),
-                        dst_addr=net_broadcast,
-                        payload=msg)
-    iface.send_to(datagram, dst_addr=net_broadcast)
-```
-
-Note that **the same `msg` object is reused**. Its `seq`, `src_address`,
-and `destinations` survive the bounce intact — which is what makes
-flood-dedup possible (the next router sees the same `(src_address, seq)`
-pair and drops it).
-
----
-
-## Graph updates
-
-`_update_graph(msg)`:
-
-```python
-src_router = msg.src_router()
-
-if src_router not in self._graph:
-    self._graph.add_router(src_router)
-    self._graph_updated = True
-
-for prefix, cost in msg.destinations().items():
-    if prefix not in self._graph:
-        self._graph.add_network(prefix)
-        self._graph_updated = True
-
-    current_cost = self._graph.weight(src=src_router, dst=prefix)
-    if current_cost != cost:
-        self._graph.add_edge(src=src_router, dst=prefix, weight=cost)
-        self._graph_updated = True
-
-return self._graph_updated
-```
-
-Three flag-flips, only one of which triggers a recompute:
-
-| Condition | What it means | Triggers recompute? |
+| Field | Type | Purpose |
 |---|---|---|
-| `src_router not in self._graph` | Heard from a new neighbor | Yes |
-| `prefix not in self._graph` | New network discovered | Yes |
-| `current_cost != cost` | A known link's cost changed | Yes |
-| Same router, same prefix, same cost | Re-advertisement, no news | **No** |
+| `_origin` | `Router` | The router that originated this advertisement |
+| `_seq` | `int` | Monotonically increasing per-router sequence counter |
+| `_links` | `dict[NetworkAddress, int]` | Prefix → cost for each advertised link |
+| `_is_withdrawal` | `bool` | If `True`, this is a zero-link withdrawal LSA |
 
-The "no" case is what keeps a steady-state network quiet: every router
-floods every interval, but no router rebuilds its routing table once
-things have converged.
+Key methods: `is_newer_than(other)` (seq comparison), `has_same_links_as(other)`
+(link-dict equality), `LSA.withdrawal(router, seq)` (constructor for shutdown
+LSA).
+
+### `Hello`
+
+A Hello carries liveness from one interface, listing all non-DOWN neighbors
+currently heard on that fabric. Fields:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `_originator` | `Router` | The router sending the Hello |
+| `_neighbors_heard` | `list[Router]` | Routers heard on this fabric in the last dead interval |
+
+Hellos are **built per-interface** and are not shared across interfaces.
+
+### `Datagram`
+
+Both LSAs and Hellos are transported inside a `Datagram` (in `messages.py`),
+which adds a per-emission source and destination address (fabric broadcast).
+The same `LSA` object may be carried by many `Datagram`s — one per outbound
+interface — without mutation.
 
 ---
 
-## Rebuilding the routing table
+## Sequence-number model
 
-`_recompute_if_dirty(changed)` is the routing-table writer:
+loom-OSPF uses a **single monotone counter per router** (`LinkStateProtocol._seq`,
+incremented by `_next_seq()`). Every LSA emission — refresh cycle or re-flood
+— carries the current value. There is no per-interface counter; the old
+per-interface scheme was a design debt and has been removed.
+
+The LSDB's `install()` method is the acceptance gate:
 
 ```python
-if not changed:
-    return
-
-routing_table = self._router.routing_table()
-routing_table.clear()
-paths = self._graph.shortest_paths(self._router)
-
-for prefix in self._graph.networks():
-    path = paths.get(prefix, list())
-    if len(path) < 2:
-        continue                         # ourselves or unreachable
-    next_hop_network = path[1]
-    next_hop_address = NullAddress       # default: directly connected
-    if len(path) > 2:
-        # Find the IP of the next router on the next-hop network.
-        next_hop = path[2]
-        for _, iface in next_hop.interfaces().items():
-            if iface.network().address() == next_hop_network:
-                next_hop_address = iface.address()
-                break
-
-    # Find which of *our* interfaces is on the next-hop network.
-    for _, iface in self._router.interfaces().items():
-        if iface.network().address() == next_hop_network:
-            routing_table.add_rule(prefix, next_hop_address, iface)
-            break
+if not lsa.is_newer_than(existing):
+    return InstallResult.rejected()
 ```
 
-The shape of a path from `r1` to `lan3` in the sample topology might be:
+`is_newer_than` is a simple `seq > other.seq()` comparison. Ties and replays
+are rejected, so a router can never roll back its sequence number in-flight.
 
-```
-[r1, lan1, r2, lan3]
- ^   ^     ^   ^
- |   |     |   destination prefix (the network we're routing to)
- |   |     next-hop router (its IP on lan1 becomes the next_hop_address)
- |   next-hop network (the interface on lan1 is our out_iface)
- ourselves
-```
-
-If the path is just `[r1, lanX]` (length 2), the destination is directly
-connected: `next_hop_address` stays at `NullAddress`, and
-`Router._handle_forwarding` will substitute `packet.destination()` at
-forwarding time.
-
-After rebuilding the table, the protocol emits a
-`routing_table_changed` event so the SPA can re-render the inspector's
-routing-table section.
+`has_same_links_as` is a dict-equality check on the `_links` maps. The LSDB
+uses it to decide whether an accepted LSA actually changed the graph:
+- Accepted + same links → `InstallResult.accepted(changed_graph=False)` → no
+  SPF recompute, no routing-table rebuild. This keeps a steady-state network
+  quiet even though every router floods at the refresh interval.
+- Accepted + different links → `InstallResult.accepted(changed_graph=True)` →
+  triggers SPF recompute.
 
 ---
 
-## The Dijkstra algorithm
+## Originating an LSA flood
 
-`NetworkGraph._shortest_paths` is a standard textbook Dijkstra with one
-twist: it uses **lazy deletion** of stale heap entries instead of an
-in-place decrease-key. Pushing a fresh `HeapItem(new_dist, node)` for
-every relaxation is cheaper than fingerprint-tracking heap positions, and
-the `visited` set skips re-pops:
+`_emit_lsa_on_all_interfaces` runs on every LSA-refresh timer tick. It uses
+**two LSA instances at the same sequence number** in one atomic lock section:
+
+```mermaid
+sequenceDiagram
+  participant Sched as Scheduler (lsa_refresh)
+  participant Proto as LinkStateProtocol
+  participant DB as LSDB
+  participant G as NetworkGraph (derived)
+  participant IFs as all interfaces
+
+  Sched->>Proto: _emit_lsa_on_all_interfaces(now)
+  Proto->>Proto: seq = _next_seq()
+  Proto->>DB: install(local_lsa[permit-all], now) → result
+  note over DB: RFC 1918 links included
+  alt result.changed_graph()
+    Proto->>G: _rebuild_graph_and_recompute()
+  end
+  Proto->>IFs: for each iface: send Datagram(flooded_lsa[RFC1918-filtered])
+  note over IFs: same seq, outbound policy strips private prefixes
+```
+
+The two-LSA pattern exists because local routing through RFC 1918 networks
+must work (a router forwards its own packets to directly-connected private LANs
+using the local graph), but those private prefixes must not leak to peers. The
+`local_lsa` is built with a permit-all policy so all directly-connected
+networks appear in the LSDB and graph; the `flooded_lsa` is built with
+`RFC1918_OUTBOUND` (strips 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) before
+it is sent out any interface.
+
+At start, `_protocol_loop` calls `_safe_tick_initial` before the first timer
+fires (t ≈ 0), so neighboring routers learn about each other immediately
+instead of waiting one full refresh interval.
+
+---
+
+## Hello protocol
+
+`_emit_hello_on_all_interfaces` runs on every hello-timer tick. For each
+interface it builds a `Hello` listing all non-DOWN neighbors currently heard
+on that fabric, then sends it as a broadcast Datagram.
+
+### Neighbor state machine
+
+Each `(interface, peer)` pair has a `NeighborState`:
+
+```
+         heard Hello         peer listed us
+  DOWN ──────────────► INIT ───────────────► TWO_WAY
+         (any)                (bidirectional)
+                                │
+         dead interval expires  │
+  DOWN ◄────────────────────────┘ (or last hello too old)
+```
+
+| State | Meaning |
+|---|---|
+| `DOWN` | No recent Hello from peer (or never heard) |
+| `INIT` | Heard peer's Hello; peer has not yet included us in its neighbors list |
+| `TWO_WAY` | Heard peer's Hello; peer listed us → bidirectional adjacency confirmed |
+
+State is derived (not stored) from timestamps in `Neighbor.state()`:
+- `_last_hello_at` is refreshed on every received Hello from this peer.
+- `_peer_acked_at` is refreshed when a received Hello lists us in its
+  `neighbors_heard`.
+- Both must be more recent than `dead_interval` seconds ago for `TWO_WAY`.
+
+`NeighborTable.record_hello` returns a `NeighborTransition` when the state
+changes, or `None` when it is stable. A transition to `DOWN` immediately purges
+that peer's LSA from the LSDB and triggers an SPF recompute.
+
+Hellos support **multiple peers per interface** — a single fabric can have
+several routers, each tracked independently under its own `(iface_name, peer)`
+key in `NeighborTable`.
+
+---
+
+## LSDB and graph
+
+`LSDB` is the canonical topology store. Each origin's current LSA is held as
+`(lsa, installed_at)` pair in `_by_origin`. `NetworkGraph` is always a derived
+view:
 
 ```python
-while len(costs) > 0:
-    item = heapq.heappop(costs)
-    current_dist = item.weight()
-    current = item.data()
-
-    if current in visited:
-        continue                          # stale entry — skip
-    visited.add(current)
-
-    for neighbor, weight in self.neighbors(current).items():
-        if neighbor in visited:
-            continue
-        new_neighbor_dist = current_dist + weight
-        if neighbor not in distances or new_neighbor_dist < distances[neighbor]:
-            distances[neighbor] = new_neighbor_dist
-            previous[neighbor] = current
-            heapq.heappush(costs, HeapItem(new_neighbor_dist, neighbor))
+graph = lsdb.build_graph(eligible_origins)
 ```
 
-Complexity: **O((V + E) log V)** in the worst case (each edge can cause
-at most one heap push).
+`build_graph` always includes the local router's own LSA (if present), then
+adds each origin in `eligible_origins`.
 
-`shortest_paths(src)` post-processes the distance/`previous` maps into
-the explicit path list expected by `_recompute_if_dirty`:
+### Cost model (OSPF pseudonode)
+
+Interface costs are **outgoing-only**: an interface cost `N` on router R's
+iface `eth_i` means "sending a packet out of `eth_i` onto its attached subnet
+S costs N." There is no corresponding incoming cost.
+
+`build_graph` encodes this with two directed edges per LSA link:
+
+- `R → S` at weight = R's advertised interface cost
+- `S → R` at weight = 0
+
+The zero-weight reverse edge models the OSPF "pseudonode": once a packet is on
+a multi-access subnet, reaching any router attached to that subnet is free —
+the cost was already paid by whoever put the frame on the wire. Without this,
+a single hop `R₁ → S → R₂` would double-count (`R₁`'s outgoing + `R₂`'s
+outgoing) and asymmetric link costs would behave incorrectly.
+
+A consequence worth knowing: with **symmetric** link costs (both ends set to
+the same value), changing only one side of a link changes the cost from that
+direction only. Changing v's iface cost from 4 to 6 affects `v → t` (now 6)
+but not `t → v` (still 4). To raise the cost symmetrically, update both
+endpoints.
+
+### Local-link change propagation
+
+`Router.update_interface(name, cost)` mutates the interface cost and then
+calls `proto.local_links_changed()` on every protocol. `LinkStateProtocol`
+overrides this to re-emit a fresh LSA, install it locally (recomputing SPF
+if links actually changed), and flood it out every interface immediately —
+the same actions a scheduled `lsa_refresh` tick would take, but without
+waiting for the timer. Without this, a user-driven cost change would only
+propagate at the next periodic refresh (up to `lsa_refresh_interval + jitter`
+later — ~37 s with defaults).
+
+The periodic `lsa_refresh` deadline is reset to `now + lsa_refresh_interval`
+after a manual emission, so a burst of edits collapses into one refresh
+cadence rather than a tail of identical periodic floods.
+
+### Graph eligibility filter
+
+The eligibility set is computed by `_rebuild_graph_and_recompute` in
+`protocol.py` using a three-state classifier based on the Hello-layer view of
+each origin:
+
+| Origin classification | Eligibility | Rationale |
+|---|---|---|
+| TWO_WAY-direct (in `bidirectional_peers`) | Always eligible | Confirmed bidirectional adjacency |
+| Direct-non-TWO_WAY (in `_neighbor_table.all()` ∖ `bidirectional_peers`) | Excluded | Direct neighbor but not yet fully adjacent — asymmetric, INIT-stuck |
+| Non-direct (never observed a Hello from this origin) | Eligible iff ≥1 TWO_WAY adjacency exists | Multi-hop LSA flooded by a trusted peer |
+
+The "non-direct" branch is the critical one for multi-hop convergence: if r1
+has a TWO_WAY adjacency with r2, and r2 floods r3's LSA to r1, r1 will include
+r3 in its graph even though it has never exchanged a Hello with r3 directly.
+Without this extension, only directly-adjacent routers would contribute to the
+graph and a chain r1—r2—r3 would never converge fully at r1.
+
+If no TWO_WAY adjacency exists at all (empty `bidi` set), `eligible_origins`
+is empty — no remote LSA is trusted until at least one adjacency is verified.
+
+**Deviation from RFC 2328.** Real OSPF uses flooder-based admission: an LSA
+is installed when a `Full`-state neighbor (the flooder) delivers it, regardless
+of the origin's own adjacency status. loom-OSPF does the inverse — it classifies
+by origin rather than by flooder. This is more permissive, but acceptable
+because the simulator has no adversarial LSA-injection threat, the simulation
+scale is small (a transient stale graph is corrected by the next genuine flood),
+and the per-origin approach naturally handles loom-OSPF's absence of an
+ExStart/Exchange/Loading/Full handshake.
+
+---
+
+## Receiving an LSA
+
+```mermaid
+sequenceDiagram
+  participant Fabric as fabric
+  participant Iface as inbound interface
+  participant Router as Router
+  participant Proto as LinkStateProtocol
+  participant DB as LSDB
+  participant G as NetworkGraph
+
+  Fabric->>Iface: Datagram(LSA)
+  Iface->>Router: handle_packet
+  Router->>Proto: handle_incoming_message(lsa, iface)
+  Proto->>Proto: _refresh_local_lsa()
+  Proto->>DB: install(lsa, now) → InstallResult
+  alt result.is_accepted()
+    Proto->>Iface: _flood_lsa(lsa, exclude=inbound iface)
+    alt result.changed_graph()
+      Proto->>G: _rebuild_graph_and_recompute()
+    end
+  else
+    Note over Proto: duplicate or stale → drop
+  end
+```
+
+Key points:
+
+- `_refresh_local_lsa()` is called first to ensure the local router's own
+  links are in the LSDB before any eligibility calculation.
+- Re-flood happens on `is_accepted()` — including accepted-but-same-links LSAs.
+  The LSA's `seq` has advanced, so peers downstream will accept it; without
+  re-flooding a bump they would never receive the new sequence number, and their
+  LSDB entries would expire.
+- SPF recompute happens only on `changed_graph()`, keeping a steady-state
+  network quiet.
+- `_flood_lsa` re-sends the **same LSA object** (origin + seq + links intact)
+  out every interface except the one it arrived on. This is what makes flood
+  deduplication work: every downstream router sees the same `(origin, seq)`
+  pair and rejects it after the first acceptance.
+
+---
+
+## LSA age and max-age purge
+
+loom-OSPF does not implement OSPF's in-LSA per-second age field. Instead the
+LSDB stores a `wall_clock` timestamp (`installed_at`) at install time.
+
+**Max-age sweep** runs on the `maxage_check` timer (same cadence as
+`lsa_refresh`). `_sweep_dead_and_expired` calls `lsdb.expired_origins(max_age,
+now)`:
 
 ```python
-for node in self._costs.keys():
-    path = [node]
-    current = node
-    while current != src:
-        if current not in previous:
-            break                          # node unreachable
-        current = previous[current]
-        path.insert(0, current)
-    paths[node] = path
+[
+    origin for origin, (_, installed_at) in _by_origin.items()
+    if now - installed_at > max_age
+]
 ```
 
-`previous` is missing for unreachable nodes — those produce a
-single-element `path = [node]` which `_recompute_if_dirty` filters out
-via `len(path) < 2`.
+Any non-local origin whose last LSA is older than `max_age = 2 × refresh` is
+purged and the graph is rebuilt. The local router's own entry is exempt from
+purge (it refreshes itself on every `lsa_refresh` tick).
+
+**How liveness maps to max-age**: if a router stops flooding (crash, network
+partition, or graceful stop without withdrawal), its LSA ages out within
+`max_age`. The default `max_age = 60s` (with `refresh = 30s`) means a failed
+router is detected within two refresh cycles.
+
+The **dead interval** is a separate (shorter) signal at the Hello layer:
+`dead_interval = 3 × hello_interval = 30s` by default. A neighbor that stops
+sending Hellos is moved to `DOWN` within `dead_interval`, its LSA is purged
+from the LSDB, and the graph is rebuilt — well before max-age would fire.
+Together, Hello-based dead detection is the fast path; max-age is the safety net.
 
 ---
 
-## Sequence numbers and origination
+## Graceful shutdown withdrawal
 
-Each interface has its own monotonically increasing sequence counter
-(`_seqs[iface_name]`). That means the same router emits **multiple**
-parallel streams, one per interface. The receiving end dedups per
-`src_address`, so this is by design — each stream is independent.
-
-There is a `# TODO: same seq` comment in `_handle_update` noting that we
-probably *should* use a single seq per router rather than per interface,
-because today an attacker (or a bug) that resets `_seqs["eth0"]` without
-resetting `_seqs["eth1"]` would leave one stream stale. The code works
-because no current path resets seqs mid-flight. Don't touch this without
-adding tests.
-
----
-
-## Pause / resume semantics
-
-`_keepalive_loop` waits on the AS-wide `PauseGate`:
+`LinkStateProtocol.stop()` calls `_flood_withdrawal()` before setting the stop
+flag:
 
 ```python
-while not self._stopped:
-    if gate is not None:
-        timed_out, stopped = gate.sleep(self._keepalive_interval)
-        if stopped:
-            break
-        running, stopped = gate.wait_or_stop()
-        if stopped:
-            break
-        if not running:
-            continue                       # paused; loop again without ticking
-    else:
-        time.sleep(self._keepalive_interval)
-    self._safe_tick()
+lsa = LSA.withdrawal(self._router, seq=self._next_seq())
+# flood out every interface
 ```
 
-`gate.sleep` returns `(True, False)` when the full interval elapses — the
-caller then checks `wait_or_stop` to ensure the gate is still running
-*at tick time* (it may have flipped to paused during the sleep). If
-paused, the loop continues without ticking; if stopped, it breaks.
+A withdrawal LSA has `is_withdrawal=True` and carries no links. When a
+receiver installs it (`lsdb.install` detects `is_withdrawal=True`), it pops the
+origin from `_by_origin` entirely. The `InstallResult` returns
+`accepted(changed_graph=True)` if the origin was present, triggering an
+immediate SPF recompute on every receiving router. The flood propagates
+normally through `_flood_lsa`.
 
-Consequence: pausing the simulation **freezes the routing protocol** as
-well as the data plane. No floods originate, no graph updates accept, no
-recomputes fire. On resume, the next interval-timer tick is the first
-event — there is no "catch-up burst."
+Compared to waiting for max-age (up to 60s), withdrawal gives peers near-instant
+convergence after a clean shutdown.
 
 ---
 
-## Liveness and convergence
+## Timer model and jitter
 
-The protocol is **periodic**, not event-driven for liveness. Costs are
-recomputed when a router receives news, but the news only flows on
-keepalive ticks. So:
+`_protocol_loop` drives three independent timers via a `Scheduler` instance.
+The loop parks on `_wake_event.wait(timeout=time_to_next_deadline)` and
+dispatches whichever timers have elapsed when it wakes:
 
-- A new interface cost takes effect on the **next keepalive** of the
-  router whose interface changed, plus one flood-propagation latency.
-- A new router takes effect within **one keepalive** for direct
-  neighbors, plus N keepalives to reach a router N hops away (each hop
-  re-floods on its own schedule).
-- A removed link is **not** detected actively. There is no failure
-  detection in this simulator — if you remove a router via the patch
-  API, the others will only stop hearing it. Their graphs still
-  reference the dead router until something else changes; eventually,
-  if you reset, they re-converge.
+| Timer name | Default interval | Derived from | Purpose |
+|---|---|---|---|
+| `hello` | 10s | production default | Emit Hellos; sweep dead neighbors |
+| `lsa_refresh` | 30s | production default | Emit LSA flood; refresh own LSDB entry |
+| `maxage_check` | 30s | `= lsa_refresh` | Purge expired remote LSAs |
 
-Tuning the keepalive interval lower (the toolbar exposes 1–300 s)
-trades off network chatter for faster convergence. The lower bound of 1
-second is enforced server-side (`POST /sim/refresh_interval`).
+Derived relations (fixed ratios, not tunable separately):
+
+```
+dead_interval   = 3 × hello_interval
+max_age         = 2 × lsa_refresh_interval
+```
+
+**Jitter**: `Scheduler.elapsed` reschedules each fired timer by drawing the
+next deadline from `[0.75 × base, 1.25 × base]` (the IS-IS convention). This
+desynchronises routers that start at the same instant, avoiding simultaneous
+floods on large topologies.
+
+For tests requiring deterministic timing, `Scheduler` accepts
+`jitter_range=(1.0, 1.0)`.
+
+The `POST /sim/protocol_config` endpoint (and the toolbar) expose
+`hello_interval` and `lsa_refresh_interval` as the two tuneable knobs. The
+`set_timers` method recomputes all derived values and wakes the protocol loop
+immediately so the new cadence takes effect without waiting for the old deadline
+to expire.
+
+---
+
+## Pause / resume
+
+`_protocol_loop` respects the AS-wide `PauseGate` before each tick:
+
+```python
+running, stopped = gate.wait_or_stop()
+if stopped:
+    break
+if not running:
+    continue          # paused — re-park without ticking
+```
+
+Pausing the simulation freezes Hellos, LSA floods, dead-neighbor sweeps, and
+max-age checks. No bursts of catchup activity occur on resume; the next timer
+tick is simply the first event after unpausing.
 
 ---
 
@@ -400,12 +423,45 @@ second is enforced server-side (`POST /sim/refresh_interval`).
 
 | Concern | File | Symbol |
 |---|---|---|
-| Keepalive loop | `src/routing/protocol.py` | `_keepalive_loop` |
-| Originate a flood | `src/routing/protocol.py` | `_handle_update` |
-| Receive a flood | `src/routing/protocol.py` | `handle_incoming_message` |
-| Dedup + re-flood | `src/routing/protocol.py` | `_flood_msg` |
-| Apply incoming advertisement | `src/routing/protocol.py` | `_update_graph` |
-| Rebuild routing table | `src/routing/protocol.py` | `_recompute_if_dirty` |
+| Wire message types | `src/routing/lsa.py` | `RoutingMessage`, `LSA` |
+| Hello message | `src/routing/hello.py` | `Hello` |
+| Datagram carrier | `src/routing/messages.py` | `Datagram` |
+| LSDB install + purge | `src/routing/lsdb.py` | `LSDB.install`, `LSDB.expired_origins` |
+| LSDB → graph | `src/routing/lsdb.py` | `LSDB.build_graph` |
+| Neighbor state machine | `src/routing/neighbor.py` | `Neighbor.state`, `NeighborTable` |
+| Timer deadlines + jitter | `src/routing/scheduler.py` | `Scheduler` |
+| Protocol loop | `src/routing/protocol.py` | `LinkStateProtocol._protocol_loop` |
+| LSA origination | `src/routing/protocol.py` | `_emit_lsa_on_all_interfaces` |
+| Hello origination | `src/routing/protocol.py` | `_emit_hello_on_all_interfaces` |
+| LSA reception | `src/routing/protocol.py` | `_handle_incoming_lsa` |
+| Hello reception | `src/routing/protocol.py` | `_handle_incoming_hello` |
+| Eligibility filter | `src/routing/protocol.py` | `_rebuild_graph_and_recompute` |
+| SPF + routing table | `src/routing/protocol.py` | `_recompute_routing_table` |
+| Withdrawal flood | `src/routing/protocol.py` | `_flood_withdrawal` |
 | Dijkstra | `src/routing/graph.py` | `NetworkGraph._shortest_paths` |
-| Path post-process | `src/routing/graph.py` | `NetworkGraph.shortest_paths` |
-| Longest-prefix match | `src/entities/router.py` | `RoutingTable.match` |
+
+---
+
+## What's deliberately deferred
+
+loom-OSPF is a faithful simplification, not a full RFC 2328 implementation. The
+following are out of scope and are not planned without a concrete use case:
+
+- **OSPF areas / ABRs / hierarchical routing** — the whole AS is one flat area.
+- **DR / BDR election** — loom networks are point-to-point (`/30` or `/31`
+  Links) or small LAN fabrics where an election adds no value.
+- **OSPFv3 / IPv6** — loom models IPv4 only.
+- **Full adjacency state (ExStart / Exchange / Loading / Full)** — loom-OSPF
+  has no DBD/LSR/LSU LSDB-synchronisation handshake. `TWO_WAY` is the terminal
+  state.
+- **External LSAs (Type 5)** — cross-AS reachability belongs in a future BGP
+  component.
+- **ECMP / multipath** — the routing table stores one rule per destination
+  prefix; multiple equal-cost paths are not tracked.
+- **Authentication** — MD5/HMAC-SHA message authentication is not implemented.
+- **Virtual links** — loom has no backbone area; virtual links are meaningless.
+- **In-LSA per-second age field** — loom uses wall-clock timestamps at install
+  time, not OSPF's per-second in-place age. The observable difference is that
+  loom cannot propagate remaining age across hops the way OSPF does, but this
+  matters only for very large networks where inter-router propagation delay is
+  significant compared to max-age.

@@ -386,6 +386,18 @@ A few pointers that save time on this project specifically:
   project documentation. Lift anything worth keeping into
   `docs/architecture/` before deleting.
 
+### Subagent-driven execution for multi-task features
+
+When a feature is planned as several tasks/commits, `loom` follows a
+fixed per-task dev → reviewer cycle, with a final review and QA pass
+after every task lands. The process is captured in
+[`.claude/process/subagent-driven-execution.md`](.claude/process/subagent-driven-execution.md):
+role profiles (Python / JavaScript / OO design for the developer;
+hands-on network engineering for the reviewer), briefing templates,
+the loop, and decision rules. Reuse the process for any multi-commit
+feature; skip it for single-commit fixes, small refactors, or
+one-off doc edits.
+
 ---
 
 ## Project Conventions and Traps

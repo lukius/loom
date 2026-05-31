@@ -37,12 +37,19 @@ authoritative state, as fed by the WebSocket `sim_state` events.
 
 Click **Start** (or press <kbd>Space</kbd>). The SPA does, in order:
 
-1. Serializes the current canvas to YAML.
-2. POSTs to `/topology` — the server validates and constructs a fresh
+1. Checks the topology is complete — every LAN and link has a network
+   range, every host is attached to one and has an address, and every
+   router interface has an address. If something's missing, Start is
+   aborted, a plain-English message names what to fix, and the item in
+   question is selected so you can jump straight to it and fill it in.
+2. Serializes the current canvas to YAML.
+3. POSTs to `/topology` — the server validates and constructs a fresh
    autonomous system. On any validation error, the start is aborted
    and the toolbar surfaces the error via toast.
-3. POSTs to `/sim/start` — the server starts the simulation and every
+4. POSTs to `/sim/start` — the server starts the simulation and every
    router's keepalive.
+
+![Start names what's incomplete and selects it — here a LAN with no range yet](../images/07-start-preflight.png)
 
 If the topology was already loaded (e.g. you stopped and want to start
 again with the same topology), step 1+2 is a no-op overwrite of the

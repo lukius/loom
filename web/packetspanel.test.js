@@ -730,3 +730,98 @@ describe('PacketsPanel — chatter section toggle', () => {
     expect(header2).toContain('Packets (0)');
   });
 });
+
+describe('PacketsPanel — hello chatter section', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    state.routers = { r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 } } } };
+    delete document.body.dataset.chatterBadges;
+  });
+
+  function emitHello(payloadId) {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'hello',
+      payload_id: payloadId, network: 'lan_a',
+      src: { device: 'r1', iface: 'eth0', address: '10.0.0.254' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '10.0.0.254', payload_dst: '255.255.255.255',
+      payload: { originator: 'r1', neighbors_heard: [] },
+    } }));
+  }
+
+  it('hello chatter appears in the routing chatter section', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitHello('h1');
+    PacketsPanel.render();
+    const summary = document.querySelector('#packets-panel .pkt-chatter-summary');
+    expect(summary).not.toBeNull();
+    expect(summary.textContent).toContain('1');
+    expect(summary.textContent.toLowerCase()).toContain('routing chatter');
+  });
+
+  it('expanding chatter shows hello row with a typed, non-transparent swatch', () => {
+    // Inject the relevant CSS rules so getComputedStyle reflects them
+    // (the real styles.css isn't loaded under vitest).
+    const style = document.createElement('style');
+    style.textContent = '.pkt-swatch[data-type="hello"] { background: #a5b4fc; }';
+    document.head.appendChild(style);
+
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitHello('h1');
+    PacketsPanel.render();
+    document.querySelector('.pkt-chatter-summary .pkt-toggle').click();
+    const rows = document.querySelectorAll('.pkt-chatter-row');
+    expect(rows.length).toBe(1);
+    const swatch = rows[0].querySelector('.pkt-swatch[data-type="hello"]');
+    expect(swatch).not.toBeNull();
+    // The actual hue can shift over time; the regression we want to catch
+    // is the CSS rule going missing in styles.css and the swatch becoming
+    // transparent. Hue-agnostic check.
+    const bg = window.getComputedStyle(swatch).background ||
+               window.getComputedStyle(swatch).backgroundColor;
+    expect(bg).toBeTruthy();
+    expect(bg).not.toBe('');
+    expect(bg).not.toBe('rgba(0, 0, 0, 0)');
+    expect(bg).not.toBe('transparent');
+
+    document.head.removeChild(style);
+  });
+
+  it('hello and routing_flood both appear in chatter section together', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitHello('h1');
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood', payload_id: 'lsa-1', network: 'lan_a',
+      src: { device: 'r1', iface: 'eth0', address: '10.0.0.254' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '10.0.0.254', payload_dst: '255.255.255.255',
+    } }));
+    PacketsPanel.render();
+    const summary = document.querySelector('#packets-panel .pkt-chatter-summary');
+    expect(summary).not.toBeNull();
+    // 2 distinct logical messages in the chatter section
+    expect(summary.textContent).toContain('2');
+  });
+
+  it('chatter rows show a friendly type label (Hello / LSA) next to the id', () => {
+    PacketsPanel.wire();
+    PacketsPanel.open();
+    emitHello('h1');
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood', payload_id: 'lsa-1', network: 'lan_a',
+      src: { device: 'r1', iface: 'eth0', address: '10.0.0.254' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '10.0.0.254', payload_dst: '255.255.255.255',
+    } }));
+    PacketsPanel.render();
+    document.querySelector('.pkt-chatter-summary .pkt-toggle').click();
+    const rows = Array.from(document.querySelectorAll('.pkt-chatter-row'));
+    expect(rows.length).toBe(2);
+    const labels = rows.map(r => r.querySelector('.pkt-type')?.textContent);
+    expect(labels).toContain('Hello');
+    expect(labels).toContain('LSA');
+  });
+});

@@ -149,6 +149,13 @@
           </svg>
         </button>
       </div>
+      <button class="btn outline" id="btn-new" title="New topology">
+        <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M9 1.75H4.5a1 1 0 0 0-1 1v10.5a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V5.25z"/>
+          <path d="M9 1.75V5.25h3.5M8 8v3.5M6.25 9.75h3.5"/>
+        </svg>
+        New
+      </button>
       <button class="btn outline" id="btn-import" title="Import YAML">
         <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M8 11V2M4 7l4 4 4-4M2 14h12"/>
@@ -201,11 +208,13 @@
         <svg class="ico"><use href="#ui-reset"/></svg> Reset
       </button>
       <span class="div"></span>
-      <label class="tb-refresh" title="Routing keepalive interval (1–300s)">
-        <span class="lbl">Keepalive</span>
-        <input id="tb-refresh" type="number" min="1" max="300" step="1" value="10" disabled />
-        <span class="unit">s</span>
-      </label>
+      <button class="tb-btn" id="tb-protocol" title="Protocol settings (hello / LSA refresh)" disabled>
+        <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+          <circle cx="8" cy="8" r="6"/>
+          <path d="M8 2v3M8 11v3M2 8h3M11 8h3"/>
+        </svg>
+        Protocol
+      </button>
       <label class="tb-refresh" title="Packet animation duration per hop (200–5000ms)">
         <span class="lbl">Packets</span>
         <input id="tb-speed" type="number" min="200" max="5000" step="100" value="1800" />
@@ -298,6 +307,48 @@
 </div>
 
 <div class="toast-wrap" id="toasts"></div>
+
+<div id="protocol-popover" class="popover" hidden>
+  <div class="popover-head">
+    <h4>loom-OSPF settings</h4>
+    <button class="popover-close" id="protocol-popover-close" aria-label="Close">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M2 2l8 8M10 2l-8 8"/>
+      </svg>
+    </button>
+  </div>
+  <div class="popover-body">
+    <div class="popover-field">
+      <label for="proto-hello">Hello interval</label>
+      <div class="popover-row">
+        <input id="proto-hello" type="number" min="1" max="300" step="1" value="10" />
+        <span class="unit">s</span>
+      </div>
+    </div>
+    <div class="popover-field">
+      <label for="proto-refresh">LSA refresh interval</label>
+      <div class="popover-row">
+        <input id="proto-refresh" type="number" min="1" max="900" step="1" value="30" />
+        <span class="unit">s</span>
+      </div>
+    </div>
+    <div class="popover-derived">
+      <h5>Derived (read-only)</h5>
+      <div class="popover-derived-row">
+        <span>Dead interval</span>
+        <span id="proto-dead">30s <em>(3 × hello)</em></span>
+      </div>
+      <div class="popover-derived-row">
+        <span>Max-age</span>
+        <span id="proto-maxage">60s <em>(2 × refresh)</em></span>
+      </div>
+    </div>
+    <div class="popover-actions">
+      <button class="btn-sec" id="proto-cancel" type="button">Cancel</button>
+      <button class="tb-btn primary" id="proto-apply" type="button">Apply</button>
+    </div>
+  </div>
+</div>
 
 <script type="module" src="app.js"></script>
 </body>

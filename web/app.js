@@ -7,8 +7,9 @@ import { toast } from './utils.js';
 import {
   state, bus, SAMPLE,
   persist, restore, markDirty, setSave,
-  defaultExportFilename,
+  defaultExportFilename, clearTopology,
 } from './state.js';
+import { confirmModal } from './modal.js';
 import {
   Sim, RuntimeClient,
   setConnectionStatus,
@@ -28,6 +29,7 @@ import {
 import './terminals.js';
 import { PacketAnim } from './packets.js';
 import { PacketsPanel } from './packetspanel.js';
+import { wireProtocolPopover } from './protocolpopover.js';
 import { importYaml as _importYaml, exportYaml } from './yaml-io.js';
 import { openImportPicker, runExportSave, fetchSourceName } from './file-picker.js';
 
@@ -64,26 +66,18 @@ document.getElementById('tb-toggle-ifaces').addEventListener('click', () => {
   bus.dispatchEvent(new CustomEvent('state:topology-changed'));
 });
 
-(() => {
-  const inp = document.getElementById('tb-refresh');
-  if (!inp) return;
-  let lastGood = parseInt(inp.value, 10) || 10;
-  inp.addEventListener('change', async () => {
-    const v = parseInt(inp.value, 10);
-    if (!Number.isFinite(v) || v < 1 || v > 300) {
-      toast(`Keepalive must be 1–300s`, 'error', 'Keepalive');
-      inp.value = lastGood;
-      return;
-    }
-    try {
-      await RuntimeClient.setRefreshInterval(v);
-      lastGood = v;
-    } catch (err) {
-      toast(`Failed: ${err.message}`, 'error', 'Keepalive');
-      inp.value = lastGood;
-    }
-  });
-})();
+wireProtocolPopover({
+  onApply: async ({ hello, refresh }) => {
+    await RuntimeClient.setProtocolConfig({ hello, refresh });
+    toast(`Protocol timers updated: hello ${hello}s, refresh ${refresh}s`);
+  },
+});
+
+bus.addEventListener('sim:status-changed', () => {
+  const enabled = Sim.state !== 'idle';
+  const protocol = document.getElementById('tb-protocol');
+  if (protocol) protocol.disabled = !enabled;
+});
 
 (() => {
   const inp = document.getElementById('tb-speed');
@@ -132,6 +126,19 @@ function wire() {
   document.querySelectorAll('[data-theme-btn]').forEach(b => {
     b.addEventListener('click', () => applyTheme(b.getAttribute('data-theme-btn')));
   });
+  const onNew = async () => {
+    const ok = await confirmModal({
+      title: 'New topology',
+      body: 'Clear the current topology? This discards all networks, hosts, routers and links. Export first if you want to keep it.',
+      confirmLabel: 'Clear topology',
+      danger: true,
+    });
+    if (!ok) return;
+    // A fresh topology means no running simulation — stop one first if needed.
+    if (Sim.state !== 'idle') await Sim.onPrimary();
+    clearTopology();
+  };
+  document.getElementById('btn-new').addEventListener('click', onNew);
   const onImport = () => openImportPicker({
     onLoad: (text, sourceName) => {
       if (!importYaml(text)) return;

@@ -54,7 +54,7 @@ function addressValidatorFor(fabricKind, fabricName, selfRef) {
     if (!isValidIpv4(v)) return { ok: false, reason: 'not a valid IPv4 address' };
     // Containment: an interface address only makes sense inside its fabric's
     // CIDR. Without this check, the user could attach a router to lan1 with an
-    // address from a different subnet — neighbours would still flood the bogus
+    // address from a different subnet — neighbors would still flood the bogus
     // route via link-state, but no traffic could ever reach it.
     if (fabricName) {
       const fabric = (fabricKind === 'link' ? state.links : state.networks)[fabricName];
@@ -102,26 +102,172 @@ function wireFieldValidation(input, errorEl, validateFn) {
   update(input.value);
 }
 
+/* ---------- collapsible section helpers ----------
+   Track which top-level sections are open across re-renders, mirroring the
+   existing per-iface openIfaces pattern. Values: 'routing' | 'nat' | 'neighbors'. */
+const openSections = new Set();
+
+function rememberOpen(elI) {
+  const opens = Array.from(elI.querySelectorAll('details.insp-section[open]'))
+    .map(d => d.dataset.section);
+  openSections.clear();
+  for (const k of opens) openSections.add(k);
+}
+
+function isOpen(key, defaultOpen = false) {
+  if (openSections.has(key)) return true;
+  if (defaultOpen && openSections.size === 0) return true;
+  return false;
+}
+
+function wireSectionToggles(root) {
+  root.querySelectorAll('details.insp-section').forEach(d => {
+    d.addEventListener('toggle', () => {
+      if (d.open) openSections.add(d.dataset.section);
+      else openSections.delete(d.dataset.section);
+    });
+  });
+}
+
+/* ---------- routing table section (synchronous placeholder) ---------- */
+function renderRoutingSection(deviceName) {
+  // Render an empty collapsible shell synchronously; refreshRoutes() fills in
+  // the real rules once the async fetch completes.  The shell guarantees the
+  // <details> exists at DOM insertion time so test queries and toggle-listeners
+  // can attach immediately.
+  const openAttr = isOpen('routing', true) ? ' open' : '';
+  return `<details class="insp-section" data-section="routing"${openAttr}>` +
+    `<summary>Routing table <span class="summary-hint">(loading…)</span></summary>` +
+    `<div class="insp-section-body"><div class="hint">(loading…)</div></div>` +
+    `</details>`;
+}
+
+/* ---------- neighbors section ---------- */
+function _otherRouterOnFabric(thisDevice, ifaceObj) {
+  // True iff some router OTHER than `thisDevice` has an interface attached
+  // to the same network/link as `ifaceObj`. Used to distinguish a stub
+  // interface (only router on the fabric — nothing to peer with, mirrors
+  // real OSPF's empty neighbor table for such interfaces) from a real
+  // DOWN adjacency (a peer is expected but no Hello has arrived).
+  const fabricKey = ifaceObj && ifaceObj.network !== undefined ? 'network' : 'link';
+  const fabricName = ifaceObj && ifaceObj[fabricKey];
+  if (!fabricName) return false;
+  for (const [rn, r] of Object.entries(state.routers || {})) {
+    if (rn === thisDevice) continue;
+    for (const other of Object.values(r.interfaces || {})) {
+      if (other[fabricKey] === fabricName) return true;
+    }
+  }
+  return false;
+}
+
+function renderNeighborSection(device, router) {
+  const data = (state.neighborsByDevice && state.neighborsByDevice[device]) || {};
+  const ifaceNames = Object.keys(router.interfaces || {});
+  // peers = unique peer-router names; adjacencies = total per-interface
+  // entries that *represent an expected adjacency*. Stub interfaces (no
+  // other router on the fabric) don't count — there's nothing to peer
+  // with, so listing them as DOWN would falsely imply something is wrong.
+  const peerSet = new Set();
+  const counts = { down: 0, init: 0, two_way: 0 };
+  const ifaceBlocks = ifaceNames.map(iface => {
+    const peers = data[iface] || {};
+    const peerNames = Object.keys(peers);
+    if (peerNames.length === 0) {
+      const ifaceObj = (router.interfaces || {})[iface];
+      const isStub = !_otherRouterOnFabric(device, ifaceObj);
+      if (isStub) {
+        return `<div class="neigh-iface-block"><div class="iface-name">${escapeHtml(iface)}</div>` +
+          `<div class="neigh-row"><span class="peer">—</span>` +
+          `<span class="neigh-state stub">no other routers</span></div></div>`;
+      }
+      counts.down += 1;
+      return `<div class="neigh-iface-block"><div class="iface-name">${escapeHtml(iface)}</div>` +
+        `<div class="neigh-row"><span class="peer">—</span>` +
+        `<span class="neigh-state down">DOWN</span></div></div>`;
+    }
+    const rows = peerNames.map(peer => {
+      const n = peers[peer];
+      counts[n.state] = (counts[n.state] || 0) + 1;
+      peerSet.add(peer);
+      // TODO: replace 'recent' with a real "Ns ago" once clock sync is available.
+      const ago = n.last_hello_at != null ? 'last hello recent' : '';
+      const stateClass = n.state || 'down';
+      const stateLabel = (n.state || 'down').toUpperCase();
+      return `<div class="neigh-row">` +
+        `<span class="peer">${escapeHtml(peer)}</span>` +
+        `<span class="neigh-state ${stateClass}">${stateLabel}</span>` +
+        `<span class="timing">${ago}</span>` +
+        `</div>`;
+    }).join('');
+    return `<div class="neigh-iface-block">` +
+      `<div class="iface-name">${escapeHtml(iface)}</div>` +
+      `${rows}` +
+      `</div>`;
+  }).join('');
+  const peerCount = peerSet.size;
+  const adjCount = counts.two_way + counts.init + counts.down;
+  const peerWord = peerCount === 1 ? 'peer' : 'peers';
+  const adjWord = adjCount === 1 ? 'adjacency' : 'adjacencies';
+  // Zero state counts are omitted so the hint stays on one row in the common
+  // (fully-converged) case. The full TWO_WAY/INIT/DOWN breakdown only shows
+  // up when there's actually something to report.
+  const stateParts = [];
+  if (counts.two_way) stateParts.push(`${counts.two_way} TWO_WAY`);
+  if (counts.init)    stateParts.push(`${counts.init} INIT`);
+  if (counts.down)    stateParts.push(`${counts.down} DOWN`);
+  const stateSuffix = stateParts.length ? ` · ${stateParts.join(' · ')}` : '';
+  const hint = `(${peerCount} ${peerWord} · ${adjCount} ${adjWord}${stateSuffix})`;
+  const openAttr = isOpen('neighbors') ? ' open' : '';
+  return `<details class="insp-section" data-section="neighbors"${openAttr}>` +
+    `<summary>Neighbors <span class="summary-hint">${hint}</span></summary>` +
+    `<div class="insp-section-body neigh-list">${ifaceBlocks}</div>` +
+    `</details>`;
+}
+
 /* ---------- Inspector ---------- */
 export const Inspector = {
   async refreshRoutes(deviceName) {
     const sec = document.getElementById('insp-routes');
     if (!sec) return;
-    if (Sim.state === 'idle' || !deviceName) { sec.hidden = true; return; }
-    // Hosts don't have a routing table; hide the section.
+    // Hosts don't have a routing table; hide the section entirely.
     if (state.hosts && state.hosts[deviceName]) { sec.hidden = true; return; }
+    if (!deviceName) { sec.hidden = true; return; }
+    if (Sim.state === 'idle') {
+      // Sim idle: routing table data not available. Leave the static placeholder
+      // visible for routers (the section renders synchronously in the inspector
+      // HTML) but update the hint so the user knows why it looks empty.
+      const hint = sec.querySelector('.summary-hint');
+      if (hint) hint.textContent = '(sim not running)';
+      return;
+    }
     try {
       const r = await RuntimeClient.deviceRoutes(deviceName);
-      sec.hidden = false;
-      const rows = (r.rules || []).map(x =>
+      const rules = r.rules || [];
+      const ruleCount = rules.length;
+      const rows = rules.map(x =>
         `<tr><td>${escapeHtml(x.prefix)}</td><td>${escapeHtml(x.next_hop)}</td><td>${escapeHtml(x.iface)}</td></tr>`
       ).join('');
-      sec.innerHTML = `<h4 class="insp-h">Routing table — ${escapeHtml(deviceName)}</h4>` +
-        (rows
-          ? `<table class="insp-table"><thead><tr><th>Prefix</th><th>Next hop</th><th>Iface</th></tr></thead><tbody>${rows}</tbody></table>`
-          : '<div class="hint">(empty)</div>');
-    } catch (e) {
-      sec.hidden = true;
+      const tableHtml = rows
+        ? `<table class="insp-table"><thead><tr><th>Prefix</th><th>Next hop</th><th>Iface</th></tr></thead><tbody>${rows}</tbody></table>`
+        : '<div class="hint">(empty)</div>';
+      // Update the <details> content in place, preserving open/closed state.
+      let details = sec.querySelector('details.insp-section[data-section="routing"]');
+      if (!details) {
+        const openAttr = isOpen('routing', true) ? ' open' : '';
+        sec.innerHTML = `<details class="insp-section" data-section="routing"${openAttr}>` +
+          `<summary>Routing table <span class="summary-hint"></span></summary>` +
+          `<div class="insp-section-body"></div>` +
+          `</details>`;
+        details = sec.querySelector('details.insp-section');
+        wireSectionToggles(sec);
+      }
+      const hint = details.querySelector('.summary-hint');
+      if (hint) hint.textContent = `(${ruleCount} ${ruleCount === 1 ? 'rule' : 'rules'})`;
+      const body = details.querySelector('.insp-section-body');
+      if (body) body.innerHTML = tableHtml;
+    } catch (_e) {
+      // Server not reachable or device not found — leave the placeholder.
     }
   },
 
@@ -168,8 +314,13 @@ export const Inspector = {
       }
       return `<tr><td>${escapeHtml(e.original_src)}</td><td>${escapeHtml(e.rewritten_src)}</td><td>${escapeHtml(e.dst)}</td>${fidCell}</tr>`;
     }).join('');
-    sec.innerHTML = `<h4 class="insp-h">NAT table — ${escapeHtml(deviceName)}</h4>` +
-      `<table class="insp-table"><thead><tr><th>Original</th><th>Rewritten</th><th>Destination</th><th>Flow ID</th></tr></thead><tbody>${rows}</tbody></table>`;
+    const openAttr = isOpen('nat') ? ' open' : '';
+    sec.innerHTML = `<details class="insp-section" data-section="nat"${openAttr}>` +
+      `<summary>NAT table <span class="summary-hint">(${entries.length} ${entries.length === 1 ? 'entry' : 'entries'})</span></summary>` +
+      `<div class="insp-section-body">` +
+      `<table class="insp-table"><thead><tr><th>Original</th><th>Rewritten</th><th>Destination</th><th>Flow ID</th></tr></thead><tbody>${rows}</tbody></table>` +
+      `</div></details>`;
+    wireSectionToggles(sec);
   },
 
   onNATChange(evt) {
@@ -736,9 +887,10 @@ export function renderRouterInsp(name, elI) {
   const router = state.routers[name];
   if (!router) { state.selection = null; return renderInspector(); }
   const ifaces = Object.entries(router.interfaces || {});
-  // Snapshot which iface <details> are currently expanded before we blow
-  // away the inspector innerHTML; we re-apply the open state below so the
-  // user doesn't lose the context they were editing in.
+  // Snapshot which iface <details> are currently expanded and which top-level
+  // sections are open before we blow away the inspector innerHTML; we
+  // re-apply open state below so the user doesn't lose their context.
+  rememberOpen(elI);
   const openIfaces = new Set(
     Array.from(elI.querySelectorAll('details.iface[open]'))
       .map(d => d.getAttribute('data-iface')),
@@ -823,7 +975,8 @@ export function renderRouterInsp(name, elI) {
         <button class="add-if" id="add-if" style="margin-top:8px;">+ Add interface</button>
       </div>
     </div>
-    <div class="insp-routes" id="insp-routes" hidden></div>
+    <div class="insp-neighbors">${renderNeighborSection(name, router)}</div>
+    <div class="insp-routes" id="insp-routes">${renderRoutingSection(name)}</div>
     <div class="insp-nat" id="insp-nat" hidden></div>
     <div class="insp-foot">
       <button class="dup" id="f-dup">Duplicate</button>
@@ -967,6 +1120,8 @@ export function renderRouterInsp(name, elI) {
   });
   elI.querySelector('#f-del').addEventListener('click', deleteSelected);
   elI.querySelector('#f-dup').addEventListener('click', () => duplicateRouter(name));
+  // Persist open/closed state of top-level collapsible sections across re-renders.
+  wireSectionToggles(elI);
   Inspector.refreshRoutes(name);
   Inspector.refreshNAT(name);
 }
@@ -1150,6 +1305,19 @@ bus.addEventListener('sim:routing-table-changed', (e) => {
 });
 bus.addEventListener('sim:nat-table-changed', (e) => {
   Inspector.onNATChange({ device: e.detail.device });
+});
+bus.addEventListener('sim:neighbor-state-changed', (e) => {
+  const { device } = e.detail;
+  if (!state.selection || state.selection.kind !== 'router' || state.selection.name !== device) return;
+  const router = state.routers[device];
+  if (!router) return;
+  const elI = document.getElementById('inspector');
+  const container = elI && elI.querySelector('.insp-neighbors');
+  if (!container) return;
+  // Re-render only the Neighbors section, preserving open/closed state.
+  rememberOpen(elI);
+  container.innerHTML = renderNeighborSection(device, router);
+  wireSectionToggles(container);
 });
 bus.addEventListener('canvas:contextmenu-requested', (e) => {
   openContextMenu(e.detail.clientX, e.detail.clientY, e.detail.target, e.detail.world);

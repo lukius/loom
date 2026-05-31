@@ -3,7 +3,7 @@ import {
   state, bus,
   STORAGE_KEY, THEME_KEY, LAYOUT_KEY, LAYOUT_DEF, LAYOUT_LIMITS, SAMPLE,
   NODE, HIT_PAD,
-  persist, restore, loadSample, markDirty, setSave,
+  persist, restore, loadSample, clearTopology, markDirty, setSave,
   defaultExportFilename,
 } from './state.js';
 import { importYaml, exportYaml } from './yaml-io.js';
@@ -280,6 +280,57 @@ describe('loadSample', () => {
     loadSample();
     const toastEl = document.querySelector('.toast');
     expect(toastEl).not.toBeNull();
+  });
+});
+
+describe('clearTopology', () => {
+  it('empties networks/hosts/routers/links/natTables', () => {
+    state.networks = { lan0: { cidr: '10.0.0.0/24' } };
+    state.hosts = { h1: { network: 'lan0', address: '10.0.0.2' } };
+    state.routers = { r1: { interfaces: {} } };
+    state.links = { l1: { cidr: '10.0.1.0/30' } };
+    state.natTables = { r1: [] };
+    clearTopology();
+    expect(state.networks).toEqual({});
+    expect(state.hosts).toEqual({});
+    expect(state.routers).toEqual({});
+    expect(state.links).toEqual({});
+    expect(state.natTables).toEqual({});
+  });
+
+  it('resets selection, sourceName, and view', () => {
+    state.selection = { kind: 'host', name: 'h1' };
+    state.sourceName = 'mesh.yaml';
+    state.view = { x: 999, y: 999, k: 7 };
+    clearTopology();
+    expect(state.selection).toBeNull();
+    expect(state.sourceName).toBeNull();
+    expect(state.view).toEqual({ x: 0, y: 0, k: 1 });
+  });
+
+  it('persists the cleared state to localStorage', () => {
+    state.hosts = { h1: { network: 'lan0', address: '10.0.0.2' } };
+    clearTopology();
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    expect(raw.hosts).toEqual({});
+  });
+
+  it('dispatches state:topology-changed and state:topology-loaded', () => {
+    let changed = 0;
+    let loaded = 0;
+    const a = () => changed++;
+    const b = () => loaded++;
+    bus.addEventListener('state:topology-changed', a);
+    bus.addEventListener('state:topology-loaded', b);
+    clearTopology();
+    bus.removeEventListener('state:topology-changed', a);
+    bus.removeEventListener('state:topology-loaded', b);
+    expect(changed).toBe(1);
+    expect(loaded).toBe(1);
+  });
+
+  it('does not throw without fitView/renderAll in scope', () => {
+    expect(() => clearTopology()).not.toThrow();
   });
 });
 

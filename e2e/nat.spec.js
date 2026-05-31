@@ -67,26 +67,66 @@ test.describe('loom NAT - visual smoke', () => {
     await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
     await page.waitForTimeout(2000);
 
-    // Open a terminal on h_a (the private tenant host) and send to h_public.
+    // Open a terminal on h_a (the private tenant host).
     await page.locator('#nodes-layer g.node.host[data-name="h_a"]').dblclick();
     const term = page.locator('div.term').first();
     await expect(term).toBeVisible({ timeout: 3000 });
     const input = term.locator('textarea.term-in');
-    await input.click();
-    await input.fill('send 200.100.0.10 hello');
-    await input.press('Enter');
 
-    // Wait for a user-datagram packet rect to appear on the canvas. Routing
-    // chatter is grey (#94a3b8); user datagrams are green (#22c55e). Match by
-    // fill so we ignore the unrelated keepalive animations.
+    // Send a datagram and wait for the sim:nat event to arrive in PacketStore.
+    // The packet may be silently dropped if the link-state protocol hasn't
+    // fully converged yet (no route to host → exception swallowed in
+    // Interface._pkt_loop, no NAT event emitted). To avoid a fixed sleep that
+    // is long enough for the worst case but slow on the fast path, we retry:
+    // re-send every 1 s until PacketStore registers a NAT translation or the
+    // overall deadline expires.
+    //
+    // We wait for NAT BEFORE pausing for two reasons:
+    //   (a) NAT fires inside Interface._pkt_loop → handle_packet. Pausing
+    //       first can cause the PauseGate to block r_a's interface thread
+    //       before handle_packet runs, so NAT never fires during the pause.
+    //   (b) page.evaluate with an async callback cannot be used in
+    //       waitForFunction: Playwright evaluates the returned Promise as a
+    //       truthy object on every tick and therefore always resolves
+    //       immediately — a poll loop with page.evaluate is necessary.
     const pktSel = '#packet-layer rect[fill="#22c55e"]';
-    await page.waitForFunction(
-      (sel) => document.querySelectorAll(sel).length > 0,
-      pktSel,
-      { timeout: 8000 },
-    );
+    const NAT_OVERALL_MS = 20000;
+    const NAT_RETRY_MS  = 1000;
+    const natDeadline = Date.now() + NAT_OVERALL_MS;
+    let natReady = false;
+    while (!natReady && Date.now() < natDeadline) {
+      // Re-issue the send command (each call allocates a new payload_id, so
+      // multiple in-flight datagrams are harmless).
+      await input.click();
+      await input.fill('send 200.100.0.10 hello');
+      await input.press('Enter');
 
-    // Pause so the packet freezes in flight and we can hover it.
+      // Wait for the green rect to appear and check PacketStore for a NAT entry.
+      // If the rect never appears in 3 s the packet was dropped before entering
+      // the canvas layer — skip to the next retry without waiting the full budget.
+      const rectSeen = await page.waitForFunction(
+        (sel) => document.querySelectorAll(sel).length > 0,
+        pktSel,
+        { timeout: 3000 },
+      ).then(() => true).catch(() => false);
+
+      if (rectSeen) {
+        // Give the NAT event ~1 s to propagate through the WS pipeline.
+        const pollDeadline = Date.now() + NAT_RETRY_MS;
+        while (!natReady && Date.now() < pollDeadline) {
+          natReady = await page.evaluate(async () => {
+            const { PacketStore } = await import('/packetstore.js');
+            return PacketStore.natByPayload.size > 0;
+          });
+          if (!natReady) await page.waitForTimeout(100);
+        }
+      }
+    }
+    expect(natReady, 'timed out waiting for sim:nat to populate PacketStore').toBe(true);
+
+    // Pause so the packet freezes in flight and we can hover it. NAT is already
+    // in the store, so showPacketTooltip will build the NAT line for the rect
+    // whose payload_id has a registered NAT translation.
     await page.locator('#tb-pause').click();
     await expect(page.locator('#tb-play')).toHaveClass(/paused/, { timeout: 5000 });
 
@@ -96,8 +136,23 @@ test.describe('loom NAT - visual smoke', () => {
     // SVG layer that sits underneath the toolbar/zoom overlays in some
     // viewport sizes; the rect's own mouseenter listener is the only thing
     // the tooltip flow actually requires.
-    const pkt = page.locator(pktSel).first();
-    await pkt.dispatchEvent('mouseenter');
+    //
+    // Retry sends may have left multiple green rects in flight simultaneously
+    // (one per send). We need to hover the rect whose payload_id is present in
+    // PacketStore.natByPayload — not necessarily the first in DOM order.
+    await page.evaluate(async (sel) => {
+      const { PacketStore } = await import('/packetstore.js');
+      const rects = [...document.querySelectorAll(sel)];
+      for (const rect of rects) {
+        let evtData;
+        try { evtData = JSON.parse(rect.dataset.evt); } catch (_) { continue; }
+        if (!evtData || !evtData.payload_id) continue;
+        if (PacketStore.natFor(evtData.payload_id).length > 0) {
+          rect.dispatchEvent(new MouseEvent('mouseenter'));
+          return;
+        }
+      }
+    }, pktSel);
 
     const tt = page.locator('#packet-tooltip');
     await expect(tt).toBeVisible({ timeout: 3000 });

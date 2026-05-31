@@ -29,8 +29,9 @@ see [ns-3](https://www.nsnam.org/), [mininet](https://mininet.org/),
   and `/30` / `/31` point-to-point links, all wired through real
   per-interface and per-fabric threads. Forwarding decisions use
   longest-prefix match on a per-router routing table.
-- **Live link-state protocol** — Sequence-numbered flooding, per-router
-  keepalive thread (interval live-tunable from the toolbar), Dijkstra
+- **loom-OSPF link-state protocol** — Sequence-numbered flooding, per-router
+  keepalive thread with configurable Hello and LSA-refresh intervals
+  (live-tunable from the toolbar's Protocol popover), Dijkstra
   shortest-path computation that re-runs only when the graph actually
   changes.
 - **Interactive web UI** — Drag networks, hosts, and routers onto an SVG
@@ -175,7 +176,7 @@ loom/
 ├── src/
 │   ├── loom.py            # Entry point — web UI (default) or 'shell' subcommand
 │   ├── entities/          # AS, Router, Host, Network, Link, Interface, Address, Packet, Event, PauseGate
-│   ├── routing/           # RoutingProtocol (link-state) + NetworkGraph (Dijkstra)
+│   ├── routing/           # RoutingProtocol (loom-OSPF link-state) + LSDB → NetworkGraph (Dijkstra)
 │   ├── parser/            # YAML topology loader + SystemValidator
 │   ├── server/            # FastAPI app, routes, sim state machine, persistence, command dispatch
 │   └── shell/             # cmd.Cmd-based REPL

@@ -13,12 +13,11 @@ from entities import (
     NetworkAddress,
     NullAddress,
     Router,
-    RoutingMessage,
     UserMessage,
 )
 from entities.nat import flow_id
 from entities.packet import Frame
-from routing import NoRouteToHostException
+from routing import LSA, NoRouteToHostException
 
 
 class PacketHandlingTest(unittest.TestCase):
@@ -251,7 +250,7 @@ class PacketHandlingTest(unittest.TestCase):
         return Datagram(src, dst, msg, ttl=ttl)
 
     def _routing_msg_datagram(self, interface, src, dst):
-        msg = RoutingMessage(interface, 1)
+        msg = LSA(origin=interface.device(), seq=1)
         return Datagram(src, dst, msg)
 
 
@@ -279,7 +278,7 @@ class NetworkBroadcastTest(unittest.TestCase):
         return net, sender, received_on
 
     def _routing_msg_for(self, interface):
-        return RoutingMessage(interface, 1)
+        return LSA(origin=interface.device(), seq=1)
 
     def test_broadcast_never_returns_to_sender_regardless_of_payload(self):
         # Same source-filtering invariant must hold for every payload kind.

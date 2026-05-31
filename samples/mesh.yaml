@@ -1,0 +1,167 @@
+internet:
+  name: loom-mesh
+  autonomous_systems:
+    main:
+      asn: 65001
+      networks:
+        lan_x: 200.150.10.0/24
+        lan_t: 150.200.20.0/24
+        lan_y: 130.50.30.0/24
+        lan_u: 170.80.40.0/24
+      links:
+        p2p_tu: 12.0.1.0/30
+        p2p_tv: 12.0.2.0/30
+        p2p_ty: 12.0.3.0/30
+        p2p_uv: 12.0.4.0/30
+        p2p_uw: 12.0.5.0/30
+        p2p_vw: 12.0.6.0/30
+        p2p_vx: 12.0.7.0/30
+        p2p_vy: 12.0.8.0/30
+        p2p_wx: 12.0.9.0/30
+        p2p_xy: 12.0.10.0/30
+        p2p_xz: 12.0.11.0/30
+        p2p_yz: 12.0.12.0/30
+      hosts:
+        hx:
+          network: lan_x
+          address: 200.150.10.10
+          gateway: 200.150.10.1
+        ht:
+          network: lan_t
+          address: 150.200.20.10
+          gateway: 150.200.20.1
+        hy:
+          network: lan_y
+          address: 130.50.30.10
+          gateway: 130.50.30.1
+        hu:
+          network: lan_u
+          address: 170.80.40.10
+          gateway: 170.80.40.1
+      routers:
+        t:
+          interfaces:
+            eth0:
+              link: p2p_tu
+              address: 12.0.1.1
+              cost: 2
+            eth1:
+              link: p2p_tv
+              address: 12.0.2.1
+              cost: 4
+            eth2:
+              link: p2p_ty
+              address: 12.0.3.1
+              cost: 7
+            eth3:
+              network: lan_t
+              address: 150.200.20.1
+              cost: 1
+        u:
+          interfaces:
+            eth0:
+              link: p2p_tu
+              address: 12.0.1.2
+              cost: 2
+            eth1:
+              link: p2p_uv
+              address: 12.0.4.1
+              cost: 3
+            eth2:
+              link: p2p_uw
+              address: 12.0.5.1
+              cost: 3
+            eth3:
+              network: lan_u
+              address: 170.80.40.1
+              cost: 1
+        v:
+          interfaces:
+            eth0:
+              link: p2p_tv
+              address: 12.0.2.2
+              cost: 4
+            eth1:
+              link: p2p_uv
+              address: 12.0.4.2
+              cost: 3
+            eth2:
+              link: p2p_vw
+              address: 12.0.6.1
+              cost: 4
+            eth3:
+              link: p2p_vx
+              address: 12.0.7.1
+              cost: 3
+            eth4:
+              link: p2p_vy
+              address: 12.0.8.1
+              cost: 8
+        w:
+          interfaces:
+            eth0:
+              link: p2p_uw
+              address: 12.0.5.2
+              cost: 3
+            eth1:
+              link: p2p_vw
+              address: 12.0.6.2
+              cost: 4
+            eth2:
+              link: p2p_wx
+              address: 12.0.9.1
+              cost: 6
+        x:
+          interfaces:
+            eth0:
+              link: p2p_vx
+              address: 12.0.7.2
+              cost: 3
+            eth1:
+              link: p2p_wx
+              address: 12.0.9.2
+              cost: 6
+            eth2:
+              link: p2p_xy
+              address: 12.0.10.1
+              cost: 6
+            eth3:
+              link: p2p_xz
+              address: 12.0.11.1
+              cost: 8
+            eth4:
+              network: lan_x
+              address: 200.150.10.1
+              cost: 1
+        y:
+          interfaces:
+            eth0:
+              link: p2p_ty
+              address: 12.0.3.2
+              cost: 7
+            eth1:
+              link: p2p_vy
+              address: 12.0.8.2
+              cost: 8
+            eth2:
+              link: p2p_xy
+              address: 12.0.10.2
+              cost: 6
+            eth3:
+              link: p2p_yz
+              address: 12.0.12.1
+              cost: 12
+            eth4:
+              network: lan_y
+              address: 130.50.30.1
+              cost: 1
+        z:
+          interfaces:
+            eth0:
+              link: p2p_xz
+              address: 12.0.11.2
+              cost: 8
+            eth1:
+              link: p2p_yz
+              address: 12.0.12.2
+              cost: 12

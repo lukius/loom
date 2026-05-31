@@ -310,6 +310,9 @@ def test_packet_event_for_routing_flood_carries_seq_and_destinations():
         assert flood_events, "expected at least one routing_flood packet event"
         payload = flood_events[0]["payload"]
         assert isinstance(payload["seq"], int)
+        # `originator` lets downstream subscribers tell an origin emission
+        # apart from a re-flood by the same LSA traversing other routers.
+        assert payload["originator"] == "r1"
         prefixes = {d["prefix"] for d in payload["destinations"]}
         assert prefixes == {"200.100.0.0/24", "200.100.1.0/24"}
         for dest in payload["destinations"]:
@@ -347,12 +350,81 @@ def test_routing_table_changed_event_fires():
         events = []
         system = Parser(path).parse().single_as()
         EventTracer.subscribe(events.append)
-        # First keepalive within ~KEEPALIVE_INTERVAL; for a test, manually update.
+        # First keepalive within ~lsa_refresh_interval; for a test, manually update.
         system.router("r1").update_interface("eth0", 99)
         # nudge protocol to recompute by faking a keepalive call:
         system.router("r1").protocol()._handle_update()  # noqa: SLF001
         kinds = [e.get("kind") for e in events]
         assert "routing_table_changed" in kinds
+        system.stop()
+    finally:
+        os.unlink(path)
+
+
+def test_neighbor_state_changed_event_payload_shape():
+    import os
+    import tempfile
+    import textwrap
+    import time
+
+    from entities.event import EventTracer
+    from parser import Parser
+
+    yaml_text = textwrap.dedent("""
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan1: "200.0.1.0/24"
+          links:
+            p2p: "200.0.0.0/30"
+          routers:
+            r1:
+              interfaces:
+                eth0: {network: lan1, address: "200.0.1.1", cost: 1}
+                eth1: {link: p2p, address: "200.0.0.1", cost: 1}
+            r2:
+              interfaces:
+                eth0: {link: p2p, address: "200.0.0.2", cost: 1}
+    """)
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_text)
+        path = f.name
+    system = Parser(path).parse(start_routing=False).single_as()
+    for r in system.routers().values():
+        r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.3)
+        r.start()
+    try:
+        events = []
+        EventTracer.subscribe(events.append)
+
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            nsc = [e for e in events if e.get("kind") == "neighbor_state_changed"]
+            if nsc:
+                break
+            time.sleep(0.05)
+
+        nsc_events = [e for e in events if e.get("kind") == "neighbor_state_changed"]
+        assert nsc_events, "expected at least one neighbor_state_changed event"
+        evt = nsc_events[0]
+        # Required string fields.
+        assert isinstance(evt.get("device"), str), "device must be a str"
+        assert isinstance(evt.get("interface"), str), "interface must be a str"
+        assert isinstance(evt.get("peer"), str), "peer must be a str"
+        assert isinstance(evt.get("state"), str), "state must be a str"
+        assert evt["state"] in ("down", "init", "two_way"), (
+            f"state must be a valid NeighborState value, got {evt['state']!r}"
+        )
+        # Timestamp fields: float or None.
+        for field in ("last_hello_at", "peer_acked_at"):
+            assert field in evt, f"missing field {field!r}"
+            val = evt[field]
+            assert val is None or isinstance(val, float), (
+                f"{field} must be float or None, got {type(val)}"
+            )
         system.stop()
     finally:
         os.unlink(path)

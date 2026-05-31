@@ -119,6 +119,13 @@ class RouteMap:
 
 # ---- Default policies ----
 
+PERMIT_ALL = RouteMap(rules=[], default='permit')
+"""Permit-all route-map: no match rules, default action is permit.
+
+Used as the local-LSA policy so all directly-connected networks
+(including RFC 1918) are reflected in the local graph.
+"""
+
 RFC1918_OUTBOUND = RouteMap(
     rules=[RouteMapRule(
         match=PrefixList([

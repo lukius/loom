@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, deviceNameForEndpointOnFabric, lookupAddressNodeOnFabric, renderCanvas, lookupLinkMidpoint, lookupDeviceNode, shiftLinkLabelsForDeviceMove, startLinkWizard, cancelLinkWizard, finishLinkWizard, getLinkWizard, linkBezier } from './canvas.js';
+import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, deviceNameForEndpointOnFabric, lookupAddressNodeOnFabric, renderCanvas, lookupLinkMidpoint, lookupDeviceNode, shiftLinkLabelsForDeviceMove, startLinkWizard, cancelLinkWizard, finishLinkWizard, getLinkWizard, linkBezier, ensurePositions } from './canvas.js';
 import {
   state, bus,
   RAIL_DEFAULT_WIDTH, RAIL_THICKNESS, RAIL_TICK_INSET,
@@ -980,5 +980,192 @@ describe('link wizard — cancellation paths', () => {
     g.dispatchEvent(new PointerEvent('pointerdown', { button: 0, bubbles: true }));
     expect(getLinkWizard()).toBeNull();
     expect(Object.keys(state.links).length).toBe(0);
+  });
+});
+
+describe('ensurePositions — auto-layout for a fresh topology', () => {
+  beforeEach(() => {
+    state.hosts    = {};
+    state.routers  = {};
+    state.networks = {};
+    state.links    = {};
+  });
+
+  function meshTopology() {
+    // Smaller analogue of samples/mesh.yaml: a few routers, LANs, p2p links,
+    // and host attachments. Used to exercise the layout on a non-trivial
+    // graph without depending on the full sample.
+    state.networks = {
+      lan_a: { address: '10.0.0.0/24' },
+      lan_b: { address: '10.0.1.0/24' },
+      lan_c: { address: '10.0.2.0/24' },
+    };
+    state.links = {
+      p2p_ab: { cidr: '10.1.0.0/30' },
+      p2p_bc: { cidr: '10.1.1.0/30' },
+    };
+    state.hosts = {
+      ha: { network: 'lan_a', address: '10.0.0.10' },
+      hb: { network: 'lan_b', address: '10.0.1.10' },
+    };
+    state.routers = {
+      ra: { interfaces: {
+        eth0: { network: 'lan_a', address: '10.0.0.1', cost: 1 },
+        eth1: { link: 'p2p_ab', address: '10.1.0.1', cost: 1 },
+      } },
+      rb: { interfaces: {
+        eth0: { network: 'lan_b', address: '10.0.1.1', cost: 1 },
+        eth1: { link: 'p2p_ab', address: '10.1.0.2', cost: 1 },
+        eth2: { link: 'p2p_bc', address: '10.1.1.1', cost: 1 },
+      } },
+      rc: { interfaces: {
+        eth0: { network: 'lan_c', address: '10.0.2.1', cost: 1 },
+        eth1: { link: 'p2p_bc', address: '10.1.1.2', cost: 1 },
+      } },
+    };
+  }
+
+  it('assigns numeric positions to every network/router/host on a fresh topology', () => {
+    meshTopology();
+    ensurePositions();
+    for (const n of Object.values(state.networks)) {
+      expect(typeof n.x).toBe('number');
+      expect(typeof n.y).toBe('number');
+      expect(Number.isFinite(n.x)).toBe(true);
+      expect(Number.isFinite(n.y)).toBe(true);
+    }
+    for (const r of Object.values(state.routers)) {
+      expect(Number.isFinite(r.x)).toBe(true);
+      expect(Number.isFinite(r.y)).toBe(true);
+    }
+    for (const h of Object.values(state.hosts)) {
+      expect(Number.isFinite(h.x)).toBe(true);
+      expect(Number.isFinite(h.y)).toBe(true);
+    }
+  });
+
+  it('is deterministic: same input produces the same layout', () => {
+    meshTopology();
+    ensurePositions();
+    const first = {
+      ra: { x: state.routers.ra.x, y: state.routers.ra.y },
+      lan_b: { x: state.networks.lan_b.x, y: state.networks.lan_b.y },
+    };
+    // Re-import: reset positions and re-run
+    for (const o of Object.values(state.routers))  { delete o.x; delete o.y; }
+    for (const o of Object.values(state.networks)) { delete o.x; delete o.y; }
+    for (const o of Object.values(state.hosts))    { delete o.x; delete o.y; }
+    ensurePositions();
+    expect(state.routers.ra.x).toBeCloseTo(first.ra.x, 3);
+    expect(state.routers.ra.y).toBeCloseTo(first.ra.y, 3);
+    expect(state.networks.lan_b.x).toBeCloseTo(first.lan_b.x, 3);
+    expect(state.networks.lan_b.y).toBeCloseTo(first.lan_b.y, 3);
+  });
+
+  it('spreads nodes out — bounding box is comfortably larger than node spacing', () => {
+    meshTopology();
+    ensurePositions();
+    const all = [
+      ...Object.values(state.networks),
+      ...Object.values(state.routers),
+      ...Object.values(state.hosts),
+    ];
+    const xs = all.map(n => n.x);
+    const ys = all.map(n => n.y);
+    const w = Math.max(...xs) - Math.min(...xs);
+    const h = Math.max(...ys) - Math.min(...ys);
+    // For ~10 nodes, expect a bounding box of at least a few hundred px on
+    // each axis — guards against the old all-stacked-in-a-column behaviour.
+    expect(w).toBeGreaterThan(300);
+    expect(h).toBeGreaterThan(300);
+  });
+
+  it('preserves nodes that already have a position', () => {
+    meshTopology();
+    state.networks.lan_a.x = 42;
+    state.networks.lan_a.y = 84;
+    state.routers.rc.x = -200;
+    state.routers.rc.y = -300;
+    ensurePositions();
+    expect(state.networks.lan_a.x).toBe(42);
+    expect(state.networks.lan_a.y).toBe(84);
+    expect(state.routers.rc.x).toBe(-200);
+    expect(state.routers.rc.y).toBe(-300);
+  });
+
+  it('is a no-op on an empty topology', () => {
+    expect(() => ensurePositions()).not.toThrow();
+  });
+
+  it('keeps every pair of devices a comfortable distance apart on a dense mesh', () => {
+    // Mirror samples/mesh.yaml's connectivity: many p2p links between
+    // routers that have no LAN attachment. The previous grid layout
+    // collapsed several of these routers onto the same x/y, so this
+    // pins that the layout actually separates them.
+    state.networks = {
+      lan_x: { address: '200.150.10.0/24' },
+      lan_y: { address: '130.50.30.0/24' },
+    };
+    state.links = {
+      p2p_tv: { cidr: '12.0.2.0/30' }, p2p_uv: { cidr: '12.0.4.0/30' },
+      p2p_vw: { cidr: '12.0.6.0/30' }, p2p_vx: { cidr: '12.0.7.0/30' },
+      p2p_vy: { cidr: '12.0.8.0/30' }, p2p_wx: { cidr: '12.0.9.0/30' },
+      p2p_xy: { cidr: '12.0.10.0/30' }, p2p_xz: { cidr: '12.0.11.0/30' },
+      p2p_yz: { cidr: '12.0.12.0/30' },
+    };
+    state.hosts = {
+      hx: { network: 'lan_x', address: '200.150.10.10' },
+      hy: { network: 'lan_y', address: '130.50.30.10' },
+    };
+    state.routers = {
+      t: { interfaces: { eth0: { link: 'p2p_tv', address: '12.0.2.1', cost: 1 } } },
+      u: { interfaces: { eth0: { link: 'p2p_uv', address: '12.0.4.1', cost: 1 } } },
+      v: { interfaces: {
+        e0: { link: 'p2p_tv', address: '12.0.2.2', cost: 1 },
+        e1: { link: 'p2p_uv', address: '12.0.4.2', cost: 1 },
+        e2: { link: 'p2p_vw', address: '12.0.6.1', cost: 1 },
+        e3: { link: 'p2p_vx', address: '12.0.7.1', cost: 1 },
+        e4: { link: 'p2p_vy', address: '12.0.8.1', cost: 1 },
+      } },
+      w: { interfaces: {
+        e0: { link: 'p2p_vw', address: '12.0.6.2', cost: 1 },
+        e1: { link: 'p2p_wx', address: '12.0.9.1', cost: 1 },
+      } },
+      x: { interfaces: {
+        e0: { link: 'p2p_vx', address: '12.0.7.2', cost: 1 },
+        e1: { link: 'p2p_wx', address: '12.0.9.2', cost: 1 },
+        e2: { link: 'p2p_xy', address: '12.0.10.1', cost: 1 },
+        e3: { link: 'p2p_xz', address: '12.0.11.1', cost: 1 },
+        e4: { network: 'lan_x', address: '200.150.10.1', cost: 1 },
+      } },
+      y: { interfaces: {
+        e0: { link: 'p2p_vy', address: '12.0.8.2', cost: 1 },
+        e1: { link: 'p2p_xy', address: '12.0.10.2', cost: 1 },
+        e2: { link: 'p2p_yz', address: '12.0.12.1', cost: 1 },
+        e3: { network: 'lan_y', address: '130.50.30.1', cost: 1 },
+      } },
+      z: { interfaces: {
+        e0: { link: 'p2p_xz', address: '12.0.11.2', cost: 1 },
+        e1: { link: 'p2p_yz', address: '12.0.12.2', cost: 1 },
+      } },
+    };
+    ensurePositions();
+    const all = [
+      ...Object.entries(state.networks).map(([n, v]) => ({ kind: 'net',  name: n, ...v })),
+      ...Object.entries(state.routers).map( ([n, v]) => ({ kind: 'rtr',  name: n, ...v })),
+      ...Object.entries(state.hosts).map(   ([n, v]) => ({ kind: 'host', name: n, ...v })),
+    ];
+    let minDist = Infinity;
+    for (let i = 0; i < all.length; i++) {
+      for (let j = i + 1; j < all.length; j++) {
+        const dx = all[i].x - all[j].x;
+        const dy = all[i].y - all[j].y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < minDist) minDist = d;
+      }
+    }
+    // Nodes render at ~80 px tall; 90 px is roughly one node-width apart
+    // — below this they visually overlap on the canvas.
+    expect(minDist).toBeGreaterThan(90);
   });
 });

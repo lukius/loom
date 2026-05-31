@@ -15,7 +15,7 @@ Per simulator process, on top of the asyncio loop:
 |---|---|---|---|
 | `Interface` | 1 per interface (host + router) | `Interface.__init__` | `_pkt_loop` — drain `_in_queue`, dispatch to `_device.handle_packet` |
 | `Network` / `Link` (`_FabricBase`) | 1 per fabric | `_FabricBase.__init__` | `_pkt_loop` — drain `_in_queue`, call `_dispatch_packet` |
-| `RoutingProtocol` | 1 per router | `RoutingProtocol.start` | `_keepalive_loop` — periodic `_handle_update` |
+| `LinkStateProtocol` | 1 per router | `LinkStateProtocol.start` | `_protocol_loop` — periodic `_handle_update` |
 
 All threads are **daemons** (`daemon=True`). Process exit kills them
 unconditionally; clean shutdown goes through `AS.stop()` instead.

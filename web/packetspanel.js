@@ -8,6 +8,16 @@ import { state, bus, markDirty } from './state.js';
 import { escapeHtml } from './utils.js';
 import { PacketStore } from './packetstore.js';
 
+// Friendly labels for chatter rows, so the panel shows "Hello" / "LSA"
+// instead of the raw wire-type strings.
+const FRIENDLY_CHATTER_LABELS = {
+  hello: 'Hello',
+  routing_flood: 'LSA',
+};
+function _friendlyTypeLabel(type) {
+  return FRIENDLY_CHATTER_LABELS[type] || type || '';
+}
+
 export const PacketsPanel = {
   _wired: false,
   _panel: null,
@@ -174,11 +184,13 @@ export const PacketsPanel = {
         ${this._payloadHtml(group.payload)}
         <div class="pkt-emissions">${group.emissionKeys.length} emission${group.emissionKeys.length === 1 ? '' : 's'} in flight</div>
       </div>` : '';
+    const typeLabel = _friendlyTypeLabel(group.type);
     return `
       <div class="pkt-row pkt-chatter-row" data-payload-id="${escapeHtml(group.payloadId)}" data-emission-keys="${escapeHtml(group.emissionKeys.join(' '))}">
         <button class="pkt-toggle" aria-expanded="${isOpen}">${isOpen ? '▾' : '▸'}</button>
-        <span class="pkt-swatch" data-type="routing_flood"></span>
+        <span class="pkt-swatch" data-type="${escapeHtml(group.type)}"></span>
         <span class="pkt-id">#R${group.id}</span>
+        <span class="pkt-type">${escapeHtml(typeLabel)}</span>
         <span class="pkt-route">${escapeHtml(group.srcDev || '?')} → ${escapeHtml(group.network || '?')}</span>
         ${group.iface ? `<span class="pkt-hop-net">(${escapeHtml(group.iface)})</span>` : ''}
         <span class="pkt-emission-count">×${group.emissionKeys.length}</span>

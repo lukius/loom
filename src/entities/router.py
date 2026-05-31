@@ -141,7 +141,7 @@ class Router(NetworkDevice):
         # Importing at call time ensures both packages are fully loaded.
         from routing import LinkStateProtocol  # noqa: PLC0415
         # BGP-FOLLOWUP: today LinkStateProtocol writes rules directly into
-        # self._routing_table via _recompute_if_dirty. When BGP becomes the
+        # self._routing_table via _recompute_routing_table. When BGP becomes the
         # second protocol, introduce a RIB-level merge that walks
         # `self.protocols()`, collects each protocol's `installed_rules()`,
         # and applies administrative-distance ordering before writing to the
@@ -190,6 +190,15 @@ class Router(NetworkDevice):
         for proto in self._protocols:
             proto.stop()
 
+    def update_interface(self, iface_name: str, cost: int):
+        # Mutate cost via the base, then notify every protocol so any
+        # link-state advertisement is re-emitted immediately. Without
+        # this nudge, a cost change waits up to one lsa_refresh
+        # interval (~30s default + jitter) before propagating.
+        super().update_interface(iface_name, cost)
+        for proto in self._protocols:
+            proto.local_links_changed()
+
     def handle_packet(self, packet, interface):
         dst = packet.destination()
         on_public = not interface.network().address().is_private()
@@ -220,7 +229,7 @@ class Router(NetworkDevice):
         super().handle_packet(packet, interface)
 
     def _handle_message(self, msg, interface, packet):
-        if msg.type() == RoutingMessage:
+        if isinstance(msg, RoutingMessage):
             self._handle_routing_message(msg, interface)
             return
         if isinstance(msg, PingRequest):

@@ -3,7 +3,7 @@
 // sim:packet events emitted by sim.js and renders short tweened SVG dots over
 // the canvas. Reads Sim.state to freeze in-flight tweens while paused.
 import { bus, state, NODE } from './state.js';
-
+import { ROUTING_CHATTER_TYPES } from './packettypes.js';
 import { escapeHtml } from './utils.js';
 import { PacketStore } from './packetstore.js';
 import {
@@ -12,6 +12,12 @@ import {
   collectLinkEndpoints, clipToRect, linkBezier,
 } from './canvas.js';
 import { Sim } from './sim.js';
+
+// Build the selector at module-load time once. If a new type is added
+// to ROUTING_CHATTER_TYPES, this picks it up automatically.
+const ROUTING_CHATTER_SELECTOR = [...ROUTING_CHATTER_TYPES]
+    .map(t => `rect[data-packet-type="${t}"]`)
+    .join(',');
 
 // Packet glyph dimensions — wider than tall so the rectangle reads as a
 // "datagram" gliding along the wire (textbook convention).
@@ -67,12 +73,36 @@ function setPacketAnchor(rect, badge, cx, cy) {
 /* ---------- PacketAnim ---------- */
 export const PacketAnim = {
   DURATION_MS: 1800,
+  // Packet palette convention:
+  //   • Each routing protocol claims one narrow hue band (~ 2 Tailwind
+  //     shades). Hellos / liveness use the lighter tone; data-bearing
+  //     messages use the deeper tone, so siblings inside the same protocol
+  //     read as a family.
+  //   • Hue bands reserved so far (cool side of the wheel, all visually
+  //     distinguishable at small swatch sizes):
+  //       - loom-OSPF      → indigo  (#6366f1 / #a5b4fc)   ← in use
+  //       - BGP (next)     → violet  (#8b5cf6 / #c4b5fd)   ← reserved
+  //       - 3rd protocol   → cyan    (#06b6d4 / #67e8f9)   ← reserved
+  //       - 4th protocol   → sky     (#0ea5e9 / #7dd3fc)   ← reserved
+  //       - 5th protocol   → teal    (#14b8a6 / #5eead4)   ← reserved
+  //     User traffic and pings sit in green and amber so cool hues stay
+  //     free for routing protocols. Beyond five, neighbouring hues start
+  //     to read as the same band at swatch scale — the natural next axis
+  //     is shape / stroke (square vs triangle, solid vs dashed) rather
+  //     than splitting indigo further.
+  //   • If you add a routing-protocol type here, also register it in
+  //     packettypes.js (`ROUTING_CHATTER_TYPES`) AND add the matching
+  //     `.pkt-swatch[data-type="..."]` rule in styles.css.
   COLORS: {
-    routing_flood:  { fill: '#94a3b8', opacity: 0.6 },
+    routing_flood:  { fill: '#6366f1', opacity: 0.7 },  // loom-OSPF — LSA
+    hello:          { fill: '#a5b4fc', opacity: 0.9 },  // loom-OSPF — Hello
     user_datagram:  { fill: '#22c55e', opacity: 1.0 },
     ping_request:   { fill: '#f59e0b', opacity: 1.0 },
     ping_reply:     { fill: '#fbbf24', opacity: 1.0 },
   },
+  // All routing-protocol chatter types (animated in parallel, throttled/muted
+  // as a group). Defined in packettypes.js — import from there to stay in sync.
+  _ROUTING_CHATTER_TYPES: ROUTING_CHATTER_TYPES,
   // Types whose hops should be animated sequentially. Grouped by `flow` (the
   // unordered pair of endpoint addresses) so a ping_request and its ping_reply,
   // which share the same flow, animate one after the other instead of overlapping.
@@ -80,29 +110,43 @@ export const PacketAnim = {
   _SEQUENTIAL: new Set(['user_datagram', 'ping_request', 'ping_reply']),
   _lastChatter: new Map(),
   _queues: new Map(),               // flow -> { pending: [evt, ...] }
+  // LSA flooding sequencer: an LSA re-flood (sender !== originator) must
+  // wait until its inbound — the hop that triggered this re-flood — has
+  // visually arrived at the re-flooder. Otherwise origin + re-flood dots
+  // ride the wires concurrently, which doesn't reflect how the protocol
+  // actually propagates an update.
+  _lsaArrivedAt: new Set(),         // "payload_id|router" — visual arrival has fired
+  _lsaPending: new Map(),           // "payload_id|router" -> [evt, ...] re-floods waiting
+  // Bumped whenever the sim goes idle. Multi-phase animations (the broadcast
+  // fan-out) capture the generation when they start and abort their later
+  // phases if it has changed — otherwise a fan-out mid-flight at stop time
+  // would spawn fresh clones onto the just-cleared layer and dangle there.
+  _gen: 0,
   muted: false,
 
   play(evt) {
-    if (evt.type === 'routing_flood') {
+    if (this._ROUTING_CHATTER_TYPES.has(evt.type)) {
       if (this.muted) {
         // Muted: drop the canvas animation AND the store row so the panel
         // doesn't show chatter the user explicitly muted.
-        const dotKey = `${evt.payload_id}|${(evt.src && evt.src.device) || '?'}|${(evt.src && evt.src.iface) || '?'}|${evt.network || '?'}`;
         bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
-          detail: { payloadId: dotKey, device: null },
+          detail: { payloadId: this._chatterDotKey(evt), device: null },
         }));
         return;
       }
       if (!this._chatterAllowed(evt)) {
-        // Throttled: skip the canvas animation, but leave the store row
-        // alone. Two reasons: (a) a re-emission of the original's composite
-        // key (the protocol re-floods back through the origin iface) shares
-        // the row, and dispatching arrival here would delete the original;
-        // (b) a distinct payload_id throttled on the same (device, network)
-        // is still a logically distinct message — the panel must still
-        // group it. The row's 2s TTL in packetstore handles cleanup.
+        // Throttled: a near-instant repeat of the *same* message on the same
+        // interface (the protocol re-floods back through the origin iface).
+        // Skip the canvas animation; the original emission's row covers it.
         return;
       }
+      // Committed to animating this chatter packet (now, queued, or deferred).
+      // Pin its store row so packetstore's fallback timer can't evict it
+      // before a deferred re-flood gets its (possibly much later) turn to
+      // render — its sim:packet-arrived will clean up the row instead.
+      bus.dispatchEvent(new CustomEvent('packets:chatter-pin', {
+        detail: { key: this._chatterDotKey(evt) },
+      }));
     }
 
     if (evt.flow && this._SEQUENTIAL.has(evt.type)) {
@@ -113,7 +157,231 @@ export const PacketAnim = {
       return;
     }
 
+    if (this._shouldDeferReflood(evt)) return;
+
     this._render(evt, null);
+  },
+
+  // Composite key identifying one chatter emission (one RoutingMessage out one
+  // interface). Matches packetstore's _chatterKey so the store row, on-canvas
+  // dot, and arrival signal all share one identity.
+  _chatterDotKey(evt) {
+    const dev = (evt.src && evt.src.device) || '?';
+    const iface = (evt.src && evt.src.iface) || '?';
+    const net = evt.network || '?';
+    return `${evt.payload_id}|${dev}|${iface}|${net}`;
+  },
+
+  _shouldDeferReflood(evt) {
+    if (evt.type !== 'routing_flood') return false;
+    const originator = evt.payload && evt.payload.originator;
+    const sender = evt.src && evt.src.device;
+    if (!originator || !sender || sender === originator) return false;
+    const key = `${evt.payload_id}|${sender}`;
+    if (this._lsaArrivedAt.has(key)) return false;
+    let q = this._lsaPending.get(key);
+    if (!q) { q = []; this._lsaPending.set(key, q); }
+    q.push(evt);
+    // Safety net: if the inbound that should release this re-flood is dropped
+    // (muted, or geometry it never animated over) and never fires an arrival,
+    // force-render after a bounded wait so the re-flood still animates and its
+    // store row is cleaned up, instead of stranding in _lsaPending until idle.
+    this._scheduleRefloodFallback(key, evt);
+    return true;
+  },
+
+  _scheduleRefloodFallback(key, evt) {
+    setTimeout(() => {
+      const q = this._lsaPending.get(key);
+      if (!q) return;                       // already released by an arrival
+      const i = q.indexOf(evt);
+      if (i === -1) return;
+      q.splice(i, 1);
+      if (q.length === 0) this._lsaPending.delete(key);
+      this._render(evt, null);
+    }, Math.max(this.DURATION_MS * 3, 100));
+  },
+
+  // Called from finish() when an LSA's animation completes. Marks every
+  // router listener on the fabric as having received this LSA and drains
+  // any re-floods that were waiting on those routers. Used by the
+  // single-dot path; the broadcast-fan-out path marks per-listener as
+  // each clone arrives instead.
+  _markLSAArrivedOnFabric(evt) {
+    if (evt.type !== 'routing_flood' || !evt.payload_id) return;
+    const senderDev = evt.src && evt.src.device;
+    const fabricName = evt.network;
+    if (!fabricName) return;
+    for (const [rn, r] of Object.entries(state.routers || {})) {
+      if (rn === senderDev) continue;
+      let onFabric = false;
+      for (const iff of Object.values(r.interfaces || {})) {
+        if (iff.network === fabricName || iff.link === fabricName) {
+          onFabric = true;
+          break;
+        }
+      }
+      if (!onFabric) continue;
+      this._markLSAArrivedAt(evt.payload_id, rn);
+    }
+  },
+
+  _markLSAArrivedAt(payloadId, device) {
+    if (!payloadId || !device) return;
+    const key = `${payloadId}|${device}`;
+    this._lsaArrivedAt.add(key);
+    const queued = this._lsaPending.get(key);
+    if (queued) {
+      this._lsaPending.delete(key);
+      for (const qEvt of queued) this._render(qEvt, null);
+    }
+  },
+
+  // Routers + hosts attached to `fabricName` other than `senderDev`. Used
+  // by the broadcast-chatter fan-out to know who should receive a visual
+  // clone of the packet.
+  _collectFabricListeners(fabricName, senderDev) {
+    const listeners = [];
+    if (!fabricName) return listeners;
+    for (const [rn, r] of Object.entries(state.routers || {})) {
+      if (rn === senderDev) continue;
+      for (const iff of Object.values(r.interfaces || {})) {
+        if (iff.network === fabricName || iff.link === fabricName) {
+          listeners.push(rn);
+          break;
+        }
+      }
+    }
+    for (const [hn, h] of Object.entries(state.hosts || {})) {
+      if (hn === senderDev) continue;
+      if (h.network === fabricName || h.link === fabricName) listeners.push(hn);
+    }
+    return listeners;
+  },
+
+  // Build a packet dot identical to the original render path so the clone
+  // shares hover behaviour, halo selector keying, and tooltip. Returns
+  // { dot, badge } — badge may be null if the chatter-badge toggle is off.
+  _makeDotAndBadge(evt, color, isChatter, dotKey, layer) {
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    dot.setAttribute('width', PACKET_W);
+    dot.setAttribute('height', PACKET_H);
+    dot.setAttribute('rx', 2);
+    dot.setAttribute('fill', color.fill);
+    dot.setAttribute('opacity', color.opacity);
+    dot.setAttribute('stroke', 'rgba(0,0,0,0.35)');
+    dot.setAttribute('stroke-width', '1');
+    dot.style.pointerEvents = 'all';
+    dot.dataset.evt = JSON.stringify(evt);
+    dot.dataset.payloadId = dotKey;
+    dot.dataset.packetType = evt.type;
+    layer.appendChild(dot);
+    dot.addEventListener('mouseenter', () => showPacketTooltip(evt, dot));
+    dot.addEventListener('mouseleave', hidePacketTooltip);
+    let badge = null;
+    const id = PacketStore.idFor(evt);
+    const chatterBadgesOn = document.body.dataset.chatterBadges === 'on';
+    const wantBadge = id != null && (!isChatter || chatterBadgesOn);
+    if (wantBadge) {
+      const label = isChatter ? `#R${id}` : `#${id}`;
+      badge = makePacketBadge(dotKey, label, color.fill);
+      layer.appendChild(badge);
+    }
+    return { dot, badge };
+  },
+
+  // Broadcast-chatter rendering. Phase 1 animates the original dot from
+  // the sender to the source rail tap; Phase 2 spawns one clone per
+  // listener and animates each tap → listener tap → listener centre in
+  // parallel. Each clone fires its own sim:packet-arrived (device =
+  // listener) so the LSA reflood sequencer releases per-listener.
+  _renderBroadcastFanout(evt, srcNode, netNode, dot, badge, dotKey, color, listeners, onDone) {
+    const layer = document.getElementById('packet-layer');
+    const gen = this._gen;
+    const sender = evt.src && evt.src.device;
+    const fabricName = evt.network;
+    const srcCenter = getNodeCenter(srcNode);
+    const srcTap = railTapPoint(sender, fabricName) || getNodeCenter(netNode);
+    if (!srcCenter || !srcTap) {
+      // Geometry unresolved — fall back to single-arrival semantics so the
+      // chatter row still cleans up.
+      if (dot.parentNode) layer.removeChild(dot);
+      if (badge && badge.parentNode) layer.removeChild(badge);
+      if (dotKey) {
+        bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: dotKey, device: null } }));
+      }
+      if (onDone) onDone();
+      return;
+    }
+
+    // Phase split: short ride to the rail tap, then a longer fan-out so the
+    // simultaneous arrival at every listener reads clearly.
+    const PHASE1_FRACTION = 0.3;
+    const phase1Dur = this.DURATION_MS * PHASE1_FRACTION;
+    const phase2Dur = this.DURATION_MS * (1 - PHASE1_FRACTION);
+
+    const phase1 = { kind: 'bez', ...this._bezBetween(srcCenter, srcTap) };
+    const isChatter = this._ROUTING_CHATTER_TYPES.has(evt.type);
+
+    this._tweenBezier(dot, badge, phase1.p0, phase1.c1, phase1.c2, phase1.p3, phase1Dur, () => {
+      // Retire the source dot; clones will carry the visual onward.
+      if (dot.parentNode) layer.removeChild(dot);
+      if (badge && badge.parentNode) layer.removeChild(badge);
+
+      // The sim stopped (or reset) mid fan-out: the layer has been cleared, so
+      // spawning clones now would just dangle them. Clean up the row and stop.
+      if (gen !== this._gen) {
+        if (dotKey) {
+          bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: dotKey, device: null } }));
+        }
+        if (onDone) onDone();
+        return;
+      }
+
+      let remaining = listeners.length;
+      const cloneDone = () => {
+        remaining--;
+        if (remaining === 0 && onDone) onDone();
+      };
+
+      for (const lis of listeners) {
+        const lisNode = lookupDeviceNode(lis);
+        const lisCenter = lisNode ? getNodeCenter(lisNode) : null;
+        const lisTap = railTapPoint(lis, fabricName) || srcTap;
+        // Build the clone even when geometry is missing so we still fire
+        // arrival (and clean up the chatter row).
+        const { dot: cdot, badge: cbadge } = this._makeDotAndBadge(evt, color, isChatter, dotKey, layer);
+
+        const fireArrival = () => {
+          if (cdot.parentNode) layer.removeChild(cdot);
+          if (cbadge && cbadge.parentNode) layer.removeChild(cbadge);
+          if (dotKey) {
+            bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: dotKey, device: lis } }));
+          }
+          PacketAnim._markLSAArrivedAt(evt.payload_id, lis);
+          cloneDone();
+        };
+
+        if (!lisCenter || !lisTap) { fireArrival(); continue; }
+
+        // Position the clone at the source rail tap before animating.
+        setPacketAnchor(cdot, cbadge, srcTap.x, srcTap.y);
+
+        // Same total phase-2 duration for every clone so all listeners
+        // visually receive together (broadcast intuition), even though
+        // their path lengths differ.
+        const railSegLen = this._segLength({ kind: 'line', from: srcTap, to: lisTap });
+        const lisBez = this._bezBetween(lisTap, lisCenter);
+        const lisBezLen = this._segLength({ kind: 'bez', ...lisBez });
+        const tot = (railSegLen + lisBezLen) || 1;
+        const railDur = (railSegLen / tot) * phase2Dur;
+        const lisDur = (lisBezLen / tot) * phase2Dur;
+
+        this._tweenPoints(cdot, cbadge, srcTap, lisTap, railDur, () => {
+          this._tweenBezier(cdot, cbadge, lisBez.p0, lisBez.c1, lisBez.c2, lisBez.p3, lisDur, fireArrival);
+        });
+      }
+    });
   },
 
   _onSegmentDone(flow) {
@@ -128,11 +396,21 @@ export const PacketAnim = {
   },
 
   _render(evt, onDone) {
-    const srcNode = lookupDeviceNode(evt.src && evt.src.device);
-    if (!srcNode) {
+    const isChatterEvt = this._ROUTING_CHATTER_TYPES.has(evt.type);
+    // Geometry can't be resolved (device/network node missing): bail out, but
+    // for chatter still fire arrival so the pinned store row gets cleaned up
+    // instead of leaking until idle.
+    const bail = () => {
+      if (isChatterEvt) {
+        bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
+          detail: { payloadId: this._chatterDotKey(evt), device: null },
+        }));
+      }
       if (onDone) onDone();
-      return;
-    }
+    };
+
+    const srcNode = lookupDeviceNode(evt.src && evt.src.device);
+    if (!srcNode) { bail(); return; }
 
     // Two fabric kinds: multi-access Networks have a visible rail node;
     // point-to-point Links are a direct device↔device edge with no fabric
@@ -140,16 +418,10 @@ export const PacketAnim = {
     // animation along the right geometry.
     const isLink = !!(state.links && state.links[evt.network]);
     const netNode = isLink ? null : lookupNetworkNode(evt.network);
-    if (!isLink && !netNode) {
-      if (onDone) onDone();
-      return;
-    }
+    if (!isLink && !netNode) { bail(); return; }
 
     const layer = document.getElementById('packet-layer');
-    if (!layer) {
-      if (onDone) onDone();
-      return;
-    }
+    if (!layer) { bail(); return; }
 
     const color = this.COLORS[evt.type] || { fill: '#777', opacity: 1.0 };
     // Packets render as small rounded rectangles — the typical "datagram"
@@ -158,9 +430,8 @@ export const PacketAnim = {
     // simple point-tracking API; we translate into x/y at write time.
     // Chatter packets use a composite key so each interface emission gets its
     // own distinct dot↔row binding. User traffic continues to use bare payload_id.
-    const dotKey = evt.type === 'routing_flood'
-      ? `${evt.payload_id}|${(evt.src && evt.src.device) || '?'}|${(evt.src && evt.src.iface) || '?'}|${evt.network || '?'}`
-      : evt.payload_id;
+    const isChatter = isChatterEvt;
+    const dotKey = isChatter ? this._chatterDotKey(evt) : evt.payload_id;
 
     const dot = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     dot.setAttribute('width', PACKET_W);
@@ -186,9 +457,9 @@ export const PacketAnim = {
     let badge = null;
     const id = PacketStore.idFor(evt);
     const chatterBadgesOn = document.body.dataset.chatterBadges === 'on';
-    const wantBadge = id != null && (evt.type !== 'routing_flood' || chatterBadgesOn);
+    const wantBadge = id != null && (!isChatter || chatterBadgesOn);
     if (wantBadge) {
-      const label = evt.type === 'routing_flood' ? `#R${id}` : `#${id}`;
+      const label = isChatter ? `#R${id}` : `#${id}`;
       badge = makePacketBadge(dotKey, label, color.fill);
       layer.appendChild(badge);
     }
@@ -206,6 +477,23 @@ export const PacketAnim = {
         : deviceNameForEndpointOnFabric(evt.dst, evt.network);
     } else {
       dstDeviceName = deviceNameForEndpointOnFabric(evt.dst, evt.network);
+    }
+
+    // Broadcast chatter (Hello / LSA on a LAN with broadcast dst) has no
+    // single destination device — the simulator emits one packet event but
+    // every listener on the fabric receives it. Without fan-out the dot
+    // would stop at the source rail tap. Spawn a clone per listener so the
+    // visual reaches every peer, and let each clone fire its own arrival
+    // so the LSA reflood sequencer releases per-listener (not all at once).
+    if (!isLink && isChatter && !dstDeviceName) {
+      const listeners = this._collectFabricListeners(evt.network, srcName);
+      if (listeners.length > 0) {
+        return this._renderBroadcastFanout(
+          evt, srcNode, netNode, dot, badge, dotKey, color, listeners, onDone,
+        );
+      }
+      // 0 listeners: fall through and use the single-segment path so the
+      // packet at least travels src → rail tap and fires one arrival.
     }
 
     const finish = () => {
@@ -227,6 +515,9 @@ export const PacketAnim = {
         bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
           detail: { payloadId: dotKey, device: dstDeviceName },
         }));
+        // For LSAs, every router on the fabric has now visually received
+        // this hop — release any re-floods that were waiting on them.
+        PacketAnim._markLSAArrivedOnFabric(evt);
       }
       if (onDone) onDone();
     };
@@ -353,7 +644,12 @@ export const PacketAnim = {
   },
 
   _chatterAllowed(evt) {
-    const key = `${evt.src && evt.src.device}:${evt.network}`;
+    // Key on the message identity, not just (device, network): a router
+    // re-floods several *distinct* LSAs out one interface in a tight burst
+    // during convergence, and each is a real message that should animate.
+    // Including payload_id collapses only true repeats of the *same* message
+    // (the protocol's self-reflood back through the origin iface).
+    const key = `${evt.src && evt.src.device}:${evt.network}:${evt.payload_id}`;
     const now = performance.now();
     const last = this._lastChatter.get(key) || 0;
     if (now - last < 200) return false;
@@ -449,6 +745,24 @@ export function hidePacketTooltip() {
 // used to wire this through a bridge listener; ownership now lives here.
 bus.addEventListener('sim:packet', (e) => { PacketAnim.play(e.detail); });
 
+// Reset all animation state when the sim goes idle. A fresh run must not
+// inherit stale sequencer markers (which would let re-floods skip their wait),
+// and — crucially — any dots/badges still in flight (or frozen by a pause)
+// when the sim stops must be cleared from the canvas, otherwise they dangle
+// permanently because nothing else empties the packet layer.
+bus.addEventListener('sim:status-changed', (e) => {
+  const status = e.detail && e.detail.status;
+  if (status === 'idle') {
+    PacketAnim._gen++;   // invalidate any in-flight multi-phase animation
+    PacketAnim._lsaArrivedAt.clear();
+    PacketAnim._lsaPending.clear();
+    PacketAnim._queues.clear();
+    PacketAnim._lastChatter.clear();
+    const layer = document.getElementById('packet-layer');
+    if (layer) layer.replaceChildren();
+  }
+});
+
 // Live chatter-badge toggle: when the body flag changes while chatter dots are
 // already in flight, add or remove their badges without waiting for a re-render.
 // Toggle-added badges stay at the dot's last position (no tween) — acceptable
@@ -457,7 +771,7 @@ bus.addEventListener('packets:chatter-badges-changed', () => {
   const layer = document.getElementById('packet-layer');
   if (!layer) return;
   const chatterOn = document.body.dataset.chatterBadges === 'on';
-  const dots = layer.querySelectorAll('rect[data-packet-type="routing_flood"]');
+  const dots = layer.querySelectorAll(ROUTING_CHATTER_SELECTOR);
   dots.forEach(dot => {
     // dot.dataset.payloadId is already the composite key for chatter dots.
     // Look up the row directly rather than going through idFor (which would

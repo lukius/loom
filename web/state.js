@@ -26,6 +26,10 @@ export const state = {
   /* transient sim state — NAT snapshots keyed by device name; populated by
      the `nat_table_changed` WS event. Not persisted; reset on loadSample. */
   natTables: {},
+  /* Per-device neighbor state, keyed by device name.
+     Value: { [ifaceName]: { [peerName]: { state, last_hello_at, peer_acked_at } } }
+     Not persisted; transient sim state from `neighbor_state_changed` WS events. */
+  neighborsByDevice: {},
   /* basename of the YAML file the topology was last loaded from (via Import
      or, on first boot, via the server's LOOM_TOPOLOGY). Used to derive the
      default Export filename. Persisted; null until set. */
@@ -175,6 +179,44 @@ export function loadSample() {
   bus.dispatchEvent(new CustomEvent('state:topology-changed'));
   bus.dispatchEvent(new CustomEvent('state:topology-loaded'));
   toast('Sample topology loaded', 'ok');
+}
+
+/* Clear the topology back to an empty canvas so the user can start fresh.
+   Mirrors loadSample() but seeds nothing — the "no topology yet" empty state
+   then renders. Resets sourceName (no file backs a fresh topology) and uses a
+   neutral default AS name. */
+export function clearTopology() {
+  state.asName = 'loom';
+  state.networks = {};
+  state.hosts = {};
+  state.routers = {};
+  state.links = {};
+  state.selection = null;
+  state.sourceName = null;
+  state.view = { x: 0, y: 0, k: 1 };
+  state.display = { ...DISPLAY_DEFAULTS };
+  state.ui = { packetsPanelOpen: false, showChatter: true };
+  state.natTables = {};
+  const projName = document.getElementById('proj-name');
+  if (projName) projName.value = state.asName;
+  persist();
+  bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+  bus.dispatchEvent(new CustomEvent('state:topology-loaded'));
+  toast('New topology', 'ok');
+}
+
+/* ---------- neighbor state cache ---------- */
+export function applyNeighborStateChanged(ev) {
+  const { device, interface: iface, peer, state: nState,
+          last_hello_at, peer_acked_at } = ev;
+  state.neighborsByDevice[device] ??= {};
+  state.neighborsByDevice[device][iface] ??= {};
+  state.neighborsByDevice[device][iface][peer] = {
+    state: nState, last_hello_at, peer_acked_at,
+  };
+  bus.dispatchEvent(new CustomEvent('sim:neighbor-state-changed', {
+    detail: { device, iface, peer, state: nState },
+  }));
 }
 
 /* ---------- mark dirty ---------- */

@@ -101,6 +101,29 @@ class GraphTest(unittest.TestCase):
         self.assertEqual(paths['t'], ['s', 'b', 'a', 't'])
 
 
+class DirectedEdgeTest(unittest.TestCase):
+
+    def test_add_directed_edge_sets_only_one_direction(self):
+        """add_directed_edge sets src→dst but leaves dst→src untouched.
+
+        Used by LSDB.build_graph to encode the OSPF pseudonode model:
+        router→subnet carries the router's outgoing interface cost,
+        subnet→router is filled in separately as a zero-weight edge.
+        """
+        graph = NetworkGraph()
+        graph._add_node('r1')  # noqa: SLF001
+        graph._add_node('n1')  # noqa: SLF001
+
+        graph.add_directed_edge('r1', 'n1', weight=7)
+
+        self.assertEqual(graph.weight('r1', 'n1'), 7)
+        self.assertIsNone(graph.weight('n1', 'r1'))
+
+        # The reverse can be filled in independently (e.g. with 0).
+        graph.add_directed_edge('n1', 'r1', weight=0)
+        self.assertEqual(graph.weight('n1', 'r1'), 0)
+
+
 class IdempotentAddTest(unittest.TestCase):
 
     def test_add_router_is_idempotent(self):

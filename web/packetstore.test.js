@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PacketStore } from './packetstore.js';
 import { state, bus } from './state.js';
 
@@ -312,6 +312,54 @@ describe('PacketStore — routing chatter', () => {
       payload_id: 'c1', type: 'routing_flood',
       src: { device: 'r1', iface: 'eth0' }, network: 'lan_a',
     })).toBe(1);
+  });
+});
+
+describe('PacketStore — chatter row pinning (animation owns cleanup)', () => {
+  beforeEach(() => {
+    state.routers = { r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 } } } };
+  });
+
+  it('evicts an unpinned chatter row after the fallback budget', () => {
+    vi.useFakeTimers();
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatterEvt({ payload_id: 'c1', srcDev: 'r1', network: 'lan_a' }) }));
+      const key = chatterKey('c1', 'r1', 'eth0', 'lan_a');
+      expect(PacketStore.chatter.has(key)).toBe(true);
+      vi.advanceTimersByTime(2500);
+      expect(PacketStore.chatter.has(key)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a pinned row past the fallback budget (deferred re-flood renders late)', () => {
+    vi.useFakeTimers();
+    try {
+      const key = chatterKey('c1', 'r1', 'eth0', 'lan_a');
+      // Pin arrives before the row is created (the animation layer committed
+      // to animating this re-flood, but it is deferred for several hops).
+      bus.dispatchEvent(new CustomEvent('packets:chatter-pin', { detail: { key } }));
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatterEvt({ payload_id: 'c1', srcDev: 'r1', network: 'lan_a' }) }));
+      vi.advanceTimersByTime(10000);
+      // Survives — its arrival, not a timer, will clean it up.
+      expect(PacketStore.chatter.has(key)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels the fallback when a row is pinned after creation', () => {
+    vi.useFakeTimers();
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: chatterEvt({ payload_id: 'c1', srcDev: 'r1', network: 'lan_a' }) }));
+      const key = chatterKey('c1', 'r1', 'eth0', 'lan_a');
+      bus.dispatchEvent(new CustomEvent('packets:chatter-pin', { detail: { key } }));
+      vi.advanceTimersByTime(10000);
+      expect(PacketStore.chatter.has(key)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -712,5 +760,61 @@ describe('PacketStore — chatter composite key (T29)', () => {
     } }));
     const row = Array.from(PacketStore.chatter.values())[0];
     expect(row.payloadId).toBe('msg-2|r1|eth0|lan_a');
+  });
+});
+
+describe('PacketStore — hello routing-chatter classification', () => {
+  beforeEach(() => {
+    state.routers = { r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 } } } };
+  });
+
+  function helloEvt({ payload_id, srcDev = 'r1', iface = 'eth0', network = 'lan_a' }) {
+    return {
+      type: 'hello', payload_id, network,
+      src: { device: srcDev, iface, address: '10.0.0.254' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '10.0.0.254', payload_dst: '255.255.255.255',
+      payload: { originator: 'r1', neighbors_heard: [] },
+    };
+  }
+
+  it('hello event goes into the chatter map (not inFlight)', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: helloEvt({ payload_id: 'h1' }) }));
+    expect(PacketStore.inFlight.size).toBe(0);
+    expect(PacketStore.chatter.size).toBe(1);
+  });
+
+  it('hello chatter row stores type "hello"', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: helloEvt({ payload_id: 'h1' }) }));
+    const row = Array.from(PacketStore.chatter.values())[0];
+    expect(row.type).toBe('hello');
+  });
+
+  it('hello gets its own #R id (independent of routing_flood counter)', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+      type: 'routing_flood', payload_id: 'lsa-1', network: 'lan_a',
+      src: { device: 'r1', iface: 'eth0', address: '10.0.0.254' },
+      dst: { device: null, address: '255.255.255.255' },
+      payload_src: '10.0.0.254', payload_dst: '255.255.255.255',
+    } }));
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: helloEvt({ payload_id: 'h1' }) }));
+    const rows = Array.from(PacketStore.chatter.values()).sort((a, b) => a.id - b.id);
+    expect(rows[0].id).toBe(1);
+    expect(rows[1].id).toBe(2);
+  });
+
+  it('idFor returns the chatter id for a hello event', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: helloEvt({ payload_id: 'h1' }) }));
+    expect(PacketStore.idFor({
+      type: 'hello', payload_id: 'h1',
+      src: { device: 'r1', iface: 'eth0' }, network: 'lan_a',
+    })).toBe(1);
+  });
+
+  it('visibleChatterGroups includes hello groups with type "hello"', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: helloEvt({ payload_id: 'h1' }) }));
+    const groups = PacketStore.visibleChatterGroups();
+    expect(groups.length).toBe(1);
+    expect(groups[0].type).toBe('hello');
   });
 });

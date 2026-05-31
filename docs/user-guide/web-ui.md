@@ -29,6 +29,7 @@ From left to right:
 | Group | Control | What it does |
 |---|---|---|
 | Project | **Project name** | Editable AS name. Persisted; round-trips to/from YAML. |
+| Project | **New** | Clear the current topology and start from an empty canvas. Asks for confirmation first, and stops the simulation if one is running. |
 | Project | **Import** | Open a picker listing the YAML topologies in `samples/`; click one to load it, or use **Browse local file…** to pick any `.yaml` on your computer. |
 | Project | **Export** | Open the browser's save dialog so you can pick a folder and filename for the current topology. The suggested name is the loaded source filename with a `.session` suffix (e.g. `sample.session.yaml`). |
 | Build | **LAN** (<kbd>N</kbd>) | Add a network rail at the canvas center. Disabled while running. |
@@ -38,7 +39,8 @@ From left to right:
 | Sim | **Start / Stop** (<kbd>Space</kbd>) | Toggle between `idle` and `running`. Starts: serializes YAML → POST `/topology` → POST `/sim/start`. |
 | Sim | **Pause / Resume** (<kbd>P</kbd>) | Toggle between `running` and `paused`. The label shows pending patch ops while paused. |
 | Sim | **Reset** | Idle-only: discard the session and re-clone from the source YAML. |
-| Sim | **Refresh** | Routing-protocol keepalive interval in seconds (1–300). Enabled while sim is loaded. |
+| Sim | **Refresh** | LSA-refresh interval in seconds (1–300) — shorthand for the **Protocol** popover's Refresh field. Enabled while sim is loaded. |
+| Sim | **Protocol** | Open the Protocol settings popover (Hello interval and LSA-refresh interval). |
 | Sim | **Packet speed** | Per-hop animation duration in ms (200–5000). Local to the SPA; doesn't talk to the server. |
 | View | **Chatter** | Mute or unmute routing-protocol packet animations. |
 | View | **Packets** | Open the Packets panel listing all packets currently traveling, with a numeric badge on each. Expand a row to see its hop history and any NAT translations along the way. |
@@ -49,6 +51,43 @@ From left to right:
 The **Refresh** field is disabled when the sim is `idle` — there's
 nothing to apply the new interval to until a topology is loaded and
 running.
+
+![Toolbar showing all controls including the Protocol button](../images/toolbar.png)
+
+### Starting fresh
+
+**New** wipes the whole topology so you can build one from scratch. Because
+that discards everything on the canvas, it asks you to confirm first — export
+the current topology beforehand if you want to keep it. Confirming leaves you
+on the empty canvas, ready to add your first LAN.
+
+![Confirming before New clears the topology](../images/06-new-confirm.png)
+
+### Protocol settings
+
+Click **Protocol** in the toolbar to open the Protocol settings popover.
+This controls the two loom-OSPF timing parameters for the running simulation:
+
+- **Hello interval** — how often each router sends a Hello to its
+  neighbors to declare itself alive (seconds, 1–300).
+- **Refresh interval** — how often each router rebroadcasts its full
+  link-state advertisement (seconds, 1–300).
+
+Two derived values are shown read-only alongside the inputs:
+
+- **Dead interval** — four times the Hello interval. A neighbor silent
+  for this long is considered unreachable.
+- **Max age** — three times the Refresh interval. An LSA older than this
+  is expired from the link-state database.
+
+Press **Apply** (or <kbd>Enter</kbd> inside either field) to push the new
+values to the running simulation. The change takes effect on the next
+keepalive tick — no restart required.
+
+![Protocol settings popover with derived Dead interval and Max-age values](../images/protocol-popover.png)
+
+For the underlying mechanics, see
+[`docs/architecture/routing-protocol.md`](../architecture/routing-protocol.md).
 
 ### Keyboard shortcuts
 
@@ -166,7 +205,7 @@ first.
 For tracking multiple packets at once — or for keeping context while the simulation is still running — click **Packets** in the toolbar. A panel slides in from the right showing:
 
 - **In flight — user traffic.** One row per packet currently crossing the network, with a numeric badge (`#1`, `#2`, …). The same badge rides on the corresponding dot in the canvas, so a row and its packet are always paired by sight. Expand a row to see the packet's hop history and any NAT translations along the way.
-- **In flight — routing chatter.** Routing-protocol packets are summarised on a single line by default to keep the list readable. Expand the summary to see each one individually with its own `#R1`, `#R2`, … badge — handy when teaching how the protocol propagates updates.
+- **In flight — routing chatter.** Routing-protocol packets are summarised on a single line by default to keep the list readable. Expand the summary to see each one individually with its own `#R1`, `#R2`, … badge and a **Hello** / **LSA** label so the message type is clear at a glance — handy when teaching how the protocol propagates updates. LSA flooding is staged per hop: the originator's emission animates first; each downstream re-flood only starts moving once its inbound hop has visually arrived at the re-flooder, so the flood ripples outward through the topology instead of all dots appearing at once.
 - **Recent.** The last ten user-traffic packets that have completed, oldest dropped first. The same expand-for-detail behaviour applies.
 
 The panel works just as well while the sim is paused — frozen badges sit on the wires alongside the panel rows, making the badge-to-row mapping easy to read.
@@ -237,6 +276,42 @@ A directly-connected route shows `0.0.0.0` as the next hop — that's
 the simulator's sentinel value meaning "deliver to the packet's
 destination on this interface." See [Routing tables](routing-tables.md)
 for what to read into this.
+
+The router inspector also shows a **Neighbors** section listing, per
+interface, every discovered peer and its adjacency state
+(`TWO_WAY`, `INIT`, or `DOWN`). The summary line counts unique peer
+routers, total adjacencies, and a per-state breakdown — see
+[Neighbors counts](#neighbors-counts) below for the difference between
+peers and adjacencies.
+
+![Router inspector showing Neighbors panel and collapsible Routing table section](../images/inspector-router.png)
+
+### Neighbors counts
+
+A fully-converged router shows e.g.
+`(2 peers · 4 adjacencies · 4 TWO_WAY)`; a router still settling or
+with some links unreachable might read
+`(2 peers · 4 adjacencies · 3 TWO_WAY · 1 INIT)`. The two counts
+measure different things:
+
+- **Peers** — the number of *distinct neighbor routers* this router
+  has discovered, regardless of how many shared LANs or links they meet
+  on.
+- **Adjacencies** — one entry per interface a peer is reachable from.
+  Two routers that share both `lan1` and `lan2` count as **one peer /
+  two adjacencies**, because each LAN forms its own adjacency.
+
+The `TWO_WAY`, `INIT`, and `DOWN` totals are per-adjacency states
+(peers and adjacencies are not states). State counts that are zero are
+omitted to keep the line compact.
+
+An interface attached to a fabric where no other router is connected
+(a stub — e.g. a LAN serving only hosts) is shown as `— no other routers`
+and is *not* counted as a `DOWN` adjacency: there is nothing on the
+other end to peer with, so flagging it as DOWN would be misleading. An
+interface that *should* have a peer but hasn't heard one yet (or whose
+peer's Hellos have stopped) is the real DOWN case and contributes to
+the count.
 
 ## Terminals
 

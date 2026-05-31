@@ -18,6 +18,8 @@ web/
 ├── packetspanel.js      # Packets panel — toolbar button, mounts inside #inspector, row rendering, hover halo
 ├── sim.js               # Sim state machine + RuntimeClient + WS dispatcher
 ├── yaml-io.js           # YAML import / export
+├── preflight.js         # validateTopology() — pre-Start completeness check
+├── modal.js             # confirmModal() — promise-based confirm dialog
 └── utils.js             # DOM helpers (el, escapeHtml, toast, ...)
 ```
 
@@ -52,7 +54,7 @@ module-to-module direct render calls.
 | Event | Emitted by | Consumed by | Trigger |
 |---|---|---|---|
 | `state:topology-changed` | `inspector`, `state`, `app` | `canvas`, `inspector` | Any mutation to networks/links/hosts/routers/display |
-| `state:topology-loaded` | `state` (loadSample), `yaml-io` (importYaml) | `canvas` (fitView), `inspector` | Wholesale topology replacement |
+| `state:topology-loaded` | `state` (loadSample/clearTopology), `yaml-io` (importYaml) | `canvas` (fitView), `inspector` | Wholesale topology replacement |
 | `state:selection-changed` | `canvas`, `inspector`, context menu | `inspector` | User selected a node |
 | `sim:status-changed` | `sim` | `inspector`, `canvas` | Sim transitioned (idle/running/paused) |
 | `sim:packet` | `sim` (from WS) | `packets` | Server emitted a packet event |
@@ -63,6 +65,7 @@ module-to-module direct render calls.
 | `packets:list-changed` | `packetstore` (debounced ~50ms) | `packetspanel` | The store's in-flight or recent set mutated. Panel re-renders on receipt. |
 | `packets:chatter-badges-changed` | `packetspanel` | `packets` | The chatter group's expand state flipped; live chatter dots add/remove their `#R*` badges. |
 | `packets:dot-appeared` | `packets` (after appendChild) | `packetstore` | A new packet dot was appended to the canvas layer. Detail: `{payloadId}`. Drives the panel's visibility filter — rows stay hidden until their dot is on screen. |
+| `packets:chatter-pin` | `packets` (on commit to animate) | `packetstore` | This chatter emission will animate, so its row's fallback timer is cancelled and its `sim:packet-arrived` owns cleanup. Detail: `{key}` (composite chatter key). |
 | `sim:yaml-export-requested` | `sim.onPrimary` | `app.js` | Sim needs current YAML to load before starting |
 | `sim:topology-import-requested` | `sim.onReset` | `app.js` | Sim received reset; refresh canvas from server YAML |
 | `view:changed` | `canvas` | (none currently — kept for future) | Pan/zoom |
@@ -214,6 +217,23 @@ The packet color/icon comes from the `type` field of the event:
 
 Each packet animation also creates a small `<text class="packet-badge">` element sibling to the dot, displaying the numeric id (`#N` for user traffic, `#R*` for routing chatter) assigned by `packetstore.js`. The badge rides with the dot via the same `setPacketAnchor` write-step and is removed on `finish()`. Chatter badges only render when `<body data-chatter-badges="on">` is set, which the panel toggles on chatter-group expand/collapse and signals via `packets:chatter-badges-changed`.
 
+### LSA flooding is sequenced per hop
+
+The simulator processes `LSA-receive → re-flood` with effectively zero wire latency, so without sequencing the origin dot and every downstream re-flood would ride the wires concurrently — visually confusing on anything larger than two routers. `PacketAnim` keeps the flooding tree visible by holding back each re-flood until its inbound hop has visually arrived at the re-flooder:
+
+- The `originator` field on the `packet` event's `payload` (added in `_summarize_payload`) lets the SPA classify each emission as origin (`evt.src.device === payload.originator`) vs re-flood.
+- Origin emissions play immediately.
+- Re-floods are queued in `PacketAnim._lsaPending` keyed by `"payload_id|sender"`.
+- When an LSA dot's `finish()` runs, `_markLSAArrivedOnFabric` walks every router listening on the dot's fabric (excluding the sender), marks `"payload_id|listener"` in `_lsaArrivedAt`, and drains the matching pending queue.
+- A re-flood whose listener already arrived (because the dot finished before the re-flood event was dispatched) plays immediately on dispatch.
+- Each queued re-flood also arms a bounded fallback (`_scheduleRefloodFallback`, ~3× the per-hop duration). If the inbound that should release it is dropped (muted, or geometry it never animated over) and no arrival ever fires, the fallback force-renders it so it still animates and its store row is cleaned up, instead of stranding in `_lsaPending`.
+- The arrival/pending sets clear on `sim:status-changed` → `idle` so a fresh sim run starts clean.
+
+Two supporting rules keep this honest:
+
+- **The chatter animation throttle keys on message identity, not just `(device, network)`.** `_chatterAllowed` keys on `"device:network:payload_id"` so a router re-flooding several *distinct* LSAs out one interface in a convergence burst animates each one; only true repeats of the *same* message (the protocol's self-reflood back through the origin iface) are collapsed.
+- **Going idle clears the canvas.** The `sim:status-changed → idle` handler bumps `PacketAnim._gen`, resets the sequencer/throttle maps, and empties `#packet-layer`. The generation bump matters because a multi-phase broadcast fan-out in flight at stop time captures the generation when it starts and aborts its later phases if it changed — otherwise it would spawn fresh clones onto the just-cleared layer and leave them dangling.
+
 The NAT cache previously kept here moved to `packetstore.js` so the tooltip and the panel query the same source.
 
 ## Packet store (`web/packetstore.js`)
@@ -234,7 +254,7 @@ export const PacketStore = {
 ```
 
 - A user-traffic row moves from `inFlight` → `recent` when the matching `sim:packet-arrived` fires for the final hop (`evt.dst.address === payload_dst`).
-- Chatter rows are keyed by a composite `"payload_id|srcDev|srcIface|network"` string so that N emissions of the same `RoutingMessage` (one per router interface) each get a distinct store row, badge, and hover-halo hit-target. Chatter rows leave the `chatter` map on arrival (or after a 2 s TTL) and don't enter `recent`.
+- Chatter rows are keyed by a composite `"payload_id|srcDev|srcIface|network"` string so that N emissions of the same `RoutingMessage` (one per router interface) each get a distinct store row, badge, and hover-halo hit-target. A chatter row leaves the `chatter` map on its `sim:packet-arrived` and doesn't enter `recent`. Its lifetime is owned by the animation: when `PacketAnim` commits to animating an emission it dispatches `packets:chatter-pin`, which cancels the row's fallback timer so a re-flood deferred for several hops (rendering well past a fixed budget) keeps its `#R` id and panel row until it actually arrives. The fallback timer only reclaims rows whose packet never animates (e.g. muted) — a pin that arrives before the row is created is remembered so the timer is never started.
 - Counters reset to 1 on `sim:status-changed → idle`. They persist across pause/resume.
 - While paused, `_scheduleEmit()` is suppressed and chatter TTL deletions are deferred to `_pendingChatterDeletes`; both are flushed on resume so the panel stays frozen during a pause.
 - The NAT cache lives here so both the panel and the `packets.js` tooltip query the same source. `PacketStore.natFor(payloadId)` returns the list (or `[]`).

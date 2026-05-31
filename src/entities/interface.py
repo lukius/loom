@@ -9,11 +9,18 @@ from .exception import InterfaceNotReadyException
 from .packet import Datagram, Frame, PingReply, PingRequest, RoutingMessage, UserMessage
 
 _PACKET_KIND = {
+    "Hello": "hello",
+    "LSA": "routing_flood",
     "RoutingMessage": "routing_flood",
     "UserMessage": "user_datagram",
     "PingRequest": "ping_request",
     "PingReply": "ping_reply",
 }
+
+# Deferred imports: routing.lsa / routing.hello import entities.packet.Message;
+# placing these after module-level code avoids the circular-init race.
+from routing.hello import Hello  # noqa: E402, PLC0415
+from routing.lsa import LSA  # noqa: E402, PLC0415
 
 
 def _classify(payload) -> str:
@@ -38,13 +45,24 @@ def _summarize_payload(payload) -> dict:
         return {"seq": payload.seq}
     if isinstance(payload, PingReply):
         return {"seq": payload.seq, "request_ts": payload.request_ts}
+    if isinstance(payload, Hello):
+        return {
+            "originator": payload.originator().name(),
+            "neighbors_heard": [r.name() for r in payload.neighbors_heard()],
+        }
+    if isinstance(payload, LSA):
+        return {
+            "seq": payload.seq(),
+            "originator": payload.origin().name(),
+            "destinations": [
+                {"prefix": str(p), "cost": c}
+                for p, c in payload.links().items()
+            ],
+        }
     if isinstance(payload, RoutingMessage):
         return {
             "seq": payload.seq(),
-            "destinations": [
-                {"prefix": str(p), "cost": c}
-                for p, c in payload.destinations().items()
-            ],
+            "destinations": [],
         }
     return {}
 

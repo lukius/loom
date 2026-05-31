@@ -65,6 +65,7 @@ class InterfaceThreadResilienceTest(unittest.TestCase):
         self.assertTrue(
             processed.wait(timeout=2.0), "thread died after first exception"
         )
+        # jitter-audit: exactly 2 frames enqueued; count is deterministic
         self.assertEqual(call_count, 2)
 
 
@@ -115,7 +116,8 @@ class NetworkThreadResilienceTest(unittest.TestCase):
 
 
 class RoutingProtocolThreadResilienceTest(unittest.TestCase):
-    """RoutingProtocol._keepalive_loop must survive exceptions from _handle_update."""
+    """RoutingProtocol._protocol_loop must survive exceptions from dispatched actions.
+    """
 
     def setUp(self):
         self._net = Network("lan", NetworkAddress("10.0.0.0/24"))
@@ -128,32 +130,34 @@ class RoutingProtocolThreadResilienceTest(unittest.TestCase):
         self._router.stop()
         self._net.stop()
 
-    def test_thread_survives_handle_update_exception(self):
+    def test_thread_survives_dispatch_exception(self):
+        from routing import Scheduler  # noqa: PLC0415  # test-only local import
         protocol = self._router.protocol()
         call_count = 0
         completed = threading.Event()
 
-        original_handle_update = protocol._handle_update
+        original_emit_hello = protocol._emit_hello_on_all_interfaces
 
-        def patched_handle_update():
+        def patched_emit_hello(now):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                raise Exception("simulated keepalive crash")
-            original_handle_update()
+                raise Exception("simulated dispatch crash")
+            original_emit_hello(now)
             completed.set()
 
-        protocol._handle_update = patched_handle_update
-
-        protocol._keepalive_interval = 0
-        protocol._keepalive_thread = threading.Thread(
-            target=protocol._keepalive_loop, daemon=True
+        protocol._emit_hello_on_all_interfaces = patched_emit_hello
+        # Use no-jitter scheduler with zero-interval to fire immediately.
+        protocol._scheduler = Scheduler(jitter_range=(0.0, 0.0))
+        protocol.set_timers(hello_interval=0.01, lsa_refresh_interval=0.05)
+        protocol._protocol_thread = threading.Thread(
+            target=protocol._protocol_loop, daemon=True
         )
-        protocol._keepalive_thread.start()
+        protocol._protocol_thread.start()
 
         self.assertTrue(
             completed.wait(timeout=2.0),
-            "keepalive thread died after exception",
+            "protocol thread died after exception",
         )
         self.assertGreaterEqual(call_count, 2)
 
