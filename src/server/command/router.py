@@ -1,10 +1,22 @@
 def cmd_ifconfig(router, args, as_obj=None):
-    """Show interface configuration for all router interfaces."""
-    return "\n".join(
-        f"{name}: addr={iface.address()} net={iface.network().name()} "
-        f"({iface.network().address()}) cost={iface.cost()}"
-        for name, iface in router.interfaces().items()
-    )
+    """Show interfaces, or toggle one: ifconfig [<iface> up|down]."""
+    if not args:
+        return "\n".join(
+            f"{name}: addr={iface.address()} net={iface.network().name()} "
+            f"({iface.network().address()}) cost={iface.cost()} "
+            f"{'up' if iface.is_up() else 'down'}"
+            for name, iface in router.interfaces().items()
+        )
+    if len(args) != 2 or args[1] not in ("up", "down"):
+        return "syntax: ifconfig [<iface> up|down]"
+    iface_name, action = args
+    if iface_name not in router.interfaces():
+        return f"no such interface: {iface_name}"
+    if action == "down":
+        router.disable_interface(iface_name, graceful=True)
+        return f"{iface_name} down"
+    router.enable_interface(iface_name)
+    return f"{iface_name} up"
 
 
 def cmd_route(router, args, as_obj=None):
@@ -51,6 +63,21 @@ def cmd_neighbors(router, args, as_obj=None):
     return "\n".join(lines) if lines else "(no neighbors yet)"
 
 
+def cmd_halt(router, args, as_obj=None):
+    """Gracefully halt the whole router (floods a withdrawal)."""
+    router.halt(graceful=True)
+    return f"{router.name()} halted"
+
+
+def cmd_resume(router, args, as_obj=None):
+    """Resume a halted router (re-announces)."""
+    router.resume()
+    return f"{router.name()} resumed"
+
+
 def cmd_help(router, args, as_obj=None):
     """List available router commands."""
-    return "available: route, update_cost <iface> <cost>, ifconfig, neighbors, help"
+    return (
+        "available: route, update_cost <iface> <cost>, ifconfig [<iface> up|down], "
+        "halt, resume, neighbors, help"
+    )

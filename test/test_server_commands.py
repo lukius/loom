@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from server.app import create_app
+from server.command.router import cmd_halt, cmd_ifconfig, cmd_resume
 
 SAMPLE = textwrap.dedent("""
 internet:
@@ -220,3 +221,31 @@ def test_old_refresh_interval_endpoint_removed(client):
     assert r.status_code in (404, 405), (
         f"old endpoint should be gone, got {r.status_code}"
     )
+
+
+def test_cmd_ifconfig_down_disables(router_with_iface):
+    r = router_with_iface
+    out = cmd_ifconfig(r, ["eth0", "down"])
+    assert r.interface("eth0").is_up() is False
+    assert "down" in out
+
+
+def test_cmd_ifconfig_up_enables(router_with_iface):
+    r = router_with_iface
+    r.interface("eth0").disable()
+    out = cmd_ifconfig(r, ["eth0", "up"])
+    assert r.interface("eth0").is_up() is True
+    assert "up" in out
+
+
+def test_cmd_ifconfig_no_args_still_shows(router_with_iface):
+    out = cmd_ifconfig(router_with_iface, [])
+    assert "eth0" in out and "addr=" in out
+
+
+def test_cmd_halt_and_resume(router_with_iface):
+    r = router_with_iface
+    assert "halted" in cmd_halt(r, [])
+    assert r.is_halted() is True
+    assert "resumed" in cmd_resume(r, [])
+    assert r.is_halted() is False
