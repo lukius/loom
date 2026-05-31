@@ -1234,6 +1234,53 @@ describe('sim:interface-state-changed — toggles .down on live LAN edge', () =>
 });
 
 /* -----------------------------------------------------------------------
+   sim:interface-state-changed — p2p link gray-out uses BOTH endpoints
+   ----------------------------------------------------------------------- */
+
+describe('sim:interface-state-changed — p2p link gray-out uses both endpoints', () => {
+  beforeEach(() => {
+    setupMinimalDOM();
+    state.hosts    = {};
+    state.routers  = {};
+    state.networks = {};
+    state.links    = {};
+    state.selection = null;
+    state.view     = { x: 0, y: 0, k: 1 };
+    state.display  = { showCosts: true, showIfaces: true };
+    resetDownState();
+  });
+
+  test('link edge stays .down after one endpoint is re-enabled while peer is still down', () => {
+    // Build a p2p link between r1 (eth0) and r2 (eth0).
+    state.links.p2p1 = { cidr: '10.1.0.0/30', x: 200, y: 100 };
+    state.routers.r1 = { x: 100, y: 100, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.1', cost: 1 },
+    }};
+    state.routers.r2 = { x: 300, y: 100, interfaces: {
+      eth0: { link: 'p2p1', address: '10.1.0.2', cost: 1 },
+    }};
+
+    // Mark BOTH endpoints down and render so the DOM edge carries .down.
+    applyInterfaceStateChanged({ device: 'r1', interface: 'eth0', up: false });
+    applyInterfaceStateChanged({ device: 'r2', interface: 'eth0', up: false });
+    renderCanvas();
+
+    const edge = document.querySelector('#edges-layer path.edge.p2p[data-name="p2p1"]');
+    expect(edge).not.toBeNull();
+    expect(edge.classList.contains('down')).toBe(true);
+
+    // Re-enable r1's endpoint. r2 is still down.
+    // The edge must REMAIN .down because the peer (r2/eth0) is still down.
+    applyInterfaceStateChanged({ device: 'r1', interface: 'eth0', up: true });
+    expect(edge.classList.contains('down')).toBe(true);
+
+    // Now re-enable r2's endpoint as well. Both ends are up → .down removed.
+    applyInterfaceStateChanged({ device: 'r2', interface: 'eth0', up: true });
+    expect(edge.classList.contains('down')).toBe(false);
+  });
+});
+
+/* -----------------------------------------------------------------------
    drawNode — halted device gets the .down class
    ----------------------------------------------------------------------- */
 

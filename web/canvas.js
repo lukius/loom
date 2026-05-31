@@ -1636,8 +1636,24 @@ bus.addEventListener('sim:interface-state-changed', (e) => {
   const r = state.routers[device];
   const iff = r && r.interfaces && r.interfaces[iface];
   if (!iff) return;
-  const edge = lookupInterfaceEdge(device, iface, iff.link || iff.network, !!iff.link);
-  edge?.classList.toggle('down', !up);
+  const isLink = !!iff.link;
+  const edge = lookupInterfaceEdge(device, iface, iff.link || iff.network, isLink);
+  if (!edge) return;
+  if (isLink) {
+    // For a p2p link, the edge is shared by both endpoints. Recompute down-
+    // state from BOTH endpoints — mirrors drawLinkEdge's both-endpoint check
+    // — so re-enabling one end while the peer is still down leaves the edge
+    // gray.
+    const endpoints = collectLinkEndpoints(iff.link);
+    const ep1 = endpoints[0];
+    const ep2 = endpoints[1];
+    const linkDown =
+      (ep1?.iface ? isInterfaceDown(ep1.device, ep1.iface) : false) ||
+      (ep2?.iface ? isInterfaceDown(ep2.device, ep2.iface) : false);
+    edge.classList.toggle('down', linkDown);
+  } else {
+    edge.classList.toggle('down', !up);
+  }
 });
 
 // Esc cancels the link wizard globally (not gated on wireCanvas being called)
