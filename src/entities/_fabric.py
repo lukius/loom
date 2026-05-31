@@ -42,6 +42,14 @@ class _FabricBase(Entity):
         """Return the number of interfaces (endpoints) attached to this fabric."""
         return len(self._interfaces)
 
+    def remove_interface(self, address) -> None:
+        """Detach the interface with `address` from this fabric, if present.
+
+        Single-statement dict delete is atomic under the GIL, so this is
+        safe against concurrent snapshot-reads on the dispatch hot path.
+        """
+        self._interfaces.pop(address, None)
+
     def stop(self):
         for iface in self._interfaces.values():
             iface.stop()

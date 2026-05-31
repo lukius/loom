@@ -198,3 +198,18 @@ def test_resume_enables_all_and_announces(monkeypatch):
     assert r.is_halted() is False
     assert r.interface("eth0").is_up() is True
     assert {"kind": "device_state_changed", "device": "r1", "up": True} in events
+
+
+def test_fabric_remove_interface():
+    net = Network("lan", NetworkAddress("10.0.0.0/24"))
+    iface = Interface("eth0", net, Address("10.0.0.1"))
+    net.add_interface(iface)
+    assert net.endpoint_count() == 1
+    net.remove_interface(iface.address())
+    assert net.endpoint_count() == 0
+
+
+def test_fabric_remove_interface_missing_is_noop():
+    net = Network("lan", NetworkAddress("10.0.0.0/24"))
+    net.remove_interface(Address("10.0.0.9"))  # should not raise
+    assert net.endpoint_count() == 0
