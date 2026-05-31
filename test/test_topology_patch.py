@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from server.app import create_app
-from server.state import SimState
+from server.state import InvalidStateTransition, SimState
 
 _SAMPLE_YAML = Path(__file__).parent.parent / "samples" / "sample.yaml"
 
@@ -17,6 +17,17 @@ def sim_state_loaded(tmp_path):
     shutil.copy(_SAMPLE_YAML, src)
     sim = SimState(src)
     sim.load_from_session()
+    yield sim
+    sim.stop()
+
+
+@pytest.fixture
+def running_sim_state(tmp_path):
+    src = tmp_path / "sample.yaml"
+    shutil.copy(_SAMPLE_YAML, src)
+    sim = SimState(src)
+    sim.load_from_session()
+    sim.start()
     yield sim
     sim.stop()
 
@@ -548,3 +559,35 @@ def test_remove_router_detaches_all_interfaces(sim_state_loaded):
     sim._apply_op({"op": "remove_router", "name": router.name()})
     for fab, addr in fabrics:
         assert addr not in fab._interfaces
+
+
+# ---------------------------------------------------------------------------
+# Task 5 — editor mutex + edit(patch) running-state path
+# ---------------------------------------------------------------------------
+
+
+def test_edit_applies_patch_while_running(running_sim_state):
+    sim = running_sim_state
+    before = set(sim.as_obj.networks().keys())
+    sim.edit([{"op": "add_network", "name": "lanZ", "address": "172.16.9.0/24"}])
+    assert "lanZ" in sim.as_obj.networks()
+    assert sim.state == "running"
+    assert set(sim.as_obj.networks().keys()) == before | {"lanZ"}
+
+
+def test_edit_rejected_when_not_running(sim_state_loaded):
+    sim = sim_state_loaded  # idle
+    with pytest.raises(InvalidStateTransition):
+        sim.edit([{"op": "add_network", "name": "lanZ", "address": "172.16.9.0/24"}])
+
+
+def test_edit_validation_failure_applies_nothing(running_sim_state):
+    sim = running_sim_state
+    before = set(sim.as_obj.networks().keys())
+    with pytest.raises(InvalidStateTransition):
+        sim.edit([
+            {"op": "add_network", "name": "lanZ", "address": "172.16.9.0/24"},
+            # duplicate name — validator must reject before any apply
+            {"op": "add_network", "name": "lanZ", "address": "172.16.9.0/24"},
+        ])
+    assert set(sim.as_obj.networks().keys()) == before  # atomic: nothing applied

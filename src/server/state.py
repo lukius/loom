@@ -32,6 +32,7 @@ class SimState:
         self._as = None
         self._state = "idle"
         self._lock = threading.RLock()
+        self._edit_lock = threading.Lock()
 
     # ---- accessors ----
 
@@ -93,13 +94,28 @@ class SimState:
 
     def resume(self, patch: list[dict] | None = None):
         """Transition paused -> running, applying an optional topology patch."""
-        with self._lock:
-            if self._state != "paused":
-                raise InvalidStateTransition(self._state, "running")
-            if patch:
-                self._apply_patch(patch)
-            self._as.gate().resume()
-            self._state = "running"
+        with self._edit_lock:
+            with self._lock:
+                if self._state != "paused":
+                    raise InvalidStateTransition(self._state, "running")
+                if patch:
+                    self._apply_patch(patch)
+                self._as.gate().resume()
+                self._state = "running"
+                self._persist()
+
+    def edit(self, patch: list[dict] | None = None):
+        """Apply a topology patch to a running sim, atomically against other
+        editors. Validate-all-then-apply-all under the editor lock; readers
+        (packet/protocol threads) snapshot interface dicts and never block.
+        """
+        if not patch:
+            return
+        with self._edit_lock:
+            with self._lock:
+                if self._state != "running":
+                    raise InvalidStateTransition(self._state, "edit")
+            self._apply_patch(patch)
             self._persist()
 
     # ---- patch helpers ----
