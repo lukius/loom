@@ -452,6 +452,35 @@ class InboundNATTest(unittest.TestCase):
         self.assertEqual(pkt.destination(), Address('192.168.1.1'))
 
 
+class DispatchBroadcastConcurrencyTest(unittest.TestCase):
+    """_dispatch_broadcast must tolerate a concurrent structural mutation
+    (interface added during iteration) without raising RuntimeError."""
+
+    def test_dispatch_broadcast_tolerates_concurrent_interface_add(self):
+        net = Network('lan', NetworkAddress('10.0.0.0/24'))
+
+        class _MutatingIface(Interface):
+            def __init__(self, *a, fabric=None, **kw):
+                super().__init__(*a, **kw)
+                self._fabric = fabric
+
+            def receive(self, datagram):
+                extra = Interface('ethX', self._net, Address('10.0.0.9'))
+                self._fabric._interfaces[extra.address()] = extra
+
+        a = Interface('eth0', net, Address('10.0.0.1'))
+        b = _MutatingIface('eth1', net, Address('10.0.0.2'), fabric=net)
+        net.add_interface(a)
+        net.add_interface(b)
+        dgram = Datagram(
+            src_addr=Address('10.0.0.5'),
+            dst_addr=net.broadcast_address(),
+            payload=UserMessage('hi'),
+        )
+        # Must not raise "dictionary changed size during iteration".
+        net._dispatch_broadcast(dgram)
+
+
 class InboundNATEventTest(unittest.TestCase):
 
     def setUp(self):

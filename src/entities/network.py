@@ -22,11 +22,11 @@ class Network(_FabricBase):
     def devices(self) -> dict:
         return {
             interface.device().name(): interface.device()
-            for interface in self._interfaces.values()
+            for interface in list(self._interfaces.values())
         }
 
     def has_device(self, device: NetworkDevice) -> bool:
-        for iface in self._interfaces.values():
+        for iface in list(self._interfaces.values()):
             if iface.device() == device:
                 return True
         return False
@@ -49,7 +49,7 @@ class Network(_FabricBase):
         # message, and re-floods it out every other interface — amplifying
         # LSP traffic by 2× on every shared LAN.
         src = packet.source()
-        for dst_iface in self._interfaces.values():
+        for dst_iface in list(self._interfaces.values()):
             if dst_iface.address() == src:
                 continue
             dst_iface.receive(packet)
