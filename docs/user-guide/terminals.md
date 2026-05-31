@@ -104,7 +104,7 @@ List the commands available for this device kind.
 
 ```
 # host:
-available: ifconfig, send <dst> <msg>, ping <dst> [-W t], route, set_gateway <ip>, help
+available: ifconfig, send <dst> <msg>, ping <dst> [-W t] [-c n], route, set_gateway <ip>, help
 
 # router:
 available: route, update_cost <iface> <cost>, ifconfig, neighbors, help
@@ -142,7 +142,7 @@ The destination host receives a `UserMessage` event (visible to event
 subscribers; the SPA doesn't surface a "message received" notification
 by default).
 
-#### `ping <dst> [-W <seconds>]`
+#### `ping <dst> [-W <seconds>] [-c <count>]`
 
 Send a `PingRequest` and wait for a `PingReply` (default timeout 3 s).
 
@@ -180,6 +180,27 @@ the actual wall-clock time the simulator took to thread the packet
 through the topology. With a busy simulator (lots of routing chatter
 or many ping flows running in parallel), expect single-digit
 millisecond RTTs on tiny topologies.
+
+Use `-c <count>` to send that many probes one after another, waiting
+for each reply before sending the next. Each reply line appears in the
+terminal as it arrives, so you can watch the route quality change in
+real time — for example, while halting or disabling something
+mid-sequence. A summary line prints at the end:
+
+```
+ping h2 -c 4 -W 1.5
+```
+
+```
+seq=0 time=3.21 ms
+seq=1 time=2.88 ms
+seq=2 time=3.05 ms
+seq=3 time=2.94 ms
+--- h2 ping statistics ---
+4 sent, 4 received, 0% loss
+```
+
+![A counted ping streams each reply into the terminal as it arrives, then prints a summary](../images/62-ping-count.png)
 
 #### `set_gateway <ip>`
 

@@ -77,6 +77,10 @@ same YAML. The session file is updated either way.
   to each interface in the inspector to control individual interfaces.
   A downed interface's edge becomes a dashed line on the canvas.
 
+![A halted router and its links render grayed-out while the rest of the topology keeps running](../images/60-router-halted.png)
+
+![The inspector's per-interface controls: a downed interface offers Enable; the others offer Disable and Fail](../images/61-interface-controls.png)
+
 ### Streamed ping output
 
 When you run `ping` from a device terminal while the sim is running,
