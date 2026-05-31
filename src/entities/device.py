@@ -25,6 +25,8 @@ class NetworkDevice(Entity):
         iface.set_cost(cost)
 
     def handle_packet(self, packet, interface):
+        if not interface.is_up():
+            return  # ingress interface administratively down — drop
         dst = packet.destination()
         net_broadcast_addr = interface.network().broadcast_address()
         # "For me" matches *any* interface's address on this device — not

@@ -128,6 +128,8 @@ class Interface(Entity):
         self._pkt_thread.join()
 
     def send_to(self, datagram: Datagram, dst_addr: Address):
+        if not self._up:
+            return  # administratively down — do not transmit
         frame = Frame(src_addr=self._address, dst_addr=dst_addr, payload=datagram)
         self._out_queue.put(frame)
         # `payload_id` identifies a single Message instance (one direction);

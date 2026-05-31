@@ -200,6 +200,8 @@ class Router(NetworkDevice):
             proto.local_links_changed()
 
     def handle_packet(self, packet, interface):
+        if not interface.is_up():
+            return  # ingress interface administratively down — drop
         dst = packet.destination()
         on_public = not interface.network().address().is_private()
         if dst == interface.address() and on_public:

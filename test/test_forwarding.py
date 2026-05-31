@@ -18,6 +18,62 @@ from entities.packet import Datagram
 from routing import NoNATEgressException
 
 
+def _iface_on(net_cidr="10.0.0.0/24", addr="10.0.0.1"):
+    net = Network("lan", NetworkAddress(net_cidr))
+    return Interface("eth0", net, Address(addr))
+
+
+def test_down_interface_send_to_does_not_enqueue():
+    iface = _iface_on()
+    iface._set_out_queue(__import__("queue").Queue())
+    iface.disable()
+    dgram = Datagram(src_addr=Address("10.0.0.1"),
+                     dst_addr=Address("10.0.0.2"),
+                     payload=UserMessage("hi"))
+    iface.send_to(dgram, dst_addr=Address("10.0.0.2"))
+    assert iface._out_queue.empty()
+
+
+def test_down_ingress_interface_drops_in_handle_packet(monkeypatch):
+    # A device must ignore packets arriving on an administratively-down iface:
+    # neither the "for me" path (_handle_message) nor forwarding
+    # (_handle_forwarding) should be invoked. Spy on both and assert no call.
+    net = Network("lan", NetworkAddress("10.0.0.0/24"))
+    r = Router("r1")
+    iface = Interface("eth0", net, Address("10.0.0.1"))
+    r.add_interface(iface)
+    net.add_interface(iface)
+    iface.disable()
+    dispatched = []
+    monkeypatch.setattr(r, "_handle_message",
+                        lambda *a, **k: dispatched.append("msg"))
+    monkeypatch.setattr(r, "_handle_forwarding",
+                        lambda *a, **k: dispatched.append("fwd"))
+    pkt = Datagram(src_addr=Address("10.0.0.9"),
+                   dst_addr=Address("10.0.0.1"),
+                   payload=UserMessage("hi"))
+    r.handle_packet(pkt, iface)
+    assert dispatched == []  # down ingress → nothing dispatched
+
+
+def test_down_public_interface_drops_before_router_nat(monkeypatch):
+    # NAT branch in Router.handle_packet must not fire for a down public iface.
+    net = Network("wan", NetworkAddress("203.0.113.0/30"))
+    r = Router("redge")
+    iface = Interface("eth0", net, Address("203.0.113.1"))
+    r.add_interface(iface)
+    net.add_interface(iface)
+    iface.disable()
+    touched = []
+    monkeypatch.setattr(r.nat_table(), "lookup", lambda **k: Address("10.0.0.5"))
+    monkeypatch.setattr(r, "_handle_forwarding", lambda *a, **k: touched.append("fwd"))
+    pkt = Datagram(src_addr=Address("8.8.8.8"),
+                   dst_addr=Address("203.0.113.1"),
+                   payload=UserMessage("hi"))
+    r.handle_packet(pkt, iface)
+    assert touched == []
+
+
 class ForwardingTest(unittest.TestCase):
 
     def test_basic_forwarding(self):
