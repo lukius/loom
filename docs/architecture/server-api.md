@@ -147,6 +147,51 @@ Status code rules (see `routes/sim.py`):
   (`"network_in_use"`, `"duplicate_name"`, etc.) which the dispatcher
   maps to `400`.
 
+### `POST /sim/edit`
+
+Apply a topology patch to a **running** simulation without pausing.
+
+**Request**
+
+```json
+{ "patch": [
+    {"op": "add_network", "name": "lan4", "address": "10.0.0.0/24"},
+    {"op": "add_host",    "name": "h4",   "network": "lan4", "address": "10.0.0.10", "gateway": "10.0.0.1"},
+    {"op": "add_router",  "name": "r4",   "interfaces": [
+        {"name": "eth0", "network": "lan4", "address": "10.0.0.1", "cost": 5}
+    ]},
+    {"op": "update_cost", "router": "r1", "iface": "eth0", "cost": 25},
+    {"op": "remove_host",    "name": "hX"},
+    {"op": "remove_router",  "name": "rX"},
+    {"op": "remove_network", "name": "lanX"}
+] }
+```
+
+The same op set as `/sim/resume`'s patch parameter. All ops are
+validated before any is applied (validate-all-then-apply-all).
+
+**Behavior**
+
+`SimState.edit(patch)` acquires `_edit_lock`, validates every op
+with `_validate_op`, then applies every op with `_apply_op`. The
+lock is released on success or on any failure. The fabric dispatch hot
+paths read interface snapshots (`list(self._interfaces.values())`) so a
+concurrent edit can never trigger a "dict changed size" error.
+
+On success, a `topology_changed` event is broadcast on the WebSocket (see
+[`WS /ws/events`](#ws-wsevents)).
+
+**Status codes**
+
+- `200 {"state": "running"}` — patch applied.
+- `400 {"detail": "..."}` — one or more ops failed validation; no op
+  was applied.
+- `409 {"detail": "invalid transition: <state> -> edit"}` — sim is not
+  in the `running` state (the message follows the standard
+  `InvalidStateTransition` format).
+
+---
+
 ### `POST /sim/stop`
 
 Any state → `idle`. Drops the AS entirely. The next `/sim/start` requires
@@ -400,6 +445,21 @@ Emitted once per probe from `Host.ping`, regardless of whether the ping
 was issued from the terminal or the shell. `rtt_ms` is `null` on timeout.
 `seq` is a 1-based counter that resets on each `ping` call.
 
+```json
+{
+  "kind": "topology_changed",
+  "ops": [
+    {"op": "add_network", "name": "lan4", "address": "10.0.0.0/24"},
+    ...
+  ]
+}
+```
+
+Emitted by `SimState.edit()` after a successful live-edit patch. `ops`
+is the exact list of ops that was applied. Subscribers can use this to
+resync state incrementally; the SPA refetches the full topology on
+receipt.
+
 Notes:
 
 - `payload_id` identifies a **single direction** of a flow (a single
@@ -451,6 +511,14 @@ For the patch-while-paused flow:
 ```bash
 curl -X POST http://127.0.0.1:8000/sim/pause
 curl -X POST http://127.0.0.1:8000/sim/resume \
+     -H 'Content-Type: application/json' \
+     -d '{"patch": [{"op": "update_cost", "router": "r1", "iface": "eth0", "cost": 99}]}'
+```
+
+For a live edit while running:
+
+```bash
+curl -X POST http://127.0.0.1:8000/sim/edit \
      -H 'Content-Type: application/json' \
      -d '{"patch": [{"op": "update_cost", "router": "r1", "iface": "eth0", "cost": 99}]}'
 ```

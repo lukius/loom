@@ -189,6 +189,97 @@ This makes the queue depth honest for tools that inspect it (e.g. tests).
 
 ---
 
+## Editor mutex and live-edit atomicity
+
+`SimState` owns a `threading.Lock` called `_edit_lock` that serialises
+topology mutations regardless of which thread or endpoint initiates them.
+
+Three operations acquire `_edit_lock` before doing any work:
+
+| Operation | State guard |
+|---|---|
+| `SimState.edit(patch)` (`POST /sim/edit`) | Requires `running`; errors `409` otherwise |
+| `SimState.resume(patch)` (`POST /sim/resume`) | Requires `paused`; errors `409` otherwise |
+| `SimState.stop()` (`POST /sim/stop`) | Any state → `idle` |
+
+Within `edit` and `resume`, the acquire-before-validate ordering is:
+
+```
+_edit_lock acquired
+  → validate every op (abort on first failure, release lock, return 400)
+  → apply every op in sequence
+  → broadcast topology_changed event
+_edit_lock released
+```
+
+This is **validate-all-then-apply-all**: either the entire patch lands
+or nothing lands. Two concurrent `POST /sim/edit` calls cannot interleave
+their ops.
+
+`resume` and `stop` also take `_edit_lock` before calling
+`PauseGate.resume()` / `PauseGate.stop()`. The ordering is always
+`_edit_lock` → `_lock` (the state-machine lock inside `SimState`): never
+`_lock` → `_edit_lock`, or a deadlock is possible.
+
+### Snapshot-on-read on the dispatch hot path
+
+The multi-access `Network` dispatch paths (`_dispatch_broadcast`,
+`devices`, `has_device`) iterate over attached interfaces with:
+
+```python
+for iface in list(self._interfaces.values()):
+    ...
+```
+
+The `list(...)` call takes a GIL-atomic snapshot of the dict's values at
+that point in time. A concurrent `edit` that adds or removes an interface
+will therefore never trigger a `RuntimeError: dictionary changed size
+during iteration`. Frames in transit to an interface that is concurrently
+removed are simply dropped at their destination — an acceptable
+transitional artifact.
+
+Point-to-point `Link._dispatch_packet` iterates `self._interfaces.values()`
+directly (no snapshot), which is safe because a Link has at most two
+endpoints and the Python dict iteration is GIL-atomic for the small,
+bounded iteration involved.
+
+### Removal-detach ordering
+
+`_apply_op` for `remove_host` and `remove_router` follows a strict
+ordering:
+
+**`remove_host`:**
+
+1. **Detach the interface from its fabric** (`host.network().remove_interface(addr)`)
+   before stopping the interface thread. This ensures the fabric's
+   dispatch loop can no longer enqueue frames on the interface after
+   the thread has been signalled to stop.
+2. **Stop the interface thread** (`host.interface().stop()`).
+
+**`remove_router`:**
+
+1. **Stop the routing-protocol thread first** (`router.stop()`). This
+   floods a withdrawal LSA so peers purge the router immediately, and
+   stops the keepalive thread before any interfaces are detached.
+2. **Per interface: detach from its fabric, then stop the interface
+   thread.** `iface.network().remove_interface(iface.address())` ensures
+   the fabric's dispatch loop can no longer enqueue frames on that
+   interface; `iface.stop()` then signals the thread to exit.
+3. **Delete the router from the AS dict.**
+
+**`remove_network`:**
+
+`remove_network` is only allowed when the network has no attached
+interfaces (enforced by `_validate_op`). It therefore just stops the
+fabric thread and deletes — nothing to detach.
+
+The key invariant is **detach-before-stop-interface-thread**: removing
+an interface from its fabric before stopping the interface thread ensures
+the dispatch loop cannot enqueue an orphaned frame onto a queue whose
+consumer has already exited.
+
+---
+
 ## Shutdown
 
 `AS.stop()` is the orderly path:

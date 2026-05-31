@@ -4,9 +4,12 @@ A `loom` topology is built from four kinds of entities: **networks**
 (multi-access LANs), **links** (point-to-point), **hosts**, and
 **routers**. This guide walks through each, on the canvas and in YAML.
 
-The sim must be **idle** or **paused** before you can add or remove
-devices. While running, the toolbar's **Add** buttons are disabled and
-the context-menu mutations are blocked.
+While the sim is **idle** or **paused**, all add, rename, duplicate,
+and delete operations are available. While **running**, you can add
+networks, links, hosts, and routers directly on the canvas — each new
+entity commits to the live simulation as soon as you give it a valid
+address or CIDR. Rename, duplicate, delete, and address edits remain
+blocked while running; pause first for those.
 
 If you want to use raw YAML rather than the canvas, jump to
 [YAML format](yaml-format.md) for the schema reference. The two

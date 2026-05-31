@@ -43,9 +43,11 @@ see [ns-3](https://www.nsnam.org/), [mininet](https://mininet.org/),
   canvas; edit interfaces and costs in the right pane; double-click any
   device to open a terminal with `ping`, `send`, `route`, `ifconfig`,
   `neighbors`, `update_cost`, `set_gateway`.
-- **Topology edits without restart** — Pause the simulation, add or remove
-  a router, change a link cost, then resume. Edits accumulate as a patch
-  list and are applied atomically on resume.
+- **Topology edits without restart** — Add networks, hosts, and routers
+  directly on the canvas while the simulation is running; each edit is
+  applied live as soon as a valid address is given. Or pause, batch a
+  set of changes, and resume — edits accumulate as a patch list and are
+  applied atomically.
 - **Packet animations** — Datagrams, ping, and routing-protocol packets
   animate across the canvas as they flow; toolbar toggles control speed
   and chatter visibility.

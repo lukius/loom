@@ -147,8 +147,68 @@ whose target was deleted before resume. The reconciled list is sent to
 
 When the WebSocket reports a `sim_state` change, the SPA mirrors it
 locally and fires `sim:status-changed` so the canvas and inspector can
-update lock states (the **+ Add LAN / Host / Router** buttons disable
-while running).
+update lock states.
+
+## Live topology editing (`applyEdit`)
+
+`inspector.js` routes topology mutations through `applyEdit(op)`, which
+behaves differently depending on the current sim state:
+
+- **Running** — `applyEdit` POSTs the op immediately to `POST /sim/edit`
+  as a single-op patch. On success the server broadcasts a
+  `topology_changed` event; on failure the SPA resyncs from the server
+  (GET `/topology`) to heal any divergence. Deleting an in-use LAN while
+  running is blocked locally with a toast before the POST is even
+  attempted.
+- **Paused** — `applyEdit` accumulates the op in `Sim.patch` as before
+  (unchanged). The patch is applied atomically on Resume via
+  `POST /sim/resume`.
+- **Idle** — mutations go directly to local `state`; no server call
+  until the next Start.
+
+The **+ Add LAN / Host / Router** toolbar buttons remain enabled while
+running, so new entities can be dropped onto the canvas mid-sim.
+
+### Deferred-pending adds
+
+A newly added entity (network, link, host, or router) may have an
+incomplete or invalid address/CIDR when it first appears on the canvas.
+In that case `applyEdit` withholds the `POST /sim/edit` call and leaves
+the entity in a **pending** state — locally visible but not yet committed
+to the running AS. The commit fires automatically as soon as the
+address/CIDR becomes valid, using the same validators that the inspector
+uses for field highlighting:
+
+- **`validateAddressOnFabric(addr, fabricKind, fabricName, selfRef, st)`** for
+  host and router-interface addresses.
+- **`isValidNetworkCidr(cidr)`** and **`isValidLinkCidr(cidr)`** for
+  fabric CIDRs.
+
+These functions live in `utils.js` and are shared between the inspector's
+real-time field highlighting and the live-edit commit gate — so "valid
+enough to highlight green" and "valid enough to commit" are the same
+predicate.
+
+### Topology-changed resync
+
+When the WebSocket delivers a `topology_changed` event (from any
+successful edit, whether local or from another client), the SPA calls
+`importYaml` against a freshly fetched `GET /topology` response. The
+resync preserves:
+
+- **Node positions** — coordinates in `state.networks`, `state.hosts`,
+  and `state.routers` are merged back onto the imported topology, so the
+  canvas does not jump.
+- **Selection** — `state.selection` is restored if the selected entity
+  still exists after the resync.
+- **Viewport** — `state.view` (pan + zoom) is unchanged.
+
+A rejected live edit (HTTP 400 from `POST /sim/edit`) triggers the same
+resync path to ensure the local state stays consistent with the server.
+
+Note: interface re-addressing and host/network reassignment are **not**
+supported via live edit; those operations require a full Stop → edit →
+Start cycle.
 
 ## Canvas (`web/canvas.js`)
 

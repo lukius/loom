@@ -57,10 +57,17 @@ same YAML. The session file is updated either way.
 
 **While running:**
 
-- The **Add LAN / Host / Router** toolbar buttons are disabled.
+- The **Add LAN / Host / Router** toolbar buttons are enabled — you can
+  add networks, links, hosts, and routers directly on the canvas. Each
+  new entity is applied to the live system as soon as you give it a
+  valid address or CIDR; an incomplete or invalid value simply stays
+  pending until you finish it. Your selection and viewport are preserved
+  when the topology updates.
 - Right-click → **Rename / Duplicate / Delete** in the canvas is
   blocked.
-- The inspector's editable fields are read-only.
+- The inspector's editable fields are read-only (interface
+  re-addressing and host/network reassignment require pausing or
+  stopping first).
 - The **Refresh** field is editable (you can re-tune the keepalive
   interval live).
 - Right-click a router → **Halt router**, **Crash router**, or
@@ -69,10 +76,6 @@ same YAML. The session file is updated either way.
 - Select a router → use the **Disable / Fail / Enable** buttons next
   to each interface in the inspector to control individual interfaces.
   A downed interface's edge becomes a dashed line on the canvas.
-
-Mutations are deliberately blocked because applying them safely to a
-running simulator is hard — the patch API is designed for the paused
-state, where threads are quiesced.
 
 ### Streamed ping output
 
@@ -202,20 +205,21 @@ This is the right knob to reach for if you're watching convergence and
 the default 10 s feels too slow. Dropping it to 1 s makes the protocol
 visibly chatter on the canvas at roughly one flood per second.
 
-## Edits while idle vs. paused: a comparison
+## Edits while idle vs. paused vs. running: a comparison
 
-| Action | Idle (sim not started) | Paused (sim is loaded) |
-|---|---|---|
-| Where the edit lives | SPA local state + `localStorage` | SPA local state + pending-edits queue |
-| When the server sees it | On next **Start** (whole YAML) | On **Resume** (incremental patch) |
-| Validation | Full re-parse on start | Per-op validation on resume |
-| If it fails | Start aborts; topology stays unloaded | Resume rejected; patch preserved for editing |
-| Convergence impact | Routers start from scratch | Existing routing state is preserved; new edges feed in |
+| Action | Idle (sim not started) | Paused (sim is loaded) | Running |
+|---|---|---|---|
+| Where the edit lives | SPA local state + `localStorage` | SPA local state + pending-edits queue | Applied immediately to the live AS |
+| When the server sees it | On next **Start** (whole YAML) | On **Resume** (incremental patch) | On each completed add/change |
+| Validation | Full re-parse on start | Per-op validation on resume | Per-op validation on each commit |
+| If it fails | Start aborts; topology stays unloaded | Resume rejected; patch preserved for editing | Edit rejected; canvas resynced from server |
+| Convergence impact | Routers start from scratch | Existing routing state is preserved; new edges feed in | New edges and devices feed in with zero downtime |
 
 If you're prototyping ("does this CIDR work?"), idle edits + Start are
 fine — the parser tells you within seconds. If you're testing
 incremental convergence ("what happens when I bring up r4 *while
-running*?"), pause/edit/resume is the right path.
+running*?"), you can add it live without pausing — or pause, make
+several related changes at once, and resume atomically.
 
 ## Tips
 
