@@ -60,6 +60,21 @@ def resume(request: Request, body: dict | None = Body(default=None)):
     return {"state": s.state}
 
 
+@router.post("/edit")
+def edit(request: Request, body: dict = Body(...)):
+    s = _state(request)
+    try:
+        s.edit(patch=(body or {}).get("patch"))
+    except Exception as e:
+        status = (
+            409
+            if isinstance(e, InvalidStateTransition) and e.from_state in _SIM_STATES
+            else 400
+        )
+        raise HTTPException(status, str(e))
+    return {"state": s.state}
+
+
 @router.post("/stop")
 def stop(request: Request):
     s = _state(request)

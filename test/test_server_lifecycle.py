@@ -362,3 +362,36 @@ def test_interfaces_read_includes_up_and_halted(running_client):
     assert body["halted"] is False
     by_name = {i["name"]: i for i in body["interfaces"]}
     assert by_name[iface_name]["up"] is False
+
+
+@pytest.fixture
+def idle_client(tmp_path, monkeypatch):
+    src = tmp_path / "src.yaml"
+    src.write_text(SAMPLE_WITH_ROUTER)
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
+    with TestClient(create_app()) as c:
+        c.post("/topology", json={"yaml": SAMPLE_WITH_ROUTER})
+        sim = c.app.state.sim_state
+        yield c, sim
+
+
+def test_sim_edit_applies_live(running_client):
+    client, sim = running_client
+    resp = client.post("/sim/edit", json={"patch": [
+        {"op": "add_network", "name": "lanE", "address": "172.16.7.0/24"}]})
+    assert resp.status_code == 200
+    assert resp.json()["state"] == "running"
+    assert "lanE" in sim.as_obj.networks()
+
+
+def test_sim_edit_bad_patch_is_400(running_client):
+    client, sim = running_client
+    resp = client.post("/sim/edit", json={"patch": [{"op": "nope"}]})
+    assert resp.status_code == 400
+
+
+def test_sim_edit_when_idle_is_409(idle_client):
+    client, sim = idle_client
+    resp = client.post("/sim/edit", json={"patch": [
+        {"op": "add_network", "name": "lanE", "address": "172.16.7.0/24"}]})
+    assert resp.status_code == 409
