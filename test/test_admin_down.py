@@ -18,8 +18,8 @@ import os
 import tempfile
 import textwrap
 import time
-import unittest
 
+from entities import Address, NetworkAddress
 from parser import Parser
 
 TRIANGLE_TOPOLOGY = textwrap.dedent("""
@@ -73,7 +73,6 @@ def _wait(condition, timeout=5.0, interval=0.02):
 
 
 def _table_has_prefix(router, prefix_str):
-    from entities import NetworkAddress
     prefix = NetworkAddress(prefix_str)
     return any(r.prefix() == prefix for r in router.routing_table().rules())
 
@@ -92,8 +91,6 @@ def test_reroute_after_interface_disable():
         r.start()
 
     try:
-        from entities import Address
-
         r1 = system.routers()["r1"]
         r2 = system.routers()["r2"]
         r3 = system.routers()["r3"]
@@ -152,7 +149,3 @@ def test_reroute_after_interface_disable():
     finally:
         system.stop()
         os.unlink(path)
-
-
-if __name__ == "__main__":
-    unittest.main()

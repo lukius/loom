@@ -101,6 +101,6 @@ def cmd_set_gateway(host, args, as_obj=None):
 def cmd_help(host, args, as_obj=None):
     """List available host commands."""
     return (
-        "available: ifconfig, send <dst> <msg>, ping <dst> [-W t], "
+        "available: ifconfig, send <dst> <msg>, ping <dst> [-W t] [-c n], "
         "route, set_gateway <ip>, help"
     )
