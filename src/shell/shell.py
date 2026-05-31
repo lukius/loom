@@ -181,19 +181,30 @@ class Shell(cmd.Cmd):
 
     @requires_system
     def do_ping(self, arg):
-        'Ping between hosts. Syntax: ping <src> <dst> [-W <seconds>]'
+        'Ping between hosts. Syntax: ping <src> <dst> [-W <seconds>] [-c <count>]'
         parts = arg.split()
         timeout = 3.0
+        count = 1
         if '-W' in parts:
             i = parts.index('-W')
             try:
                 timeout = float(parts[i + 1])
             except (IndexError, ValueError):
-                print('syntax: ping <src> <dst> [-W <seconds>]')
+                print('syntax: ping <src> <dst> [-W <seconds>] [-c <count>]')
+                return
+            parts = parts[:i] + parts[i + 2:]
+        if '-c' in parts:
+            i = parts.index('-c')
+            try:
+                count = int(parts[i + 1])
+                if count <= 0:
+                    raise ValueError
+            except (IndexError, ValueError):
+                print('syntax: ping <src> <dst> [-W <seconds>] [-c <count>]')
                 return
             parts = parts[:i] + parts[i + 2:]
         if len(parts) != 2:
-            print('syntax: ping <src> <dst> [-W <seconds>]')
+            print('syntax: ping <src> <dst> [-W <seconds>] [-c <count>]')
             return
 
         src_name, dst = parts
@@ -209,15 +220,21 @@ class Shell(cmd.Cmd):
             except Exception:
                 print(f'ping: invalid destination: {dst}')
                 return
-        try:
-            rtt = src.ping(dst_addr, timeout=timeout)
-        except ValueError as e:
-            print(f'ping {src_name} -> {dst}: {e}')
-            return
-        if rtt is None:
-            print(f'ping {src_name} -> {dst}: timeout after {timeout:.2f} s')
-        else:
-            print(f'ping {src_name} -> {dst} ({dst_addr}): time={rtt * 1000:.2f} ms')
+        received = 0
+        for _ in range(count):
+            try:
+                rtt = src.ping(dst_addr, timeout=timeout)
+            except ValueError as e:
+                print(f'ping {src_name} -> {dst}: {e}')
+                return
+            if rtt is None:
+                print(f'ping {src_name} -> {dst}: timeout after {timeout:.2f} s')
+            else:
+                received += 1
+                print(f'ping {src_name} -> {dst} ({dst_addr}): '
+                      f'time={rtt * 1000:.2f} ms')
+        loss = 100.0 * (count - received) / count
+        print(f'{count} sent, {received} received, {loss:.0f}% loss')
 
     def do_read(self, arg):
         'Read the given YAML file with the network description'

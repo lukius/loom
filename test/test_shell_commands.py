@@ -117,3 +117,15 @@ def test_shell_halt_resume(shell):
     assert sh._system.router(r_name).is_halted() is True
     sh.do_resume(r_name)
     assert sh._system.router(r_name).is_halted() is False
+
+
+def test_shell_ping_count(monkeypatch, shell, capsys):
+    sh = shell
+    h_names = list(sh._system.hosts())
+    src, dst = h_names[0], h_names[1]
+    calls = []
+    monkeypatch.setattr(sh._system.host(src), "ping",
+                        lambda addr, timeout: calls.append(addr) or 0.001)
+    sh.do_ping(f"{src} {dst} -c 3")
+    assert len(calls) == 3
+    assert "3 sent" in capsys.readouterr().out
