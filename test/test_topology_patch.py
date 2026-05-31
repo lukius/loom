@@ -1,5 +1,6 @@
 import shutil
 import textwrap
+import time
 from pathlib import Path
 
 import pytest
@@ -624,3 +625,85 @@ def test_edit_after_stop_is_rejected(running_sim_state):
     sim.stop()
     with pytest.raises(InvalidStateTransition):
         sim.edit([{"op": "add_network", "name": "lanS", "address": "172.16.5.0/24"}])
+
+
+# ---------------------------------------------------------------------------
+# Task 8 — live add_router converges; live remove_router withdraws
+#
+# Topology: sample.yaml (lan1=200.100.0.0/24, lan2=100.200.0.0/24, plus
+# lan3 and a p2p link, with r1/r2/r3 already running).
+#
+# We add rNew with two interfaces on lan1 and lan2 (addresses chosen to be
+# well clear of the existing hosts and routers), then poll until an existing
+# peer (r1) sees rNew in its LSDB.  After confirming convergence, we remove
+# rNew and assert the AS dictionary no longer contains it.
+#
+# Timer note: default hello=10s would make convergence far too slow for a
+# test suite.  We set short timers (hello=0.2s, refresh=0.6s) on ALL routers
+# (including the ones started by running_sim_state) before issuing the edit,
+# and on rNew immediately after it is added.  The _wait helper mirrors the
+# pattern used in test_admin_down.py.
+# ---------------------------------------------------------------------------
+
+def _wait_condition(condition, timeout=5.0, interval=0.02):
+    """Poll *condition* until True or *timeout* elapses; return True if met."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        time.sleep(interval)
+    return False
+
+
+def test_live_add_router_converges_and_remove_withdraws(running_sim_state):
+    """add_router on a running sim: peer learns the new router via link-state;
+    remove_router removes it from the AS and the peer eventually purges it.
+    """
+    sim = running_sim_state
+
+    # Accelerate timers on all pre-existing routers so convergence is fast.
+    for r in sim.as_obj.routers().values():
+        r.protocol().set_timers(hello_interval=0.2, lsa_refresh_interval=0.6)
+
+    # Pick r1 as the peer we will query; it is on both lan1 and lan2.
+    r1 = sim.as_obj.routers()["r1"]
+
+    # Addresses on lan1 (200.100.0.0/24) and lan2 (100.200.0.0/24) that are
+    # not used by any existing device in sample.yaml.
+    r_new_lan1_addr = "200.100.0.200"
+    r_new_lan2_addr = "100.200.0.200"
+
+    # -- Step 1: add rNew while the sim is running ---------------------------
+    sim.edit([
+        {
+            "op": "add_router",
+            "name": "rNew",
+            "interfaces": [
+                {"name": "eth0", "network": "lan1",
+                 "address": r_new_lan1_addr, "cost": 1},
+                {"name": "eth1", "network": "lan2",
+                 "address": r_new_lan2_addr, "cost": 1},
+            ],
+        }
+    ])
+
+    assert "rNew" in sim.as_obj.routers(), "rNew should be in AS after add_router"
+    r_new = sim.as_obj.routers()["rNew"]
+
+    # Accelerate timers on rNew too so it converges at the same pace.
+    r_new.protocol().set_timers(hello_interval=0.2, lsa_refresh_interval=0.6)
+
+    # -- Step 2: wait for r1 to learn rNew via link-state flooding -----------
+    def r1_learned_rnew():
+        return any(o.name() == "rNew" for o in r1.protocol()._lsdb.origins())  # noqa: SLF001
+
+    assert _wait_condition(r1_learned_rnew, timeout=5.0), (
+        "r1 did not learn rNew's LSA within 5s after live add_router"
+    )
+
+    # -- Step 3: remove rNew while the sim is running -----------------------
+    sim.edit([{"op": "remove_router", "name": "rNew"}])
+
+    assert "rNew" not in sim.as_obj.routers(), (
+        "rNew should be absent from AS after remove_router"
+    )
