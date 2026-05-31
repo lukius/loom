@@ -63,10 +63,24 @@ same YAML. The session file is updated either way.
 - The inspector's editable fields are read-only.
 - The **Refresh** field is editable (you can re-tune the keepalive
   interval live).
+- Right-click a router → **Halt router**, **Crash router**, or
+  **Resume router** to take a router offline or bring it back, without
+  stopping the sim. A halted/crashed router grays out on the canvas.
+- Select a router → use the **Disable / Fail / Enable** buttons next
+  to each interface in the inspector to control individual interfaces.
+  A downed interface's edge becomes a dashed line on the canvas.
 
 Mutations are deliberately blocked because applying them safely to a
 running simulator is hard — the patch API is designed for the paused
 state, where threads are quiesced.
+
+### Streamed ping output
+
+When you run `ping` from a device terminal while the sim is running,
+each ICMP reply (or timeout) appears in the terminal **as it arrives**,
+one line at a time — you don't wait for all probes to finish before
+seeing results. The final summary still prints at the end. If the
+terminal is closed, results are discarded silently.
 
 ## Pause
 

@@ -351,6 +351,35 @@ All three are **disabled** while the sim is running (the sim must be
 paused or idle to mutate topology). The menu is dismissed by clicking
 anywhere outside it or pressing <kbd>Esc</kbd>.
 
+### Router admin actions (while running)
+
+When the sim is running, right-clicking a **router** adds three extra
+items above the topology-mutation group:
+
+- **Halt router (graceful)** — quiesces the router cleanly before
+  taking it offline.
+- **Crash router** — abruptly fails the router with no teardown,
+  simulating a hard crash.
+- **Resume router** — shown in place of the above two when the router
+  is already halted; brings it back online.
+
+A halted or crashed router grays out on the canvas (dimmed and
+desaturated). Neighboring routers detect the loss via Hello timeouts
+and update their routing tables accordingly.
+
+### Per-interface controls (router inspector, while running)
+
+With a router selected, the inspector's interface list shows action
+buttons next to each interface:
+
+- **Disable** — bring the interface down gracefully (admin shutdown).
+- **Fail** — hard-fail the interface (no teardown).
+- **Enable** — re-enable a disabled interface.
+
+A downed interface's canvas edge becomes a faint dashed line. The
+button flips between Disable/Fail and Enable as the interface state
+changes.
+
 ## Status indicators
 
 - **Save state** (top bar, next to the project name): `autosaved` / `saving…`.

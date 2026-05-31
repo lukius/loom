@@ -49,6 +49,12 @@ sides:
 The contract is enforced by convention, not by tooling. Don't reintroduce
 module-to-module direct render calls.
 
+The SPA is a **consumer** of the backend's broadcast facts. The `sim:*`
+events listed below are translated from backend WS event kinds
+(`interface_state_changed`, `device_state_changed`, `ping_result`, etc.)
+by `sim.js _onEvent`. Naming backend wire shapes inside the SPA is fine
+and expected — the SPA is the primary subscriber of those facts.
+
 ### Event kinds
 
 | Event | Emitted by | Consumed by | Trigger |
@@ -59,6 +65,9 @@ module-to-module direct render calls.
 | `sim:status-changed` | `sim` | `inspector`, `canvas` | Sim transitioned (idle/running/paused) |
 | `sim:packet` | `sim` (from WS) | `packets` | Server emitted a packet event |
 | `sim:routing-table-changed` | `sim` (from WS) | `inspector` (re-fetch routes if selected) | Server emitted a route change |
+| `sim:interface-state-changed` | `sim` (from WS `interface_state_changed`) | `canvas` (gray-out edge), `inspector` (re-render interface buttons) | A router interface was brought up or down. Detail: `{device, iface, up}`. |
+| `sim:device-state-changed` | `sim` (from WS `device_state_changed`) | `canvas` (gray-out node) | A router was halted or resumed. Detail: `{device, up}`. |
+| `sim:ping-result` | `sim` (from WS `ping_result`) | `terminals` (stream line to sender's terminal) | One ICMP echo reply (or timeout) arrived. Detail: `{device, dst, seq, rtt_ms}`. `rtt_ms` is `null` on timeout. |
 | `sim:nat` | `sim` (from WS) | packet tooltip renderer | A router performed source or destination NAT on a packet. Outbound carries `{router, direction, original_src, rewritten_src, dst, flow_id, payload_id}`; inbound carries `{router, direction, rewritten_dst, original_dst, src, flow_id, payload_id}`. `flow_id` is the conversation UUID (same value as `flow` on the `packet` event, and same value the router's NAT table is keyed on). |
 | `sim:nat-table-changed` | `sim` (from WS) | `inspector` (NAT table panel) | A router's NAT table was mutated. Carries `{device}` in detail; the full snapshot is mirrored into `state.natTables[device]` for the inspector to render. |
 | `sim:packet-arrived` | `packets` (animation finish) | `packetstore` | A packet animation completed at its destination device. Detail: `{payloadId, device}`. Drives last-hop promotion in the store. |
@@ -87,6 +96,9 @@ export const state = {
   selection: { kind, name } | null,
   view: { x, y, k },        // pan + zoom
   display: { showCosts, showIfaces },
+  // transient — not persisted
+  downInterfaces: { /* device -> Set<ifaceName> */ },
+  haltedDevices:  { /* device -> true */ },
 };
 ```
 
@@ -100,6 +112,8 @@ Notes:
   serialised on a 200 ms debounce after any `markDirty()` call.
 - The bundled `SAMPLE` is the SPA's first-run fallback when local storage
   is empty.
+- `downInterfaces` and `haltedDevices` are **transient** — they are never
+  written to `localStorage`. See [Admin-down / crash state cache](#admin-down--crash-state-cache) below.
 
 ## The Sim state machine (`web/sim.js`)
 
@@ -273,6 +287,147 @@ Three sections, rendered from `PacketStore`:
 Hovering a row adds class `halo` to the corresponding canvas dot (matched by `dot.dataset.payloadId`). For chatter group rows, all emission dots (listed in `data-emission-keys`) are haloed simultaneously.
 
 The panel re-renders on every `packets:list-changed` event; expensive layout is avoided by re-rendering the entire body innerHTML on each tick (the panel is small).
+
+## Admin-down / crash state cache
+
+### The cache
+
+`state.js` maintains two transient fields tracking which routers and
+interfaces the backend has reported as non-operational:
+
+```js
+state.downInterfaces  // { [device]: Set<ifaceName> }
+state.haltedDevices   // { [device]: true }
+```
+
+These are populated by two functions called directly by `sim.js _onEvent`:
+
+- **`applyInterfaceStateChanged(ev)`** — receives the translated
+  `interface_state_changed` WS event (`{device, interface, up}`). Adds
+  the iface name to `downInterfaces[device]` when `up` is false; removes
+  it when `up` is true.
+- **`applyDeviceStateChanged(ev)`** — receives the translated
+  `device_state_changed` WS event (`{device, up}`). Sets
+  `haltedDevices[device] = true` when `up` is false; deletes the key when
+  `up` is true.
+
+Consumers query the cache through two exported predicates:
+
+```js
+isInterfaceDown(device, iface)  // → boolean
+isDeviceHalted(device)          // → boolean
+```
+
+The cache is **not persisted** to `localStorage` — it lives only in
+memory for the duration of the running SPA. On sim idle or reset,
+`resetDownState()` clears both maps. On page reload or WS reconnect the
+cache is re-derived via `recoverDownState()` (see below).
+
+### Reload recovery (`recoverDownState`)
+
+Because WS events cannot be replayed, a fresh page load or a WS
+reconnect would leave the cache empty and the canvas un-grayed even
+though some devices may be halted or have down interfaces. `sim.js`
+exports `recoverDownState()`, which is called fire-and-forget from
+`Sim.refreshState()` whenever the sim is found to be running:
+
+1. Iterates every router in `state.routers`.
+2. For each, calls `GET /devices/{name}/interfaces` (via
+   `RuntimeClient.deviceInterfaces`), which returns `{halted, interfaces: [{name, up}, …]}`.
+3. Calls `applyDeviceStateChanged` and `applyInterfaceStateChanged` for
+   each result, populating the cache as if the WS events had arrived
+   normally.
+
+Transient errors (device gone, network blip) are silently skipped so a
+single unreachable device doesn't abort the sweep.
+
+### Canvas gray-out
+
+`canvas.js` applies a `.down` CSS class to dim halted devices and
+downed interfaces in two ways:
+
+- **On full render** (`renderCanvas`): `isDeviceHalted` / `isInterfaceDown`
+  are queried from the cache for every node and edge; a truthy result
+  adds `.down` to the element's class list before it is appended.
+  LAN spoke edges gray if the interface is down; P2P link edges gray if
+  either endpoint interface is down.
+- **Incrementally**, via two bus listeners:
+  - `sim:device-state-changed` → toggles `.down` on the router's SVG
+    node via `lookupDeviceNode(device).classList.toggle('down', !up)`.
+  - `sim:interface-state-changed` → finds the edge SVG element for the
+    affected `(device, iface)` pair and toggles `.down` on it.
+
+The CSS rules in `styles.css`:
+
+```css
+.canvas .node.down { opacity: .45; filter: grayscale(1); }
+.canvas .edge.down { opacity: .35; stroke-dasharray: 4 4; }
+```
+
+A halted router icon fades to grayscale; a down interface's edge
+becomes a faint dashed line.
+
+## Router admin controls
+
+### Context menu (Halt / Crash / Resume)
+
+When the sim is running and the user right-clicks a router node,
+`inspector.js` adds admin actions to the context menu:
+
+- **Halt router (graceful)** — POSTs `halt` via
+  `RuntimeClient.deviceCommand(name, 'halt')`, which sends
+  `POST /devices/{name}/command { cmd: "halt" }`. The router quiesces
+  cleanly before going down.
+- **Crash router** — POSTs to `POST /devices/{name}/fail` (no interface
+  argument) via `RuntimeClient.fail(name)`. Simulates an abrupt failure
+  with no graceful teardown.
+- **Resume router** — shown instead of Halt/Crash when
+  `isDeviceHalted(name)` is true. POSTs `resume` via
+  `RuntimeClient.deviceCommand(name, 'resume')`.
+
+The three items are mutually exclusive: a non-halted router shows Halt +
+Crash; a halted router shows only Resume.
+
+### Inspector per-interface controls (Disable / Fail / Enable)
+
+For a selected router while the sim is running (`isTopologyLocked()`),
+each interface row in the inspector shows action buttons whose label
+depends on the current down-state:
+
+- Interface **up**: **Disable** + **Fail** buttons.
+  - **Disable** — sends `ifconfig <iface> down` via
+    `RuntimeClient.deviceCommand(name, 'ifconfig <iface> down')`, which
+    brings the interface down gracefully (a clean admin shutdown).
+  - **Fail** — calls `RuntimeClient.fail(name, iface)`, which POSTs to
+    `POST /devices/{name}/fail { interface: "<iface>" }`. Simulates a
+    hard interface failure.
+- Interface **down**: **Enable** button only.
+  - **Enable** — sends `ifconfig <iface> up`, restoring the interface.
+
+The inspector panel re-renders on `sim:interface-state-changed` for the
+currently selected router, so the Disable ↔ Enable toggle is immediate.
+
+## Terminal ping streaming
+
+When a `ping` command runs in a device terminal, the backend emits one
+`ping_result` WS event per ICMP echo reply (or timeout). `sim.js
+_onEvent` translates each into a `sim:ping-result` bus event
+(`{device, dst, seq, rtt_ms}`).
+
+`terminals.js` subscribes to `sim:ping-result` and appends one text
+line per result to the **sender's** open terminal output area:
+
+```
+seq=1 10.1.0.2: time=1.23 ms
+seq=2 10.1.0.2: timeout
+```
+
+The line is appended live as results arrive, before the `ping` command
+itself has returned its summary — this gives step-by-step feedback for
+long-running pings. If the sender's terminal is not open, the event is
+silently ignored. The final command-response summary (total sent/
+received/RTT stats) still prints at the end through the normal
+`POST /devices/{name}/command` response path.
 
 ## YAML I/O (`web/yaml-io.js`)
 
