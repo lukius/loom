@@ -637,6 +637,21 @@ export function shiftLinkLabelsForDeviceMove(deviceName, ddx, ddy) {
 }
 
 /**
+ * Return true when either endpoint interface of a p2p link is down.
+ * Delegates to collectLinkEndpoints so both drawLinkEdge and the
+ * sim:interface-state-changed listener share one source of truth.
+ */
+function isLinkDown(linkName) {
+  const endpoints = collectLinkEndpoints(linkName);
+  const ep1 = endpoints[0];
+  const ep2 = endpoints[1];
+  return (
+    (ep1?.iface ? isInterfaceDown(ep1.device, ep1.iface) : false) ||
+    (ep2?.iface ? isInterfaceDown(ep2.device, ep2.iface) : false)
+  );
+}
+
+/**
  * Draw a direct device↔device edge for a p2p link.
  * The midpoint label (name + CIDR) is positioned at linkObj.{x,y} and is
  * the primary selection/drag target. The edge path itself is also selectable.
@@ -675,9 +690,7 @@ export function drawLinkEdge(linkName, linkObj) {
     (state.selection.kind === ep2.deviceKind && state.selection.name === ep2.device)
   );
 
-  const linkDown =
-    (ep1.iface ? isInterfaceDown(ep1.device, ep1.iface) : false) ||
-    (ep2.iface ? isInterfaceDown(ep2.device, ep2.iface) : false);
+  const linkDown = isLinkDown(linkName);
   const path = el('path', {
     class: `edge p2p${isSel ? ' selected' : ''}${linkDown ? ' down' : ''}`,
     d,
@@ -1641,16 +1654,9 @@ bus.addEventListener('sim:interface-state-changed', (e) => {
   if (!edge) return;
   if (isLink) {
     // For a p2p link, the edge is shared by both endpoints. Recompute down-
-    // state from BOTH endpoints — mirrors drawLinkEdge's both-endpoint check
-    // — so re-enabling one end while the peer is still down leaves the edge
-    // gray.
-    const endpoints = collectLinkEndpoints(iff.link);
-    const ep1 = endpoints[0];
-    const ep2 = endpoints[1];
-    const linkDown =
-      (ep1?.iface ? isInterfaceDown(ep1.device, ep1.iface) : false) ||
-      (ep2?.iface ? isInterfaceDown(ep2.device, ep2.iface) : false);
-    edge.classList.toggle('down', linkDown);
+    // state from BOTH endpoints via isLinkDown so re-enabling one end while
+    // the peer is still down leaves the edge gray.
+    edge.classList.toggle('down', isLinkDown(iff.link));
   } else {
     edge.classList.toggle('down', !up);
   }
