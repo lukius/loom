@@ -232,8 +232,31 @@ Supported commands per device kind:
 
 | Device | Commands |
 |---|---|
-| Host | `ifconfig`, `send <dst> <msg>`, `ping <dst> [-W <seconds>]`, `route`, `set_gateway <ip>`, `help` |
-| Router | `ifconfig`, `route`, `update_cost <iface> <cost>`, `neighbors`, `help` |
+| Host | `ifconfig`, `send <dst> <msg>`, `ping <dst> [-W <seconds>] [-c <n>]`, `route`, `set_gateway <ip>`, `help` |
+| Router | `ifconfig [<iface> up\|down]`, `route`, `update_cost <iface> <cost>`, `neighbors`, `halt`, `resume`, `help` |
+
+**`ifconfig [<iface> up|down]` (router)**
+
+With no arguments, shows all interfaces. With `<iface> up` or `<iface> down`, changes that interface's admin state: bringing it down stops traffic in both directions and triggers a graceful LSA re-flood omitting the link; bringing it back up re-announces the link immediately.
+
+**`halt` (router)**
+
+Gracefully disables all interfaces — floods a withdrawal LSA so peers purge the router immediately — and marks the router as halted. No traffic is forwarded.
+
+**`resume` (router)**
+
+Re-enables all previously halted interfaces and re-announces the router's links via a fresh LSA flood. Symmetrical to `halt`.
+
+**`ping <dst> [-W <seconds>] [-c <n>]` (host)**
+
+Sends one `PingRequest` per probe. `-W` sets the per-probe timeout (default 3 s); `-c` sets the probe count (default 1, max 100). Output includes one line per probe followed by a summary:
+
+```
+h2 (100.200.0.20): time=2.34 ms
+h2 (100.200.0.20): time=1.87 ms
+--- h2 ping statistics ---
+2 sent, 2 received, 0% loss
+```
 
 `<dst>` in host commands accepts either a hostname (resolved via
 `as_obj.host(dst).address()`) or a literal IP. Falling back to a literal
@@ -246,14 +269,52 @@ SPA terminal can render an error line uniformly with successful output.
 ### `GET /devices/{name}/interfaces`
 
 ```json
-{ "interfaces": [
-    { "name": "eth0", "address": "200.100.0.1", "network": "lan1", "cost": 10 },
+{
+  "halted": false,
+  "interfaces": [
+    { "name": "eth0", "address": "200.100.0.1", "network": "lan1", "cost": 10, "up": true },
+    { "name": "eth1", "address": "100.200.0.1", "network": "lan2", "cost": 15, "up": false },
     ...
-] }
+  ]
+}
 ```
 
-Used by the right-pane inspector to render the device's interface list
-without re-issuing an `ifconfig` command.
+`halted` is `true` when a router has been halted (all interfaces forcibly
+down via the `halt` command or a graceful stop). `up` reflects the
+per-interface admin state: `false` means the interface has been brought
+down (either individually or as part of a halt). For hosts, `halted` is
+always `false` and `up` is always `true`.
+
+### `POST /devices/{name}/fail`
+
+Simulate a crash — silently kills the device without a graceful LSA
+withdrawal. Peers learn the router is gone only via the Hello dead
+interval or LSA max-age expiry.
+
+**Request** (optional body)
+
+```json
+{ "interface": "eth0" }
+```
+
+With no body (or `null` interface), the entire router is failed (all
+interfaces taken down). With an `interface` name, only that interface
+is failed.
+
+**Error codes**
+
+- `400` — device is a host (hosts cannot be failed).
+- `404` — unknown device name, or unknown interface name on the router.
+
+**Response**
+
+```json
+{ "ok": true }
+```
+
+This endpoint is not exposed as a terminal command and is not available
+in the shell. It is intended for fault-injection scenarios — test
+scripts and future automation.
 
 ### `GET /devices/{name}/routes`
 
@@ -314,6 +375,30 @@ exponential backoff (initial 500 ms, max 8 s).
   ]
 }
 ```
+
+```json
+{ "kind": "interface_state_changed", "device": "r1", "interface": "eth0", "up": false }
+```
+
+Emitted whenever a single interface's admin state changes (up or down),
+whether triggered by `ifconfig <iface> down/up`, `halt`, `resume`, or
+`POST /devices/{name}/fail`.
+
+```json
+{ "kind": "device_state_changed", "device": "r1", "up": false }
+```
+
+Emitted when the router-level state flips (halt sets `up: false`;
+resume sets `up: true`). A single `halt` emits one `device_state_changed`
+plus one `interface_state_changed` per interface.
+
+```json
+{ "kind": "ping_result", "device": "h1", "dst": "100.200.0.20", "seq": 1, "rtt_ms": 2.34 }
+```
+
+Emitted once per probe from `Host.ping`, regardless of whether the ping
+was issued from the terminal or the shell. `rtt_ms` is `null` on timeout.
+`seq` is a 1-based counter that resets on each `ping` call.
 
 Notes:
 

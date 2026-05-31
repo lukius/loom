@@ -366,6 +366,70 @@ convergence after a clean shutdown.
 
 ---
 
+## Administrative down and crash
+
+loom-OSPF distinguishes two ways a router or interface can become unavailable:
+graceful (admin-initiated) and crash (silent failure). Both converge to the
+same down-state; they differ only in how peers learn about it.
+
+### Graceful: interface disable and router halt
+
+**Interface disable** (`disable_interface(name, graceful=True)`) sets the
+interface's `is_up()` flag to `False`. A down interface drops traffic in both
+directions (neither `_pkt_loop` nor the fabric will forward frames through it)
+and is excluded from the outbound LSA. The protocol immediately re-emits a
+fresh LSA via `local_links_changed()`, so peers receive an updated link list
+within milliseconds — no wait for the next scheduled refresh.
+
+**Router halt** calls `disable_interface` on every interface (setting each
+`is_up()` to `False`) and then floods a withdrawal LSA (identical to graceful
+shutdown: `is_withdrawal=True`, no links). Receiving routers purge the origin
+from the LSDB and recompute SPF immediately.
+
+**Resume** re-enables all interfaces (sets `is_up()` back to `True`) and
+re-announces the router's links via a fresh LSA flood. The protocol thread
+**never stops** during halt or resume — only the `is_up()` flags change. This
+means there is no restart-jitter overhead; the router re-enters the topology
+at the next flood cycle.
+
+### Crash (silent failure)
+
+A crash (`POST /devices/{name}/fail`, optionally scoped to one interface)
+sets `is_up()` to `False` without any LSA announcement. Peers cannot
+distinguish this from a network partition at the moment it occurs.
+
+Two detection mechanisms fire independently:
+
+- **Hello dead interval** (`dead_interval = 3 × hello_interval`, default 30s):
+  a neighbor that stops sending Hellos transitions to `DOWN`, its LSA is purged
+  from the LSDB, and SPF is recomputed.
+- **LSA max-age** (`max_age = 2 × lsa_refresh_interval`, default 60s): the
+  crashed router's LSA ages out during the max-age sweep, triggering the same
+  LSDB purge and SPF recompute.
+
+The dead interval fires first (assuming default ratios), making the Hello layer
+the fast path for crash detection.
+
+### Crash vs graceful: key invariants
+
+| Property | Graceful | Crash |
+|---|---|---|
+| `is_up()` flag cleared | Yes | Yes |
+| Withdrawal LSA flooded | Yes (halt) / partial LSA (iface disable) | No |
+| Protocol thread stopped | Never | Never |
+| Down-state serialized | No (runtime-only) | No (runtime-only) |
+| Peer convergence trigger | Immediate (on LSA receipt) | Dead interval / max-age |
+
+The protocol thread never stops in either case — this is an explicit design
+choice so that `resume` requires no thread restart, and so that the protocol
+can re-announce links the moment `is_up()` flips back.
+
+Crash and graceful are **transition-time forks**, not stored states. Once a
+router is down, the LSDB and routing tables look identical regardless of how
+it got there.
+
+---
+
 ## Timer model and jitter
 
 `_protocol_loop` drives three independent timers via a `Scheduler` instance.

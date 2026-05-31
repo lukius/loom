@@ -24,7 +24,7 @@ that command's docstring.
 # help
 Documented commands (type help <topic>):
 ========================================
-exit  help  ifconfig  neighbors  ping  read  route  send  set_gateway  update_cost
+exit  halt  help  ifconfig  neighbors  ping  read  resume  route  send  set_gateway  update_cost
 ```
 
 ## Working-directory quirk
@@ -125,9 +125,9 @@ For hosts on a link, the gateway is auto-filled by the parser; you can
 `set_gateway` to override, but the new gateway must still be in the
 link's subnet.
 
-### `ifconfig <device>`
+### `ifconfig <device> [<iface> up|down]`
 
-Show interfaces and (for hosts) the gateway.
+With no interface argument, shows all interfaces and (for hosts) the gateway.
 
 ```
 # ifconfig h1
@@ -140,6 +140,16 @@ iface_h1: addr=200.100.0.10 net=lan1 (200.100.0.0/24) cost=0
 eth0: addr=200.100.0.1 net=lan1 (200.100.0.0/24) cost=10
 eth1: addr=100.200.0.1 net=lan2 (100.200.0.0/24) cost=15
 eth2: addr=10.0.0.1 net=p2p1 (10.0.0.0/30) cost=5
+```
+
+With `<iface> down` or `<iface> up`, changes the admin state of that
+interface on a router. Bringing an interface down stops traffic in both
+directions and re-floods the router's LSA without that link; bringing it
+back up re-announces the link immediately.
+
+```
+# ifconfig r1 eth0 down
+# ifconfig r1 eth0 up
 ```
 
 ### `neighbors <router>`
@@ -157,28 +167,56 @@ List directly-connected router neighbors.
 Reads from the router's local view of the network. Empty until the
 first keepalive has been received.
 
-### `ping <src> <dst> [-W <seconds>]`
+### `halt <router>`
 
-Send a `PingRequest` from `<src>` and wait for a `PingReply`.
+Gracefully disables all interfaces on `<router>` and floods a withdrawal
+LSA so peers remove it from their routing tables immediately.
+
+```
+# halt r1
+```
+
+### `resume <router>`
+
+Re-enables all interfaces on a halted router and re-announces its links
+via a fresh LSA flood.
+
+```
+# resume r1
+```
+
+### `ping <src> <dst> [-W <seconds>] [-c <n>]`
+
+Send one or more `PingRequest`s from `<src>` and wait for `PingReply`s.
 
 `<dst>` can be a hostname (resolved via the AS host table) or a literal
-IP. Default timeout: 3 seconds.
+IP. `-W` sets the per-probe timeout (default 3 s); `-c` sets the probe
+count (default 1, max 100). Output includes one line per probe and a
+summary.
 
 ```
 # ping h1 h3
 ping h1 -> h3 (150.10.10.30): time=12.34 ms
+--- h3 ping statistics ---
+1 sent, 1 received, 0% loss
 ```
 
 ```
 # ping h1 200.100.0.99
 ping h1 -> 200.100.0.99: timeout after 3.00 s
+--- 200.100.0.99 ping statistics ---
+1 sent, 0 received, 100% loss
 ```
 
-Custom timeout:
+Custom timeout and count:
 
 ```
-# ping h1 h3 -W 0.5
+# ping h1 h3 -W 0.5 -c 3
 ping h1 -> h3 (150.10.10.30): time=12.34 ms
+ping h1 -> h3 (150.10.10.30): time=11.80 ms
+ping h1 -> h3 (150.10.10.30): time=13.01 ms
+--- h3 ping statistics ---
+3 sent, 3 received, 0% loss
 ```
 
 If the source host can't route to the destination:

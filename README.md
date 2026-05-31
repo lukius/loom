@@ -34,6 +34,11 @@ see [ns-3](https://www.nsnam.org/), [mininet](https://mininet.org/),
   (live-tunable from the toolbar's Protocol popover), Dijkstra
   shortest-path computation that re-runs only when the graph actually
   changes.
+- **Live interface disable and router halt/crash** — Bring an individual
+  interface up or down (graceful LSA re-flood), halt a router (withdrawal
+  LSA + peers converge immediately), or inject a silent crash
+  (`POST /devices/{name}/fail`). `ping` supports `-c N` for repeated probes
+  with a summary line.
 - **Interactive web UI** — Drag networks, hosts, and routers onto an SVG
   canvas; edit interfaces and costs in the right pane; double-click any
   device to open a terminal with `ping`, `send`, `route`, `ifconfig`,
