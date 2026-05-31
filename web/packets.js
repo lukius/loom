@@ -658,10 +658,15 @@ export const PacketAnim = {
   },
 
   // Straight-line tween between two world-space points. Freezes while paused.
+  // Captures the current generation and aborts silently — without finishing —
+  // if the sim resets mid-flight, so a stale tween can't dispatch an arrival
+  // onto a just-cleared (or next-run's) canvas.
   _tweenPoints(dot, badge, fp, tp, durationMs, done) {
+    const gen = this._gen;
     let elapsed = 0;
     let lastT = performance.now();
     const tick = () => {
+      if (gen !== PacketAnim._gen) return;   // sim reset: abort, don't finish
       const now = performance.now();
       if (Sim.state !== 'paused') elapsed += (now - lastT);
       lastT = now;
@@ -674,11 +679,14 @@ export const PacketAnim = {
   },
 
   // Cubic bezier tween — samples B(t) for each frame so the packet rides the
-  // same curve drawEdge renders. Freezes while paused (same pattern as above).
+  // same curve drawEdge renders. Freezes while paused, aborts on reset (same
+  // patterns as _tweenPoints above).
   _tweenBezier(dot, badge, p0, c1, c2, p3, durationMs, done) {
+    const gen = this._gen;
     let elapsed = 0;
     let lastT = performance.now();
     const tick = () => {
+      if (gen !== PacketAnim._gen) return;   // sim reset: abort, don't finish
       const now = performance.now();
       if (Sim.state !== 'paused') elapsed += (now - lastT);
       lastT = now;
@@ -745,22 +753,24 @@ export function hidePacketTooltip() {
 // used to wire this through a bridge listener; ownership now lives here.
 bus.addEventListener('sim:packet', (e) => { PacketAnim.play(e.detail); });
 
-// Reset all animation state when the sim goes idle. A fresh run must not
-// inherit stale sequencer markers (which would let re-floods skip their wait),
-// and — crucially — any dots/badges still in flight (or frozen by a pause)
-// when the sim stops must be cleared from the canvas, otherwise they dangle
-// permanently because nothing else empties the packet layer.
+// Reset all animation state. A fresh run must not inherit stale sequencer
+// markers (which would let re-floods skip their wait), and — crucially — any
+// dots/badges still in flight (or frozen by a pause) must be cleared from the
+// canvas; bumping the generation also aborts the rAF tweens driving them, so
+// they can't run to completion and dispatch a stale arrival afterwards.
+PacketAnim._reset = function () {
+  this._gen++;   // invalidate any in-flight animation (tweens abort on mismatch)
+  this._lsaArrivedAt.clear();
+  this._lsaPending.clear();
+  this._queues.clear();
+  this._lastChatter.clear();
+  const layer = document.getElementById('packet-layer');
+  if (layer) layer.replaceChildren();
+};
+
 bus.addEventListener('sim:status-changed', (e) => {
   const status = e.detail && e.detail.status;
-  if (status === 'idle') {
-    PacketAnim._gen++;   // invalidate any in-flight multi-phase animation
-    PacketAnim._lsaArrivedAt.clear();
-    PacketAnim._lsaPending.clear();
-    PacketAnim._queues.clear();
-    PacketAnim._lastChatter.clear();
-    const layer = document.getElementById('packet-layer');
-    if (layer) layer.replaceChildren();
-  }
+  if (status === 'idle') PacketAnim._reset();
 });
 
 // Live chatter-badge toggle: when the body flag changes while chatter dots are

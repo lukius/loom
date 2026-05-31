@@ -2,6 +2,15 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PacketAnim, showPacketTooltip, hidePacketTooltip } from './packets.js';
 import { state, bus } from './state.js';
 
+// PacketAnim tweens run on real wall-clock rAF loops. A test that starts an
+// animation without awaiting its completion leaves it ticking; under load its
+// later phases can fire a stale sim:packet-arrived into a subsequent test's
+// measurement window. Resetting after each test bumps the generation, which
+// aborts any in-flight tween before it can finish.
+afterEach(() => {
+  PacketAnim._reset();
+});
+
 // Sample one dimension of a cubic bezier at parameter t.
 function bez1d(p0, c1, c2, p3, t) {
   const u = 1 - t;
@@ -905,6 +914,27 @@ describe('PacketAnim — LSA flooding is sequenced per-hop', () => {
       expect(layer.querySelectorAll('rect').length).toBe(0);
     } finally {
       PacketAnim.DURATION_MS = origDur;
+    }
+  });
+
+  it('going idle mid-animation aborts in-flight tweens — no stale arrival fires afterwards', async () => {
+    const arrivedSpy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', arrivedSpy);
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 80;   // long enough to still be mid-flight at idle
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: originEvt() }));
+      await new Promise(r => setTimeout(r, 5));   // mid phase-1
+      // Sim stops: the layer is cleared and the generation bumped. The tween
+      // still in flight must abort silently — it must NOT run to completion
+      // and dispatch a (now-stale) arrival into a later run/test.
+      bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: 'idle' } }));
+      arrivedSpy.mockClear();   // ignore anything dispatched before the stop
+      await new Promise(r => setTimeout(r, 200));   // well past the full duration
+      expect(arrivedSpy).not.toHaveBeenCalled();
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+      bus.removeEventListener('sim:packet-arrived', arrivedSpy);
     }
   });
 
