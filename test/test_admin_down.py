@@ -31,6 +31,7 @@ import textwrap
 import time
 
 from entities import Address, NetworkAddress
+from entities.event import EventTracer
 from parser import Parser
 
 TRIANGLE_TOPOLOGY = textwrap.dedent("""
@@ -191,6 +192,98 @@ internet:
 """)
 
 
+# Three routers where r2 and r3 are joined by TWO parallel networks. The
+# parallel paths form a flooding cycle: an LSA r2 re-floods to r3 over one
+# network can come back to r2 over the other. This is the shape that turned a
+# single in-flight withdrawal (from r1's graceful halt) plus its post-resume
+# re-announcement into an unbounded LSA storm before the seq-dedup fix.
+_PARALLEL_TOPOLOGY = textwrap.dedent("""
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan_r1_r2: "200.0.1.0/24"
+        lan_a:     "200.0.2.0/24"
+        lan_b:     "200.0.3.0/24"
+      routers:
+        r1:
+          interfaces:
+            eth0: {network: lan_r1_r2, address: "200.0.1.1", cost: 1}
+        r2:
+          interfaces:
+            eth0: {network: lan_r1_r2, address: "200.0.1.2", cost: 1}
+            eth1: {network: lan_a,     address: "200.0.2.1", cost: 1}
+            eth2: {network: lan_b,     address: "200.0.3.1", cost: 1}
+        r3:
+          interfaces:
+            eth0: {network: lan_a,     address: "200.0.2.2", cost: 1}
+            eth1: {network: lan_b,     address: "200.0.3.2", cost: 1}
+""")
+
+
+def test_resume_does_not_trigger_lsa_storm():
+    """After halt(graceful=True)+resume() on r1, the network must NOT enter a
+    sustained route-flap.  r1's graceful withdrawal plus its post-resume
+    re-announcement used to circulate forever across r2/r3's parallel
+    networks, driving thousands of routing_table_changed events per second.
+
+    Drives the real protocol threads.  Asserts the routing-event rate over a
+    quiescent post-resume window stays small (a converged network emits a
+    handful of routing_table_changed events, not hundreds).
+    """
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(_PARALLEL_TOPOLOGY)
+        path = f.name
+    system = Parser(path).parse(start_routing=False).single_as()
+    for r in system.routers().values():
+        r.protocol().set_timers(hello_interval=0.2, lsa_refresh_interval=0.6)
+        r.start()
+    r1 = system.routers()["r1"]
+    try:
+        # Converge: every router learns every prefix.
+        all_prefixes = ["200.0.1.0/24", "200.0.2.0/24", "200.0.3.0/24"]
+        assert _wait(
+            lambda: all(
+                _table_has_prefix(r, p)
+                for r in system.routers().values()
+                for p in all_prefixes
+            ),
+            timeout=5.0,
+        ), "network did not converge before halt"
+
+        r1.halt(graceful=True)
+        r1.resume()
+
+        # Let any transient reconvergence settle, then count routing events
+        # over a quiescent window. A storm produces hundreds-to-thousands/s.
+        time.sleep(1.0)
+        count = 0
+
+        def _count(ev):
+            nonlocal count
+            if ev.get("kind") == "routing_table_changed":
+                count += 1
+
+        unsubscribe = EventTracer.subscribe(_count)
+        try:
+            window = 1.5
+            time.sleep(window)
+        finally:
+            unsubscribe()
+
+        # Generous bound: periodic refreshes across 3 routers at 0.6s refresh
+        # over 1.5s is well under 30; a storm is in the thousands.
+        assert count < 30, (
+            f"routing_table_changed storm after resume: {count} events in "
+            f"{window}s ({count / window:.0f}/s) — expected a quiescent network"
+        )
+    finally:
+        system.stop()
+        os.unlink(path)
+
+
 def _build_halt_system(hello_interval, lsa_refresh_interval):
     """Parse _HALT_TOPOLOGY, tune timers, start all routers, and return
     (system, r1, r2).  Caller is responsible for system.stop() and
@@ -239,6 +332,47 @@ def test_halt_graceful_router_peer_purges_quickly():
         ), (
             "r2 did not purge r1's LSA quickly after graceful halt "
             "(withdrawal path did not trigger fast purge)"
+        )
+    finally:
+        system.stop()
+        os.unlink(path)
+
+
+def test_resume_router_reconverges_own_routing_table():
+    """After halt(graceful=True) then resume(), the resumed router must
+    reconverge its OWN routing table and regain the route to the peer's LAN.
+
+    Drives the real protocol thread end-to-end (no monkeypatching of
+    announce/withdraw). Timers: hello=0.2s (dead=0.6s), refresh=0.6s.
+    """
+    # hello=0.2 → dead_interval=0.6.  The halt window below (0.65s) is chosen
+    # to sit just past dead_interval so the peer's adjacency lapses on the
+    # resumed router (its announce-time recompute sees no bidirectional peer)
+    # while the peer's LSA is still in the resumed router's LSDB — the exact
+    # condition under which the table failed to reconverge.
+    system, path, r1, r2 = _build_halt_system(
+        hello_interval=0.2,
+        lsa_refresh_interval=0.6,
+    )
+    try:
+        # Converge: r1 must learn the route to r2's LAN prefix.
+        peer_lan = "200.0.2.0/24"
+        assert _wait(
+            lambda: _table_has_prefix(r1, peer_lan),
+            timeout=5.0,
+        ), "r1 did not converge on r2's LAN before halt"
+
+        r1.halt(graceful=True)
+        time.sleep(0.65)  # just past dead_interval (0.6s)
+        r1.resume()
+
+        # Within a few seconds r1 must regain the route to r2's LAN.
+        assert _wait(
+            lambda: _table_has_prefix(r1, peer_lan),
+            timeout=4.0,
+        ), (
+            "r1 did not reconverge its routing table after halt/resume "
+            "(route to peer LAN never recovered)"
         )
     finally:
         system.stop()

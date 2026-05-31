@@ -86,15 +86,28 @@ incremented by `_next_seq()`). Every LSA emission — refresh cycle or re-flood
 — carries the current value. There is no per-interface counter; the old
 per-interface scheme was a design debt and has been removed.
 
-The LSDB's `install()` method is the acceptance gate:
+The LSDB's `install()` method is the acceptance gate. It compares against a
+**persistent per-origin high-water mark** (`_last_seq[origin]`), not against the
+currently-stored LSA:
 
 ```python
-if not lsa.is_newer_than(existing):
+if last_seq is not None and lsa.seq() <= last_seq:
     return InstallResult.rejected()
 ```
 
-`is_newer_than` is a simple `seq > other.seq()` comparison. Ties and replays
-are rejected, so a router can never roll back its sequence number in-flight.
+Ties and replays are rejected, so a router can never roll back its sequence
+number in-flight. The high-water mark is retained even after an origin's LSA is
+**purged** (by a withdrawal or max-age expiry) — this is what makes withdrawals
+idempotent. Without it, a withdrawal removes the very entry it would otherwise be
+compared against, so each re-flooded copy looks brand-new and is re-flooded
+forever; on a topology with parallel paths between two routers, a withdrawal and
+the subsequent re-announcement then circulate indefinitely (an LSA storm).
+
+A router also drops any incoming LSA that names **itself** as origin
+(`_handle_incoming_lsa` returns early when `lsa.origin() is self._router`): such
+an LSA is an echo of the router's own flood reflected back over another network,
+and installing/re-flooding it would feed the same storm. The local LSA is owned
+exclusively by the refresh/announce path.
 
 `has_same_links_as` is a dict-equality check on the `_links` maps. The LSDB
 uses it to decide whether an accepted LSA actually changed the graph:
@@ -354,12 +367,14 @@ lsa = LSA.withdrawal(self._router, seq=self._next_seq())
 # flood out every interface
 ```
 
-A withdrawal LSA has `is_withdrawal=True` and carries no links. When a
-receiver installs it (`lsdb.install` detects `is_withdrawal=True`), it pops the
-origin from `_by_origin` entirely. The `InstallResult` returns
-`accepted(changed_graph=True)` if the origin was present, triggering an
-immediate SPF recompute on every receiving router. The flood propagates
-normally through `_flood_lsa`.
+A withdrawal LSA has `is_withdrawal=True` and carries no links. It carries a
+sequence number like any other LSA and is subject to the same acceptance gate:
+a withdrawal whose seq is not newer than the origin's high-water mark is
+rejected (and not re-flooded). When a withdrawal *is* accepted, `lsdb.install`
+pops the origin from `_by_origin` and records the withdrawal's seq as the new
+high-water mark. The `InstallResult` returns `accepted(changed_graph=True)` if
+the origin was present, triggering an immediate SPF recompute on every
+receiving router. The flood propagates normally through `_flood_lsa`.
 
 Compared to waiting for max-age (up to 60s), withdrawal gives peers near-instant
 convergence after a clean shutdown.
@@ -387,7 +402,14 @@ shutdown: `is_withdrawal=True`, no links). Receiving routers purge the origin
 from the LSDB and recompute SPF immediately.
 
 **Resume** re-enables all interfaces (sets `is_up()` back to `True`) and
-re-announces the router's links via a fresh LSA flood. The protocol thread
+re-announces the router's links via a fresh Hello + LSA flood (`announce()`).
+Because the peer's Hellos were dropped while the router was down, any adjacency
+the router still tracks on a re-enabled interface is stale; `announce()` first
+**forgets those neighbor records** (`NeighborTable.clear_on`) so the peer's
+returning Hello drives a genuine `DOWN→…→TWO_WAY` transition. That transition is
+what retriggers the SPF recompute once the adjacency re-establishes — without it
+a stale `TWO_WAY` record would silently absorb the returning Hello and the
+resumed router's own routing table would never reconverge. The protocol thread
 **never stops** during halt or resume — only the `is_up()` flags change. This
 means there is no restart-jitter overhead; the router re-enters the topology
 at the next flood cycle.

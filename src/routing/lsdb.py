@@ -43,23 +43,42 @@ class LSDB:
     def __init__(self, local_router):
         self._local = local_router
         self._by_origin: dict = {}      # origin -> (LSA, installed_at)
+        # Highest sequence number ever accepted from each origin, retained
+        # even after the origin's LSA is purged by a withdrawal. This tombstone
+        # is what makes withdrawals (and post-withdrawal re-announcements)
+        # idempotent: without it, a withdrawal — which removes the entry it
+        # would otherwise be compared against — looks brand-new on every
+        # arrival, so it is re-flooded forever. On a topology with parallel
+        # paths between two routers, a withdrawal and the subsequent
+        # re-announcement then circulate indefinitely (an LSA storm).
+        self._last_seq: dict = {}       # origin -> highest seq accepted
         self._lock = threading.Lock()
 
     def install(self, lsa, now: float) -> InstallResult:
         with self._lock:
+            origin = lsa.origin()
+            last_seq = self._last_seq.get(origin)
+            # Sequence-number dedup, applied to withdrawals and regular LSAs
+            # alike: never re-process an LSA we've already seen at this seq or
+            # older. A withdrawal purges the LSDB entry, so the tombstone seq
+            # (not the absent entry) is the only thing that can reject its
+            # duplicates and the stale re-announcements that predate it.
+            if last_seq is not None and lsa.seq() <= last_seq:
+                return InstallResult.rejected()
+
             if lsa.is_withdrawal():
-                purged = self._by_origin.pop(lsa.origin(), None) is not None
+                self._last_seq[origin] = lsa.seq()
+                purged = self._by_origin.pop(origin, None) is not None
                 return InstallResult.accepted(changed_graph=purged)
 
-            current = self._by_origin.get(lsa.origin())
+            current = self._by_origin.get(origin)
             if current is not None:
                 existing, _ = current
-                if not lsa.is_newer_than(existing):
-                    return InstallResult.rejected()
                 changed = not lsa.has_same_links_as(existing)
             else:
                 changed = True
-            self._by_origin[lsa.origin()] = (lsa, now)
+            self._last_seq[origin] = lsa.seq()
+            self._by_origin[origin] = (lsa, now)
             return InstallResult.accepted(changed_graph=changed)
 
     def lsa_for(self, origin) -> Optional[LSA]:

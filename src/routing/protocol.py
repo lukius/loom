@@ -205,6 +205,14 @@ class LinkStateProtocol(RoutingProtocol):
         # Unknown message kind — drop.
 
     def _handle_incoming_lsa(self, lsa, interface):
+        # A router is the sole authority on its own LSA. An LSA that names us
+        # as origin is an echo of our own flood that a peer re-flooded back
+        # over a different network. Installing it would let the echo's
+        # sequence number race our locally-managed one, and re-flooding it
+        # would feed the loop — a self-sustaining LSA storm. The local LSA is
+        # owned exclusively by the refresh/announce path, so drop self-echoes.
+        if lsa.origin() is self._router:
+            return
         now = time.monotonic()
         with self._lock:
             # Ensure local links are reflected in the LSDB before installing
@@ -464,7 +472,18 @@ class LinkStateProtocol(RoutingProtocol):
 
         Used on restore so a re-enabled interface / resumed router rejoins
         at t~=0 rather than after a full interval.
+
+        Any adjacency tracked on a just-restored interface across its down
+        period is stale: while the interface was down the peer's Hellos were
+        dropped, so the cached neighbor state no longer reflects reality.
+        Forget those records first so the peer's returning Hello drives a
+        genuine DOWN→…→TWO_WAY transition — which retriggers the SPF
+        recompute. Without this, a stale TWO_WAY record absorbs the
+        returning Hello silently and the routing table never reconverges.
         """
+        for _, iface in self._router.interfaces().items():
+            if iface.is_up():
+                self._neighbor_table.clear_on(iface)
         now = time.monotonic()
         self._emit_hello_on_up_interfaces(now)
         self._emit_lsa_on_up_interfaces(now)

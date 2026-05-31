@@ -138,6 +138,24 @@ class NeighborTable:
                 transitions.append(NeighborTransition(neighbor, before, after))
             return transitions
 
+    def clear_on(self, interface):
+        """Forget all neighbor records (and their cached state) on *interface*.
+
+        Used when the interface is brought administratively back up after
+        having been down: any adjacency tracked across the down period is
+        stale and must be re-learned from scratch, so that the peer's next
+        Hello produces a genuine DOWN→…→TWO_WAY transition rather than being
+        silently absorbed into a stale TWO_WAY record.
+        """
+        with self._lock:
+            stale = [
+                key for key in self._neighbors
+                if key[0] == interface.name()
+            ]
+            for key in stale:
+                self._neighbors.pop(key, None)
+                self._last_state.pop(key, None)
+
     def on_interface(self, interface):
         with self._lock:
             return [
