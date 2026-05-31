@@ -83,6 +83,16 @@ class Host(NetworkDevice):
             self._pending_pings.pop(key, None)
             rtt = self._ping_results.pop(key, None)
 
+        EventTracer._broadcast(
+            {
+                "kind": "ping_result",
+                "device": self.name(),
+                "dst": str(dst_addr),
+                "seq": seq,
+                "rtt_ms": (rtt * 1000) if rtt is not None else None,
+            }
+        )
+
         return rtt if arrived else None
 
     def _handle_message(self, msg, interface, packet):

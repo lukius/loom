@@ -588,3 +588,51 @@ def test_router_ping_intercept_emits_event():
         unsub()
         system.stop()
         os.unlink(path)
+
+
+def test_ping_emits_ping_result_on_success():
+    """A successful ping broadcasts one ping_result event with non-None rtt_ms."""
+    path = _make_topology(TWO_HOSTS)
+    system = Parser(path).parse().single_as()
+    events = []
+    unsub = EventTracer.subscribe(
+        lambda e: events.append(e) if e.get("kind") == "ping_result" else None
+    )
+    try:
+        h1 = system.host("h1")
+        h2 = system.host("h2")
+        h1.ping(h2.address(), timeout=2.0)
+    finally:
+        unsub()
+        system.stop()
+        os.unlink(path)
+    assert len(events) == 1
+    e = events[0]
+    assert e["device"] == "h1"
+    assert e["dst"] == str(h2.address())
+    assert e["rtt_ms"] is not None
+    assert "seq" in e
+
+
+def test_ping_emits_ping_result_on_timeout():
+    """A timed-out ping broadcasts one ping_result event with rtt_ms=None.
+
+    Uses an in-subnet address that no host owns; the host sends but receives
+    no reply, so ping returns None and the event carries rtt_ms=None.
+    """
+    path = _make_topology(TWO_HOSTS)
+    system = Parser(path).parse().single_as()
+    events = []
+    unsub = EventTracer.subscribe(
+        lambda e: events.append(e) if e.get("kind") == "ping_result" else None
+    )
+    try:
+        h1 = system.host("h1")
+        # 10.0.0.99 is in the same /24 but unoccupied; no gateway needed.
+        h1.ping(Address("10.0.0.99"), timeout=0.2)
+    finally:
+        unsub()
+        system.stop()
+        os.unlink(path)
+    assert len(events) == 1
+    assert events[0]["rtt_ms"] is None
