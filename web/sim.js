@@ -193,6 +193,25 @@ export function reconcilePatch(patch) {
   return out;
 }
 
+/* ---------- recoverDownState — reload/reconnect sweep ----------
+   When the SPA reconnects (WS onopen → refreshState) or the user triggers a
+   Start, the transient down-state cache is empty because WS events cannot be
+   replayed. This sweep re-derives the current up/halted values for every known
+   router by reading the backend, so the canvas grays correctly without the
+   user having to open each inspector panel. Called fire-and-forget from
+   refreshState() whenever the sim is running. */
+export async function recoverDownState() {
+  for (const name of Object.keys(state.routers)) {
+    try {
+      const info = await RuntimeClient.deviceInterfaces(name);
+      applyDeviceStateChanged({ device: name, up: !info.halted });
+      for (const i of info.interfaces) {
+        applyInterfaceStateChanged({ device: name, interface: i.name, up: i.up });
+      }
+    } catch (_) { /* device gone / transient — skip */ }
+  }
+}
+
 /* ---------- Sim — start/stop/pause/resume state machine ---------- */
 export const Sim = {
   state: 'idle',
@@ -205,6 +224,9 @@ export const Sim = {
     this._renderToolbar();
     if (this.state !== prev) {
       bus.dispatchEvent(new CustomEvent('sim:status-changed', { detail: { status: this.state } }));
+    }
+    if (this.state === 'running') {
+      recoverDownState().catch(() => {});
     }
   },
 

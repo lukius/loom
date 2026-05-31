@@ -3,7 +3,7 @@ import { state, bus, isInterfaceDown, isDeviceHalted, resetDownState } from './s
 import {
   Sim, RuntimeClient,
   setConnectionStatus, isTopologyLocked, recordPatchOp, updatePatchIndicator, reconcilePatch,
-  _onEvent, _resetPendingNAT,
+  _onEvent, _resetPendingNAT, recoverDownState,
 } from './sim.js';
 
 // ---------- bus helpers ----------
@@ -917,5 +917,45 @@ describe('_onEvent: interface_state_changed / device_state_changed / ping_result
     _onEvent({ kind: 'ping_result', device: 'h1', dst: '10.0.0.2', seq: 1, rtt_ms: 2.5 });
     bus.removeEventListener('sim:ping-result', handler);
     expect(seen).toEqual([{ device: 'h1', dst: '10.0.0.2', seq: 1, rtt_ms: 2.5 }]);
+  });
+});
+
+// ---------- recoverDownState ----------
+describe('recoverDownState', () => {
+  it('seeds cache from /devices interfaces reads', async () => {
+    resetDownState();
+    state.routers = { r1: { x: 0, y: 0, interfaces: {} }, r2: { x: 0, y: 0, interfaces: {} } };
+    const spy = vi.spyOn(RuntimeClient, 'deviceInterfaces').mockImplementation(async (n) => {
+      if (n === 'r1') return { halted: true, interfaces: [{ name: 'eth0', up: false }] };
+      return { halted: false, interfaces: [{ name: 'eth0', up: true }] };
+    });
+    await recoverDownState();
+    expect(isDeviceHalted('r1')).toBe(true);
+    expect(isInterfaceDown('r1', 'eth0')).toBe(true);
+    expect(isDeviceHalted('r2')).toBe(false);
+    expect(isInterfaceDown('r2', 'eth0')).toBe(false);
+    spy.mockRestore();
+  });
+
+  it('skips routers that throw (device gone / transient error)', async () => {
+    resetDownState();
+    state.routers = { r1: { x: 0, y: 0, interfaces: {} }, r2: { x: 0, y: 0, interfaces: {} } };
+    const spy = vi.spyOn(RuntimeClient, 'deviceInterfaces').mockImplementation(async (n) => {
+      if (n === 'r1') throw new Error('not found');
+      return { halted: false, interfaces: [{ name: 'eth0', up: false }] };
+    });
+    await recoverDownState();
+    // r1 threw — should not affect r2's result
+    expect(isInterfaceDown('r2', 'eth0')).toBe(true);
+    spy.mockRestore();
+  });
+
+  it('is a no-op when state.routers is empty', async () => {
+    resetDownState();
+    state.routers = {};
+    const spy = vi.spyOn(RuntimeClient, 'deviceInterfaces').mockResolvedValue({ halted: false, interfaces: [] });
+    await recoverDownState();
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
