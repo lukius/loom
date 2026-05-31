@@ -39,23 +39,46 @@ def cmd_send(host, args, as_obj=None):
 
 
 def cmd_ping(host, args, as_obj=None):
-    """Ping a destination host (hostname or IP), with optional timeout."""
+    """Ping a destination, optionally N times: ping <dst> [-W <s>] [-c <n>]."""
     timeout = 3.0
+    count = 1
+    args = list(args)
     if "-W" in args:
         i = args.index("-W")
         timeout = float(args[i + 1])
         args = args[:i] + args[i + 2:]
+    if "-c" in args:
+        i = args.index("-c")
+        try:
+            count = int(args[i + 1])
+        except (IndexError, ValueError):
+            return "syntax: ping <dst> [-W <seconds>] [-c <count>]"
+        args = args[:i] + args[i + 2:]
+    if count <= 0:
+        return "count must be positive"
+    if count > 100:
+        return "count capped at 100"
     if not args:
-        return "syntax: ping <dst> [-W <seconds>]"
+        return "syntax: ping <dst> [-W <seconds>] [-c <count>]"
     dst = args[0]
     try:
         dst_addr = _resolve_address(dst, as_obj)
     except Exception:
         return f"ping: invalid destination: {dst}"
-    rtt = host.ping(dst_addr, timeout=timeout)
-    if rtt is None:
-        return f"ping {dst}: timeout after {timeout:.2f} s"
-    return f"ping {dst} ({dst_addr}): time={rtt * 1000:.2f} ms"
+
+    lines = []
+    received = 0
+    for _ in range(count):
+        rtt = host.ping(dst_addr, timeout=timeout)
+        if rtt is None:
+            lines.append(f"{dst}: timeout after {timeout:.2f} s")
+        else:
+            received += 1
+            lines.append(f"{dst} ({dst_addr}): time={rtt * 1000:.2f} ms")
+    loss = 100.0 * (count - received) / count
+    lines.append(f"--- {dst} ping statistics ---")
+    lines.append(f"{count} sent, {received} received, {loss:.0f}% loss")
+    return "\n".join(lines)
 
 
 def cmd_route(host, args, as_obj=None):

@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from server.app import create_app
+from server.command.host import cmd_ping
 from server.command.router import cmd_halt, cmd_ifconfig, cmd_resume
 
 SAMPLE = textwrap.dedent("""
@@ -249,3 +250,25 @@ def test_cmd_halt_and_resume(router_with_iface):
     assert r.is_halted() is True
     assert "resumed" in cmd_resume(r, [])
     assert r.is_halted() is False
+
+
+def test_cmd_ping_count_sends_n_probes(monkeypatch, ping_host):
+    host = ping_host
+    calls = []
+    monkeypatch.setattr(host, "ping", lambda addr, timeout: calls.append(addr) or 0.001)
+    out = cmd_ping(host, ["10.0.0.2", "-c", "3"], as_obj=None)
+    assert len(calls) == 3
+    assert "3 sent" in out and "received" in out
+
+
+def test_cmd_ping_count_one_is_default(monkeypatch, ping_host):
+    host = ping_host
+    calls = []
+    monkeypatch.setattr(host, "ping", lambda addr, timeout: calls.append(addr) or 0.001)
+    cmd_ping(host, ["10.0.0.2"], as_obj=None)
+    assert len(calls) == 1
+
+
+def test_cmd_ping_count_rejects_nonpositive(ping_host):
+    host = ping_host
+    assert "positive" in cmd_ping(host, ["10.0.0.2", "-c", "0"], as_obj=None).lower()

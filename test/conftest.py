@@ -4,6 +4,7 @@ import pytest
 
 from entities import Address, Network, NetworkAddress, Router
 from entities.event import EventTracer
+from entities.host import Host
 from entities.interface import Interface
 
 
@@ -23,3 +24,9 @@ def router_with_iface():
     r.add_interface(iface)
     net.add_interface(iface)
     return r
+
+
+@pytest.fixture
+def ping_host():
+    net = Network("lan", NetworkAddress("10.0.0.0/24"))
+    return Host("h1", net, Address("10.0.0.1"))
