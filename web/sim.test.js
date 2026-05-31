@@ -920,6 +920,19 @@ describe('_onEvent: interface_state_changed / device_state_changed / ping_result
   });
 });
 
+// ---------- _onEvent: topology_changed ----------
+describe('_onEvent: topology_changed', () => {
+  it('emits sim:topology-changed for topology_changed events', () => {
+    const seen = [];
+    const handler = (e) => seen.push(e.detail);
+    bus.addEventListener('sim:topology-changed', handler);
+    const ops = [{ op: 'add_network', name: 'lanX', address: '10.9.0.0/24' }];
+    _onEvent({ kind: 'topology_changed', ops });
+    bus.removeEventListener('sim:topology-changed', handler);
+    expect(seen).toEqual([{ ops }]);
+  });
+});
+
 // ---------- recoverDownState ----------
 describe('recoverDownState', () => {
   it('seeds cache from /devices interfaces reads', async () => {

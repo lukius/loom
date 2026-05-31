@@ -37,6 +37,7 @@ export const RuntimeClient = {
   start()                { return this._json('POST', '/sim/start', {}); },
   pause()                { return this._json('POST', '/sim/pause', {}); },
   resume(patch)          { return this._json('POST', '/sim/resume', { patch: patch || [] }); },
+  editTopology(patch)    { return this._json('POST', '/sim/edit',   { patch: patch || [] }); },
   stop()                 { return this._json('POST', '/sim/stop', {}); },
   getState()             { return this._json('GET',  '/sim/state'); },
   setProtocolConfig({ hello, refresh }) {
@@ -427,6 +428,10 @@ export function _onEvent(evt) {
     bus.dispatchEvent(new CustomEvent('sim:ping-result', {
       detail: { device: evt.device, dst: evt.dst, seq: evt.seq, rtt_ms: evt.rtt_ms },
     }));
+    return;
+  }
+  if (evt.kind === 'topology_changed') {
+    bus.dispatchEvent(new CustomEvent('sim:topology-changed', { detail: { ops: evt.ops } }));
     return;
   }
 }
