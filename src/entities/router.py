@@ -150,6 +150,7 @@ class Router(NetworkDevice):
         # passthrough; tomorrow it should be the protocol's own contribution.
         self._protocols: list = [LinkStateProtocol(self)]
         self._as_gate = None  # set by AS.add_router
+        self._halted = False
 
     def gate(self):
         return self._as_gate
@@ -199,6 +200,48 @@ class Router(NetworkDevice):
         super().update_interface(iface_name, cost)
         for proto in self._protocols:
             proto.local_links_changed()
+
+    def is_halted(self) -> bool:
+        """Return True if the router has been halted via ``halt()``."""
+        return self._halted
+
+    def halt(self, graceful: bool = True) -> None:
+        """Bring the entire router down.
+
+        When ``graceful`` is True, floods a withdrawal LSA out every
+        interface *before* disabling them so neighbors converge
+        immediately. When False (crash simulation) interfaces are
+        silently downed without any LSA flood.
+
+        Emits a ``device_state_changed`` event with ``up=False``.
+        """
+        if graceful:
+            for proto in self._protocols:
+                proto.withdraw()           # flood while interfaces still up
+        for iface in self._interfaces.values():
+            iface.disable()
+        self._halted = True
+        EventTracer._broadcast(
+            {"kind": "device_state_changed", "device": self.name(), "up": False}
+        )
+
+    def resume(self) -> None:
+        """Bring a halted router back up.
+
+        Re-enables all interfaces and immediately announces presence via
+        every routing protocol so neighbors learn about the restored
+        router without waiting for the next keepalive.
+
+        Emits a ``device_state_changed`` event with ``up=True``.
+        """
+        for iface in self._interfaces.values():
+            iface.enable()
+        for proto in self._protocols:
+            proto.announce()
+        self._halted = False
+        EventTracer._broadcast(
+            {"kind": "device_state_changed", "device": self.name(), "up": True}
+        )
 
     def disable_interface(self, name: str, graceful: bool = True) -> None:
         """Bring an interface administratively down.

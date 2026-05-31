@@ -151,3 +151,50 @@ def test_enable_interface_brings_iface_up(monkeypatch):
     r.enable_interface("eth0")
     assert r.interface("eth0").is_up() is True
     assert calls == ["ann"]
+
+
+def test_halt_graceful_withdraws_then_downs_all(monkeypatch):
+    r = _router_one_iface()
+    order = []
+    monkeypatch.setattr(r.protocol(), "withdraw", lambda: order.append("withdraw"))
+    orig_disable = r.interface("eth0").disable
+    monkeypatch.setattr(r.interface("eth0"), "disable",
+                        lambda: (order.append("disable"), orig_disable())[1])
+    events = []
+    unsub = EventTracer.subscribe(events.append)
+    try:
+        r.halt(graceful=True)
+    finally:
+        unsub()
+    assert order == ["withdraw", "disable"]   # withdraw BEFORE downing
+    assert r.is_halted() is True
+    assert r.interface("eth0").is_up() is False
+    dev_events = [e for e in events if e["kind"] == "device_state_changed"]
+    assert dev_events == [{"kind": "device_state_changed", "device": "r1", "up": False}]
+
+
+def test_halt_crash_skips_withdraw(monkeypatch):
+    r = _router_one_iface()
+    calls = []
+    monkeypatch.setattr(r.protocol(), "withdraw", lambda: calls.append("w"))
+    r.halt(graceful=False)
+    assert calls == []
+    assert r.is_halted() is True
+    assert r.interface("eth0").is_up() is False
+
+
+def test_resume_enables_all_and_announces(monkeypatch):
+    r = _router_one_iface()
+    r.halt(graceful=False)
+    calls = []
+    monkeypatch.setattr(r.protocol(), "announce", lambda: calls.append("ann"))
+    events = []
+    unsub = EventTracer.subscribe(events.append)
+    try:
+        r.resume()
+    finally:
+        unsub()
+    assert calls == ["ann"]
+    assert r.is_halted() is False
+    assert r.interface("eth0").is_up() is True
+    assert {"kind": "device_state_changed", "device": "r1", "up": True} in events
