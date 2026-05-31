@@ -7,6 +7,7 @@ from typing import Optional
 import yaml
 
 from entities import Address, Host, Interface, Link, Network, NetworkAddress, Router
+from entities.event import EventTracer
 from parser import Parser
 
 from .persistence import atomic_write, prepare_session
@@ -117,6 +118,7 @@ class SimState:
                     raise InvalidStateTransition(self._state, "edit")
             self._apply_patch(patch)
             self._persist()
+            EventTracer._broadcast({"kind": "topology_changed", "ops": patch})
 
     # ---- patch helpers ----
 

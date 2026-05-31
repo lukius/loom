@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from entities.event import EventTracer
 from server.app import create_app
 from server.state import InvalidStateTransition, SimState
 
@@ -591,3 +592,35 @@ def test_edit_validation_failure_applies_nothing(running_sim_state):
             {"op": "add_network", "name": "lanZ", "address": "172.16.9.0/24"},
         ])
     assert set(sim.as_obj.networks().keys()) == before  # atomic: nothing applied
+
+
+# ---------------------------------------------------------------------------
+# Task 6 — edit() broadcasts topology_changed
+# ---------------------------------------------------------------------------
+
+
+def test_edit_broadcasts_topology_changed(running_sim_state):
+    sim = running_sim_state
+    events = []
+    unsub = EventTracer.subscribe(
+        lambda e: events.append(e) if e.get("kind") == "topology_changed" else None
+    )
+    ops = [{"op": "add_network", "name": "lanT", "address": "172.16.8.0/24"}]
+    try:
+        sim.edit(ops)
+    finally:
+        unsub()
+    assert len(events) == 1
+    assert events[0]["ops"] == ops
+
+
+# ---------------------------------------------------------------------------
+# Part B — stop() serializes against edit() via _edit_lock
+# ---------------------------------------------------------------------------
+
+
+def test_edit_after_stop_is_rejected(running_sim_state):
+    sim = running_sim_state
+    sim.stop()
+    with pytest.raises(InvalidStateTransition):
+        sim.edit([{"op": "add_network", "name": "lanS", "address": "172.16.5.0/24"}])
