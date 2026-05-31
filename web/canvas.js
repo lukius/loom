@@ -1626,6 +1626,20 @@ bus.addEventListener('state:selection-changed', renderSelection);
 bus.addEventListener('view:changed', applyView);
 bus.addEventListener('state:topology-loaded', fitView);
 
+bus.addEventListener('sim:device-state-changed', (e) => {
+  const { device, up } = e.detail;
+  lookupDeviceNode(device)?.classList.toggle('down', !up);
+});
+
+bus.addEventListener('sim:interface-state-changed', (e) => {
+  const { device, iface, up } = e.detail;
+  const r = state.routers[device];
+  const iff = r && r.interfaces && r.interfaces[iface];
+  if (!iff) return;
+  const edge = lookupInterfaceEdge(device, iface, iff.link || iff.network, !!iff.link);
+  edge?.classList.toggle('down', !up);
+});
+
 // Esc cancels the link wizard globally (not gated on wireCanvas being called)
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && _wizard) cancelLinkWizard();

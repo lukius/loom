@@ -1172,6 +1172,68 @@ describe('ensurePositions — auto-layout for a fresh topology', () => {
 });
 
 /* -----------------------------------------------------------------------
+   Task 5 — incremental gray-out on live bus events
+   ----------------------------------------------------------------------- */
+
+describe('sim:device-state-changed — toggles .down on live node without redraw', () => {
+  beforeEach(() => {
+    setupMinimalDOM();
+    state.hosts    = {};
+    state.routers  = {};
+    state.networks = {};
+    state.links    = {};
+    state.selection = null;
+    state.view     = { x: 0, y: 0, k: 1 };
+    state.display  = { showCosts: true, showIfaces: true };
+    resetDownState();
+  });
+
+  test('device-state-changed toggles .down on the live node without redraw', () => {
+    state.routers = { r9: { x: 100, y: 100, interfaces: {} } };
+    state.networks = {}; state.hosts = {}; state.links = {};
+    renderCanvas();
+    bus.dispatchEvent(new CustomEvent('sim:device-state-changed',
+      { detail: { device: 'r9', up: false } }));
+    expect(document.querySelector('#nodes-layer g[data-name="r9"]')
+      .classList.contains('down')).toBe(true);
+    bus.dispatchEvent(new CustomEvent('sim:device-state-changed',
+      { detail: { device: 'r9', up: true } }));
+    expect(document.querySelector('#nodes-layer g[data-name="r9"]')
+      .classList.contains('down')).toBe(false);
+  });
+});
+
+describe('sim:interface-state-changed — toggles .down on live LAN edge', () => {
+  beforeEach(() => {
+    setupMinimalDOM();
+    state.hosts    = {};
+    state.routers  = {};
+    state.networks = {};
+    state.links    = {};
+    state.selection = null;
+    state.view     = { x: 0, y: 0, k: 1 };
+    state.display  = { showCosts: true, showIfaces: true };
+    resetDownState();
+  });
+
+  test('interface-state-changed toggles .down on the live LAN edge', () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 300, y: 100 } };
+    state.routers = { r1: { x: 100, y: 100, interfaces: {
+      eth0: { network: 'lan1', address: '10.0.0.1', cost: 1 } } } };
+    state.hosts = {}; state.links = {};
+    renderCanvas();
+    bus.dispatchEvent(new CustomEvent('sim:interface-state-changed',
+      { detail: { device: 'r1', iface: 'eth0', up: false } }));
+    expect(document.querySelector('#edges-layer path.edge[data-device="r1"][data-iface="eth0"]')
+      .classList.contains('down')).toBe(true);
+    bus.dispatchEvent(new CustomEvent('sim:interface-state-changed',
+      { detail: { device: 'r1', iface: 'eth0', up: true } }));
+    expect(document.querySelector('#edges-layer path.edge[data-device="r1"][data-iface="eth0"]')
+      .classList.contains('down')).toBe(false);
+  });
+});
+
+/* -----------------------------------------------------------------------
    drawNode — halted device gets the .down class
    ----------------------------------------------------------------------- */
 
