@@ -35,7 +35,7 @@ class NetworkDevice(Entity):
         # (echo reply, ICMP unreachable, …) instead of forwarding it back
         # toward itself; without this, a host pinging a router's far-side
         # IP would loop the packet on whatever subnet hosted that IP.
-        own_addresses = {iface.address() for iface in self._interfaces.values()}
+        own_addresses = {iface.address() for iface in list(self._interfaces.values())}
         if dst in own_addresses or dst == net_broadcast_addr:
             self._handle_message(packet.payload(), interface, packet)
         else:

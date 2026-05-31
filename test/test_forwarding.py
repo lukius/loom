@@ -1,3 +1,4 @@
+import inspect
 import threading
 import unittest
 
@@ -13,9 +14,18 @@ from entities import (
     Router,
     UserMessage,
 )
+from entities import (
+    device as device_mod,
+)
 from entities.nat import flow_id
 from entities.packet import Datagram
 from routing import NoNATEgressException
+
+
+def test_own_addresses_uses_snapshot():
+    # Regression guard: handle_packet must build own_addresses from a snapshot.
+    src = inspect.getsource(device_mod.NetworkDevice.handle_packet)
+    assert "list(self._interfaces.values())" in src
 
 
 def _iface_on(net_cidr="10.0.0.0/24", addr="10.0.0.1"):
