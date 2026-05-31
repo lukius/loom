@@ -7,6 +7,7 @@ from routing import NoNATEgressException, NoRouteToHostException
 from .address import Address, NetworkAddress, NullAddress
 from .device import NetworkDevice
 from .event import EventTracer
+from .exception import InvalidInterfaceException
 from .interface import Interface
 from .nat import NATTable, flow_id
 from .packet import Datagram, PingReply, PingRequest, RoutingMessage
@@ -198,6 +199,34 @@ class Router(NetworkDevice):
         super().update_interface(iface_name, cost)
         for proto in self._protocols:
             proto.local_links_changed()
+
+    def disable_interface(self, name: str, graceful: bool = True) -> None:
+        """Bring an interface administratively down.
+
+        When ``graceful`` is True (planned maintenance) the routing protocol
+        re-emits an LSA so neighbors converge immediately. When False (crash
+        simulation) the interface is silently downed without any reflood.
+        """
+        iface = self._interfaces.get(name)
+        if iface is None:
+            raise InvalidInterfaceException(self, name)
+        iface.disable()
+        if graceful:
+            for proto in self._protocols:
+                proto.local_links_changed()
+
+    def enable_interface(self, name: str) -> None:
+        """Bring an administratively-down interface back up.
+
+        Calls ``announce()`` on every routing protocol so neighbors learn
+        about the restored link without waiting for the next keepalive.
+        """
+        iface = self._interfaces.get(name)
+        if iface is None:
+            raise InvalidInterfaceException(self, name)
+        iface.enable()
+        for proto in self._protocols:
+            proto.announce()
 
     def handle_packet(self, packet, interface):
         if not interface.is_up():

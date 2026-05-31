@@ -1,3 +1,4 @@
+import queue
 import unittest
 
 from entities import Address, Host, Interface, Network, NetworkAddress, Router
@@ -110,3 +111,43 @@ def test_disable_enable_emit_interface_state_changed():
         ("interface_state_changed", True),
     ]
     assert events[0]["interface"] == "eth0"
+
+
+def _router_one_iface():
+    r = Router("r1")
+    net = Network("lan", NetworkAddress("10.0.0.0/24"))
+    iface = Interface("eth0", net, Address("10.0.0.1"), cost=1)
+    iface._set_out_queue(queue.Queue())
+    r.add_interface(iface)
+    net.add_interface(iface)
+    return r
+
+
+def test_disable_interface_brings_iface_down(monkeypatch):
+    r = _router_one_iface()
+    calls = []
+    monkeypatch.setattr(r.protocol(), "local_links_changed",
+                        lambda: calls.append("llc"))
+    r.disable_interface("eth0", graceful=True)
+    assert r.interface("eth0").is_up() is False
+    assert calls == ["llc"]
+
+
+def test_disable_interface_crash_skips_reflood(monkeypatch):
+    r = _router_one_iface()
+    calls = []
+    monkeypatch.setattr(r.protocol(), "local_links_changed",
+                        lambda: calls.append("llc"))
+    r.disable_interface("eth0", graceful=False)
+    assert r.interface("eth0").is_up() is False
+    assert calls == []
+
+
+def test_enable_interface_brings_iface_up(monkeypatch):
+    r = _router_one_iface()
+    r.interface("eth0").disable()
+    calls = []
+    monkeypatch.setattr(r.protocol(), "announce", lambda: calls.append("ann"))
+    r.enable_interface("eth0")
+    assert r.interface("eth0").is_up() is True
+    assert calls == ["ann"]
