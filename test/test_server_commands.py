@@ -259,6 +259,8 @@ def test_cmd_ping_count_sends_n_probes(monkeypatch, ping_host):
     out = cmd_ping(host, ["10.0.0.2", "-c", "3"], as_obj=None)
     assert len(calls) == 3
     assert "3 sent" in out and "received" in out
+    # Per-probe lines must NOT appear in the return value — they stream via events.
+    assert "time=" not in out and "ms" not in out
 
 
 def test_cmd_ping_count_one_is_default(monkeypatch, ping_host):

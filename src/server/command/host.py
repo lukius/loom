@@ -66,18 +66,16 @@ def cmd_ping(host, args, as_obj=None):
     except Exception:
         return f"ping: invalid destination: {dst}"
 
-    lines = []
     received = 0
     for _ in range(count):
         rtt = host.ping(dst_addr, timeout=timeout)
-        if rtt is None:
-            lines.append(f"{dst}: timeout after {timeout:.2f} s")
-        else:
+        if rtt is not None:
             received += 1
-            lines.append(f"{dst} ({dst_addr}): time={rtt * 1000:.2f} ms")
     loss = 100.0 * (count - received) / count
-    lines.append(f"--- {dst} ping statistics ---")
-    lines.append(f"{count} sent, {received} received, {loss:.0f}% loss")
+    lines = [
+        f"--- {dst} ping statistics ---",
+        f"{count} sent, {received} received, {loss:.0f}% loss",
+    ]
     return "\n".join(lines)
 
 
