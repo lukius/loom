@@ -1,5 +1,6 @@
 from entities import Address, Interface, Network, NetworkAddress, Router
 from routing import LSA
+from routing.policy import PERMIT_ALL
 
 
 def _make_router_with_two_ifaces():
@@ -80,3 +81,23 @@ def test_lsa_add_link_mutates_dict_copy_not_returned_dict():
     snapshot = lsa.links()
     snapshot[NetworkAddress('9.9.9.0/24')] = 99
     assert NetworkAddress('9.9.9.0/24') not in lsa.links()
+
+
+def _router_two_ifaces():
+    r = Router("r1")
+    for nm, cidr, addr in (("eth0", "10.0.0.0/24", "10.0.0.1"),
+                           ("eth1", "10.0.1.0/24", "10.0.1.1")):
+        net = Network(nm + "net", NetworkAddress(cidr))
+        iface = Interface(nm, net, Address(addr), cost=1)
+        r.add_interface(iface)
+        net.add_interface(iface)
+    return r
+
+
+def test_lsa_excludes_down_interface_link():
+    r = _router_two_ifaces()
+    r.interface("eth1").disable()
+    lsa = LSA.from_router(r, seq=1, policy=PERMIT_ALL)
+    prefixes = {str(p) for p in lsa.links()}
+    assert "10.0.0.0/24" in prefixes
+    assert "10.0.1.0/24" not in prefixes

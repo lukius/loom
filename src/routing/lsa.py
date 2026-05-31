@@ -17,6 +17,8 @@ class LSA(RoutingMessage):
     def from_router(cls, router, seq: int, policy) -> 'LSA':
         lsa = cls(origin=router, seq=seq)
         for _, iface in router.interfaces().items():
+            if not iface.is_up():
+                continue
             decision = policy.apply(iface.network().address())
             if decision.is_denied():
                 continue
