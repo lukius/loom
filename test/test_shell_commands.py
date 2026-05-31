@@ -98,3 +98,22 @@ def test_set_gateway_off_network(shell):
 def test_set_gateway_router_rejects(shell):
     out = _capture(shell, shell.do_set_gateway, "r1 10.0.0.254")
     assert "not a host" in out.lower()
+
+
+def test_shell_ifconfig_down_up(shell):
+    sh = shell
+    r_name = next(iter(sh._system.routers()))
+    iface = next(iter(sh._system.router(r_name).interfaces()))
+    sh.do_ifconfig(f"{r_name} {iface} down")
+    assert sh._system.router(r_name).interface(iface).is_up() is False
+    sh.do_ifconfig(f"{r_name} {iface} up")
+    assert sh._system.router(r_name).interface(iface).is_up() is True
+
+
+def test_shell_halt_resume(shell):
+    sh = shell
+    r_name = next(iter(sh._system.routers()))
+    sh.do_halt(r_name)
+    assert sh._system.router(r_name).is_halted() is True
+    sh.do_resume(r_name)
+    assert sh._system.router(r_name).is_halted() is False

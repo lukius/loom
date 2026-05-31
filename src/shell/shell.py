@@ -94,22 +94,59 @@ class Shell(cmd.Cmd):
 
     @requires_system
     def do_ifconfig(self, arg):
-        'Show the interfaces of the given device. Syntax: ifconfig <device>'
-        name = arg.strip()
-        if not name:
-            print('syntax: ifconfig <device>')
+        'Show interfaces, or toggle one: ifconfig <device> [<iface> up|down]'
+        parts = arg.split()
+        if not parts:
+            print('syntax: ifconfig <device> [<iface> up|down]')
             return
+        name = parts[0]
         device = self._system.device(name)
+        if len(parts) == 3 and parts[2] in ('up', 'down'):
+            from entities import Router
+
+            if not isinstance(device, Router):
+                print('ifconfig up/down is only supported on routers')
+                return
+            iface_name, action = parts[1], parts[2]
+            if iface_name not in device.interfaces():
+                print(f'no such interface: {iface_name}')
+                return
+            if action == 'down':
+                device.disable_interface(iface_name, graceful=True)
+            else:
+                device.enable_interface(iface_name)
+            print(f'{name}: {iface_name} {action}')
+            return
         for iname, iface in device.interfaces().items():
             print(
                 f'{iname}: addr={iface.address()} '
                 f'net={iface.network().name()} ({iface.network().address()}) '
-                f'cost={iface.cost()}'
+                f'cost={iface.cost()} {"up" if iface.is_up() else "down"}'
             )
         from entities import Host
 
         if isinstance(device, Host) and device.gateway() is not None:
             print(f'  gateway: {device.gateway()}')
+
+    @requires_system
+    def do_halt(self, arg):
+        'Gracefully halt a router. Syntax: halt <router>'
+        name = arg.strip()
+        if not name:
+            print('syntax: halt <router>')
+            return
+        self._system.router(name).halt(graceful=True)
+        print(f'{name} halted')
+
+    @requires_system
+    def do_resume(self, arg):
+        'Resume a halted router. Syntax: resume <router>'
+        name = arg.strip()
+        if not name:
+            print('syntax: resume <router>')
+            return
+        self._system.router(name).resume()
+        print(f'{name} resumed')
 
     @requires_system
     def do_neighbors(self, arg):
