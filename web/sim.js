@@ -7,7 +7,9 @@
    packet animation, route re-fetch) flow through `bus`; intra-namespace
    calls like `Sim._renderToolbar()` stay direct.
    =========================================================== */
-import { state, bus, applyNeighborStateChanged } from './state.js';
+import { state, bus, applyNeighborStateChanged,
+         applyInterfaceStateChanged, applyDeviceStateChanged,
+         resetDownState } from './state.js';
 import { toast } from './utils.js';
 import { validateTopology } from './preflight.js';
 
@@ -346,7 +348,7 @@ export function _onEvent(evt) {
     }
     // Discard any deferred NAT state on reset, otherwise a late
     // `sim:packet-arrived` from an in-flight tween would resurrect it.
-    if (Sim.state === 'idle') _resetPendingNAT();
+    if (Sim.state === 'idle') { _resetPendingNAT(); resetDownState(); }
     return;
   }
   if (evt.kind === 'packet') {
@@ -385,6 +387,20 @@ export function _onEvent(evt) {
   }
   if (evt.kind === 'neighbor_state_changed') {
     applyNeighborStateChanged(evt);
+    return;
+  }
+  if (evt.kind === 'interface_state_changed') {
+    applyInterfaceStateChanged(evt);
+    return;
+  }
+  if (evt.kind === 'device_state_changed') {
+    applyDeviceStateChanged(evt);
+    return;
+  }
+  if (evt.kind === 'ping_result') {
+    bus.dispatchEvent(new CustomEvent('sim:ping-result', {
+      detail: { device: evt.device, dst: evt.dst, seq: evt.seq, rtt_ms: evt.rtt_ms },
+    }));
     return;
   }
 }

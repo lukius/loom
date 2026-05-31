@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { state, bus } from './state.js';
+import { state, bus, isInterfaceDown, isDeviceHalted, resetDownState } from './state.js';
 import {
   Sim, RuntimeClient,
   setConnectionStatus, isTopologyLocked, recordPatchOp, updatePatchIndicator, reconcilePatch,
@@ -893,5 +893,29 @@ describe('_renderToolbar no longer touches Inspector/Terminals', () => {
     delete globalThis.Terminals;
     Sim.state = 'running';
     expect(() => Sim._renderToolbar()).not.toThrow();
+  });
+});
+
+// ---------- new WS event kinds (Task 2) ----------
+describe('_onEvent: interface_state_changed / device_state_changed / ping_result', () => {
+  it('routes interface_state_changed into the cache', () => {
+    resetDownState();
+    _onEvent({ kind: 'interface_state_changed', device: 'r1', interface: 'eth1', up: false });
+    expect(isInterfaceDown('r1', 'eth1')).toBe(true);
+  });
+
+  it('routes device_state_changed into the cache', () => {
+    resetDownState();
+    _onEvent({ kind: 'device_state_changed', device: 'r3', up: false });
+    expect(isDeviceHalted('r3')).toBe(true);
+  });
+
+  it('emits sim:ping-result for ping_result events', () => {
+    const seen = [];
+    const handler = (e) => seen.push(e.detail);
+    bus.addEventListener('sim:ping-result', handler);
+    _onEvent({ kind: 'ping_result', device: 'h1', dst: '10.0.0.2', seq: 1, rtt_ms: 2.5 });
+    bus.removeEventListener('sim:ping-result', handler);
+    expect(seen).toEqual([{ device: 'h1', dst: '10.0.0.2', seq: 1, rtt_ms: 2.5 }]);
   });
 });
