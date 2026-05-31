@@ -4,7 +4,7 @@ import {
   state, bus,
   RAIL_DEFAULT_WIDTH, RAIL_THICKNESS, RAIL_TICK_INSET,
 } from './state.js';
-import { applyDeviceStateChanged, resetDownState } from './state.js';
+import { applyDeviceStateChanged, applyInterfaceStateChanged, resetDownState } from './state.js';
 
 const W = RAIL_DEFAULT_WIDTH; // 180
 const H = RAIL_THICKNESS;     // 10
@@ -1199,5 +1199,73 @@ describe('drawNode — .down class for halted devices', () => {
     const g = document.querySelector('#nodes-layer g[data-name="r2"]');
     expect(g).not.toBeNull();
     expect(g.classList.contains('down')).toBe(false);
+  });
+});
+
+/* -----------------------------------------------------------------------
+   renderCanvas — downed interface edges get .down + data-device/data-iface
+   ----------------------------------------------------------------------- */
+
+describe('renderCanvas — .down class on downed interface edges', () => {
+  beforeEach(() => {
+    setupMinimalDOM();
+    state.selection = null;
+    state.display = { showCosts: true, showIfaces: true };
+    state.view = { x: 0, y: 0, k: 1 };
+    state.hosts = {};
+    state.routers = {};
+    state.networks = {};
+    state.links = {};
+    resetDownState();
+  });
+
+  test('a downed LAN interface edge gets the .down class', () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 300, y: 100 } };
+    state.routers = { r1: { x: 100, y: 100, interfaces: {
+      eth0: { network: 'lan1', address: '10.0.0.1', cost: 1 } } } };
+    applyInterfaceStateChanged({ device: 'r1', interface: 'eth0', up: false });
+    renderCanvas();
+    const edge = document.querySelector(
+      '#edges-layer path.edge[data-device="r1"][data-iface="eth0"]');
+    expect(edge).not.toBeNull();
+    expect(edge.classList.contains('down')).toBe(true);
+  });
+
+  test('an up LAN interface edge does not get the .down class', () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 300, y: 100 } };
+    state.routers = { r1: { x: 100, y: 100, interfaces: {
+      eth0: { network: 'lan1', address: '10.0.0.1', cost: 1 } } } };
+    renderCanvas();
+    const edge = document.querySelector(
+      '#edges-layer path.edge[data-device="r1"][data-iface="eth0"]');
+    expect(edge).not.toBeNull();
+    expect(edge.classList.contains('down')).toBe(false);
+  });
+
+  test('a downed p2p link edge gets the .down class', () => {
+    state.routers = {
+      r1: { x: 100, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.1.0.1', cost: 1 } } },
+      r2: { x: 300, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.1.0.2', cost: 1 } } },
+    };
+    state.links = { p2p1: { cidr: '10.1.0.0/30' } };
+    applyInterfaceStateChanged({ device: 'r1', interface: 'eth0', up: false });
+    renderCanvas();
+    const edge = document.querySelector(
+      '#edges-layer path.edge.p2p[data-name="p2p1"]');
+    expect(edge).not.toBeNull();
+    expect(edge.classList.contains('down')).toBe(true);
+  });
+
+  test('a p2p link edge is not .down when both endpoints are up', () => {
+    state.routers = {
+      r1: { x: 100, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.1.0.1', cost: 1 } } },
+      r2: { x: 300, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.1.0.2', cost: 1 } } },
+    };
+    state.links = { p2p1: { cidr: '10.1.0.0/30' } };
+    renderCanvas();
+    const edge = document.querySelector(
+      '#edges-layer path.edge.p2p[data-name="p2p1"]');
+    expect(edge).not.toBeNull();
+    expect(edge.classList.contains('down')).toBe(false);
   });
 });

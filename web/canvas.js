@@ -506,10 +506,14 @@ export function drawEdge(a, b, kind, sel, info) {
   const isSel = state.selection &&
     ((state.selection.kind === sel.kind && state.selection.name === sel.name) ||
      (state.selection.kind === 'network' && state.selection.name === Object.entries(state.networks).find(([n, v]) => v === b)?.[0]));
-  const path = el('path', {
-    class: `edge ${kind}${isSel ? ' selected' : ''}`,
+  const ifDown = info?.ifname ? isInterfaceDown(sel.name, info.ifname) : false;
+  const pathAttrs = {
+    class: `edge ${kind}${isSel ? ' selected' : ''}${ifDown ? ' down' : ''}`,
     d,
-  });
+    'data-device': sel.name,
+  };
+  if (info?.ifname) pathAttrs['data-iface'] = info.ifname;
+  const path = el('path', pathAttrs);
   edgesLayer().appendChild(path);
 
   if (info) {
@@ -671,8 +675,11 @@ export function drawLinkEdge(linkName, linkObj) {
     (state.selection.kind === ep2.deviceKind && state.selection.name === ep2.device)
   );
 
+  const linkDown =
+    (ep1.iface ? isInterfaceDown(ep1.device, ep1.iface) : false) ||
+    (ep2.iface ? isInterfaceDown(ep2.device, ep2.iface) : false);
   const path = el('path', {
-    class: `edge p2p${isSel ? ' selected' : ''}`,
+    class: `edge p2p${isSel ? ' selected' : ''}${linkDown ? ' down' : ''}`,
     d,
     'data-kind': 'link',
     'data-name': linkName,
