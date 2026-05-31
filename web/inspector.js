@@ -2,7 +2,7 @@
 // Right-pane inspector, left-pane nav, add/rename/duplicate/delete ops, and
 // the canvas right-click context menu. Listens on the shared bus for topology
 // and selection changes, and re-renders accordingly.
-import { state, bus, markDirty } from './state.js';
+import { state, bus, markDirty, isDeviceHalted } from './state.js';
 import { escapeHtml, uniqueName, uniqueIface, pad2, toast, cssEscape, isValidIpv4, isValidNetworkCidr, addressInCidr } from './utils.js';
 import {
   canvasEl, applyView, clientToWorld, fitView,
@@ -393,6 +393,15 @@ export function openContextMenu(clientX, clientY, target, world) {
           </div>
         </div>`;
       }
+      if (locked) {
+        html += `<div class="ctx-sep"></div>`;
+        if (isDeviceHalted(target.name)) {
+          html += `<button class="ctx-item" data-act="router-resume">Resume router</button>`;
+        } else {
+          html += `<button class="ctx-item" data-act="router-halt">Halt router (graceful)</button>`;
+          html += `<button class="ctx-item danger" data-act="router-crash">Crash router</button>`;
+        }
+      }
     }
     // p2p link context menu — no "Add endpoint" (schema requires exactly 2)
     html += `
@@ -429,6 +438,17 @@ export function openContextMenu(clientX, clientY, target, world) {
 }
 
 export function handleCtxAction(act, target, world, arg) {
+  const showErr = (err) => toast(err.message || String(err), 'error');
+  if (act === 'router-halt') {
+    RuntimeClient.deviceCommand(target.name, 'halt').catch(showErr);
+    return;
+  } else if (act === 'router-resume') {
+    RuntimeClient.deviceCommand(target.name, 'resume').catch(showErr);
+    return;
+  } else if (act === 'router-crash') {
+    RuntimeClient.fail(target.name).catch(showErr);
+    return;
+  }
   if (isTopologyLocked()) return;
   switch (act) {
     case 'new-net':    addNew('network', world); break;

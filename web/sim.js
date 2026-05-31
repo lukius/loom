@@ -46,6 +46,10 @@ export const RuntimeClient = {
     });
   },
   deviceCommand(n, cmd)  { return this._json('POST', `/devices/${encodeURIComponent(n)}/command`, { cmd }); },
+  fail(n, interface_) {
+    return this._json('POST', `/devices/${encodeURIComponent(n)}/fail`,
+                      interface_ ? { interface: interface_ } : {});
+  },
   deviceRoutes(n)        { return this._json('GET',  `/devices/${encodeURIComponent(n)}/routes`); },
   deviceInterfaces(n)    { return this._json('GET',  `/devices/${encodeURIComponent(n)}/interfaces`); },
   deviceNatTable(n)      { return this._json('GET',  `/devices/${encodeURIComponent(n)}/nat-table`); },
