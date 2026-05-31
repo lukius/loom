@@ -129,3 +129,17 @@ def test_shell_ping_count(monkeypatch, shell, capsys):
     sh.do_ping(f"{src} {dst} -c 3")
     assert len(calls) == 3
     assert "3 sent" in capsys.readouterr().out
+
+
+def test_shell_ping_count_capped(monkeypatch, shell, capsys):
+    sh = shell
+    h_names = list(sh._system.hosts())
+    src, dst = h_names[0], h_names[1]
+    calls = []
+    monkeypatch.setattr(sh._system.host(src), "ping",
+                        lambda addr, timeout: calls.append(addr) or 0.001)
+    sh.do_ping(f"{src} {dst} -c 101")
+    out = capsys.readouterr().out
+    # Shell must reject counts above 100; no ping calls should have been made
+    assert len(calls) == 0
+    assert "100" in out

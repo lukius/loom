@@ -203,6 +203,9 @@ class Shell(cmd.Cmd):
                 print('syntax: ping <src> <dst> [-W <seconds>] [-c <count>]')
                 return
             parts = parts[:i] + parts[i + 2:]
+        if count > 100:
+            print('count capped at 100')
+            return
         if len(parts) != 2:
             print('syntax: ping <src> <dst> [-W <seconds>] [-c <count>]')
             return
