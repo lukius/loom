@@ -2,7 +2,7 @@
 // Tests for inspector.js: nav links section, link editor, CRUD ops,
 // fabric-type dropdowns, and context menu for p2p links.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { state, bus } from './state.js';
+import { state, bus, applyInterfaceStateChanged, isInterfaceDown, resetDownState } from './state.js';
 import {
   renderNav,
   renderInspector,
@@ -1877,5 +1877,117 @@ describe('renderRouterInsp — collapsible sections + Neighbors', () => {
     expect(summary).toMatch(/3 TWO_WAY/);
     expect(summary).not.toMatch(/INIT/);
     expect(summary).not.toMatch(/DOWN/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 7 — Per-interface Disable/Fail/Enable controls in the inspector
+// ---------------------------------------------------------------------------
+describe('renderRouterInsp — per-interface action buttons (sim running)', () => {
+  beforeEach(() => {
+    Sim.state = 'running';
+    resetDownState();
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.0.0.1', cost: 5 } } },
+    };
+    state.selection = { kind: 'router', name: 'r1' };
+  });
+  afterEach(() => {
+    Sim.state = 'idle';
+    resetDownState();
+    vi.restoreAllMocks();
+  });
+
+  it('renders Disable and Fail buttons for an up interface when sim is running', () => {
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const elI = document.getElementById('inspector');
+    const disable = elI.querySelector('[data-iface-act="disable"][data-iface="eth0"]');
+    const fail    = elI.querySelector('[data-iface-act="fail"][data-iface="eth0"]');
+    expect(disable).not.toBeNull();
+    expect(fail).not.toBeNull();
+    expect(disable.textContent.trim()).toBe('Disable');
+    expect(fail.textContent.trim()).toBe('Fail');
+  });
+
+  it('renders only Enable button for a down interface when sim is running', () => {
+    applyInterfaceStateChanged({ device: 'r1', interface: 'eth0', up: false });
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const elI = document.getElementById('inspector');
+    const enable  = elI.querySelector('[data-iface-act="enable"][data-iface="eth0"]');
+    const disable = elI.querySelector('[data-iface-act="disable"][data-iface="eth0"]');
+    expect(enable).not.toBeNull();
+    expect(enable.textContent.trim()).toBe('Enable');
+    expect(disable).toBeNull();
+  });
+
+  it('omits action buttons entirely when sim is idle', () => {
+    Sim.state = 'idle';
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const elI = document.getElementById('inspector');
+    expect(elI.querySelector('[data-iface-act]')).toBeNull();
+  });
+
+  it('clicking Disable calls RuntimeClient.deviceCommand with ifconfig down', () => {
+    const spy = vi.spyOn(RuntimeClient, 'deviceCommand').mockResolvedValue({ ok: true, output: '' });
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const btn = document.querySelector('[data-iface-act="disable"][data-iface="eth0"]');
+    btn.click();
+    expect(spy).toHaveBeenCalledWith('r1', 'ifconfig eth0 down');
+  });
+
+  it('clicking Enable calls RuntimeClient.deviceCommand with ifconfig up', () => {
+    applyInterfaceStateChanged({ device: 'r1', interface: 'eth0', up: false });
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const spy = vi.spyOn(RuntimeClient, 'deviceCommand').mockResolvedValue({ ok: true, output: '' });
+    const btn = document.querySelector('[data-iface-act="enable"][data-iface="eth0"]');
+    btn.click();
+    expect(spy).toHaveBeenCalledWith('r1', 'ifconfig eth0 up');
+  });
+
+  it('clicking Fail calls RuntimeClient.fail with device and interface', () => {
+    const spy = vi.spyOn(RuntimeClient, 'fail').mockResolvedValue({});
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const btn = document.querySelector('[data-iface-act="fail"][data-iface="eth0"]');
+    btn.click();
+    expect(spy).toHaveBeenCalledWith('r1', 'eth0');
+  });
+
+  it('sim:interface-state-changed for the selected router triggers a panel re-render', () => {
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    // Initially both buttons rendered (interface is up)
+    expect(document.querySelector('[data-iface-act="disable"]')).not.toBeNull();
+    // Flip the interface down via the event
+    applyInterfaceStateChanged({ device: 'r1', interface: 'eth0', up: false });
+    // Panel should now show Enable only
+    expect(document.querySelector('[data-iface-act="enable"]')).not.toBeNull();
+    expect(document.querySelector('[data-iface-act="disable"]')).toBeNull();
+  });
+
+  it('sim:interface-state-changed for a different device does NOT re-render', () => {
+    renderRouterInsp('r1', document.getElementById('inspector'));
+    const elI = document.getElementById('inspector');
+    const originalHtml = elI.innerHTML;
+    applyInterfaceStateChanged({ device: 'r2', interface: 'eth0', up: false });
+    // HTML must be unchanged — r2 is not the selected router
+    expect(elI.innerHTML).toBe(originalHtml);
+  });
+
+  it('clicking Disable fires exactly one backend call even after multiple renders', () => {
+    // Regression: the delegated listener on the persistent #inspector element
+    // accumulated one extra handler per render — N renders → N backend calls.
+    const elI = document.getElementById('inspector');
+    const spy = vi.spyOn(RuntimeClient, 'deviceCommand').mockResolvedValue({ ok: true, output: '' });
+    // Render the panel three times (simulating natural re-renders from
+    // sim:interface-state-changed events or other triggers).
+    renderRouterInsp('r1', elI);
+    renderRouterInsp('r1', elI);
+    renderRouterInsp('r1', elI);
+    const btn = elI.querySelector('[data-iface-act="disable"][data-iface="eth0"]');
+    expect(btn).not.toBeNull();
+    btn.click();
+    // Must be called exactly once regardless of how many times the panel rendered.
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith('r1', 'ifconfig eth0 down');
   });
 });

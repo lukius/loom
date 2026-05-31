@@ -2,7 +2,7 @@
 // Right-pane inspector, left-pane nav, add/rename/duplicate/delete ops, and
 // the canvas right-click context menu. Listens on the shared bus for topology
 // and selection changes, and re-renders accordingly.
-import { state, bus, markDirty, isDeviceHalted } from './state.js';
+import { state, bus, markDirty, isDeviceHalted, isInterfaceDown } from './state.js';
 import { escapeHtml, uniqueName, uniqueIface, pad2, toast, cssEscape, isValidIpv4, isValidNetworkCidr, addressInCidr } from './utils.js';
 import {
   canvasEl, applyView, clientToWorld, fitView,
@@ -989,6 +989,12 @@ export function renderRouterInsp(name, elI) {
                   <input type="number" min="0" data-iface-cost="${escapeHtml(ifn)}" value="${ifc.cost ?? ''}" />
                 </div>
               </div>
+              ${isTopologyLocked() ? (() => {
+                const down = isInterfaceDown(name, ifn);
+                return down
+                  ? `<div class="iface-act-row"><button class="iface-act" data-iface-act="enable" data-iface="${escapeHtml(ifn)}">Enable</button></div>`
+                  : `<div class="iface-act-row"><button class="iface-act" data-iface-act="disable" data-iface="${escapeHtml(ifn)}">Disable</button><button class="iface-act danger" data-iface-act="fail" data-iface="${escapeHtml(ifn)}">Fail</button></div>`;
+              })() : ''}
             </details>
           `;}).join('')}
         </div>
@@ -1136,6 +1142,20 @@ export function renderRouterInsp(name, elI) {
         recordPatchOp({ op: 'update_cost', router: name, iface: ifn, cost: v });
       }
       markDirty(); renderCanvas();
+    });
+  });
+  // Per-interface Disable/Fail/Enable — only present when sim is running.
+  // Wire per-element (not delegated on elI) so old listeners die with the
+  // replaced innerHTML on each re-render instead of accumulating on the
+  // persistent #inspector node.
+  elI.querySelectorAll('[data-iface-act]').forEach((ib) => {
+    ib.addEventListener('click', () => {
+      const ifn = ib.getAttribute('data-iface');
+      const act = ib.getAttribute('data-iface-act');
+      const showErr = (err) => toast(err.message || String(err), 'error');
+      if (act === 'disable') RuntimeClient.deviceCommand(name, `ifconfig ${ifn} down`).catch(showErr);
+      else if (act === 'enable') RuntimeClient.deviceCommand(name, `ifconfig ${ifn} up`).catch(showErr);
+      else if (act === 'fail') RuntimeClient.fail(name, ifn).catch(showErr);
     });
   });
   elI.querySelector('#f-del').addEventListener('click', deleteSelected);
@@ -1338,6 +1358,12 @@ bus.addEventListener('sim:neighbor-state-changed', (e) => {
   rememberOpen(elI);
   container.innerHTML = renderNeighborSection(device, router);
   wireSectionToggles(container);
+});
+bus.addEventListener('sim:interface-state-changed', (e) => {
+  const { device } = e.detail;
+  if (!state.selection || state.selection.kind !== 'router' || state.selection.name !== device) return;
+  // Re-render the whole router panel so the Disable↔Enable buttons flip.
+  renderInspector();
 });
 bus.addEventListener('canvas:contextmenu-requested', (e) => {
   openContextMenu(e.detail.clientX, e.detail.clientY, e.detail.target, e.detail.world);
