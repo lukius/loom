@@ -28,7 +28,7 @@ def command(name: str, body: dict, request: Request):
 
 @router.get("/{name}/interfaces")
 def interfaces(name: str, request: Request):
-    """Return all interfaces of a device."""
+    """Return all interfaces of a device, plus a router-level halted flag."""
     device = _device_or_404(request, name)
     out = []
     for iname, iface in device.interfaces().items():
@@ -38,9 +38,13 @@ def interfaces(name: str, request: Request):
                 "address": str(iface.address()),
                 "network": iface.network().name(),
                 "cost": iface.cost(),
+                "up": iface.is_up(),
             }
         )
-    return {"interfaces": out}
+    return {
+        "interfaces": out,
+        "halted": bool(getattr(device, "is_halted", lambda: False)()),
+    }
 
 
 @router.get("/{name}/routes")

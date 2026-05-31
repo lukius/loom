@@ -321,7 +321,10 @@ def running_client(tmp_path, monkeypatch):
         c.post("/topology", json={"yaml": SAMPLE_WITH_ROUTER})
         c.post("/sim/start")
         sim = c.app.state.sim_state
-        yield c, sim
+        try:
+            yield c, sim
+        finally:
+            c.post("/sim/stop")
 
 
 def test_fail_router_crashes_silently(running_client):
@@ -347,3 +350,15 @@ def test_fail_on_host_is_rejected(running_client):
     host = next(iter(sim.as_obj.hosts()))
     resp = client.post(f"/devices/{host}/fail")
     assert resp.status_code == 400
+
+
+def test_interfaces_read_includes_up_and_halted(running_client):
+    client, sim = running_client
+    name = next(iter(sim.as_obj.routers()))
+    iface_name = next(iter(sim.as_obj.router(name).interfaces()))
+    sim.as_obj.router(name).disable_interface(iface_name, graceful=False)
+    resp = client.get(f"/devices/{name}/interfaces")
+    body = resp.json()
+    assert body["halted"] is False
+    by_name = {i["name"]: i for i in body["interfaces"]}
+    assert by_name[iface_name]["up"] is False
