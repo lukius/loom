@@ -284,6 +284,7 @@ class SimState:
             self._as.add_host(host)
         elif kind == "remove_host":
             host = self._as.host(op["name"])
+            host.network().remove_interface(host.interface().address())
             host.interface().stop()
             del self._as.hosts()[op["name"]]
         elif kind == "add_router":
@@ -306,6 +307,7 @@ class SimState:
             router = self._as.router(op["name"])
             router.stop()
             for iface in list(router.interfaces().values()):
+                iface.network().remove_interface(iface.address())
                 iface.stop()
             del self._as.routers()[op["name"]]
         elif kind == "update_cost":

@@ -1,9 +1,24 @@
+import shutil
 import textwrap
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from server.app import create_app
+from server.state import SimState
+
+_SAMPLE_YAML = Path(__file__).parent.parent / "samples" / "sample.yaml"
+
+
+@pytest.fixture
+def sim_state_loaded(tmp_path):
+    src = tmp_path / "sample.yaml"
+    shutil.copy(_SAMPLE_YAML, src)
+    sim = SimState(src)
+    sim.load_from_session()
+    yield sim
+    sim.stop()
 
 SAMPLE = textwrap.dedent("""
 internet:
@@ -510,3 +525,26 @@ def test_update_cost_invalid_value_returns_400(tmp_path, monkeypatch):
         )
     assert r.status_code == 400
     assert "invalid_cost" in r.json().get("detail", "")
+
+
+# ---------------------------------------------------------------------------
+# Task 4 — removals must detach interfaces from fabrics
+# ---------------------------------------------------------------------------
+
+def test_remove_host_detaches_from_fabric(sim_state_loaded):
+    sim = sim_state_loaded
+    host = next(iter(sim.as_obj.hosts().values()))
+    fabric = host.network()
+    addr = host.interface().address()
+    assert addr in fabric._interfaces
+    sim._apply_op({"op": "remove_host", "name": host.name()})
+    assert addr not in fabric._interfaces
+
+
+def test_remove_router_detaches_all_interfaces(sim_state_loaded):
+    sim = sim_state_loaded
+    router = next(iter(sim.as_obj.routers().values()))
+    fabrics = [(i.network(), i.address()) for i in router.interfaces().values()]
+    sim._apply_op({"op": "remove_router", "name": router.name()})
+    for fab, addr in fabrics:
+        assert addr not in fab._interfaces
