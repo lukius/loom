@@ -75,7 +75,11 @@ same YAML. The session file is updated either way.
   stopping the sim. A halted/crashed router grays out on the canvas.
 - Select a router → use the **Disable / Fail / Enable** buttons next
   to each interface in the inspector to control individual interfaces.
-  A downed interface's edge becomes a dashed line on the canvas.
+  A downed interface's edge turns into a solid gray wire with a small ✕
+  at its midpoint, so it's clearly distinct from a (dashed) point-to-point
+  link. Traffic sent toward a downed interface is dropped where it would
+  enter the link — you'll see the packet leave the source and fade out
+  instead of reaching the device.
 
 ![A halted router and its links render grayed-out while the rest of the topology keeps running](../images/60-router-halted.png)
 
@@ -88,6 +92,11 @@ each ICMP reply (or timeout) appears in the terminal **as it arrives**,
 one line at a time — you don't wait for all probes to finish before
 seeing results. The final summary still prints at the end. If the
 terminal is closed, results are discarded silently.
+
+With `ping -c N`, the probes animate **one round-trip at a time** on the
+canvas: each request travels to the destination and its reply comes back
+before the next probe leaves, so you can follow them individually instead
+of seeing all `N` dots ride the wire at once.
 
 ## Pause
 

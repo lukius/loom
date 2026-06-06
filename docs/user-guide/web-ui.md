@@ -376,9 +376,12 @@ buttons next to each interface:
 - **Fail** — hard-fail the interface (no teardown).
 - **Enable** — re-enable a disabled interface.
 
-A downed interface's canvas edge becomes a faint dashed line. The
-button flips between Disable/Fail and Enable as the interface state
-changes.
+A downed interface's canvas edge becomes a solid gray wire with a small
+✕ at its midpoint — distinct from the dashed style used for live
+point-to-point links. Packets headed for a downed interface are dropped
+at the link entry (they leave the source and fade out rather than
+reaching the device). The button flips between Disable/Fail and Enable as
+the interface state changes.
 
 ## Status indicators
 
