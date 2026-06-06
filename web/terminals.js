@@ -6,6 +6,21 @@ import { bus } from './state.js';
 import { escapeHtml, toast } from './utils.js';
 import { Sim, RuntimeClient } from './sim.js';
 
+// Keep a dragged terminal within the viewport. The header (height `headerH`)
+// must never slide above the top of the page (y >= 0) — once it does the user
+// loses the only grab handle — and the bottom of the header must stay on
+// screen too. A sliver is also kept visible on the left/right edges.
+const TERM_MIN_VISIBLE = 60;
+export function clampTermPos(x, y, w, h, vw, vh, headerH = 28) {
+  const minX = TERM_MIN_VISIBLE - w;
+  const maxX = Math.max(minX, vw - TERM_MIN_VISIBLE);
+  const maxY = Math.max(0, vh - headerH);
+  return {
+    x: Math.min(maxX, Math.max(minX, x)),
+    y: Math.min(maxY, Math.max(0, y)),
+  };
+}
+
 /* ---------- Terminals ---------- */
 export const Terminals = {
   _active: new Map(),                   // name -> element
@@ -94,8 +109,14 @@ type 'help' for commands
     });
     window.addEventListener('mousemove', (e) => {
       if (!drag) return;
-      w.style.left = (e.clientX - drag.x) + 'px';
-      w.style.top = (e.clientY - drag.y) + 'px';
+      const { x, y } = clampTermPos(
+        e.clientX - drag.x, e.clientY - drag.y,
+        w.offsetWidth, w.offsetHeight,
+        window.innerWidth, window.innerHeight,
+        hdr.offsetHeight,
+      );
+      w.style.left = x + 'px';
+      w.style.top = y + 'px';
     });
     window.addEventListener('mouseup', () => {
       if (drag) localStorage.setItem('term.pos.' + name, JSON.stringify({ x: w.offsetLeft, y: w.offsetTop }));

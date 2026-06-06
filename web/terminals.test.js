@@ -5,7 +5,31 @@
 // the bus event and asserting the output line was appended.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { bus } from './state.js';
-import { Terminals } from './terminals.js';
+import { Terminals, clampTermPos } from './terminals.js';
+
+describe('clampTermPos — keeps a dragged terminal header on screen', () => {
+  const vw = 1000, vh = 800, w = 400, h = 300, headerH = 28;
+
+  it('clamps the top edge to 0 so the header never goes above the page', () => {
+    const { y } = clampTermPos(100, -50, w, h, vw, vh, headerH);
+    expect(y).toBe(0);
+  });
+
+  it('leaves an in-bounds position unchanged', () => {
+    const p = clampTermPos(120, 90, w, h, vw, vh, headerH);
+    expect(p).toEqual({ x: 120, y: 90 });
+  });
+
+  it('keeps the header reachable: y cannot exceed viewport height minus the header', () => {
+    const { y } = clampTermPos(100, 5000, w, h, vw, vh, headerH);
+    expect(y).toBe(vh - headerH);
+  });
+
+  it('keeps part of the window on screen horizontally', () => {
+    expect(clampTermPos(-5000, 100, w, h, vw, vh, headerH).x).toBeGreaterThan(-w);
+    expect(clampTermPos(5000, 100, w, h, vw, vh, headerH).x).toBeLessThan(vw);
+  });
+});
 
 // terminals.js imports Sim from sim.js at module load; vitest resolves it via
 // happy-dom.  We only need the bus listener, not the full Sim machinery.
