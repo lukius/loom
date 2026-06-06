@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PacketAnim, showPacketTooltip, hidePacketTooltip } from './packets.js';
-import { state, bus } from './state.js';
+import { state, bus, applyInterfaceStateChanged, resetDownState } from './state.js';
 
 // PacketAnim tweens run on real wall-clock rAF loops. A test that starts an
 // animation without awaiting its completion leaves it ticking; under load its
@@ -1090,6 +1090,115 @@ describe('PacketAnim — ping -c probes animate sequentially (one round-trip at 
     bus.dispatchEvent(new CustomEvent('sim:packet', { detail: probe('f3', 'p3', '10.0.0.3') }));
     const layer = document.getElementById('packet-layer');
     expect(layer.querySelectorAll('rect').length).toBe(2);
+  });
+});
+
+describe('PacketAnim — packets to a down interface drop at the link entry', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    PacketAnim._reset();
+    resetDownState();
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g class="node host" data-kind="host" data-name="h1" transform="translate(100 100)"></g>
+        <g class="node router" data-kind="router" data-name="r1" transform="translate(400 100)"></g>
+        <g class="node network" data-kind="network" data-name="lan_a" transform="translate(250 100)"></g>
+      </g><g id="packet-layer"></g></svg>`;
+    state.networks = { lan_a: { cidr: '10.0.0.0/24', x: 250, y: 100 } };
+    state.hosts = { h1: { address: '10.0.0.1', network: 'lan_a', x: 100, y: 100 } };
+    state.routers = { r1: { x: 400, y: 100, interfaces: {
+      eth0: { network: 'lan_a', address: '10.0.0.254', cost: 1 } } } };
+    state.links = {};
+  });
+
+  function pingToR1() {
+    return {
+      type: 'ping_request', payload_id: 'p1', flow: 'f1', network: 'lan_a',
+      src: { device: 'h1', address: '10.0.0.1' },
+      dst: { address: '10.0.0.254' },
+      payload_src: '10.0.0.1', payload_dst: '10.0.0.254',
+    };
+  }
+
+  it('a ping to a DOWN router interface fades at the entry and never arrives at the router', async () => {
+    applyInterfaceStateChanged({ device: 'r1', interface: 'eth0', up: false });
+    const arrivedSpy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', arrivedSpy);
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: pingToR1() }));
+      await new Promise(r => setTimeout(r, 400));   // past the 260ms drop fade
+      const arrivals = arrivedSpy.mock.calls.map(c => c[0].detail).filter(d => d.payloadId === 'p1');
+      // Exactly one arrival, and it must NOT name r1 — the packet was dropped.
+      expect(arrivals.length).toBe(1);
+      expect(arrivals[0].device).toBe(null);
+      // The dot is gone after the fade.
+      expect(document.getElementById('packet-layer').querySelectorAll('rect').length).toBe(0);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+      bus.removeEventListener('sim:packet-arrived', arrivedSpy);
+    }
+  });
+
+  it('a ping to an UP router interface still arrives at the router', async () => {
+    const arrivedSpy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', arrivedSpy);
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: pingToR1() }));
+      await new Promise(r => setTimeout(r, 120));
+      const arrivals = arrivedSpy.mock.calls.map(c => c[0].detail).filter(d => d.payloadId === 'p1');
+      expect(arrivals.some(d => d.device === 'r1')).toBe(true);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+      bus.removeEventListener('sim:packet-arrived', arrivedSpy);
+    }
+  });
+});
+
+describe('PacketAnim — packets to a down p2p peer drop on the link', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    PacketAnim._reset();
+    resetDownState();
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g class="node router" data-kind="router" data-name="r1" transform="translate(100 100)"></g>
+        <g class="node router" data-kind="router" data-name="r2" transform="translate(400 100)"></g>
+      </g><g id="packet-layer"></g></svg>`;
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 250, y: 100 } };
+    state.routers = {
+      r1: { x: 100, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.0.0.1', cost: 1 } } },
+      r2: { x: 400, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.0.0.2', cost: 1 } } },
+    };
+    state.hosts = {};
+    state.networks = {};
+  });
+
+  it('drops a ping across the link when the peer interface is down', async () => {
+    applyInterfaceStateChanged({ device: 'r2', interface: 'eth0', up: false });
+    const arrivedSpy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', arrivedSpy);
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+        type: 'ping_request', payload_id: 'lp', flow: 'lf', network: 'p2p1',
+        src: { device: 'r1', address: '10.0.0.1' },
+        dst: { address: '10.0.0.2' },
+        payload_src: '10.0.0.1', payload_dst: '10.0.0.2',
+      } }));
+      await new Promise(r => setTimeout(r, 400));
+      const arrivals = arrivedSpy.mock.calls.map(c => c[0].detail).filter(d => d.payloadId === 'lp');
+      expect(arrivals.length).toBe(1);
+      expect(arrivals[0].device).toBe(null);
+      expect(document.getElementById('packet-layer').querySelectorAll('rect').length).toBe(0);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+      bus.removeEventListener('sim:packet-arrived', arrivedSpy);
+    }
   });
 });
 

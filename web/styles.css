@@ -781,6 +781,9 @@ svg.canvas.linking { cursor: crosshair; }
   pointer-events: none;
 }
 
+/* a packet dropped at a down link fades out where it would have crossed */
+#packet-layer rect.pkt-dropped { transition: opacity .25s ease; opacity: 0; }
+
 /* interface action buttons (inspector iface rows) — Disable / Fail / Enable */
 .iface-act-row { display: flex; gap: 6px; margin-top: 8px; }
 .iface-act {

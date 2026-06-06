@@ -2,7 +2,7 @@
 // Packet animation namespace + tooltip helpers. Listens on the shared bus for
 // sim:packet events emitted by sim.js and renders short tweened SVG dots over
 // the canvas. Reads Sim.state to freeze in-flight tweens while paused.
-import { bus, state, NODE } from './state.js';
+import { bus, state, NODE, isInterfaceDown } from './state.js';
 import { ROUTING_CHATTER_TYPES } from './packettypes.js';
 import { escapeHtml } from './utils.js';
 import { PacketStore } from './packetstore.js';
@@ -68,6 +68,26 @@ function setPacketAnchor(rect, badge, cx, cy) {
     badge.setAttribute('x', cx);
     badge.setAttribute('y', cy - PACKET_H / 2 - 4);
   }
+}
+
+// True when the interface that would RECEIVE this packet is administratively
+// down. Only routers expose admin-down interfaces; hosts (single iface, no down
+// control) are never down. On a p2p link the destination address can be
+// ambiguous (broadcast, or a CIDR reused across links), so match by fabric
+// alone — a link has one peer; on a LAN, match the destination address.
+function destInterfaceDown(evt, dstDeviceName) {
+  if (!dstDeviceName) return false;
+  const r = state.routers && state.routers[dstDeviceName];
+  if (!r || !r.interfaces) return false;
+  const fabric = evt.network;
+  const isLink = !!(state.links && state.links[fabric]);
+  const addr = evt.dst && evt.dst.address;
+  for (const [ifn, iff] of Object.entries(r.interfaces)) {
+    const onFabric = iff.network === fabric || iff.link === fabric;
+    if (!onFabric) continue;
+    if (isLink || iff.address === addr) return isInterfaceDown(dstDeviceName, ifn);
+  }
+  return false;
 }
 
 /* ---------- PacketAnim ---------- */
@@ -544,7 +564,7 @@ export const PacketAnim = {
       if (onDone) onDone();
     };
 
-    const segs = isLink
+    let segs = isLink
       ? this._segmentsForLink(evt, srcNode)
       : this._segmentsForNetwork(evt, srcNode, netNode);
     if (segs.length === 0) {
@@ -554,16 +574,36 @@ export const PacketAnim = {
 
     // Weight each segment's duration by its approximate length so the packet
     // travels at a single constant velocity through the whole path — no jarring
-    // speed-up or stall at the rail junctions.
+    // speed-up or stall at the rail junctions. Durations are derived from the
+    // FULL path so a packet that drops early (below) keeps the same velocity.
     const lens = segs.map(s => this._segLength(s));
     const total = lens.reduce((a, b) => a + b, 0);
-    const durs = total > 0
+    let durs = total > 0
       ? lens.map(l => (l / total) * this.DURATION_MS)
       : segs.map(() => this.DURATION_MS / segs.length);
 
+    // Receiving interface is administratively down: the packet leaves the source
+    // but is dropped where it would enter the down link — it never reaches the
+    // device. Trim the path to that entry point and fade the dot out there.
+    let onComplete = finish;
+    if (!isChatter && destInterfaceDown(evt, dstDeviceName)) {
+      if (isLink && segs[0] && segs[0].kind === 'bez') {
+        // The whole edge is the down link: keep only a short head so the dot
+        // just enters the wire before dropping.
+        segs = [{ kind: 'bez', ...this._bezHead(segs[0], 0.3) }];
+        durs = [durs[0] * 0.3];
+      } else if (segs.length > 1) {
+        // LAN: stop at the destination's rail tap — drop the final spoke into
+        // the (down) device.
+        segs = segs.slice(0, -1);
+        durs = durs.slice(0, -1);
+      }
+      onComplete = () => this._dropDot(dot, dotKey, layer, onDone);
+    }
+
     let i = 0;
     const stepNext = () => {
-      if (i >= segs.length) { finish(); return; }
+      if (i >= segs.length) { onComplete(); return; }
       const s = segs[i];
       const d = durs[i];
       const onSegDone = () => { i++; stepNext(); };
@@ -571,6 +611,39 @@ export const PacketAnim = {
       else                  this._tweenPoints(dot, badge, s.from, s.to, d, onSegDone);
     };
     stepNext();
+  },
+
+  // Cubic-bezier head: the sub-curve from t=0 to t=`t` (De Casteljau split),
+  // used to truncate a packet's path so it only just enters a down link.
+  _bezHead(s, t) {
+    const lerp = (a, b) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    const q0 = lerp(s.p0, s.c1);
+    const q1 = lerp(s.c1, s.c2);
+    const q2 = lerp(s.c2, s.p3);
+    const r0 = lerp(q0, q1);
+    const r1 = lerp(q1, q2);
+    const b  = lerp(r0, r1);
+    return { p0: s.p0, c1: q0, c2: r0, p3: b };
+  },
+
+  // Fade a dropped packet out at its drop point, then remove it and fire an
+  // arrival with device:null so the packet-store row is cleaned up. The packet
+  // never reached a device. Bails if the sim reset during the fade.
+  _dropDot(dot, dotKey, layer, onDone) {
+    const gen = this._gen;
+    dot.classList.add('pkt-dropped');
+    setTimeout(() => {
+      if (gen !== PacketAnim._gen) return;   // sim reset mid-fade: nothing to do
+      if (dot.parentNode) layer.removeChild(dot);
+      if (dotKey) {
+        const sel = `text.packet-badge[data-payload-id="${CSS.escape(dotKey)}"]`;
+        layer.querySelectorAll(sel).forEach(b => { if (b.parentNode) b.parentNode.removeChild(b); });
+        bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
+          detail: { payloadId: dotKey, device: null },
+        }));
+      }
+      if (onDone) onDone();
+    }, 260);
   },
 
   // Multi-access (LAN/rail) path:
