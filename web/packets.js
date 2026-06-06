@@ -109,7 +109,13 @@ export const PacketAnim = {
   // Chatter stays parallel so the user still sees the swarm.
   _SEQUENTIAL: new Set(['user_datagram', 'ping_request', 'ping_reply']),
   _lastChatter: new Map(),
-  _queues: new Map(),               // flow -> { pending: [evt, ...] }
+  _queues: new Map(),               // session key -> { pending: [evt, ...] }
+  // flow_key -> session key. A ping -c probe (and its reply) is one flow, but
+  // every probe is a *distinct* flow; to play probes one round-trip at a time we
+  // group by the conversation's unordered endpoint pair instead. Memoizing per
+  // flow means a flow's first hop fixes its session, so NAT-rewritten later hops
+  // stay in the same queue (and animate continuously) rather than splitting.
+  _flowToSession: new Map(),
   // LSA flooding sequencer: an LSA re-flood (sender !== originator) must
   // wait until its inbound — the hop that triggered this re-flood — has
   // visually arrived at the re-flooder. Otherwise origin + re-flood dots
@@ -149,11 +155,12 @@ export const PacketAnim = {
       }));
     }
 
-    if (evt.flow && this._SEQUENTIAL.has(evt.type)) {
-      const q = this._queues.get(evt.flow);
+    if (this._SEQUENTIAL.has(evt.type)) {
+      const session = this._sessionKey(evt);
+      const q = this._queues.get(session);
       if (q) { q.pending.push(evt); return; }
-      this._queues.set(evt.flow, { pending: [] });
-      this._render(evt, () => this._onSegmentDone(evt.flow));
+      this._queues.set(session, { pending: [] });
+      this._render(evt, () => this._onSegmentDone(session));
       return;
     }
 
@@ -384,15 +391,30 @@ export const PacketAnim = {
     });
   },
 
-  _onSegmentDone(flow) {
-    const q = this._queues.get(flow);
+  // Conversation key for sequenced animation. Grouped by the unordered pair of
+  // end-to-end endpoints so all probes (and the reply) of one ping -c share a
+  // single queue and play one round-trip at a time. Memoized by flow: a flow's
+  // first hop fixes its session from its original endpoints, and later hops of
+  // that flow (e.g. after a NAT src rewrite) inherit it instead of splitting off.
+  _sessionKey(evt) {
+    const flow = evt.flow;
+    if (flow && this._flowToSession.has(flow)) return this._flowToSession.get(flow);
+    const a = evt.payload_src || (evt.src && evt.src.address) || '';
+    const b = evt.payload_dst || (evt.dst && evt.dst.address) || '';
+    const key = [a, b].sort().join('|') || flow || '?';
+    if (flow) this._flowToSession.set(flow, key);
+    return key;
+  },
+
+  _onSegmentDone(key) {
+    const q = this._queues.get(key);
     if (!q) return;
     if (q.pending.length === 0) {
-      this._queues.delete(flow);
+      this._queues.delete(key);
       return;
     }
     const next = q.pending.shift();
-    this._render(next, () => this._onSegmentDone(flow));
+    this._render(next, () => this._onSegmentDone(key));
   },
 
   _render(evt, onDone) {
@@ -763,6 +785,7 @@ PacketAnim._reset = function () {
   this._lsaArrivedAt.clear();
   this._lsaPending.clear();
   this._queues.clear();
+  this._flowToSession.clear();
   this._lastChatter.clear();
   const layer = document.getElementById('packet-layer');
   if (layer) layer.replaceChildren();

@@ -1043,3 +1043,68 @@ describe('PacketAnim — LSA flooding is sequenced per-hop', () => {
     expect(PacketAnim._lsaPending.size).toBe(0);
   });
 });
+
+describe('PacketAnim — ping -c probes animate sequentially (one round-trip at a time)', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    PacketAnim._reset();   // clears the sequencing queues + flow→session memo
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g class="node host" data-kind="host" data-name="h1" transform="translate(100 100)"></g>
+        <g class="node host" data-kind="host" data-name="h2" transform="translate(400 100)"></g>
+        <g class="node network" data-kind="network" data-name="lan_a" transform="translate(250 100)"></g>
+      </g><g id="packet-layer"></g></svg>`;
+    state.networks = { lan_a: { cidr: '10.0.0.0/24', x: 250, y: 100 } };
+    state.hosts = {
+      h1: { address: '10.0.0.1', network: 'lan_a', x: 100, y: 100 },
+      h2: { address: '10.0.0.2', network: 'lan_a', x: 400, y: 100 },
+    };
+    state.routers = {};
+    state.links = {};
+  });
+
+  // Each ping -c probe is a distinct conversation (its own flow_key/payload_id),
+  // but the user wants probe N+1 to leave only after probe N's round-trip ends.
+  function probe(flow, payloadId, dstAddr = '10.0.0.2') {
+    return {
+      type: 'ping_request', payload_id: payloadId, flow, network: 'lan_a',
+      src: { device: 'h1', address: '10.0.0.1' },
+      dst: { address: dstAddr },
+      payload_src: '10.0.0.1', payload_dst: dstAddr,
+    };
+  }
+
+  it('holds back a second probe with a distinct flow but the same endpoints', () => {
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: probe('f1', 'p1') }));
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: probe('f2', 'p2') }));
+    const layer = document.getElementById('packet-layer');
+    // Only the first probe animates; the second waits in its session queue.
+    expect(layer.querySelectorAll('rect').length).toBe(1);
+  });
+
+  it('animates probes to different destinations in parallel (distinct sessions)', () => {
+    state.hosts.h3 = { address: '10.0.0.3', network: 'lan_a', x: 400, y: 300 };
+    document.querySelector('#nodes-layer').insertAdjacentHTML('beforeend',
+      '<g class="node host" data-kind="host" data-name="h3" transform="translate(400 300)"></g>');
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: probe('f1', 'p1', '10.0.0.2') }));
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: probe('f3', 'p3', '10.0.0.3') }));
+    const layer = document.getElementById('packet-layer');
+    expect(layer.querySelectorAll('rect').length).toBe(2);
+  });
+});
+
+describe('PacketAnim._sessionKey — groups a conversation across probes and NAT', () => {
+  beforeEach(() => { PacketAnim._reset(); });
+
+  it('is the unordered endpoint pair, so request and reply share it', () => {
+    const k1 = PacketAnim._sessionKey({ flow: 'f1', payload_src: '10.0.0.1', payload_dst: '10.0.0.2' });
+    const k2 = PacketAnim._sessionKey({ flow: 'f2', payload_src: '10.0.0.2', payload_dst: '10.0.0.1' });
+    expect(k1).toBe(k2);
+  });
+
+  it('memoizes by flow so NAT-rewritten later hops keep the original session', () => {
+    const first = PacketAnim._sessionKey({ flow: 'fX', payload_src: '192.168.1.10', payload_dst: '8.8.8.8' });
+    const natHop = PacketAnim._sessionKey({ flow: 'fX', payload_src: '200.100.0.1', payload_dst: '8.8.8.8' });
+    expect(natHop).toBe(first);
+  });
+});
