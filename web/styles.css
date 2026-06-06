@@ -756,9 +756,30 @@ svg.canvas.linking { cursor: crosshair; }
   opacity: 1;
 }
 
-/* admin-down state — gray out nodes and edges that are halted/down */
+/* admin-down state — gray out halted nodes; a down link reads as a dead, solid
+   gray wire (NOT dashed, so it can't be mistaken for a dashed p2p edge) with an
+   ✕ at its midpoint. */
 .canvas .node.down { opacity: .45; filter: grayscale(1); }
-.canvas .edge.down { opacity: .35; stroke-dasharray: 4 4; }
+.canvas .edge.down,
+.canvas .edge.p2p.down,
+.canvas .edge.p2p.down:hover {
+  stroke: var(--text-3);
+  stroke-width: 1.4;
+  stroke-dasharray: none;
+  opacity: .5;
+}
+/* ✕ midpoint marker — hidden until its edge is down. */
+.canvas .down-x { display: none; }
+.canvas .down-x.down {
+  display: block;
+  fill: var(--text-3);
+  font-size: 14px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--canvas-bg);
+  stroke-width: 3;
+  pointer-events: none;
+}
 
 /* interface action buttons (inspector iface rows) — Disable / Fail / Enable */
 .iface-act-row { display: flex; gap: 6px; margin-top: 8px; }

@@ -1378,3 +1378,78 @@ describe('renderCanvas — .down class on downed interface edges', () => {
     expect(edge.classList.contains('down')).toBe(false);
   });
 });
+
+/* -----------------------------------------------------------------------
+   down links get a ✕ midpoint marker (distinct from dashed p2p)
+   ----------------------------------------------------------------------- */
+
+describe('down link ✕ marker', () => {
+  beforeEach(() => {
+    setupMinimalDOM();
+    state.selection = null;
+    state.display = { showCosts: true, showIfaces: true };
+    state.view = { x: 0, y: 0, k: 1 };
+    state.hosts = {};
+    state.routers = {};
+    state.networks = {};
+    state.links = {};
+    resetDownState();
+  });
+
+  test('a down p2p link draws a ✕ marker carrying .down', () => {
+    state.routers = {
+      r1: { x: 100, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.1.0.1', cost: 1 } } },
+      r2: { x: 300, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.1.0.2', cost: 1 } } },
+    };
+    state.links = { p2p1: { cidr: '10.1.0.0/30', x: 200, y: 100 } };
+    applyInterfaceStateChanged({ device: 'r1', interface: 'eth0', up: false });
+    renderCanvas();
+    const marker = document.querySelector('#edges-layer .down-x[data-down-link="p2p1"]');
+    expect(marker).not.toBeNull();
+    expect(marker.textContent).toBe('✕');
+    expect(marker.classList.contains('down')).toBe(true);
+  });
+
+  test('an up p2p link\'s ✕ marker is not .down', () => {
+    state.routers = {
+      r1: { x: 100, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.1.0.1', cost: 1 } } },
+      r2: { x: 300, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.1.0.2', cost: 1 } } },
+    };
+    state.links = { p2p1: { cidr: '10.1.0.0/30', x: 200, y: 100 } };
+    renderCanvas();
+    const marker = document.querySelector('#edges-layer .down-x[data-down-link="p2p1"]');
+    expect(marker).not.toBeNull();
+    expect(marker.classList.contains('down')).toBe(false);
+  });
+
+  test('a down LAN interface edge draws a ✕ marker carrying .down', () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 300, y: 100 } };
+    state.routers = { r1: { x: 100, y: 100, interfaces: {
+      eth0: { network: 'lan1', address: '10.0.0.1', cost: 1 } } } };
+    applyInterfaceStateChanged({ device: 'r1', interface: 'eth0', up: false });
+    renderCanvas();
+    const marker = document.querySelector(
+      '#edges-layer .down-x[data-down-device="r1"][data-down-iface="eth0"]');
+    expect(marker).not.toBeNull();
+    expect(marker.classList.contains('down')).toBe(true);
+  });
+
+  test('live re-enabling both endpoints clears .down from the link ✕ marker', () => {
+    state.routers = {
+      r1: { x: 100, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.1.0.1', cost: 1 } } },
+      r2: { x: 300, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.1.0.2', cost: 1 } } },
+    };
+    state.links = { p2p1: { cidr: '10.1.0.0/30', x: 200, y: 100 } };
+    applyInterfaceStateChanged({ device: 'r1', interface: 'eth0', up: false });
+    applyInterfaceStateChanged({ device: 'r2', interface: 'eth0', up: false });
+    renderCanvas();
+    const marker = document.querySelector('#edges-layer .down-x[data-down-link="p2p1"]');
+    expect(marker.classList.contains('down')).toBe(true);
+    // One endpoint back up — peer still down → marker stays.
+    applyInterfaceStateChanged({ device: 'r1', interface: 'eth0', up: true });
+    expect(marker.classList.contains('down')).toBe(true);
+    // Both up → marker clears.
+    applyInterfaceStateChanged({ device: 'r2', interface: 'eth0', up: true });
+    expect(marker.classList.contains('down')).toBe(false);
+  });
+});

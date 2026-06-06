@@ -523,6 +523,13 @@ export function drawEdge(a, b, kind, sel, info) {
     const t = 0.5;
     const mx = bezPoint(ax, c1x, c2x, bx, t);
     const my = bezPoint(ay, c1y, c2y, by, t);
+    // Router interface edges can be administratively downed — draw the ✕ marker
+    // (hidden unless down) so the live handler can toggle it in place.
+    if (sel.kind === 'router' && info.ifname) {
+      drawDownMarker(mx, my, ifDown, {
+        'data-down-device': sel.name, 'data-down-iface': info.ifname,
+      });
+    }
     if (showCosts && info.cost != null && info.cost !== '') {
       edgesLayer().appendChild(el('text', {
         class: 'edge-cost',
@@ -549,6 +556,22 @@ export function drawEdge(a, b, kind, sel, info) {
 export function bezPoint(p0, p1, p2, p3, t) {
   const u = 1 - t;
   return u*u*u*p0 + 3*u*u*t*p1 + 3*u*t*t*p2 + t*t*t*p3;
+}
+
+// Small ✕ glyph at an edge midpoint marking an admin-down link — the cue that
+// (together with the gray, un-dashed stroke) distinguishes a down link from a
+// normal dashed p2p edge. Drawn for every down-capable edge and shown/hidden
+// via its own `.down` class, so the live sim:interface-state-changed handler can
+// toggle it without recomputing geometry. `lookup` carries data-attrs matching
+// the edge so that handler can find this marker again.
+function drawDownMarker(mx, my, isDown, lookup) {
+  edgesLayer().appendChild(el('text', {
+    class: `down-x${isDown ? ' down' : ''}`,
+    x: mx, y: my,
+    'text-anchor': 'middle',
+    'dominant-baseline': 'central',
+    ...lookup,
+  }, '✕'));
 }
 
 // Per-link bow keyed off the link name. Parallel p2p links sharing an
@@ -727,6 +750,11 @@ export function drawLinkEdge(linkName, linkObj) {
   path.addEventListener('mouseleave', removeP2pHover);
 
   edgesLayer().appendChild(path);
+
+  // ✕ marker at the link midpoint, shown when the link is down.
+  const mmx = bezPoint(ax, c1x, c2x, bx, 0.5);
+  const mmy = bezPoint(ay, c1y, c2y, by, 0.5);
+  drawDownMarker(mmx, mmy, linkDown, { 'data-down-link': linkName });
 
   // Per-endpoint iface/cost tags
   const showCosts  = state.display?.showCosts  ?? true;
@@ -1652,14 +1680,17 @@ bus.addEventListener('sim:interface-state-changed', (e) => {
   const isLink = !!iff.link;
   const edge = lookupInterfaceEdge(device, iface, iff.link || iff.network, isLink);
   if (!edge) return;
-  if (isLink) {
-    // For a p2p link, the edge is shared by both endpoints. Recompute down-
-    // state from BOTH endpoints via isLinkDown so re-enabling one end while
-    // the peer is still down leaves the edge gray.
-    edge.classList.toggle('down', isLinkDown(iff.link));
-  } else {
-    edge.classList.toggle('down', !up);
-  }
+  // For a p2p link the edge is shared by both endpoints: recompute down-state
+  // from BOTH via isLinkDown so re-enabling one end while the peer is still
+  // down leaves the edge gray. A LAN interface edge is down iff this iface is.
+  const down = isLink ? isLinkDown(iff.link) : !up;
+  edge.classList.toggle('down', down);
+  // Keep the ✕ midpoint marker in sync with the edge.
+  const marker = isLink
+    ? document.querySelector(`#edges-layer .down-x[data-down-link="${CSS.escape(iff.link)}"]`)
+    : document.querySelector(
+        `#edges-layer .down-x[data-down-device="${CSS.escape(device)}"][data-down-iface="${CSS.escape(iface)}"]`);
+  marker?.classList.toggle('down', down);
 });
 
 // Esc cancels the link wizard globally (not gated on wireCanvas being called)
