@@ -450,6 +450,41 @@ describe('renderRouterInsp — fabric-type dropdown', () => {
   });
 });
 
+describe('renderRouterInsp — interface action buttons (running sim)', () => {
+  beforeEach(() => {
+    resetDownState();
+    state.networks = { lan1: { cidr: '10.1.0.0/24', x: 0, y: 0 } };
+    state.routers = {
+      r1: { x: 0, y: 0, interfaces: { eth0: { network: 'lan1', address: '10.1.0.1', cost: 5 } } },
+    };
+    state.selection = { kind: 'router', name: 'r1' };
+    Sim.state = 'running';
+  });
+  afterEach(() => { Sim.state = 'idle'; });
+
+  it('an up interface shows a styled Disable button and a danger Fail button in an action row', () => {
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const row = elI.querySelector('.iface-act-row');
+    expect(row).not.toBeNull();
+    const disable = elI.querySelector('[data-iface-act="disable"]');
+    const fail = elI.querySelector('[data-iface-act="fail"]');
+    expect(disable.classList.contains('iface-act')).toBe(true);
+    expect(fail.classList.contains('iface-act')).toBe(true);
+    expect(fail.classList.contains('danger')).toBe(true);
+  });
+
+  it('a down interface shows a styled Enable button with the positive "ok" class', () => {
+    applyInterfaceStateChanged({ device: 'r1', interface: 'eth0', up: false });
+    const elI = document.getElementById('inspector');
+    renderRouterInsp('r1', elI);
+    const enable = elI.querySelector('[data-iface-act="enable"]');
+    expect(enable).not.toBeNull();
+    expect(enable.classList.contains('iface-act')).toBe(true);
+    expect(enable.classList.contains('ok')).toBe(true);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 9. Same fabric-type dropdown on host editor
 // ---------------------------------------------------------------------------

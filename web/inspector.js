@@ -974,7 +974,7 @@ export function renderRouterInsp(name, elI) {
               ${isTopologyLocked() ? (() => {
                 const down = isInterfaceDown(name, ifn);
                 return down
-                  ? `<div class="iface-act-row"><button class="iface-act" data-iface-act="enable" data-iface="${escapeHtml(ifn)}">Enable</button></div>`
+                  ? `<div class="iface-act-row"><button class="iface-act ok" data-iface-act="enable" data-iface="${escapeHtml(ifn)}">Enable</button></div>`
                   : `<div class="iface-act-row"><button class="iface-act" data-iface-act="disable" data-iface="${escapeHtml(ifn)}">Disable</button><button class="iface-act danger" data-iface-act="fail" data-iface="${escapeHtml(ifn)}">Fail</button></div>`;
               })() : ''}
             </details>

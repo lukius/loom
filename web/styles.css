@@ -760,9 +760,31 @@ svg.canvas.linking { cursor: crosshair; }
 .canvas .node.down { opacity: .45; filter: grayscale(1); }
 .canvas .edge.down { opacity: .35; stroke-dasharray: 4 4; }
 
-/* interface action buttons (inspector iface rows) */
-.iface-act { font: inherit; cursor: pointer; }
+/* interface action buttons (inspector iface rows) — Disable / Fail / Enable */
+.iface-act-row { display: flex; gap: 6px; margin-top: 8px; }
+.iface-act {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all .12s;
+}
+.iface-act:hover { color: var(--accent-text); border-color: var(--accent); background: var(--accent-bg); }
 .iface-act.danger { color: var(--neg); }
+.iface-act.danger:hover {
+  color: var(--neg); border-color: var(--neg);
+  background: color-mix(in srgb, var(--neg) 8%, transparent);
+}
+.iface-act.ok { color: var(--pos); }
+.iface-act.ok:hover {
+  color: var(--pos); border-color: var(--pos);
+  background: color-mix(in srgb, var(--pos) 10%, transparent);
+}
 
 /* endpoint devices highlighted when the p2p edge or midpoint label is hovered */
 .canvas .node.host.p2p-hovered .icon,
