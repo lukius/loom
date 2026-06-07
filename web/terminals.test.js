@@ -6,6 +6,32 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { bus } from './state.js';
 import { Terminals, clampTermPos } from './terminals.js';
+import { Sim } from './sim.js';
+
+describe('Terminals.open — restores a saved position within the viewport', () => {
+  afterEach(() => {
+    Sim.state = 'idle';
+    Terminals._active.clear();
+    localStorage.removeItem('term.pos.h1');
+    document.querySelectorAll('.term').forEach(n => n.remove());
+  });
+
+  it('clamps an off-screen saved position back on screen so the header is reachable', () => {
+    // A position saved in an earlier session (dragged off-screen) must not
+    // reopen out of reach.
+    localStorage.setItem('term.pos.h1', JSON.stringify({ x: 99999, y: -99999 }));
+    Sim.state = 'running';
+    Terminals.open('h1');
+    const w = Terminals._active.get('h1');
+    expect(w).toBeTruthy();
+    const left = parseFloat(w.style.left);
+    const top = parseFloat(w.style.top);
+    expect(top).toBeGreaterThanOrEqual(0);
+    expect(top).toBeLessThanOrEqual(window.innerHeight);
+    expect(left).toBeGreaterThanOrEqual(0);
+    expect(left).toBeLessThanOrEqual(window.innerWidth);
+  });
+});
 
 describe('clampTermPos — keeps a dragged terminal header on screen', () => {
   const vw = 1000, vh = 800, w = 400, h = 300, headerH = 28;

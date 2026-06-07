@@ -60,9 +60,19 @@ type 'help' for commands
     w.className = 'term';
     w.innerHTML = tmpl;
     const pos = JSON.parse(localStorage.getItem('term.pos.' + deviceName) || 'null') || { x: 120 + this._active.size * 20, y: 120 + this._active.size * 20 };
-    w.style.left = pos.x + 'px';
-    w.style.top = pos.y + 'px';
     document.body.appendChild(w);
+    // Clamp the restored position to the viewport: a window dragged off-screen
+    // in an earlier session (or before clamping existed) must reopen on screen,
+    // not out of reach. Measured after append so offsetWidth/Height are known;
+    // persist the corrected value so the stale entry is healed.
+    const headerH = w.querySelector('.term-header')?.offsetHeight || 28;
+    const clamped = clampTermPos(
+      pos.x, pos.y, w.offsetWidth, w.offsetHeight,
+      window.innerWidth, window.innerHeight, headerH,
+    );
+    w.style.left = clamped.x + 'px';
+    w.style.top = clamped.y + 'px';
+    localStorage.setItem('term.pos.' + deviceName, JSON.stringify(clamped));
     this._active.set(deviceName, w);
     this._wire(w, deviceName);
     this._applySimState(Sim.state);
