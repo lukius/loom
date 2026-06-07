@@ -32,12 +32,26 @@ export const Terminals = {
   // lines and flush them in seq order: a successful line waits for its reply
   // packet to animate back to the host; a timeout line is ready at once (there
   // is no reply to animate, and the backend already waited out the timeout).
-  _pingBuf: new Map(),                  // device -> { next, lines: Map<seq,{text,ready,timer}> }
-  _replySeq: new Map(),                 // ping_reply payload_id -> seq
-  _pingArrived: new Set(),              // `${device}|${seq}` arrivals seen before the result line
-  _pingFallbackMs: 6000,                // show a success line even if its arrival never fires
+  // The summary (the command's response) is held as a trailer and printed only
+  // after every probe line has flushed. Release is driven purely by the reply's
+  // visual arrival — which always fires — so there is no timer racing the
+  // (arbitrarily long, -i-spaced) animation.
+  _pingBuf: new Map(),     // device -> { next, flushed, lines: Map<seq,{text,ready}>, trailer, trailerCount }
+  _replySeq: new Map(),    // ping_reply payload_id -> seq
+  _pingArrived: new Set(), // `${device}|${seq}` arrivals seen before the result line
+  _seqDevice: new Map(),   // seq -> device, so a device-less arrival can still be routed
 
-  // Append every contiguous ready line from the head of a device's buffer.
+  _pingBufFor(device) {
+    let buf = this._pingBuf.get(device);
+    if (!buf) {
+      buf = { next: null, flushed: 0, lines: new Map(), trailer: null, trailerCount: 0 };
+      this._pingBuf.set(device, buf);
+    }
+    return buf;
+  },
+
+  // Append every contiguous ready line from the head of a device's buffer, then
+  // print the summary trailer once all of this ping's probe lines have shown.
   _pingFlush(device) {
     const buf = this._pingBuf.get(device);
     if (!buf) return;
@@ -45,19 +59,40 @@ export const Terminals = {
     if (!w) { this._pingBuf.delete(device); return; }   // terminal closed — drop
     const out = w.querySelector('.term-out');
     if (!out) return;
-    if (buf.next == null) {
-      if (buf.lines.size === 0) return;
+    if (buf.next == null && buf.lines.size > 0) {
       buf.next = Math.min(...buf.lines.keys());
     }
-    while (buf.lines.has(buf.next) && buf.lines.get(buf.next).ready) {
-      const entry = buf.lines.get(buf.next);
-      if (entry.timer) clearTimeout(entry.timer);
-      out.textContent += entry.text;
+    while (buf.next != null && buf.lines.has(buf.next) && buf.lines.get(buf.next).ready) {
+      out.textContent += buf.lines.get(buf.next).text;
       out.scrollTop = out.scrollHeight;
       buf.lines.delete(buf.next);
       buf.next++;
+      buf.flushed++;
     }
-    if (buf.lines.size === 0) buf.next = null;   // re-seed from the next burst
+    // Summary waits until every probe line for this ping has been printed.
+    if (buf.trailer != null && buf.flushed >= buf.trailerCount) {
+      out.textContent += buf.trailer;
+      out.scrollTop = out.scrollHeight;
+      buf.trailer = null;
+      buf.trailerCount = 0;
+      buf.flushed = 0;
+      if (buf.lines.size === 0) buf.next = null;
+    } else if (buf.lines.size === 0) {
+      buf.next = null;   // re-seed from the next burst
+    }
+  },
+
+  // If `output` is a ping summary, hold it until the paced per-probe lines have
+  // all printed; returns true when deferred (caller must not print it).
+  _maybeDeferPingSummary(device, cmd, output) {
+    if (cmd.trim().split(/\s+/)[0] !== 'ping') return false;
+    const m = /(\d+)\s+sent\b/.exec(output);
+    if (!m) return false;   // an error/syntax response, not a real summary
+    const buf = this._pingBufFor(device);
+    buf.trailer = output.endsWith('\n') ? output : output + '\n';
+    buf.trailerCount = parseInt(m[1], 10);
+    this._pingFlush(device);
+    return true;
   },
 
   open(deviceName) {
@@ -200,7 +235,11 @@ type 'help' for commands
           try {
             const r = await RuntimeClient.deviceCommand(name, cmd);
             const txt = r.output || '(no output)';
-            out.textContent += txt + (txt.endsWith('\n') ? '' : '\n');
+            // A ping summary is held until its paced per-probe lines finish; any
+            // other command's output prints immediately.
+            if (!Terminals._maybeDeferPingSummary(name, cmd, txt)) {
+              out.textContent += txt + (txt.endsWith('\n') ? '' : '\n');
+            }
             if (cmd.trim() === 'help') {
               out.textContent += 'terminal: clear, Ctrl+L (clear), Ctrl+D (close)\n';
             }
@@ -239,12 +278,10 @@ bus.addEventListener('sim:status-changed', () => {
   Terminals._applySimState(Sim.state);
   if (Sim.state === 'idle') {
     // Drop any paced lines still waiting on an animation that will never finish.
-    for (const buf of Terminals._pingBuf.values()) {
-      for (const entry of buf.lines.values()) if (entry.timer) clearTimeout(entry.timer);
-    }
     Terminals._pingBuf.clear();
     Terminals._replySeq.clear();
     Terminals._pingArrived.clear();
+    Terminals._seqDevice.clear();
   }
 });
 bus.addEventListener('canvas:terminal-requested', (e) => { Terminals.open(e.detail.name); });
@@ -264,12 +301,15 @@ bus.addEventListener('sim:packet', (e) => {
 // a buffered line, which is only keyed under the pinging host.)
 bus.addEventListener('sim:packet-arrived', (e) => {
   const { payloadId, device } = e.detail || {};
-  if (payloadId == null || !device || !Terminals._replySeq.has(payloadId)) return;
+  if (payloadId == null || !Terminals._replySeq.has(payloadId)) return;
   const seq = Terminals._replySeq.get(payloadId);
-  const buf = Terminals._pingBuf.get(device);
+  // Prefer the arrival's device; fall back to the device that buffered this seq
+  // so a geometry-less (device:null) arrival still releases the line.
+  const target = device || Terminals._seqDevice.get(seq);
+  const buf = target && Terminals._pingBuf.get(target);
   const entry = buf && buf.lines.get(seq);
-  if (entry) { entry.ready = true; Terminals._pingFlush(device); }
-  else { Terminals._pingArrived.add(`${device}|${seq}`); }   // result line not buffered yet
+  if (entry) { entry.ready = true; Terminals._pingFlush(target); }
+  else if (target) { Terminals._pingArrived.add(`${target}|${seq}`); }   // line not buffered yet
 });
 
 bus.addEventListener('sim:ping-result', (e) => {
@@ -278,16 +318,11 @@ bus.addEventListener('sim:ping-result', (e) => {
   const text = rtt_ms == null
     ? `seq=${seq} ${dst}: timeout\n`
     : `seq=${seq} ${dst}: time=${rtt_ms.toFixed(2)} ms\n`;
-  let buf = Terminals._pingBuf.get(device);
-  if (!buf) { buf = { next: null, lines: new Map() }; Terminals._pingBuf.set(device, buf); }
+  const buf = Terminals._pingBufFor(device);
+  Terminals._seqDevice.set(seq, device);
   // A timeout has no reply to animate (ready now); a success waits for its reply
-  // to arrive — unless that arrival already fired before this line was known.
+  // to visually return — unless that arrival already fired before this line.
   const ready = rtt_ms == null || Terminals._pingArrived.delete(`${device}|${seq}`);
-  const entry = { text, ready, timer: null };
-  if (!ready) {
-    entry.timer = setTimeout(() => { entry.ready = true; Terminals._pingFlush(device); },
-                             Terminals._pingFallbackMs);
-  }
-  buf.lines.set(seq, entry);
+  buf.lines.set(seq, { text, ready });
   Terminals._pingFlush(device);
 });
