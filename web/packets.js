@@ -266,15 +266,17 @@ export const PacketAnim = {
 
   // Routers + hosts attached to `fabricName` other than `senderDev`. Used
   // by the broadcast-chatter fan-out to know who should receive a visual
-  // clone of the packet.
+  // clone of the packet. A router whose interface on the fabric is
+  // administratively down receives nothing, so it's excluded — the packet
+  // doesn't travel to a down interface.
   _collectFabricListeners(fabricName, senderDev) {
     const listeners = [];
     if (!fabricName) return listeners;
     for (const [rn, r] of Object.entries(state.routers || {})) {
       if (rn === senderDev) continue;
-      for (const iff of Object.values(r.interfaces || {})) {
+      for (const [ifn, iff] of Object.entries(r.interfaces || {})) {
         if (iff.network === fabricName || iff.link === fabricName) {
-          listeners.push(rn);
+          if (!isInterfaceDown(rn, ifn)) listeners.push(rn);
           break;
         }
       }
@@ -586,7 +588,7 @@ export const PacketAnim = {
     // but is dropped where it would enter the down link — it never reaches the
     // device. Trim the path to that entry point and fade the dot out there.
     let onComplete = finish;
-    if (!isChatter && destInterfaceDown(evt, dstDeviceName)) {
+    if (destInterfaceDown(evt, dstDeviceName)) {
       if (isLink && segs[0] && segs[0].kind === 'bez') {
         // The whole edge is the down link: keep only a short head so the dot
         // just enters the wire before dropping.

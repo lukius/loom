@@ -1202,6 +1202,91 @@ describe('PacketAnim — packets to a down p2p peer drop on the link', () => {
   });
 });
 
+describe('PacketAnim — routing chatter is also dropped at a down link', () => {
+  beforeEach(() => {
+    PacketStore._reset();
+    PacketAnim._reset();
+    resetDownState();
+  });
+
+  it('drops an LSA crossing a down p2p link instead of reaching the peer', async () => {
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g class="node router" data-kind="router" data-name="r1" transform="translate(100 100)"></g>
+        <g class="node router" data-kind="router" data-name="r2" transform="translate(400 100)"></g>
+      </g><g id="packet-layer"></g></svg>`;
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 250, y: 100 } };
+    state.routers = {
+      r1: { x: 100, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.0.0.1', cost: 1 } } },
+      r2: { x: 400, y: 100, interfaces: { eth0: { link: 'p2p1', address: '10.0.0.2', cost: 1 } } },
+    };
+    state.hosts = {}; state.networks = {};
+    applyInterfaceStateChanged({ device: 'r2', interface: 'eth0', up: false });
+    const arrivedSpy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', arrivedSpy);
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+        type: 'routing_flood', payload_id: 'lsaD', network: 'p2p1',
+        src: { device: 'r1', iface: 'eth0', address: '10.0.0.1' },
+        dst: { address: '10.0.0.2' },
+        payload_src: '10.0.0.1', payload_dst: '10.0.0.2',
+        payload: { originator: 'r1', seq: 1, destinations: [] },
+      } }));
+      await new Promise(r => setTimeout(r, 400));
+      const arr = arrivedSpy.mock.calls.map(c => c[0].detail)
+        .filter(d => d.payloadId && String(d.payloadId).startsWith('lsaD'));
+      expect(arr.length).toBe(1);
+      expect(arr[0].device).toBe(null);   // never reached r2
+      expect(document.getElementById('packet-layer').querySelectorAll('rect').length).toBe(0);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+      bus.removeEventListener('sim:packet-arrived', arrivedSpy);
+    }
+  });
+
+  it('does not fan a broadcast LSA out to a listener whose interface is down', async () => {
+    document.body.innerHTML = `
+      <svg><g id="nodes-layer">
+        <g class="node router" data-kind="router" data-name="r1" transform="translate(100 100)"></g>
+        <g class="node router" data-kind="router" data-name="r2" transform="translate(250 200)"></g>
+        <g class="node router" data-kind="router" data-name="r3" transform="translate(400 200)"></g>
+        <g class="node network" data-kind="network" data-name="lan_a" transform="translate(250 100)"></g>
+      </g><g id="packet-layer"></g></svg>`;
+    state.networks = { lan_a: { cidr: '10.0.0.0/24', x: 250, y: 100 } };
+    state.links = {}; state.hosts = {};
+    state.routers = {
+      r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.1', cost: 1 } } },
+      r2: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.2', cost: 1 } } },
+      r3: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.3', cost: 1 } } },
+    };
+    applyInterfaceStateChanged({ device: 'r2', interface: 'eth0', up: false });
+    const arrivedSpy = vi.fn();
+    bus.addEventListener('sim:packet-arrived', arrivedSpy);
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    try {
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+        type: 'routing_flood', payload_id: 'lsaB', network: 'lan_a',
+        src: { device: 'r1', iface: 'eth0', address: '10.0.0.1' },
+        dst: { device: null, address: '10.0.0.255' },
+        payload_src: '10.0.0.1', payload_dst: '10.0.0.255',
+        payload: { originator: 'r1', seq: 1, destinations: [] },
+      } }));
+      await new Promise(r => setTimeout(r, 120));
+      const devices = arrivedSpy.mock.calls.map(c => c[0].detail)
+        .filter(d => d.payloadId === 'lsaB|r1|eth0|lan_a')
+        .map(d => d.device);
+      expect(devices).toContain('r3');     // up listener receives
+      expect(devices).not.toContain('r2'); // down listener does not
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+      bus.removeEventListener('sim:packet-arrived', arrivedSpy);
+    }
+  });
+});
+
 describe('PacketAnim._sessionKey — groups a conversation across probes and NAT', () => {
   beforeEach(() => { PacketAnim._reset(); });
 
