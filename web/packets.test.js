@@ -1091,6 +1091,52 @@ describe('PacketAnim — ping -c probes animate sequentially (one round-trip at 
     const layer = document.getElementById('packet-layer');
     expect(layer.querySelectorAll('rect').length).toBe(2);
   });
+
+  it('inserts the real inter-probe gap as a pause before the next probe animates', async () => {
+    // Stub the clock so probe 2 is recorded as arriving 100 ms after probe 1.
+    const origNow = PacketAnim._now;
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 1;
+    let t = 0;
+    PacketAnim._now = () => t;
+    const appeared = [];
+    const onAppear = (e) => appeared.push({ id: e.detail.payloadId, at: performance.now() });
+    bus.addEventListener('packets:dot-appeared', onAppear);
+    try {
+      t = 0;
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: probe('f1', 'p1') }));
+      t = 100;   // probe 2 "arrives" 100 ms later (≈ the -i gap), while probe 1 animates
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: probe('f2', 'p2') }));
+      await new Promise(r => setTimeout(r, 220));
+      const p1 = appeared.find(a => a.id === 'p1');
+      const p2 = appeared.find(a => a.id === 'p2');
+      expect(p1 && p2).toBeTruthy();
+      // Probe 2 must wait out the ~100 ms gap rather than animating right after p1.
+      expect(p2.at - p1.at).toBeGreaterThanOrEqual(80);
+    } finally {
+      PacketAnim._now = origNow;
+      PacketAnim.DURATION_MS = origDur;
+      bus.removeEventListener('packets:dot-appeared', onAppear);
+    }
+  });
+});
+
+describe('PacketAnim._probeGapMs — inter-probe pause', () => {
+  it('is zero for consecutive hops of the same probe (same flow)', () => {
+    expect(PacketAnim._probeGapMs({ curFlow: 'f1', flowStartT: 0 }, { flow: 'f1', _t: 50 })).toBe(0);
+  });
+
+  it('is zero when no probe is playing yet', () => {
+    expect(PacketAnim._probeGapMs({ curFlow: undefined }, { flow: 'f1', _t: 50 })).toBe(0);
+  });
+
+  it('is the real gap between probe arrivals when a new probe starts', () => {
+    expect(PacketAnim._probeGapMs({ curFlow: 'f1', flowStartT: 200 }, { flow: 'f2', _t: 1200 })).toBe(1000);
+  });
+
+  it('never goes negative', () => {
+    expect(PacketAnim._probeGapMs({ curFlow: 'f1', flowStartT: 1200 }, { flow: 'f2', _t: 200 })).toBe(0);
+  });
 });
 
 describe('PacketAnim — packets to a down interface drop at the link entry', () => {
