@@ -25,6 +25,41 @@ export function clampTermPos(x, y, w, h, vw, vh, headerH = 28) {
 export const Terminals = {
   _active: new Map(),                   // name -> element
 
+  // ---- ping output pacing ----
+  // The backend resolves a whole `ping -c` in a sub-millisecond burst, so its
+  // per-probe result events arrive far faster than the staged packet animation.
+  // To make each line appear "when the response arrives", we buffer a device's
+  // lines and flush them in seq order: a successful line waits for its reply
+  // packet to animate back to the host; a timeout line is ready at once (there
+  // is no reply to animate, and the backend already waited out the timeout).
+  _pingBuf: new Map(),                  // device -> { next, lines: Map<seq,{text,ready,timer}> }
+  _replySeq: new Map(),                 // ping_reply payload_id -> seq
+  _pingArrived: new Set(),              // `${device}|${seq}` arrivals seen before the result line
+  _pingFallbackMs: 6000,                // show a success line even if its arrival never fires
+
+  // Append every contiguous ready line from the head of a device's buffer.
+  _pingFlush(device) {
+    const buf = this._pingBuf.get(device);
+    if (!buf) return;
+    const w = this._active.get(device);
+    if (!w) { this._pingBuf.delete(device); return; }   // terminal closed — drop
+    const out = w.querySelector('.term-out');
+    if (!out) return;
+    if (buf.next == null) {
+      if (buf.lines.size === 0) return;
+      buf.next = Math.min(...buf.lines.keys());
+    }
+    while (buf.lines.has(buf.next) && buf.lines.get(buf.next).ready) {
+      const entry = buf.lines.get(buf.next);
+      if (entry.timer) clearTimeout(entry.timer);
+      out.textContent += entry.text;
+      out.scrollTop = out.scrollHeight;
+      buf.lines.delete(buf.next);
+      buf.next++;
+    }
+    if (buf.lines.size === 0) buf.next = null;   // re-seed from the next burst
+  },
+
   open(deviceName) {
     if (Sim && Sim.state === 'idle') {
       toast('Start the simulation to use device terminals', 'info');
@@ -200,17 +235,59 @@ type 'help' for commands
 };
 
 /* ---------- bus listeners ---------- */
-bus.addEventListener('sim:status-changed', () => Terminals._applySimState(Sim.state));
+bus.addEventListener('sim:status-changed', () => {
+  Terminals._applySimState(Sim.state);
+  if (Sim.state === 'idle') {
+    // Drop any paced lines still waiting on an animation that will never finish.
+    for (const buf of Terminals._pingBuf.values()) {
+      for (const entry of buf.lines.values()) if (entry.timer) clearTimeout(entry.timer);
+    }
+    Terminals._pingBuf.clear();
+    Terminals._replySeq.clear();
+    Terminals._pingArrived.clear();
+  }
+});
 bus.addEventListener('canvas:terminal-requested', (e) => { Terminals.open(e.detail.name); });
+
+// Learn each ping reply's seq from its packet emission so we can match the
+// reply's visual arrival (below) back to the buffered terminal line.
+bus.addEventListener('sim:packet', (e) => {
+  const evt = e.detail;
+  if (evt && evt.type === 'ping_reply' && evt.payload_id != null &&
+      evt.payload && evt.payload.seq != null) {
+    Terminals._replySeq.set(evt.payload_id, evt.payload.seq);
+  }
+});
+
+// A ping reply finished animating: if it arrived at the pinging host, release
+// that host's buffered line for this seq. (Intermediate router hops don't match
+// a buffered line, which is only keyed under the pinging host.)
+bus.addEventListener('sim:packet-arrived', (e) => {
+  const { payloadId, device } = e.detail || {};
+  if (payloadId == null || !device || !Terminals._replySeq.has(payloadId)) return;
+  const seq = Terminals._replySeq.get(payloadId);
+  const buf = Terminals._pingBuf.get(device);
+  const entry = buf && buf.lines.get(seq);
+  if (entry) { entry.ready = true; Terminals._pingFlush(device); }
+  else { Terminals._pingArrived.add(`${device}|${seq}`); }   // result line not buffered yet
+});
+
 bus.addEventListener('sim:ping-result', (e) => {
   const { device, dst, seq, rtt_ms } = e.detail;
-  const w = Terminals._active.get(device);
-  if (!w) return;  // sender's terminal not open — nothing to stream into
-  const out = w.querySelector('.term-out');
-  if (!out) return;
-  const line = rtt_ms == null
+  if (!Terminals._active.has(device)) return;  // sender's terminal not open
+  const text = rtt_ms == null
     ? `seq=${seq} ${dst}: timeout\n`
     : `seq=${seq} ${dst}: time=${rtt_ms.toFixed(2)} ms\n`;
-  out.textContent += line;
-  out.scrollTop = out.scrollHeight;
+  let buf = Terminals._pingBuf.get(device);
+  if (!buf) { buf = { next: null, lines: new Map() }; Terminals._pingBuf.set(device, buf); }
+  // A timeout has no reply to animate (ready now); a success waits for its reply
+  // to arrive — unless that arrival already fired before this line was known.
+  const ready = rtt_ms == null || Terminals._pingArrived.delete(`${device}|${seq}`);
+  const entry = { text, ready, timer: null };
+  if (!ready) {
+    entry.timer = setTimeout(() => { entry.ready = true; Terminals._pingFlush(device); },
+                             Terminals._pingFallbackMs);
+  }
+  buf.lines.set(seq, entry);
+  Terminals._pingFlush(device);
 });

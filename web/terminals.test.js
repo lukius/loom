@@ -73,69 +73,80 @@ function makeTermWidget(initialText = '') {
   return w;
 }
 
-describe('sim:ping-result bus listener', () => {
+describe('sim:ping-result bus listener — lines paced to the reply animation', () => {
   beforeEach(() => {
     Terminals._active.clear();
+    Terminals._pingBuf.clear();
+    Terminals._replySeq.clear();
+    Terminals._pingArrived.clear();
   });
 
   afterEach(() => {
     Terminals._active.clear();
+    Terminals._pingBuf.clear();
+    Terminals._replySeq.clear();
+    Terminals._pingArrived.clear();
   });
 
-  it('appends a timed reply line when rtt_ms is provided', () => {
+  const emitReply = (payloadId, seq) =>
+    bus.dispatchEvent(new CustomEvent('sim:packet', {
+      detail: { type: 'ping_reply', payload_id: payloadId, payload: { seq, request_ts: 0 } },
+    }));
+  const arriveReply = (payloadId, device) =>
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId, device } }));
+  const pingResult = (device, dst, seq, rtt_ms) =>
+    bus.dispatchEvent(new CustomEvent('sim:ping-result', { detail: { device, dst, seq, rtt_ms } }));
+
+  it('shows a timeout line immediately (there is no reply to wait for)', () => {
     const w = makeTermWidget('');
     Terminals._active.set('h1', w);
-
-    bus.dispatchEvent(new CustomEvent('sim:ping-result', {
-      detail: { device: 'h1', dst: '10.0.0.2', seq: 1, rtt_ms: 12.3456 },
-    }));
-
-    const out = w.querySelector('.term-out');
-    expect(out.textContent).toBe('seq=1 10.0.0.2: time=12.35 ms\n');
+    pingResult('h1', '10.0.0.2', 2, null);
+    expect(w.querySelector('.term-out').textContent).toBe('seq=2 10.0.0.2: timeout\n');
   });
 
-  it('appends a timeout line when rtt_ms is null', () => {
+  it('defers a successful line until its reply animates back to the host', () => {
     const w = makeTermWidget('');
     Terminals._active.set('h1', w);
-
-    bus.dispatchEvent(new CustomEvent('sim:ping-result', {
-      detail: { device: 'h1', dst: '10.0.0.2', seq: 2, rtt_ms: null },
-    }));
-
-    const out = w.querySelector('.term-out');
-    expect(out.textContent).toBe('seq=2 10.0.0.2: timeout\n');
+    emitReply('rep1', 1);
+    pingResult('h1', '10.0.0.2', 1, 12.3456);
+    // Backend already resolved it, but the line waits for the visual reply.
+    expect(w.querySelector('.term-out').textContent).toBe('');
+    arriveReply('rep1', 'h1');
+    expect(w.querySelector('.term-out').textContent).toBe('seq=1 10.0.0.2: time=12.35 ms\n');
   });
 
-  it('accumulates multiple lines sequentially', () => {
+  it('flushes successful lines in seq order even if a later reply arrives first', () => {
     const w = makeTermWidget('');
     Terminals._active.set('h1', w);
-
-    bus.dispatchEvent(new CustomEvent('sim:ping-result', {
-      detail: { device: 'h1', dst: '10.0.0.2', seq: 1, rtt_ms: 5.0 },
-    }));
-    bus.dispatchEvent(new CustomEvent('sim:ping-result', {
-      detail: { device: 'h1', dst: '10.0.0.2', seq: 2, rtt_ms: null },
-    }));
-
-    const out = w.querySelector('.term-out');
-    expect(out.textContent).toBe(
-      'seq=1 10.0.0.2: time=5.00 ms\n' +
-      'seq=2 10.0.0.2: timeout\n',
+    emitReply('rep1', 1);
+    emitReply('rep2', 2);
+    pingResult('h1', '10.0.0.2', 1, 12.0);
+    pingResult('h1', '10.0.0.2', 2, 5.0);
+    // seq=2's reply arrives first — it must NOT jump ahead of seq=1.
+    arriveReply('rep2', 'h1');
+    expect(w.querySelector('.term-out').textContent).toBe('');
+    arriveReply('rep1', 'h1');
+    expect(w.querySelector('.term-out').textContent).toBe(
+      'seq=1 10.0.0.2: time=12.00 ms\n' +
+      'seq=2 10.0.0.2: time=5.00 ms\n',
     );
   });
 
-  it('ignores events for devices whose terminal is not open', () => {
-    // h2's terminal is not in _active; dispatching for h2 should not throw
-    // and h1's terminal should remain empty.
+  it('handles a reply that arrives before its result line is known (race)', () => {
     const w = makeTermWidget('');
     Terminals._active.set('h1', w);
+    emitReply('rep1', 1);
+    arriveReply('rep1', 'h1');          // arrival precedes the backend result
+    expect(w.querySelector('.term-out').textContent).toBe('');
+    pingResult('h1', '10.0.0.2', 1, 7.0);
+    expect(w.querySelector('.term-out').textContent).toBe('seq=1 10.0.0.2: time=7.00 ms\n');
+  });
 
-    bus.dispatchEvent(new CustomEvent('sim:ping-result', {
-      detail: { device: 'h2', dst: '10.0.0.1', seq: 1, rtt_ms: 3.0 },
-    }));
-
-    const out = w.querySelector('.term-out');
-    expect(out.textContent).toBe('');
+  it('ignores events for devices whose terminal is not open', () => {
+    const w = makeTermWidget('');
+    Terminals._active.set('h1', w);
+    pingResult('h2', '10.0.0.1', 1, null);   // h2 not open
+    expect(w.querySelector('.term-out').textContent).toBe('');
   });
 
   it('routes to the correct terminal when multiple are open', () => {
@@ -143,12 +154,26 @@ describe('sim:ping-result bus listener', () => {
     const wH2 = makeTermWidget('');
     Terminals._active.set('h1', wH1);
     Terminals._active.set('h2', wH2);
-
-    bus.dispatchEvent(new CustomEvent('sim:ping-result', {
-      detail: { device: 'h2', dst: '192.168.1.1', seq: 3, rtt_ms: 0.75 },
-    }));
-
+    emitReply('repA', 3);
+    pingResult('h2', '192.168.1.1', 3, 0.75);
+    arriveReply('repA', 'h2');
     expect(wH1.querySelector('.term-out').textContent).toBe('');
     expect(wH2.querySelector('.term-out').textContent).toBe('seq=3 192.168.1.1: time=0.75 ms\n');
+  });
+
+  it('falls back to showing a successful line if its reply arrival never fires', async () => {
+    const w = makeTermWidget('');
+    Terminals._active.set('h1', w);
+    const orig = Terminals._pingFallbackMs;
+    Terminals._pingFallbackMs = 30;
+    try {
+      emitReply('rep1', 1);
+      pingResult('h1', '10.0.0.2', 1, 9.0);
+      expect(w.querySelector('.term-out').textContent).toBe('');   // deferred
+      await new Promise(r => setTimeout(r, 80));                   // past fallback
+      expect(w.querySelector('.term-out').textContent).toBe('seq=1 10.0.0.2: time=9.00 ms\n');
+    } finally {
+      Terminals._pingFallbackMs = orig;
+    }
   });
 });
