@@ -95,6 +95,97 @@ export const Terminals = {
     return true;
   },
 
+  // ---- SPA-driven multi-probe ping ----
+  // The on-canvas animation is far slower than the backend simulation, so a
+  // backend `ping -c N` sends every probe (on the old route) long before the
+  // user reacts to what they see. To make a live topology edit actually reroute
+  // later probes, the web terminal drives the cadence itself: it sends probes
+  // one at a time, waits for each probe's round trip to finish animating, then
+  // waits the -i interval (the edit window) before sending the next.
+  _pingInProgress: new Set(),
+
+  // Parse a `ping <dst> [-W w] [-c n] [-i s]` line; null if it isn't a ping.
+  _parsePing(cmd) {
+    const parts = cmd.trim().split(/\s+/);
+    if (parts[0] !== 'ping') return null;
+    let dst = null, count = 1, interval = 1, timeout = 3;
+    const rest = parts.slice(1);
+    for (let i = 0; i < rest.length; i++) {
+      if (rest[i] === '-c') count = parseInt(rest[++i], 10);
+      else if (rest[i] === '-i') interval = parseFloat(rest[++i]);
+      else if (rest[i] === '-W') timeout = parseFloat(rest[++i]);
+      else if (dst == null) dst = rest[i];
+    }
+    if (dst == null || !Number.isFinite(count) || count < 1) return null;
+    if (!Number.isFinite(interval) || interval < 0) interval = 1;
+    if (!Number.isFinite(timeout) || timeout <= 0) timeout = 3;
+    return { dst, count, interval, timeout };
+  },
+
+  // Run a multi-probe ping as a sequence of single-probe backend pings, paced to
+  // the animation. Per-probe lines stream via the usual pacing; the aggregate
+  // summary is printed once every probe has been shown.
+  async _runPacedPing(name, parsed, out) {
+    if (this._pingInProgress.has(name)) return;
+    this._pingInProgress.add(name);
+    const { dst, count, interval, timeout } = parsed;
+    let received = 0;
+    try {
+      for (let k = 0; k < count; k++) {
+        if (Sim.state === 'idle') break;   // sim stopped mid-ping
+        let r;
+        try {
+          r = await RuntimeClient.deviceCommand(name, `ping ${dst} -c 1 -W ${timeout}`);
+        } catch (err) {
+          out.textContent += `[error] ${err.message}\n`;
+          out.scrollTop = out.scrollHeight;
+          return;
+        }
+        if (!r || !r.ok) {
+          const msg = (r && r.output) || 'ping failed';
+          out.textContent += msg.endsWith('\n') ? msg : msg + '\n';
+          out.scrollTop = out.scrollHeight;
+          return;
+        }
+        const m = /(\d+)\s+received/.exec(r.output || '');
+        if (m && parseInt(m[1], 10) > 0) {
+          received++;
+          // Wait for this probe's reply to finish animating before the next one,
+          // so the edit window below lines up with the next probe's send.
+          await this._waitForReplyAnimation(name, (timeout + 30) * 1000);
+        }
+        if (k < count - 1) await new Promise((res) => setTimeout(res, interval * 1000));
+      }
+      const loss = Math.round(100 * (count - received) / count);
+      out.textContent += `--- ${dst} ping statistics ---\n${count} sent, ${received} received, ${loss}% loss\n`;
+      out.scrollTop = out.scrollHeight;
+    } finally {
+      this._pingInProgress.delete(name);
+    }
+  },
+
+  // Resolve once a ping reply has finished animating back to `device` (or after
+  // a safety cap, so a lost reply can't hang the loop).
+  _waitForReplyAnimation(device, capMs) {
+    return new Promise((resolve) => {
+      let done = false;
+      let timer = null;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        bus.removeEventListener('sim:packet-arrived', onArrival);
+        clearTimeout(timer);
+        resolve();
+      };
+      const onArrival = (e) => {
+        const d = e.detail || {};
+        if (d.device === device && d.payloadId != null && this._replySeq.has(d.payloadId)) finish();
+      };
+      bus.addEventListener('sim:packet-arrived', onArrival);
+      timer = setTimeout(finish, capMs);
+    });
+  },
+
   open(deviceName) {
     if (Sim && Sim.state === 'idle') {
       toast('Start the simulation to use device terminals', 'info');
@@ -232,19 +323,25 @@ type 'help' for commands
         if (cmd.trim() === 'clear') {
           out.textContent = '';
         } else if (cmd.trim() !== '') {
-          try {
-            const r = await RuntimeClient.deviceCommand(name, cmd);
-            const txt = r.output || '(no output)';
-            // A ping summary is held until its paced per-probe lines finish; any
-            // other command's output prints immediately.
-            if (!Terminals._maybeDeferPingSummary(name, cmd, txt)) {
-              out.textContent += txt + (txt.endsWith('\n') ? '' : '\n');
+          const parsedPing = Terminals._parsePing(cmd);
+          if (parsedPing && parsedPing.count > 1) {
+            // Multi-probe ping: paced by the SPA so edits reroute later probes.
+            await Terminals._runPacedPing(name, parsedPing, out);
+          } else {
+            try {
+              const r = await RuntimeClient.deviceCommand(name, cmd);
+              const txt = r.output || '(no output)';
+              // A ping summary is held until its paced per-probe lines finish;
+              // any other command's output prints immediately.
+              if (!Terminals._maybeDeferPingSummary(name, cmd, txt)) {
+                out.textContent += txt + (txt.endsWith('\n') ? '' : '\n');
+              }
+              if (cmd.trim() === 'help') {
+                out.textContent += 'terminal: clear, Ctrl+L (clear), Ctrl+D (close)\n';
+              }
+            } catch (err) {
+              out.textContent += `[error] ${err.message}\n`;
             }
-            if (cmd.trim() === 'help') {
-              out.textContent += 'terminal: clear, Ctrl+L (clear), Ctrl+D (close)\n';
-            }
-          } catch (err) {
-            out.textContent += `[error] ${err.message}\n`;
           }
         }
         out.scrollTop = out.scrollHeight;

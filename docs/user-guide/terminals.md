@@ -181,11 +181,11 @@ through the topology. With a busy simulator (lots of routing chatter
 or many ping flows running in parallel), expect single-digit
 millisecond RTTs on tiny topologies.
 
-Use `-c <count>` to send that many probes. By default they're spaced one
-second apart (like real `ping`); each reply line appears in the terminal
-— and each probe animates on the canvas — one round trip at a time, with
-the one-second gap shown as a pause between probes. A summary line prints
-at the end:
+Use `-c <count>` to send that many probes. The terminal sends them **one
+at a time**, waiting for each probe's round trip to finish animating
+before sending the next, then pausing one second (like real `ping`)
+between them. Each reply line appears as its reply returns on the canvas,
+and a summary line prints at the end:
 
 ```
 ping h2 -c 4 -W 1.5
@@ -202,21 +202,22 @@ seq=3 time=2.94 ms
 
 ![A counted ping streams each reply into the terminal as it arrives, then prints a summary](../images/62-ping-count.png)
 
-That one-second gap is the whole point: it's a window to change the
-topology mid-sequence and watch later probes take the new path. Disable
-an interface (or halt a router) on the route during the ping — once the
-network reconverges, the next probe is forwarded along the recomputed
-route, and its animation follows that new path.
+Because the next probe isn't sent until the previous one's animation has
+finished, that pause is a real window to change the topology mid-sequence
+and watch the change take effect. Disable an interface (or halt a router)
+on the route during the pause — the next probe is then sent fresh, so
+once the network has reconverged it's forwarded along the recomputed
+route and its animation follows that new path.
 
-Use `-i <seconds>` to tune the gap — make it longer if you need more time
-to edit, or `-i 0` to fire the probes back-to-back with no pause:
+Use `-i <seconds>` to size the pause — make it longer if you need more
+time to edit, or `-i 0` to send each probe immediately after the previous
+one finishes (still one at a time, just no pause):
 
 ```
 ping h3 -c 8 -i 2
 ```
 
-The inter-probe wait honors **Pause** (it stops counting while the sim is
-paused) and ends immediately if you Stop the sim.
+The pause ends immediately if you Stop the sim.
 
 #### `set_gateway <ip>`
 

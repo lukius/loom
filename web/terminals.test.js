@@ -6,7 +6,109 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { bus, state } from './state.js';
 import { Terminals, clampTermPos } from './terminals.js';
-import { Sim } from './sim.js';
+import { Sim, RuntimeClient } from './sim.js';
+
+describe('Terminals._parsePing', () => {
+  it('parses dst, count, interval, and timeout', () => {
+    expect(Terminals._parsePing('ping h2 -c 3 -i 2 -W 1.5'))
+      .toEqual({ dst: 'h2', count: 3, interval: 2, timeout: 1.5 });
+  });
+  it('applies defaults (count 1, interval 1, timeout 3)', () => {
+    expect(Terminals._parsePing('ping h2')).toEqual({ dst: 'h2', count: 1, interval: 1, timeout: 3 });
+  });
+  it('returns null for a non-ping command', () => {
+    expect(Terminals._parsePing('ifconfig')).toBe(null);
+  });
+});
+
+describe('Terminals._runPacedPing — SPA-driven, animation-paced probes', () => {
+  let spy;
+  beforeEach(() => {
+    Terminals._active.clear();
+    Terminals._pingBuf.clear();
+    Terminals._replySeq.clear();
+    Terminals._pingArrived.clear();
+    Terminals._seqDevice.clear();
+    Terminals._pingInProgress.clear();
+    Sim.state = 'running';
+  });
+  afterEach(() => {
+    if (spy) spy.mockRestore();
+    Sim.state = 'idle';
+    Terminals._active.clear();
+  });
+
+  function termFor(name) {
+    const w = document.createElement('div');
+    w.className = 'term';
+    const pre = document.createElement('pre');
+    pre.className = 'term-out';
+    w.appendChild(pre);
+    Terminals._active.set(name, w);
+    return w.querySelector('.term-out');
+  }
+
+  it('sends one single-probe ping at a time and prints the aggregate summary last', async () => {
+    const out = termFor('h1');
+    let seq = 0;
+    spy = vi.spyOn(RuntimeClient, 'deviceCommand').mockImplementation((name, cmd) => {
+      const s = seq++;
+      // Simulate the backend: emit the reply packet + result, and (async, so the
+      // loop has subscribed) the reply's visual arrival back at the host.
+      setTimeout(() => {
+        bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+          type: 'ping_reply', payload_id: `rep${s}`, payload: { seq: s, request_ts: 0 } } }));
+        bus.dispatchEvent(new CustomEvent('sim:ping-result', { detail: {
+          device: 'h1', dst: 'h2', seq: s, rtt_ms: 1.0 } }));
+        bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: {
+          payloadId: `rep${s}`, device: 'h1' } }));
+      }, 5);
+      return Promise.resolve({ ok: true, output: '--- h2 ping statistics ---\n1 sent, 1 received, 0% loss' });
+    });
+
+    await Terminals._runPacedPing('h1', { dst: 'h2', count: 3, interval: 0, timeout: 3 }, out);
+
+    expect(spy).toHaveBeenCalledTimes(3);
+    expect(spy.mock.calls.every(c => c[1] === 'ping h2 -c 1 -W 3')).toBe(true);
+    expect(out.textContent).toBe(
+      'seq=0 h2: time=1.00 ms\nseq=1 h2: time=1.00 ms\nseq=2 h2: time=1.00 ms\n' +
+      '--- h2 ping statistics ---\n3 sent, 3 received, 0% loss\n');
+  });
+
+  it('waits for each probe to finish before sending the next', async () => {
+    const out = termFor('h1');
+    const sendTimes = [];
+    let seq = 0;
+    spy = vi.spyOn(RuntimeClient, 'deviceCommand').mockImplementation(() => {
+      sendTimes.push(performance.now());
+      const s = seq++;
+      setTimeout(() => {
+        bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
+          type: 'ping_reply', payload_id: `rep${s}`, payload: { seq: s, request_ts: 0 } } }));
+        bus.dispatchEvent(new CustomEvent('sim:ping-result', { detail: {
+          device: 'h1', dst: 'h2', seq: s, rtt_ms: 1.0 } }));
+        bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: {
+          payloadId: `rep${s}`, device: 'h1' } }));
+      }, 40);   // "animation" takes 40ms
+      return Promise.resolve({ ok: true, output: '1 sent, 1 received, 0% loss' });
+    });
+
+    await Terminals._runPacedPing('h1', { dst: 'h2', count: 2, interval: 0, timeout: 3 }, out);
+
+    expect(sendTimes.length).toBe(2);
+    // Probe 2 is sent only after probe 1's ~40ms round trip completed.
+    expect(sendTimes[1] - sendTimes[0]).toBeGreaterThanOrEqual(30);
+  });
+
+  it('aborts when a probe fails and surfaces the backend error', async () => {
+    const out = termFor('h1');
+    spy = vi.spyOn(RuntimeClient, 'deviceCommand')
+      .mockResolvedValue({ ok: false, output: 'no route to host' });
+    await Terminals._runPacedPing('h1', { dst: 'h2', count: 3, interval: 0, timeout: 3 }, out);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(out.textContent).toBe('no route to host\n');
+  });
+});
 import { PacketAnim } from './packets.js';
 import { PacketStore } from './packetstore.js';
 
