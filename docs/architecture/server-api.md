@@ -277,7 +277,7 @@ Supported commands per device kind:
 
 | Device | Commands |
 |---|---|
-| Host | `ifconfig`, `send <dst> <msg>`, `ping <dst> [-W <seconds>] [-c <n>]`, `route`, `set_gateway <ip>`, `help` |
+| Host | `ifconfig`, `send <dst> <msg>`, `ping <dst> [-W <seconds>] [-c <n>] [-i <seconds>]`, `route`, `set_gateway <ip>`, `help` |
 | Router | `ifconfig [<iface> up\|down]`, `route`, `update_cost <iface> <cost>`, `neighbors`, `halt`, `resume`, `help` |
 
 **`ifconfig [<iface> up|down]` (router)**
@@ -292,9 +292,9 @@ Gracefully disables all interfaces — floods a withdrawal LSA so peers purge th
 
 Re-enables all previously halted interfaces and re-announces the router's links via a fresh LSA flood. Symmetrical to `halt`.
 
-**`ping <dst> [-W <seconds>] [-c <n>]` (host)**
+**`ping <dst> [-W <seconds>] [-c <n>] [-i <seconds>]` (host)**
 
-Sends one `PingRequest` per probe. `-W` sets the per-probe timeout (default 3 s); `-c` sets the probe count (default 1, max 100). Output includes one line per probe followed by a summary:
+Sends one `PingRequest` per probe. `-W` sets the per-probe timeout (default 3 s); `-c` sets the probe count (default 1, max 100); `-i` sets the inter-probe interval in seconds (default 1, like real ping; max 60; use `-i 0` for a back-to-back burst). The interval wait goes through the AS `PauseGate`, so it pauses with the simulation and aborts on stop; the default spacing lets a client edit the topology between probes (e.g. disable an interface) and observe later probes routed over the reconverged paths. The endpoint returns only the summary; per-probe lines stream as `ping_result` events. Output summary:
 
 ```
 h2 (100.200.0.20): time=2.34 ms

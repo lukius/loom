@@ -1,6 +1,7 @@
 import cmd
 import functools
 import sys
+import time
 
 from entities import EntityException, UserMessage
 from parser import Parser
@@ -181,16 +182,18 @@ class Shell(cmd.Cmd):
 
     @requires_system
     def do_ping(self, arg):
-        'Ping between hosts. Syntax: ping <src> <dst> [-W <seconds>] [-c <count>]'
+        'Ping between hosts. Syntax: ping <src> <dst> [-W <s>] [-c <count>] [-i <s>]'
+        syntax = 'syntax: ping <src> <dst> [-W <seconds>] [-c <count>] [-i <seconds>]'
         parts = arg.split()
         timeout = 3.0
         count = 1
+        interval = 1.0   # like real ping: probes are 1 s apart unless -i overrides
         if '-W' in parts:
             i = parts.index('-W')
             try:
                 timeout = float(parts[i + 1])
             except (IndexError, ValueError):
-                print('syntax: ping <src> <dst> [-W <seconds>] [-c <count>]')
+                print(syntax)
                 return
             parts = parts[:i] + parts[i + 2:]
         if '-c' in parts:
@@ -200,14 +203,27 @@ class Shell(cmd.Cmd):
                 if count <= 0:
                     raise ValueError
             except (IndexError, ValueError):
-                print('syntax: ping <src> <dst> [-W <seconds>] [-c <count>]')
+                print(syntax)
+                return
+            parts = parts[:i] + parts[i + 2:]
+        if '-i' in parts:
+            i = parts.index('-i')
+            try:
+                interval = float(parts[i + 1])
+                if interval < 0:
+                    raise ValueError
+            except (IndexError, ValueError):
+                print(syntax)
                 return
             parts = parts[:i] + parts[i + 2:]
         if count > 100:
             print('count capped at 100')
             return
+        if interval > 60:
+            print('interval capped at 60 s')
+            return
         if len(parts) != 2:
-            print('syntax: ping <src> <dst> [-W <seconds>] [-c <count>]')
+            print(syntax)
             return
 
         src_name, dst = parts
@@ -224,7 +240,7 @@ class Shell(cmd.Cmd):
                 print(f'ping: invalid destination: {dst}')
                 return
         received = 0
-        for _ in range(count):
+        for n in range(count):
             try:
                 rtt = src.ping(dst_addr, timeout=timeout)
             except ValueError as e:
@@ -236,6 +252,8 @@ class Shell(cmd.Cmd):
                 received += 1
                 print(f'ping {src_name} -> {dst} ({dst_addr}): '
                       f'time={rtt * 1000:.2f} ms')
+            if interval > 0 and n < count - 1:
+                time.sleep(interval)
         loss = 100.0 * (count - received) / count
         print(f'{count} sent, {received} received, {loss:.0f}% loss')
 

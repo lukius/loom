@@ -104,7 +104,7 @@ List the commands available for this device kind.
 
 ```
 # host:
-available: ifconfig, send <dst> <msg>, ping <dst> [-W t] [-c n], route, set_gateway <ip>, help
+available: ifconfig, send <dst> <msg>, ping <dst> [-W t] [-c n] [-i s], route, set_gateway <ip>, help
 
 # router:
 available: route, update_cost <iface> <cost>, ifconfig, neighbors, help
@@ -142,7 +142,7 @@ The destination host receives a `UserMessage` event (visible to event
 subscribers; the SPA doesn't surface a "message received" notification
 by default).
 
-#### `ping <dst> [-W <seconds>] [-c <count>]`
+#### `ping <dst> [-W <seconds>] [-c <count>] [-i <seconds>]`
 
 Send a `PingRequest` and wait for a `PingReply` (default timeout 3 s).
 
@@ -181,11 +181,11 @@ through the topology. With a busy simulator (lots of routing chatter
 or many ping flows running in parallel), expect single-digit
 millisecond RTTs on tiny topologies.
 
-Use `-c <count>` to send that many probes one after another, waiting
-for each reply before sending the next. Each reply line appears in the
-terminal as it arrives, so you can watch the route quality change in
-real time — for example, while halting or disabling something
-mid-sequence. A summary line prints at the end:
+Use `-c <count>` to send that many probes. By default they're spaced one
+second apart (like real `ping`); each reply line appears in the terminal
+— and each probe animates on the canvas — one round trip at a time, with
+the one-second gap shown as a pause between probes. A summary line prints
+at the end:
 
 ```
 ping h2 -c 4 -W 1.5
@@ -201,6 +201,22 @@ seq=3 time=2.94 ms
 ```
 
 ![A counted ping streams each reply into the terminal as it arrives, then prints a summary](../images/62-ping-count.png)
+
+That one-second gap is the whole point: it's a window to change the
+topology mid-sequence and watch later probes take the new path. Disable
+an interface (or halt a router) on the route during the ping — once the
+network reconverges, the next probe is forwarded along the recomputed
+route, and its animation follows that new path.
+
+Use `-i <seconds>` to tune the gap — make it longer if you need more time
+to edit, or `-i 0` to fire the probes back-to-back with no pause:
+
+```
+ping h3 -c 8 -i 2
+```
+
+The inter-probe wait honors **Pause** (it stops counting while the sim is
+paused) and ends immediately if you Stop the sim.
 
 #### `set_gateway <ip>`
 

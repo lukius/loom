@@ -126,8 +126,23 @@ def test_shell_ping_count(monkeypatch, shell, capsys):
     calls = []
     monkeypatch.setattr(sh._system.host(src), "ping",
                         lambda addr, timeout: calls.append(addr) or 0.001)
+    sleeps = []
+    monkeypatch.setattr("time.sleep", lambda s: sleeps.append(s))
     sh.do_ping(f"{src} {dst} -c 3")
     assert len(calls) == 3
+    assert sleeps == [1.0, 1.0]   # default 1 s spacing between probes
+    assert "3 sent" in capsys.readouterr().out
+
+
+def test_shell_ping_interval_sleeps_between_probes(monkeypatch, shell, capsys):
+    sh = shell
+    h_names = list(sh._system.hosts())
+    src, dst = h_names[0], h_names[1]
+    monkeypatch.setattr(sh._system.host(src), "ping", lambda addr, timeout: 0.001)
+    sleeps = []
+    monkeypatch.setattr("time.sleep", lambda s: sleeps.append(s))
+    sh.do_ping(f"{src} {dst} -c 3 -i 1.5")
+    assert sleeps == [1.5, 1.5]
     assert "3 sent" in capsys.readouterr().out
 
 

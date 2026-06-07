@@ -1,4 +1,25 @@
+import time
+
 from entities import Address
+
+
+def _interprobe_wait(interval: float, gate) -> bool:
+    """Wait `interval` seconds between ping probes.
+
+    When the AS exposes a PauseGate, the wait goes through it so it pauses with
+    the simulation and aborts immediately on Stop. Returns True to keep going,
+    False if the simulation was stopped mid-wait.
+    """
+    if interval <= 0:
+        return True
+    if gate is None:
+        time.sleep(interval)
+        return True
+    _ticked, stopped = gate.sleep(interval)
+    if stopped:
+        return False
+    _running, stopped = gate.wait_or_stop()   # block here while paused
+    return not stopped
 
 
 def cmd_ifconfig(host, args, as_obj=None):
@@ -39,9 +60,14 @@ def cmd_send(host, args, as_obj=None):
 
 
 def cmd_ping(host, args, as_obj=None):
-    """Ping a destination, optionally N times: ping <dst> [-W <s>] [-c <n>]."""
+    """Ping a destination, optionally N times, optionally spaced.
+
+    Syntax: ping <dst> [-W <seconds>] [-c <count>] [-i <seconds>].
+    """
+    syntax = "syntax: ping <dst> [-W <seconds>] [-c <count>] [-i <seconds>]"
     timeout = 3.0
     count = 1
+    interval = 1.0   # like real ping: probes are 1 s apart unless -i overrides
     args = list(args)
     if "-W" in args:
         i = args.index("-W")
@@ -52,25 +78,39 @@ def cmd_ping(host, args, as_obj=None):
         try:
             count = int(args[i + 1])
         except (IndexError, ValueError):
-            return "syntax: ping <dst> [-W <seconds>] [-c <count>]"
+            return syntax
+        args = args[:i] + args[i + 2:]
+    if "-i" in args:
+        i = args.index("-i")
+        try:
+            interval = float(args[i + 1])
+        except (IndexError, ValueError):
+            return syntax
         args = args[:i] + args[i + 2:]
     if count <= 0:
         return "count must be positive"
     if count > 100:
         return "count capped at 100"
+    if interval < 0:
+        return "interval must be non-negative"
+    if interval > 60:
+        return "interval capped at 60 s"
     if not args:
-        return "syntax: ping <dst> [-W <seconds>] [-c <count>]"
+        return syntax
     dst = args[0]
     try:
         dst_addr = _resolve_address(dst, as_obj)
     except Exception:
         return f"ping: invalid destination: {dst}"
 
+    gate = as_obj.gate() if as_obj is not None and hasattr(as_obj, "gate") else None
     received = 0
-    for _ in range(count):
+    for i in range(count):
         rtt = host.ping(dst_addr, timeout=timeout)
         if rtt is not None:
             received += 1
+        if i < count - 1 and not _interprobe_wait(interval, gate):
+            break
     loss = 100.0 * (count - received) / count
     lines = [
         f"--- {dst} ping statistics ---",
@@ -99,6 +139,6 @@ def cmd_set_gateway(host, args, as_obj=None):
 def cmd_help(host, args, as_obj=None):
     """List available host commands."""
     return (
-        "available: ifconfig, send <dst> <msg>, ping <dst> [-W t] [-c n], "
+        "available: ifconfig, send <dst> <msg>, ping <dst> [-W t] [-c n] [-i s], "
         "route, set_gateway <ip>, help"
     )

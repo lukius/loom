@@ -185,14 +185,17 @@ via a fresh LSA flood.
 # resume r1
 ```
 
-### `ping <src> <dst> [-W <seconds>] [-c <n>]`
+### `ping <src> <dst> [-W <seconds>] [-c <n>] [-i <seconds>]`
 
 Send one or more `PingRequest`s from `<src>` and wait for `PingReply`s.
 
 `<dst>` can be a hostname (resolved via the AS host table) or a literal
 IP. `-W` sets the per-probe timeout (default 3 s); `-c` sets the probe
-count (default 1, max 100). Output includes one line per probe and a
-summary.
+count (default 1, max 100); `-i` waits that many seconds between probes
+(default 1, like real ping; max 60). The 1 s spacing means you can change
+the topology mid-sequence and watch later probes take a recomputed route;
+use `-i 0` to send them back-to-back instead. Output includes one line
+per probe and a summary.
 
 ```
 # ping h1 h3

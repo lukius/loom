@@ -96,7 +96,17 @@ terminal is closed, results are discarded silently.
 With `ping -c N`, the probes animate **one round-trip at a time** on the
 canvas: each request travels to the destination and its reply comes back
 before the next probe leaves, so you can follow them individually instead
-of seeing all `N` dots ride the wire at once.
+of seeing all `N` dots ride the wire at once. By default the probes are
+spaced **one second apart** (like real `ping`), and that gap shows as a
+pause between round trips.
+
+That spacing is what lets you watch traffic **reroute live**: while a
+counted ping runs, disable an interface or halt a router on the route —
+once the network reconverges, the next probe is forwarded along the
+recomputed route and its animation follows that new path. Tune the gap
+with `-i <seconds>` (e.g. `-i 2` for more editing time, or `-i 0` for an
+instant back-to-back burst). The wait pauses with the sim and ends when
+you Stop.
 
 ## Pause
 

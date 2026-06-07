@@ -256,6 +256,7 @@ def test_cmd_ping_count_sends_n_probes(monkeypatch, ping_host):
     host = ping_host
     calls = []
     monkeypatch.setattr(host, "ping", lambda addr, timeout: calls.append(addr) or 0.001)
+    monkeypatch.setattr("time.sleep", lambda s: None)   # skip the default 1 s gaps
     out = cmd_ping(host, ["10.0.0.2", "-c", "3"], as_obj=None)
     assert len(calls) == 3
     assert "3 sent" in out and "received" in out
@@ -274,3 +275,76 @@ def test_cmd_ping_count_one_is_default(monkeypatch, ping_host):
 def test_cmd_ping_count_rejects_nonpositive(ping_host):
     host = ping_host
     assert "positive" in cmd_ping(host, ["10.0.0.2", "-c", "0"], as_obj=None).lower()
+
+
+def test_cmd_ping_interval_sleeps_between_probes(monkeypatch, ping_host):
+    # -i spaces probes out: a sleep occurs *between* probes, not after the last.
+    host = ping_host
+    monkeypatch.setattr(host, "ping", lambda addr, timeout: 0.001)
+    sleeps = []
+    monkeypatch.setattr("time.sleep", lambda s: sleeps.append(s))
+    out = cmd_ping(host, ["10.0.0.2", "-c", "3", "-i", "2"], as_obj=None)
+    assert sleeps == [2.0, 2.0]      # 2 gaps between 3 probes
+    assert "3 sent" in out
+
+
+def test_cmd_ping_defaults_to_one_second_interval(monkeypatch, ping_host):
+    # Like real ping: probes are 1 s apart by default (no -i needed), so live
+    # topology edits affect later probes.
+    host = ping_host
+    monkeypatch.setattr(host, "ping", lambda addr, timeout: 0.001)
+    sleeps = []
+    monkeypatch.setattr("time.sleep", lambda s: sleeps.append(s))
+    cmd_ping(host, ["10.0.0.2", "-c", "3"], as_obj=None)
+    assert sleeps == [1.0, 1.0]
+
+
+def test_cmd_ping_interval_zero_sends_back_to_back(monkeypatch, ping_host):
+    host = ping_host
+    monkeypatch.setattr(host, "ping", lambda addr, timeout: 0.001)
+    sleeps = []
+    monkeypatch.setattr("time.sleep", lambda s: sleeps.append(s))
+    cmd_ping(host, ["10.0.0.2", "-c", "3", "-i", "0"], as_obj=None)
+    assert sleeps == []
+
+
+def test_cmd_ping_interval_rejects_negative(ping_host):
+    out = cmd_ping(ping_host, ["10.0.0.2", "-i", "-1"], as_obj=None)
+    assert "non-negative" in out.lower()
+
+
+def test_cmd_ping_interval_rejects_garbage(ping_host):
+    out = cmd_ping(ping_host, ["10.0.0.2", "-i", "abc"], as_obj=None)
+    assert "syntax" in out.lower()
+
+
+def test_cmd_ping_interval_uses_gate_and_aborts_on_stop(monkeypatch, ping_host):
+    # When the AS exposes a PauseGate, the inter-probe wait goes through it so a
+    # mid-ping Stop aborts the remaining probes.
+    host = ping_host
+    calls = []
+    monkeypatch.setattr(host, "ping", lambda addr, timeout: calls.append(addr) or 0.001)
+
+    class _FakeGate:
+        def __init__(self):
+            self.sleeps = 0
+
+        def sleep(self, _d):
+            self.sleeps += 1
+            return (False, True)   # signal "stopped" on the first inter-probe wait
+
+        def wait_or_stop(self, timeout=None):
+            return (True, False)
+
+    class _FakeAS:
+        def __init__(self, gate):
+            self._g = gate
+
+        def gate(self):
+            return self._g
+
+    gate = _FakeGate()
+    cmd_ping(host, ["10.0.0.2", "-c", "5", "-i", "1"], as_obj=_FakeAS(gate))
+    # First probe sent, gate.sleep reports stopped → loop breaks before probe 2.
+    assert len(calls) == 1
+    assert gate.sleeps == 1
