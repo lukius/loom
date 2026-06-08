@@ -75,6 +75,8 @@ wireProtocolPopover({
   onApply: async ({ hello, refresh }) => {
     await RuntimeClient.setProtocolConfig({ hello, refresh });
     toast(`Protocol timers updated: hello ${hello}s, refresh ${refresh}s`);
+    state.protocol = { hello_interval: hello, lsa_refresh_interval: refresh };
+    persist();
   },
 });
 
@@ -99,6 +101,8 @@ bus.addEventListener('sim:status-changed', () => {
     }
     PacketAnim.DURATION_MS = v;
     lastGood = v;
+    state.config.packet_duration_ms = v;
+    persist();
   });
 })();
 
@@ -120,7 +124,9 @@ RuntimeClient.connectEvents(_onEvent);
 // preserveView / preserveSelection are forwarded for live-edit resyncs so the
 // user's viewport and inspector focus survive server-confirmed topology updates.
 function importYaml(text, { preserveView = false, preserveSelection = false } = {}) {
-  return _importYaml(text, { ensurePositions, fitView, renderAll, preserveView, preserveSelection });
+  const ok = _importYaml(text, { ensurePositions, fitView, renderAll, preserveView, preserveSelection });
+  if (ok) PacketAnim.DURATION_MS = state.config.packet_duration_ms;
+  return ok;
 }
 
 /* ---------- render coordinator ---------- */
