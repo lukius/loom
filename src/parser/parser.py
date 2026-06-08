@@ -71,6 +71,10 @@ class Parser:
         internet.add_as(system)
         validator = SystemValidator(system)
 
+        protocol_config = self._parse_protocol_config(short_name, system_dict)
+        if protocol_config:
+            system.set_protocol_config(protocol_config)
+
         if 'networks' not in system_dict:
             self._fail(f'{short_name}: no networks in AS')
         self._parse_networks(system, validator, system_dict['networks'])
@@ -82,6 +86,9 @@ class Parser:
 
         if 'routers' in system_dict:
             self._parse_routers(system, validator, system_dict['routers'])
+            if protocol_config:
+                for router in system.routers().values():
+                    router.protocol().set_timers(**protocol_config)
 
         if 'hosts' in system_dict:
             self._parse_hosts(system, validator, system_dict['hosts'], hosts_on_links)
@@ -283,6 +290,42 @@ class Parser:
             self._fail(f'{name}: {result.reason()}')
 
         return NetworkAddress(addr)
+
+    def _parse_protocol_config(self, short_name, system_dict):
+        config = system_dict.get('config')
+        if config is None:
+            return None
+        if not isinstance(config, dict):
+            self._fail(f'{short_name}: "config" must be a mapping')
+        protocol = config.get('protocol')
+        if protocol is None:
+            return None
+        if not isinstance(protocol, dict):
+            self._fail(f'{short_name}: "config.protocol" must be a mapping')
+        has_hello = 'hello_interval' in protocol
+        has_refresh = 'lsa_refresh_interval' in protocol
+        if not has_hello and not has_refresh:
+            return None
+        if not (has_hello and has_refresh):
+            self._fail(
+                f'{short_name}: "config.protocol" requires both '
+                'hello_interval and lsa_refresh_interval'
+            )
+        return {
+            'hello_interval': self._positive_number(
+                short_name, 'hello_interval', protocol['hello_interval']
+            ),
+            'lsa_refresh_interval': self._positive_number(
+                short_name, 'lsa_refresh_interval', protocol['lsa_refresh_interval']
+            ),
+        }
+
+    def _positive_number(self, short_name, key, value):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+            self._fail(
+                f'{short_name}: "{key}" must be a positive number (got {value!r})'
+            )
+        return float(value)
 
     def _fail(self, msg):
         raise ParsingException(msg)

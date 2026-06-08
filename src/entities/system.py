@@ -21,10 +21,17 @@ class AS(Entity):
         self._links = dict()
         self._routers = dict()
         self._hosts = dict()
+        self._protocol_config = dict()
         self._gate = gate if gate is not None else PauseGate()
 
     def gate(self) -> PauseGate:
         return self._gate
+
+    def protocol_config(self) -> dict:
+        return self._protocol_config
+
+    def set_protocol_config(self, config: dict) -> None:
+        self._protocol_config = dict(config)
 
     def routers(self):
         return self._routers

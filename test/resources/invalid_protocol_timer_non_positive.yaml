@@ -1,0 +1,15 @@
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      config:
+        protocol:
+          hello_interval: 0
+          lsa_refresh_interval: 15
+      networks:
+        lan1: 100.100.100.0/24
+      hosts:
+        h1:
+          network: lan1
+          address: 100.100.100.10

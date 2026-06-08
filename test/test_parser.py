@@ -344,6 +344,31 @@ class ParserTest(unittest.TestCase):
                 f'{self.FILE_PATH}/invalid_internet_config_not_mapping.yaml'
             ).parse(start_routing=False)
 
+    def test_parses_and_applies_protocol_config(self):
+        internet = Parser(f'{self.FILE_PATH}/config_roundtrip.yaml').parse(
+            start_routing=False
+        )
+        system = internet.single_as()
+        self.assertEqual(
+            system.protocol_config(),
+            {'hello_interval': 5.0, 'lsa_refresh_interval': 15.0},
+        )
+        proto = system.routers()['r1'].protocol()
+        self.assertEqual(proto.hello_interval(), 5.0)
+        self.assertEqual(proto.lsa_refresh_interval(), 15.0)
+
+    def test_rejects_non_positive_protocol_timer(self):
+        with self.assertRaises(ParsingException):
+            Parser(
+                f'{self.FILE_PATH}/invalid_protocol_timer_non_positive.yaml'
+            ).parse(start_routing=False)
+
+    def test_rejects_partial_protocol_config(self):
+        with self.assertRaises(ParsingException):
+            Parser(
+                f'{self.FILE_PATH}/invalid_protocol_config_partial.yaml'
+            ).parse(start_routing=False)
+
     # ----------------------------------------------------------------- helpers
 
     def _run_parsing_error_test(self, filename, expected_msg):
