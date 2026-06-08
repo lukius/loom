@@ -31,6 +31,8 @@ def load(body: dict, request: Request):
 @router.get("/topology")
 def fetch(request: Request):
     s = _state(request)
+    if s.as_obj is not None:
+        return {"yaml": s._dump_yaml()}  # noqa: SLF001
     return {"yaml": s.session_path.read_text()}
 
 

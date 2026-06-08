@@ -359,11 +359,22 @@ class SimState:
                 d["gateway"] = str(host.gateway())
             return d
 
-        as_block = {
-            "asn": getattr(self._as, "_asn", 65000),
-            "networks": {
-                n.name(): str(n.address()) for n in self._as.networks().values()
-            },
+        as_block = {"asn": getattr(self._as, "_asn", 65000)}
+
+        routers = list(self._as.routers().values())
+        if routers:
+            proto = routers[0].protocol()
+            as_block["config"] = {
+                "protocol": {
+                    "hello_interval": proto.hello_interval(),
+                    "lsa_refresh_interval": proto.lsa_refresh_interval(),
+                }
+            }
+        elif self._as.protocol_config():
+            as_block["config"] = {"protocol": dict(self._as.protocol_config())}
+
+        as_block["networks"] = {
+            n.name(): str(n.address()) for n in self._as.networks().values()
         }
         # Conventional order (matching the source schema): networks, then
         # links (if any), then hosts, then routers. `links:` is omitted on

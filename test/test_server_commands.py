@@ -1,6 +1,7 @@
 import textwrap
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 
 from server.app import create_app
@@ -348,3 +349,72 @@ def test_cmd_ping_interval_uses_gate_and_aborts_on_stop(monkeypatch, ping_host):
     # First probe sent, gate.sleep reports stopped → loop breaks before probe 2.
     assert len(calls) == 1
     assert gate.sleeps == 1
+
+
+def test_topology_roundtrip_preserves_config(client):
+    src = """
+internet:
+  name: loom
+  config:
+    packet_duration_ms: 2400
+    theme: dark
+  autonomous_systems:
+    main:
+      asn: 65000
+      config:
+        protocol:
+          hello_interval: 5
+          lsa_refresh_interval: 15
+      networks:
+        lan1: 100.100.100.0/24
+      hosts:
+        h1:
+          network: lan1
+          address: 100.100.100.10
+      routers:
+        r1:
+          interfaces:
+            eth0:
+              network: lan1
+              address: 100.100.100.1
+              cost: 10
+"""
+    assert client.post("/topology", json={"yaml": src}).status_code == 200
+    dumped = yaml.safe_load(client.get("/topology").json()["yaml"])
+    internet = dumped["internet"]
+    assert internet["config"] == {"packet_duration_ms": 2400, "theme": "dark"}
+    proto = internet["autonomous_systems"]["main"]["config"]["protocol"]
+    assert proto["hello_interval"] == 5.0
+    assert proto["lsa_refresh_interval"] == 15.0
+
+
+def test_topology_dump_reflects_runtime_protocol_change(client):
+    src = """
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: 100.100.100.0/24
+      hosts:
+        h1:
+          network: lan1
+          address: 100.100.100.10
+      routers:
+        r1:
+          interfaces:
+            eth0:
+              network: lan1
+              address: 100.100.100.1
+              cost: 10
+"""
+    assert client.post("/topology", json={"yaml": src}).status_code == 200
+    assert client.post(
+        "/sim/protocol_config",
+        json={"hello_interval": 8, "lsa_refresh_interval": 24},
+    ).status_code == 200
+    dumped = yaml.safe_load(client.get("/topology").json()["yaml"])
+    proto = dumped["internet"]["autonomous_systems"]["main"]["config"]["protocol"]
+    assert proto["hello_interval"] == 8.0
+    assert proto["lsa_refresh_interval"] == 24.0
