@@ -158,6 +158,58 @@ describe('importYaml — resync mode: preserveSelection + preserveView', () => {
   });
 });
 
+describe('importYaml config blocks', () => {
+  const WITH_CONFIG = `
+internet:
+  name: main
+  config:
+    packet_duration_ms: 2400
+  autonomous_systems:
+    main:
+      asn: 65000
+      config:
+        protocol:
+          hello_interval: 5
+          lsa_refresh_interval: 15
+      networks: { lan1: "10.0.0.0/24" }
+      hosts: {}
+      routers: {}
+`;
+  const NO_CONFIG = `
+internet:
+  name: main
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks: { lan1: "10.0.0.0/24" }
+      hosts: {}
+      routers: {}
+`;
+
+  it('reads config blocks into state', () => {
+    importYaml(WITH_CONFIG);
+    expect(state.config.packet_duration_ms).toBe(2400);
+    expect(state.protocol.hello_interval).toBe(5);
+    expect(state.protocol.lsa_refresh_interval).toBe(15);
+  });
+
+  it('falls back to defaults when config is absent', () => {
+    state.config = { packet_duration_ms: 999 };
+    state.protocol = { hello_interval: 1, lsa_refresh_interval: 2 };
+    importYaml(NO_CONFIG);
+    expect(state.config.packet_duration_ms).toBe(1800);
+    expect(state.protocol.hello_interval).toBe(10);
+    expect(state.protocol.lsa_refresh_interval).toBe(30);
+  });
+
+  it('round-trips via exportYaml', () => {
+    importYaml(WITH_CONFIG);
+    const out = globalThis.jsyaml.load(exportYaml());
+    expect(out.internet.config.packet_duration_ms).toBe(2400);
+    expect(out.internet.autonomous_systems.main.config.protocol.hello_interval).toBe(5);
+  });
+});
+
 describe('importYaml — position-preserving reimport (Finding 1)', () => {
   it('preserves a pre-seeded network position across reimport', () => {
     // First import: no saved position → importYaml populates without coords.

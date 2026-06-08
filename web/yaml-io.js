@@ -5,7 +5,7 @@
 // app.js imports and calls these; canvas.js is NOT imported here (no DOM dependency
 // beyond the state object and js-yaml).
 
-import { state, persist } from './state.js';
+import { state, persist, CONFIG_DEFAULTS, PROTOCOL_DEFAULTS } from './state.js';
 import { toast } from './utils.js';
 
 // In the browser, js-yaml is loaded via CDN as a global (see web/index.html
@@ -175,6 +175,23 @@ export function importYaml(text, { ensurePositions, fitView, renderAll, preserve
     ? internetName
     : asShortName;
 
+  // General config (internet.config) — frontend-owned; backend round-trips it
+  // opaquely. Protocol config lives per-AS under config.protocol.
+  const generalConfig = parsed.internet.config;
+  state.config = { ...CONFIG_DEFAULTS };
+  if (generalConfig && typeof generalConfig === 'object'
+      && Number.isFinite(Number(generalConfig.packet_duration_ms))) {
+    state.config.packet_duration_ms = Number(generalConfig.packet_duration_ms);
+  }
+  const protoConfig = node.config && node.config.protocol;
+  state.protocol = { ...PROTOCOL_DEFAULTS };
+  if (protoConfig && typeof protoConfig === 'object') {
+    if (Number.isFinite(Number(protoConfig.hello_interval)))
+      state.protocol.hello_interval = Number(protoConfig.hello_interval);
+    if (Number.isFinite(Number(protoConfig.lsa_refresh_interval)))
+      state.protocol.lsa_refresh_interval = Number(protoConfig.lsa_refresh_interval);
+  }
+
   // Snapshot selection before the destructive state reset so it can be
   // restored by-name when preserveSelection is requested.
   const savedSelection = preserveSelection ? state.selection : null;
@@ -284,6 +301,12 @@ export function importYaml(text, { ensurePositions, fitView, renderAll, preserve
     state.view.y = savedView.y;
     state.view.k = savedView.k;
   }
+  const speedInput = document.getElementById('tb-speed');
+  if (speedInput) speedInput.value = state.config.packet_duration_ms;
+  const helloInput = document.getElementById('proto-hello');
+  if (helloInput) helloInput.value = state.protocol.hello_interval;
+  const refreshInput = document.getElementById('proto-refresh');
+  if (refreshInput) refreshInput.value = state.protocol.lsa_refresh_interval;
   const projName = document.getElementById('proj-name');
   if (projName) projName.value = state.asName;
   if (!preserveView && fitView) fitView();
