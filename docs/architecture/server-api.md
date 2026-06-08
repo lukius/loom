@@ -496,7 +496,7 @@ much less frequently and rarely overflow.
 # Load a topology
 curl -X POST http://127.0.0.1:8000/topology \
      -H 'Content-Type: application/json' \
-     -d '{"yaml": "as:\n  name: tiny\n  networks:\n    lan1: \"10.0.0.0/24\"\n  hosts:\n    h1: { network: lan1, address: \"10.0.0.10\" }\n"}'
+     -d '{"yaml": "internet:\n  autonomous_systems:\n    tiny:\n      networks:\n        lan1: \"10.0.0.0/24\"\n      hosts:\n        h1: { network: lan1, address: \"10.0.0.10\" }\n"}'
 
 # Start the sim
 curl -X POST http://127.0.0.1:8000/sim/start

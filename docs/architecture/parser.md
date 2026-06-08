@@ -94,10 +94,12 @@ Parsing rules (enforced by `_parse_protocol_config`):
   either is given — specifying only one raises `ParsingException`.
 - Both values must be positive numbers (int or float); booleans are
   rejected explicitly.
-- If present, the config dict is stored on the `AS` via
-  `system.set_protocol_config(protocol_config)` and applied to each
-  router's protocol via `router.protocol().set_timers(**protocol_config)`
-  at parse time. This happens regardless of the `start_routing` flag.
+- If present, `_parse_protocol_config` returns the validated config dict,
+  which `_parse_single_as` stores on the `AS` via
+  `system.set_protocol_config(protocol_config)`. After `_parse_routers`
+  completes, `_parse_single_as` calls
+  `router.protocol().set_timers(**protocol_config)` for each router.
+  This happens regardless of the `start_routing` flag.
 - `dead_interval` (3 × hello) and `max_age` (2 × refresh) remain derived
   from the timers and are not read from or written to YAML.
 
