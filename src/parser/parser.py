@@ -38,6 +38,12 @@ class Parser:
         internet_name = internet_dict.get('name', 'loom')
         internet = Internet(name=internet_name)
 
+        config = internet_dict.get('config')
+        if config is not None:
+            if not isinstance(config, dict):
+                self._fail('"internet.config" must be a mapping')
+            internet.set_config(config)
+
         if 'autonomous_systems' not in internet_dict:
             self._fail('missing "autonomous_systems" in internet block')
         ases_dict = internet_dict['autonomous_systems']

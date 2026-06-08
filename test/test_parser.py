@@ -329,6 +329,21 @@ class ParserTest(unittest.TestCase):
             'link_host_addr_is_network_or_broadcast', 'invalid address for link'
         )
 
+    def test_parses_top_level_config_as_opaque_dict(self):
+        internet = Parser(f'{self.FILE_PATH}/config_roundtrip.yaml').parse(
+            start_routing=False
+        )
+        self.assertEqual(
+            internet.config(),
+            {'packet_duration_ms': 2400, 'theme': 'dark'},
+        )
+
+    def test_rejects_non_mapping_internet_config(self):
+        with self.assertRaises(ParsingException):
+            Parser(
+                f'{self.FILE_PATH}/invalid_internet_config_not_mapping.yaml'
+            ).parse(start_routing=False)
+
     # ----------------------------------------------------------------- helpers
 
     def _run_parsing_error_test(self, filename, expected_msg):

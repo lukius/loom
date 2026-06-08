@@ -379,14 +379,13 @@ class SimState:
             }
             for r in self._as.routers().values()
         }
-        root = {
-            "internet": {
-                "name": self._internet.name() if self._internet else "loom",
-                "autonomous_systems": {
-                    self._as.name(): as_block,
-                },
-            }
+        internet_block = {
+            "name": self._internet.name() if self._internet else "loom",
         }
+        if self._internet is not None and self._internet.config():
+            internet_block["config"] = dict(self._internet.config())
+        internet_block["autonomous_systems"] = {self._as.name(): as_block}
+        root = {"internet": internet_block}
         return yaml.safe_dump(root, sort_keys=False)
 
     def stop(self):

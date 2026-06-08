@@ -104,12 +104,19 @@ class Internet(Entity):
     def __init__(self, name='loom'):
         super().__init__(name)
         self._ases = dict()
+        self._config = dict()
         self._gate = PauseGate()
         self._event_tracer = EventTracer()
         EventTracer.set_current(self._event_tracer)
 
     def gate(self) -> PauseGate:
         return self._gate
+
+    def config(self) -> dict:
+        return self._config
+
+    def set_config(self, config: dict) -> None:
+        self._config = dict(config)
 
     def event_tracer(self) -> EventTracer:
         return self._event_tracer

@@ -1,0 +1,12 @@
+internet:
+  name: loom
+  config: "not a mapping"
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: 100.100.100.0/24
+      hosts:
+        h1:
+          network: lan1
+          address: 100.100.100.10

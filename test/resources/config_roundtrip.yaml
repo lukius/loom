@@ -1,0 +1,25 @@
+internet:
+  name: loom
+  config:
+    packet_duration_ms: 2400
+    theme: dark
+  autonomous_systems:
+    main:
+      asn: 65000
+      config:
+        protocol:
+          hello_interval: 5
+          lsa_refresh_interval: 15
+      networks:
+        lan1: 100.100.100.0/24
+      routers:
+        r1:
+          interfaces:
+            eth0:
+              network: lan1
+              address: 100.100.100.1
+              cost: 10
+      hosts:
+        h1:
+          network: lan1
+          address: 100.100.100.10
