@@ -32,9 +32,9 @@ Each role is a distinct subagent kind, dispatched via the `Agent` tool with a sp
 | Role | Model | Effort (intent) | Job |
 |---|---|---|---|
 | **Developer** | `sonnet` (Sonnet 4.6) | xhigh | Read the task from the plan. Execute its steps verbatim (TDD red → green → refactor → commit). Return a report: what got committed, test/lint output, any deviations. |
-| **Reviewer** | `opus` (Opus 4.7) | xhigh | Audit the developer's commit(s) against the plan's task spec AND the design spec. Focus areas: code quality, spec consistency, performance, functional correctness. Approve or reject with specific, citable findings. |
-| **Final reviewer** | `opus` (Opus 4.7) | max | Once every per-task review has been approved, audit the **entire branch** end-to-end. Catches cross-task issues that per-task review can miss (subtle inconsistencies between tasks, abstractions that diverged, missing coverage, integration gaps). One pass, deep. |
-| **QA** | `opus` (Opus 4.7) | xhigh | After final review approves, runs functional QA. Walks the user journeys / acceptance criteria from the spec, checks that the running system matches the spec's promises. Returns a QA report with any defects. |
+| **Reviewer** | `opus` (Opus 4.8) | xhigh | Audit the developer's commit(s) against the plan's task spec AND the design spec. Focus areas: code quality, spec consistency, performance, functional correctness. Approve or reject with specific, citable findings. |
+| **Final reviewer** | `opus` (Opus 4.8) | max | Once every per-task review has been approved, audit the **entire branch** end-to-end. Catches cross-task issues that per-task review can miss (subtle inconsistencies between tasks, abstractions that diverged, missing coverage, integration gaps). One pass, deep. |
+| **QA** | `opus` (Opus 4.8) | xhigh | After final review approves, runs functional QA. Walks the user journeys / acceptance criteria from the spec, checks that the running system matches the spec's promises. Returns a QA report with any defects. |
 
 The orchestrator (this session) does NOT review code itself — it dispatches reviewers, reads their reports, and decides what to do.
 
