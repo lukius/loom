@@ -3,6 +3,7 @@ import {
   state, bus,
   STORAGE_KEY, THEME_KEY, LAYOUT_KEY, LAYOUT_DEF, LAYOUT_LIMITS, SAMPLE,
   NODE, HIT_PAD,
+  CONFIG_DEFAULTS, PROTOCOL_DEFAULTS,
   persist, restore, loadSample, clearTopology, markDirty, setSave,
   defaultExportFilename,
   applyInterfaceStateChanged, applyDeviceStateChanged,
@@ -202,6 +203,36 @@ describe('persist / restore', () => {
     state.view = { x: 99, y: 99, k: 9 };
     restore();
     expect(state.view).toEqual({ x: 99, y: 99, k: 9 });
+  });
+
+  it('round-trips non-default config.packet_duration_ms and protocol timers through persist/restore', () => {
+    state.config.packet_duration_ms = 2500;
+    state.protocol.hello_interval = 5;
+    state.protocol.lsa_refresh_interval = 15;
+    persist();
+    // mutate in memory so we know restore actually applied the stored values
+    state.config.packet_duration_ms = 9999;
+    state.protocol.hello_interval = 9999;
+    state.protocol.lsa_refresh_interval = 9999;
+    expect(restore()).toBe(true);
+    expect(state.config.packet_duration_ms).toBe(2500);
+    expect(state.protocol.hello_interval).toBe(5);
+    expect(state.protocol.lsa_refresh_interval).toBe(15);
+  });
+
+  it('restore falls back to CONFIG_DEFAULTS/PROTOCOL_DEFAULTS when legacy blob has no config/protocol keys', () => {
+    // Simulate a pre-config/protocol session blob
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      asName: 'legacy_as',
+      networks: {},
+      hosts: {},
+      routers: {},
+      view: { x: 0, y: 0, k: 1 },
+      display: { showCosts: true, showIfaces: true },
+    }));
+    expect(restore()).toBe(true);
+    expect(state.config).toEqual(CONFIG_DEFAULTS);
+    expect(state.protocol).toEqual(PROTOCOL_DEFAULTS);
   });
 });
 

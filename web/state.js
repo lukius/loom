@@ -23,6 +23,10 @@ export const state = {
   display: { showCosts: true, showIfaces: true },
   /* UI panel open/closed state (persisted) */
   ui: { packetsPanelOpen: false, showChatter: true },
+  /* general config (persisted; round-tripped through YAML internet.config) */
+  config: { packet_duration_ms: 1800 },
+  /* routing-protocol timers (persisted; round-tripped through AS config.protocol) */
+  protocol: { hello_interval: 10, lsa_refresh_interval: 30 },
   /* transient sim state — NAT snapshots keyed by device name; populated by
      the `nat_table_changed` WS event. Not persisted; reset on loadSample. */
   natTables: {},
@@ -43,6 +47,8 @@ export const state = {
 
 /* Defaults used when restoring a legacy session that didn't persist `display`. */
 export const DISPLAY_DEFAULTS = { showCosts: true, showIfaces: true };
+export const CONFIG_DEFAULTS = { packet_duration_ms: 1800 };
+export const PROTOCOL_DEFAULTS = { hello_interval: 10, lsa_refresh_interval: 30 };
 
 /* Cross-component event bus. State mutations + cross-component re-renders
    should flow through `bus`; synchronous queries and DOM helpers stay direct
@@ -130,6 +136,8 @@ export function persist() {
       view: state.view,
       display: state.display,
       ui: state.ui,
+      config: state.config,
+      protocol: state.protocol,
       sourceName: state.sourceName,
     }));
     setSave('autosaved');
@@ -148,6 +156,8 @@ export function restore() {
     if (d.view) state.view = d.view;
     state.display = { ...DISPLAY_DEFAULTS, ...(d.display || {}) };
     state.ui = { packetsPanelOpen: false, showChatter: true, ...(d.ui || {}) };
+    state.config = { ...CONFIG_DEFAULTS, ...(d.config || {}) };
+    state.protocol = { ...PROTOCOL_DEFAULTS, ...(d.protocol || {}) };
     state.sourceName = (typeof d.sourceName === 'string' && d.sourceName) ? d.sourceName : null;
     return true;
   } catch (_) { return false; }
