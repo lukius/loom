@@ -177,19 +177,28 @@ export function importYaml(text, { ensurePositions, fitView, renderAll, preserve
 
   // General config (internet.config) — frontend-owned; backend round-trips it
   // opaquely. Protocol config lives per-AS under config.protocol.
+  // Only strictly positive values are accepted; zero/negative fall back to
+  // defaults (the backend rejects non-positive timers with a 400 on Start).
+  const positiveOr = (v, fallback) => {
+    const n = Number(v);
+    return (Number.isFinite(n) && n > 0) ? n : fallback;
+  };
   const generalConfig = parsed.internet.config;
   state.config = { ...CONFIG_DEFAULTS };
-  if (generalConfig && typeof generalConfig === 'object'
-      && Number.isFinite(Number(generalConfig.packet_duration_ms))) {
-    state.config.packet_duration_ms = Number(generalConfig.packet_duration_ms);
+  if (generalConfig && typeof generalConfig === 'object') {
+    state.config.packet_duration_ms = positiveOr(
+      generalConfig.packet_duration_ms, CONFIG_DEFAULTS.packet_duration_ms
+    );
   }
   const protoConfig = node.config && node.config.protocol;
   state.protocol = { ...PROTOCOL_DEFAULTS };
   if (protoConfig && typeof protoConfig === 'object') {
-    if (Number.isFinite(Number(protoConfig.hello_interval)))
-      state.protocol.hello_interval = Number(protoConfig.hello_interval);
-    if (Number.isFinite(Number(protoConfig.lsa_refresh_interval)))
-      state.protocol.lsa_refresh_interval = Number(protoConfig.lsa_refresh_interval);
+    state.protocol.hello_interval = positiveOr(
+      protoConfig.hello_interval, PROTOCOL_DEFAULTS.hello_interval
+    );
+    state.protocol.lsa_refresh_interval = positiveOr(
+      protoConfig.lsa_refresh_interval, PROTOCOL_DEFAULTS.lsa_refresh_interval
+    );
   }
 
   // Snapshot selection before the destructive state reset so it can be

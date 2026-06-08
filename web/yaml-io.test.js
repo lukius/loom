@@ -208,6 +208,31 @@ internet:
     expect(out.internet.config.packet_duration_ms).toBe(2400);
     expect(out.internet.autonomous_systems.main.config.protocol.hello_interval).toBe(5);
   });
+
+  it('falls back to defaults for non-positive timers and packet_duration_ms', () => {
+    // Zero and negative values are rejected by the backend; they must not be
+    // imported — fall back to PROTOCOL_DEFAULTS / CONFIG_DEFAULTS instead.
+    const ZERO_TIMERS = `
+internet:
+  name: main
+  config:
+    packet_duration_ms: -100
+  autonomous_systems:
+    main:
+      asn: 65000
+      config:
+        protocol:
+          hello_interval: 0
+          lsa_refresh_interval: -5
+      networks: { lan1: "10.0.0.0/24" }
+      hosts: {}
+      routers: {}
+`;
+    importYaml(ZERO_TIMERS);
+    expect(state.config.packet_duration_ms).toBe(1800);
+    expect(state.protocol.hello_interval).toBe(10);
+    expect(state.protocol.lsa_refresh_interval).toBe(30);
+  });
 });
 
 describe('importYaml — position-preserving reimport (Finding 1)', () => {
