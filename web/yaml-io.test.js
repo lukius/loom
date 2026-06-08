@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { state } from './state.js';
-import { importYaml } from './yaml-io.js';
+import { importYaml, exportYaml } from './yaml-io.js';
 
 const YAML_ONE_NET = `
 internet:
@@ -71,6 +71,23 @@ beforeEach(() => {
   state.selection = null;
   // proj-name may be queried inside importYaml
   document.body.innerHTML = '<input id="proj-name" /><div id="toasts"></div>';
+});
+
+describe('exportYaml config blocks', () => {
+  beforeEach(() => {
+    state.networks = {}; state.hosts = {}; state.routers = {}; state.links = {};
+    state.asName = 'main';
+    state.config = { packet_duration_ms: 2400 };
+    state.protocol = { hello_interval: 5, lsa_refresh_interval: 15 };
+  });
+
+  it('emits internet.config and per-AS config.protocol', () => {
+    const out = globalThis.jsyaml.load(exportYaml());
+    expect(out.internet.config.packet_duration_ms).toBe(2400);
+    const proto = out.internet.autonomous_systems.main.config.protocol;
+    expect(proto.hello_interval).toBe(5);
+    expect(proto.lsa_refresh_interval).toBe(15);
+  });
 });
 
 describe('importYaml — resync mode: preserveSelection + preserveView', () => {

@@ -66,6 +66,12 @@ function ensureLinkPositions() {
 export function exportYaml() {
   const asBlock = {
     asn: 65000,
+    config: {
+      protocol: {
+        hello_interval: state.protocol.hello_interval,
+        lsa_refresh_interval: state.protocol.lsa_refresh_interval,
+      },
+    },
   };
 
   // networks block (only when non-empty)
@@ -123,6 +129,7 @@ export function exportYaml() {
   const out = {
     internet: {
       name: docName,
+      config: { packet_duration_ms: state.config.packet_duration_ms },
       autonomous_systems: {
         [docName]: asBlock,
       },
