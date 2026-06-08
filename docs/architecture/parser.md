@@ -50,6 +50,57 @@ breaking parsers. The AS short name is the mapping key under
 `autonomous_systems:` — there is no separate `name:` field inside each
 AS block. Any future emitter must produce the same shape.
 
+## Optional `config:` blocks
+
+Two optional config blocks extend the top-level schema:
+
+### `internet.config`
+
+An arbitrary mapping placed directly under `internet:`:
+
+```yaml
+internet:
+  config:
+    packet_duration_ms: 2400
+    theme: dark
+  autonomous_systems: ...
+```
+
+The parser validates that the value is a mapping (`dict`), then calls
+`internet.set_config(config)` to store it verbatim on the `Internet`
+object. The backend does not interpret the keys — they are stored
+opaquely and re-emitted unchanged on serialization. Any consumer of the
+topology (such as the SPA) may define its own keys here.
+
+### `<as>.config.protocol`
+
+A per-AS block that sets the link-state protocol timers for every router
+in that AS:
+
+```yaml
+autonomous_systems:
+  main:
+    config:
+      protocol:
+        hello_interval: 5           # seconds; positive number
+        lsa_refresh_interval: 15    # seconds; positive number
+    networks: ...
+```
+
+Parsing rules (enforced by `_parse_protocol_config`):
+
+- `config:` and `config.protocol:` must each be a mapping when present.
+- `hello_interval` and `lsa_refresh_interval` are both required when
+  either is given — specifying only one raises `ParsingException`.
+- Both values must be positive numbers (int or float); booleans are
+  rejected explicitly.
+- If present, the config dict is stored on the `AS` via
+  `system.set_protocol_config(protocol_config)` and applied to each
+  router's protocol via `router.protocol().set_timers(**protocol_config)`
+  at parse time. This happens regardless of the `start_routing` flag.
+- `dead_interval` (3 × hello) and `max_age` (2 × refresh) remain derived
+  from the timers and are not read from or written to YAML.
+
 ## `Parser.parse()` flow
 
 ```mermaid
@@ -242,5 +293,6 @@ additional fixtures referenced from `test/test_parser.py`.
 | `src/shell/shell.py:do_read` | `self._system = Parser(arg).parse()` — replaces the live AS, stopping the previous one first |
 | `src/server/state.py:load_from_session` | Parses the session file, then **stops every router** to enforce `idle` semantics before the next `/sim/start` |
 
-Nothing else parses YAML. The web layer reads the topology back via
-`GET /topology` from the session file directly (no re-parse on read).
+Nothing else parses YAML. `GET /topology` returns re-serialized live
+state via `SimState._dump_yaml()` when a topology is loaded, or the
+raw session file when not.

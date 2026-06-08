@@ -180,6 +180,84 @@ Rules:
 - Hosts have exactly one interface. There is no syntax for a
   multi-homed host.
 
+## Optional `config:` blocks
+
+Two optional `config:` blocks let you persist settings alongside the
+topology. Both are optional — omitting them leaves all defaults in place.
+
+### Top-level `internet.config`
+
+Placed directly under `internet:`, alongside `name:` and
+`autonomous_systems:`. Any key/value pairs you write here are stored
+and re-emitted verbatim on **Export** and `GET /topology`. The SPA
+currently reads `packet_duration_ms` (packet animation duration in
+milliseconds; default 1800).
+
+```yaml
+internet:
+  config:
+    packet_duration_ms: 2400
+  autonomous_systems:
+    ...
+```
+
+### Per-AS `config.protocol`
+
+Placed inside an AS block, under `config.protocol:`. Sets the
+routing-protocol timers applied to every router in that AS at parse
+time.
+
+```yaml
+autonomous_systems:
+  main:
+    config:
+      protocol:
+        hello_interval: 5           # seconds; default 10
+        lsa_refresh_interval: 15    # seconds; default 30
+    networks:
+      ...
+```
+
+Rules:
+- Both `hello_interval` and `lsa_refresh_interval` must be given
+  together — specifying only one is a parse error.
+- Both must be positive numbers (int or float). Booleans are rejected.
+- `dead_interval` (3 × hello) and `max_age` (2 × refresh) remain
+  derived and are not written to YAML.
+
+### A complete example with config blocks
+
+```yaml
+internet:
+  name: loom
+  config:
+    packet_duration_ms: 2400
+  autonomous_systems:
+    main:
+      asn: 65000
+      config:
+        protocol:
+          hello_interval: 5
+          lsa_refresh_interval: 15
+      networks:
+        lan1: "100.100.100.0/24"
+      routers:
+        r1:
+          interfaces:
+            eth0:
+              network: lan1
+              address: "100.100.100.1"
+              cost: 10
+      hosts:
+        h1:
+          network: lan1
+          address: "100.100.100.10"
+```
+
+The SPA's **Export** writes both blocks when non-default values are
+present. **Import** restores them, so packet duration and protocol
+timer values persist across sessions.
+
 ## Naming rules
 
 - `networks` and `links` share a namespace — no network can have the

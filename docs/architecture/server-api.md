@@ -20,16 +20,23 @@ SPA is served from `/` via `StaticFiles(directory="web", html=True)`.
 
 ## `GET /topology`
 
-Read the current session YAML.
+Read the current topology as YAML.
 
 **Response**
 
 ```json
-{ "yaml": "as:\n  name: ...\n..." }
+{ "yaml": "internet:\n  name: ...\n..." }
 ```
 
-Reads `<source>.session.yaml` directly from disk; no parse, no
-validation. Use this for round-tripping the canvas through the server.
+When a topology is loaded (`as_obj is not None`), returns the
+re-serialized live state via `SimState._dump_yaml()` — not the
+session file read verbatim. This means any runtime change made via
+`POST /sim/protocol_config` is reflected on the next fetch, because
+`_dump_yaml` reads the protocol timers from the live router objects and
+writes them into the `<as>.config.protocol` block. The top-level
+`internet.config` dict is re-emitted verbatim (it is stored opaquely
+and never interpreted by the backend). When no topology is loaded, the
+raw session-file text is returned instead.
 
 ---
 
@@ -206,24 +213,25 @@ reloaded).
 
 `as_name` is `null` when no topology is loaded.
 
-### `POST /sim/refresh_interval`
+### `POST /sim/protocol_config`
 
-Change the routing-protocol keepalive interval **live**.
+Change the routing-protocol timers **live** — no restart required.
 
 **Request**
 
 ```json
-{ "seconds": 30 }
+{ "hello_interval": 5, "lsa_refresh_interval": 15 }
 ```
 
-- Must be a number (int or float, not bool).
-- Range `[1, 300]` — enforced server-side as `REFRESH_MIN=1`,
-  `REFRESH_MAX=300`. Errors `400` outside range.
+- Both `hello_interval` and `lsa_refresh_interval` are required.
+- Both must be positive numbers (int or float, not bool). `400` on
+  invalid or non-positive values.
 - Requires `as_obj is not None` (sim must be loaded), else `409`.
 
-Applied via `proto.set_timers(hello_interval=..., lsa_refresh_interval=seconds)` on every
-router. The change takes effect at the next sleep boundary of each
-router's protocol thread — at most one current-interval's delay.
+Applied via `proto.set_timers(hello_interval=..., lsa_refresh_interval=...)`
+on every router. The change takes effect at the next sleep boundary of each
+router's protocol thread. The updated values are reflected in the next
+`GET /topology` response (see above).
 
 ---
 
