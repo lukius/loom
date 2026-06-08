@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { escapeHtml, uniqueName, uniqueIface, pad2, cssEscape, el, toast, isValidIpv4, isValidNetworkCidr, addressInCidr, isPrivateCidr } from './utils.js';
+import { escapeHtml, uniqueName, uniqueIface, pad2, cssEscape, el, toast, isValidIpv4, isValidNetworkCidr, addressInCidr, isPrivateCidr, isForeignFabricDrop } from './utils.js';
 
 describe('escapeHtml', () => {
   it('escapes ampersand and angle brackets', () => {
@@ -413,5 +413,33 @@ describe('isPrivateCidr', () => {
     expect(isPrivateCidr('10.0.0.0')).toBe(false);   // missing mask
     expect(isPrivateCidr(null)).toBe(false);
     expect(isPrivateCidr(undefined)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isForeignFabricDrop
+// ---------------------------------------------------------------------------
+describe('isForeignFabricDrop', () => {
+  const state = {
+    hosts:   { h1: { network: 'lan1' } },
+    routers: { r1: { interfaces: { eth0: { network: 'lan1' }, eth1: { network: 'lan2' } } } },
+  };
+  it('returns false when no drop target', () => {
+    expect(isForeignFabricDrop('host', 'h1', null, state)).toBe(false);
+  });
+  it('host: false when dropped on its current network', () => {
+    expect(isForeignFabricDrop('host', 'h1', 'lan1', state)).toBe(false);
+  });
+  it('host: true when dropped on a different network', () => {
+    expect(isForeignFabricDrop('host', 'h1', 'lan2', state)).toBe(true);
+  });
+  it('router: false when it already has an interface on the target', () => {
+    expect(isForeignFabricDrop('router', 'r1', 'lan2', state)).toBe(false);
+  });
+  it('router: true when it has no interface on the target', () => {
+    expect(isForeignFabricDrop('router', 'r1', 'lan3', state)).toBe(true);
+  });
+  it('network: always false (networks are not reassignable)', () => {
+    expect(isForeignFabricDrop('network', 'lan1', 'lan2', state)).toBe(false);
   });
 });
