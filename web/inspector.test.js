@@ -23,6 +23,18 @@ import {
 import { Sim, RuntimeClient } from './sim.js';
 
 // ---------------------------------------------------------------------------
+// Network guard. RuntimeClient._json is the single fetch chokepoint; with the
+// sim running/paused the inspector primes routing/NAT sections by calling the
+// server. Under vitest there is no server, so an unstubbed call would attempt a
+// real fetch (ECONNREFUSED). Default it to a benign empty response before every
+// test and restore the real method after, so no test hits the network and per-
+// test stubs (set in the body) can't leak into later tests.
+// ---------------------------------------------------------------------------
+const REAL_JSON = RuntimeClient._json;
+beforeEach(() => { RuntimeClient._json = vi.fn(async () => ({})); });
+afterEach(() => { RuntimeClient._json = REAL_JSON; });
+
+// ---------------------------------------------------------------------------
 // Minimal DOM environment — mirrors the subset that inspector.js touches.
 // ---------------------------------------------------------------------------
 function setupDOM() {
