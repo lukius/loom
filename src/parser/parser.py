@@ -71,6 +71,9 @@ class Parser:
         internet.add_as(system)
         validator = SystemValidator(system)
 
+        if 'asn' in system_dict:
+            system.set_asn(system_dict['asn'])
+
         protocol_config = self._parse_protocol_config(short_name, system_dict)
         if protocol_config:
             system.set_protocol_config(protocol_config)

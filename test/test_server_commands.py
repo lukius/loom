@@ -388,6 +388,32 @@ internet:
     assert proto["lsa_refresh_interval"] == 15.0
 
 
+def test_topology_roundtrip_preserves_asn(client):
+    src = """
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 64500
+      networks:
+        lan1: 100.100.100.0/24
+      hosts:
+        h1:
+          network: lan1
+          address: 100.100.100.10
+      routers:
+        r1:
+          interfaces:
+            eth0:
+              network: lan1
+              address: 100.100.100.1
+              cost: 10
+"""
+    assert client.post("/topology", json={"yaml": src}).status_code == 200
+    dumped = yaml.safe_load(client.get("/topology").json()["yaml"])
+    assert dumped["internet"]["autonomous_systems"]["main"]["asn"] == 64500
+
+
 def test_topology_dump_reflects_runtime_protocol_change(client):
     src = """
 internet:

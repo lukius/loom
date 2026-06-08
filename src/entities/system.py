@@ -22,7 +22,14 @@ class AS(Entity):
         self._routers = dict()
         self._hosts = dict()
         self._protocol_config = dict()
+        self._asn = 65000
         self._gate = gate if gate is not None else PauseGate()
+
+    def asn(self) -> int:
+        return self._asn
+
+    def set_asn(self, asn: int) -> None:
+        self._asn = asn
 
     def gate(self) -> PauseGate:
         return self._gate

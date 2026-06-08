@@ -369,6 +369,25 @@ class ParserTest(unittest.TestCase):
                 f'{self.FILE_PATH}/invalid_protocol_config_partial.yaml'
             ).parse(start_routing=False)
 
+    def test_parses_asn_from_as_block(self):
+        internet = Parser(f'{self.FILE_PATH}/config_roundtrip.yaml').parse(
+            start_routing=False
+        )
+        # config_roundtrip.yaml declares asn: 65000
+        self.assertEqual(internet.single_as().asn(), 65000)
+
+    def test_asn_defaults_when_absent(self):
+        internet = Parser(f'{self.FILE_PATH}/simple_network.yaml').parse(
+            start_routing=False
+        )
+        self.assertEqual(internet.single_as().asn(), 65000)
+
+    def test_parses_custom_asn(self):
+        internet = Parser(f'{self.FILE_PATH}/custom_asn.yaml').parse(
+            start_routing=False
+        )
+        self.assertEqual(internet.single_as().asn(), 64500)
+
     # ----------------------------------------------------------------- helpers
 
     def _run_parsing_error_test(self, filename, expected_msg):

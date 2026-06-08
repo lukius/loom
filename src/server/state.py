@@ -359,7 +359,7 @@ class SimState:
                 d["gateway"] = str(host.gateway())
             return d
 
-        as_block = {"asn": getattr(self._as, "_asn", 65000)}
+        as_block = {"asn": self._as.asn()}
 
         routers = list(self._as.routers().values())
         if routers:

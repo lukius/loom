@@ -18,7 +18,7 @@ internet:
   name: loom              # optional; defaults to 'loom'
   autonomous_systems:
     main:
-      asn: 65000          # reserved for BGP; defaults to 65000
+      asn: 65000          # preserved across round-trips; not yet used for routing (reserved for BGP)
       networks:
         lan1: "200.100.0.0/24"
         ...
@@ -52,9 +52,10 @@ Single-AS topologies put one entry under `autonomous_systems:`,
 conventionally named `main`. Multiple ASes are reserved for the future
 BGP work.
 
-The `asn:` field is reserved for the eventual BGP work; it is ignored
-by the link-state protocol today. Pick something in the private
-64512–65535 range.
+The `asn:` field is read and preserved across round-trips (Export →
+Import and `GET /topology`) but is not yet used by the link-state
+protocol. It defaults to 65000 when absent. Pick something in the
+private 64512–65535 range; BGP support is future work.
 
 A minimal valid topology with no devices:
 
