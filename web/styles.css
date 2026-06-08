@@ -1646,6 +1646,7 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
 .toast.ok    .toast-bar { background: var(--pos); }
 .toast.error .toast-bar { background: var(--neg); }
 .toast.info  .toast-bar { background: var(--accent); }
+.toast.paused .toast-bar { animation-play-state: paused; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ============================================================

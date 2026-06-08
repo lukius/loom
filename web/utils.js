@@ -257,6 +257,8 @@ export function toast(msg, kind = '', label = null) {
 
   let timer = null;
   let dismissed = false;
+  let remaining = lifetime;
+  let startedAt = Date.now();
   function dismiss() {
     if (dismissed) return;
     dismissed = true;
@@ -266,9 +268,26 @@ export function toast(msg, kind = '', label = null) {
     elT.style.transform = 'translateY(6px)';
     setTimeout(() => elT.remove(), 320);
   }
+  function schedule() {
+    startedAt = Date.now();
+    timer = setTimeout(dismiss, remaining);
+  }
 
   // A click anywhere on the toast (including the × button) dismisses it now.
   elT.addEventListener('click', dismiss);
+  // Hovering pauses the countdown (and the auto-dismiss) so it can be read.
+  elT.addEventListener('mouseenter', () => {
+    if (dismissed || timer === null) return;
+    clearTimeout(timer);
+    timer = null;
+    remaining -= Date.now() - startedAt;
+    elT.classList.add('paused');
+  });
+  elT.addEventListener('mouseleave', () => {
+    if (dismissed || timer !== null) return;
+    elT.classList.remove('paused');
+    schedule();
+  });
 
-  timer = setTimeout(dismiss, lifetime);
+  schedule();
 }

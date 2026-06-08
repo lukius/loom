@@ -275,6 +275,26 @@ describe('toast', () => {
     vi.advanceTimersByTime(320);
     expect(wrap.children.length).toBe(0);
   });
+  it('pauses auto-dismiss while the pointer is hovering', () => {
+    toast('hover me');                       // 2400ms lifetime
+    const wrap = document.getElementById('toasts');
+    const t = wrap.querySelector('.toast');
+    t.dispatchEvent(new Event('mouseenter'));
+    vi.advanceTimersByTime(5000);            // well past the normal lifetime
+    expect(wrap.children.length).toBe(1);    // still here — paused
+    expect(t.classList.contains('paused')).toBe(true);
+  });
+  it('resumes auto-dismiss after the pointer leaves', () => {
+    toast('hover me');
+    const wrap = document.getElementById('toasts');
+    const t = wrap.querySelector('.toast');
+    t.dispatchEvent(new Event('mouseenter'));
+    vi.advanceTimersByTime(5000);
+    t.dispatchEvent(new Event('mouseleave'));
+    expect(t.classList.contains('paused')).toBe(false);
+    vi.advanceTimersByTime(2400 + 320);      // remaining lifetime + fade
+    expect(wrap.children.length).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
