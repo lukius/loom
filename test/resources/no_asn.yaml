@@ -1,0 +1,10 @@
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      networks:
+        lan1: 100.100.100.0/24
+      hosts:
+        h1:
+          network: lan1
+          address: 100.100.100.10

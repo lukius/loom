@@ -69,6 +69,7 @@ beforeEach(() => {
   state.links = {};
   state.natTables = {};
   state.selection = null;
+  state.asn = 65000;
   // proj-name may be queried inside importYaml
   document.body.innerHTML = '<input id="proj-name" /><div id="toasts"></div>';
 });

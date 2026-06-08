@@ -377,7 +377,7 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(internet.single_as().asn(), 65000)
 
     def test_asn_defaults_when_absent(self):
-        internet = Parser(f'{self.FILE_PATH}/simple_network.yaml').parse(
+        internet = Parser(f'{self.FILE_PATH}/no_asn.yaml').parse(
             start_routing=False
         )
         self.assertEqual(internet.single_as().asn(), 65000)
