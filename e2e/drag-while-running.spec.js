@@ -75,6 +75,13 @@ test('refuses foreign-fabric reassignment while running: snaps back + warns', as
 
   // Warn toast explaining the restriction is shown.
   await expect(page.locator('#toasts .toast.warn')).toContainText(/stop the sim/i);
+
+  // Membership must be UNCHANGED — a refused drop repositions nothing and must
+  // not reassign h1 to lan2. Re-select h1 via the nav tree (unambiguous; the
+  // canvas node has snapped back over its origin) and read its fabric selector,
+  // whose selected value mirrors host.network.
+  await page.locator(`#nav .nav-row[data-pick='{"kind":"host","name":"h1"}']`).click();
+  await expect(page.locator('#f-fabric-name')).toHaveValue('lan1');
 });
 
 test('broadcast-chatter dot follows a dragged router while paused', async ({ page }) => {
