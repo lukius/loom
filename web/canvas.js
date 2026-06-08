@@ -853,7 +853,6 @@ export function drawLinkEdge(linkName, linkObj) {
   midG.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     e.stopPropagation();
-    if (isTopologyLocked()) return;
     // Dispatch selection first — this triggers reRenderEdges() which clears
     // edgesLayer and re-creates the midG element. setPointerCapture must be
     // called AFTER re-render so it targets the fresh (attached) element;
