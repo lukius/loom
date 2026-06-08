@@ -108,6 +108,10 @@ def set_protocol_config(request: Request, body: dict = Body(...)):
     s = _state(request)
     if s.as_obj is None:
         raise HTTPException(status_code=409, detail="no system loaded")
+    # Mutating the live protocols is sufficient for persistence: the topology
+    # serializer reads each AS's timers straight off its routers' protocols, so
+    # this change is captured on the next dump/export without a separate
+    # write-through to the AS.
     for r in s.as_obj.routers().values():
         for proto in r.protocols():
             if isinstance(proto, LinkStateProtocol):
