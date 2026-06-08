@@ -246,14 +246,48 @@ export function toast(msg, kind = '', label = null) {
       ${label ? `<div class="lab">${escapeHtml(label)}</div>` : ''}
       <div class="msg">${escapeHtml(msg)}</div>
     </div>
+    <button class="toast-close" type="button" aria-label="Dismiss">&times;</button>
+    <div class="toast-bar"></div>
   `;
   wrap.appendChild(elT);
   // Errors linger so the user actually sees them; other kinds dismiss fast.
   const lifetime = kind === 'error' ? 5000 : 2400;
-  setTimeout(() => {
+  const bar = elT.querySelector('.toast-bar');
+  bar.style.animationDuration = `${lifetime}ms`;
+
+  let timer = null;
+  let dismissed = false;
+  let remaining = lifetime;
+  let startedAt = Date.now();
+  function dismiss() {
+    if (dismissed) return;
+    dismissed = true;
+    if (timer) { clearTimeout(timer); timer = null; }
     elT.style.transition = 'opacity .3s, transform .3s';
     elT.style.opacity = 0;
     elT.style.transform = 'translateY(6px)';
     setTimeout(() => elT.remove(), 320);
-  }, lifetime);
+  }
+  function schedule() {
+    startedAt = Date.now();
+    timer = setTimeout(dismiss, remaining);
+  }
+
+  // A click anywhere on the toast (including the × button) dismisses it now.
+  elT.addEventListener('click', dismiss);
+  // Hovering pauses the countdown (and the auto-dismiss) so it can be read.
+  elT.addEventListener('mouseenter', () => {
+    if (dismissed || timer === null) return;
+    clearTimeout(timer);
+    timer = null;
+    remaining -= Date.now() - startedAt;
+    elT.classList.add('paused');
+  });
+  elT.addEventListener('mouseleave', () => {
+    if (dismissed || timer !== null) return;
+    elT.classList.remove('paused');
+    schedule();
+  });
+
+  schedule();
 }

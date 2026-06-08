@@ -241,6 +241,60 @@ describe('toast', () => {
     vi.advanceTimersByTime(5000 + 320);
     expect(wrap.children.length).toBe(0);
   });
+
+  it('renders a countdown bar inside the toast', () => {
+    toast('hello');
+    const bar = document.querySelector('#toasts .toast-bar');
+    expect(bar).not.toBeNull();
+  });
+  it('sets the countdown bar animation duration to the toast lifetime', () => {
+    toast('hello');             // default kind → 2400ms
+    const bar = document.querySelector('#toasts .toast-bar');
+    expect(bar.style.animationDuration).toBe('2400ms');
+  });
+  it('uses the longer lifetime for the error countdown bar', () => {
+    toast('boom', 'error');     // error → 5000ms
+    const bar = document.querySelector('#toasts .toast-bar');
+    expect(bar.style.animationDuration).toBe('5000ms');
+  });
+  it('renders a close button', () => {
+    toast('hello');
+    expect(document.querySelector('#toasts .toast-close')).not.toBeNull();
+  });
+  it('dismisses immediately when the close button is clicked', () => {
+    toast('hello');
+    const wrap = document.getElementById('toasts');
+    document.querySelector('#toasts .toast-close').click();
+    vi.advanceTimersByTime(320);   // only the fade window, not the 2400ms lifetime
+    expect(wrap.children.length).toBe(0);
+  });
+  it('dismisses immediately when the toast body is clicked', () => {
+    toast('hello');
+    const wrap = document.getElementById('toasts');
+    wrap.querySelector('.toast').click();
+    vi.advanceTimersByTime(320);
+    expect(wrap.children.length).toBe(0);
+  });
+  it('pauses auto-dismiss while the pointer is hovering', () => {
+    toast('hover me');                       // 2400ms lifetime
+    const wrap = document.getElementById('toasts');
+    const t = wrap.querySelector('.toast');
+    t.dispatchEvent(new Event('mouseenter'));
+    vi.advanceTimersByTime(5000);            // well past the normal lifetime
+    expect(wrap.children.length).toBe(1);    // still here — paused
+    expect(t.classList.contains('paused')).toBe(true);
+  });
+  it('resumes auto-dismiss after the pointer leaves', () => {
+    toast('hover me');
+    const wrap = document.getElementById('toasts');
+    const t = wrap.querySelector('.toast');
+    t.dispatchEvent(new Event('mouseenter'));
+    vi.advanceTimersByTime(5000);
+    t.dispatchEvent(new Event('mouseleave'));
+    expect(t.classList.contains('paused')).toBe(false);
+    vi.advanceTimersByTime(2400 + 320);      // remaining lifetime + fade
+    expect(wrap.children.length).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

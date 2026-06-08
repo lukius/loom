@@ -1552,19 +1552,20 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
    toasts
    ============================================================ */
 .toast-wrap {
-  position: fixed; right: 20px; bottom: 20px;
-  display: flex; flex-direction: column; gap: 8px;
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 8px; align-items: center;
   z-index: 200;
 }
 .toast {
-  min-width: 220px;
-  max-width: 320px;
-  padding: 10px 14px;
+  min-width: 240px;
+  max-width: 360px;
+  padding: 11px 30px 13px 15px;
   background: var(--bg);
   border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
   border-radius: 8px;
-  box-shadow: var(--shadow-2);
-  font-size: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
   color: var(--text);
   animation: toast-in .2s ease both;
   position: relative;
@@ -1579,6 +1580,10 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
   background: var(--bg-3);
   color: var(--text-2);
   font-size: 11px;
+}
+.toast.ok {
+  border-left-color: var(--pos);
+  background: color-mix(in srgb, var(--pos) 8%, var(--bg));
 }
 .toast.ok .icon { background: color-mix(in srgb, var(--pos) 15%, transparent); color: var(--pos); }
 .toast.error {
@@ -1624,6 +1629,29 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
   margin-bottom: 1px;
 }
 .toast .body .msg { line-height: 1.4; }
+.toast-bar {
+  position: absolute; left: 0; bottom: 0;
+  height: 3px; width: 100%;
+  background: var(--text-3);
+  transform-origin: left;
+  animation-name: toast-countdown;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  border-bottom-left-radius: 8px;
+}
+@keyframes toast-countdown { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.toast-close {
+  position: absolute; top: 6px; right: 8px;
+  background: none; border: 0; cursor: pointer;
+  color: var(--text-3); font-size: 15px; line-height: 1;
+  padding: 2px 4px; opacity: 0; transition: opacity .15s;
+}
+.toast:hover .toast-close { opacity: 0.75; }
+.toast-close:hover { opacity: 1; }
+.toast.ok    .toast-bar { background: var(--pos); }
+.toast.error .toast-bar { background: var(--neg); }
+.toast.info  .toast-bar { background: var(--accent); }
+.toast.paused .toast-bar { animation-play-state: paused; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ============================================================
