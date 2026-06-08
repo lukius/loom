@@ -257,6 +257,24 @@ describe('toast', () => {
     const bar = document.querySelector('#toasts .toast-bar');
     expect(bar.style.animationDuration).toBe('5000ms');
   });
+  it('renders a close button', () => {
+    toast('hello');
+    expect(document.querySelector('#toasts .toast-close')).not.toBeNull();
+  });
+  it('dismisses immediately when the close button is clicked', () => {
+    toast('hello');
+    const wrap = document.getElementById('toasts');
+    document.querySelector('#toasts .toast-close').click();
+    vi.advanceTimersByTime(320);   // only the fade window, not the 2400ms lifetime
+    expect(wrap.children.length).toBe(0);
+  });
+  it('dismisses immediately when the toast body is clicked', () => {
+    toast('hello');
+    const wrap = document.getElementById('toasts');
+    wrap.querySelector('.toast').click();
+    vi.advanceTimersByTime(320);
+    expect(wrap.children.length).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

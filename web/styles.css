@@ -1635,6 +1635,14 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
   border-bottom-left-radius: 8px;
 }
 @keyframes toast-countdown { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.toast-close {
+  position: absolute; top: 6px; right: 8px;
+  background: none; border: 0; cursor: pointer;
+  color: var(--text-3); font-size: 15px; line-height: 1;
+  padding: 2px 4px; opacity: 0; transition: opacity .15s;
+}
+.toast:hover .toast-close { opacity: 0.75; }
+.toast-close:hover { opacity: 1; }
 .toast.ok    .toast-bar { background: var(--pos); }
 .toast.error .toast-bar { background: var(--neg); }
 .toast.info  .toast-bar { background: var(--accent); }

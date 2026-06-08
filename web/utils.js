@@ -246,6 +246,7 @@ export function toast(msg, kind = '', label = null) {
       ${label ? `<div class="lab">${escapeHtml(label)}</div>` : ''}
       <div class="msg">${escapeHtml(msg)}</div>
     </div>
+    <button class="toast-close" type="button" aria-label="Dismiss">&times;</button>
     <div class="toast-bar"></div>
   `;
   wrap.appendChild(elT);
@@ -253,10 +254,21 @@ export function toast(msg, kind = '', label = null) {
   const lifetime = kind === 'error' ? 5000 : 2400;
   const bar = elT.querySelector('.toast-bar');
   bar.style.animationDuration = `${lifetime}ms`;
-  setTimeout(() => {
+
+  let timer = null;
+  let dismissed = false;
+  function dismiss() {
+    if (dismissed) return;
+    dismissed = true;
+    if (timer) { clearTimeout(timer); timer = null; }
     elT.style.transition = 'opacity .3s, transform .3s';
     elT.style.opacity = 0;
     elT.style.transform = 'translateY(6px)';
     setTimeout(() => elT.remove(), 320);
-  }, lifetime);
+  }
+
+  // A click anywhere on the toast (including the × button) dismisses it now.
+  elT.addEventListener('click', dismiss);
+
+  timer = setTimeout(dismiss, lifetime);
 }
