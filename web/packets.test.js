@@ -58,7 +58,8 @@ describe('PacketAnim._bezBetween — packet curves match drawEdge', () => {
   });
 
   it('_segLength returns exact length for line segments', () => {
-    const len = PacketAnim._segLength({ kind: 'line', from: { x: 0, y: 0 }, to: { x: 3, y: 4 } });
+    // _segLength now calls s.from()/s.to() as thunks.
+    const len = PacketAnim._segLength({ kind: 'line', from: () => ({ x: 0, y: 0 }), to: () => ({ x: 3, y: 4 }) });
     expect(len).toBe(5);
   });
 
@@ -67,7 +68,8 @@ describe('PacketAnim._bezBetween — packet curves match drawEdge', () => {
     const p3 = { x: 100, y: 60 };
     const { c1, c2 } = PacketAnim._bezBetween(p0, p3);
     const chord = Math.hypot(100, 60);
-    const len = PacketAnim._segLength({ kind: 'bez', p0, c1, c2, p3 });
+    // _segLength now calls s.curve() as a thunk.
+    const len = PacketAnim._segLength({ kind: 'bez', curve: () => ({ p0, c1, c2, p3 }) });
     expect(len).toBeGreaterThanOrEqual(chord * 0.99);   // sampled, so a hair under is fine
     expect(len).toBeLessThan(chord * 1.15);
   });
@@ -96,9 +98,11 @@ describe('PacketAnim._bezBetween — packet curves match drawEdge', () => {
     const segs = PacketAnim._segmentsForLink(evt, srcNode);
     expect(segs.length).toBe(1);
     expect(segs[0].kind).toBe('bez');
+    // The bezier is a live thunk — evaluate it to access the curve points.
+    const curve = segs[0].curve();
     // The bezier should land near r2's clipped boundary, not at r2's center.
-    expect(segs[0].p3.x).toBeGreaterThan(100);
-    expect(segs[0].p3.x).toBeLessThan(400);
+    expect(curve.p3.x).toBeGreaterThan(100);
+    expect(curve.p3.x).toBeLessThan(400);
   });
 
   it('_segmentsForNetwork resolves dst on the event\'s fabric, ignoring same-IP devices on other LANs', () => {
@@ -140,7 +144,8 @@ describe('PacketAnim._bezBetween — packet curves match drawEdge', () => {
     // Final bezier should land near h_a's center (~100), not h_b's (~700).
     const lastBez = segs[segs.length - 1];
     expect(lastBez.kind).toBe('bez');
-    expect(lastBez.p3.x).toBeLessThan(300);
+    // The bezier is a live thunk — evaluate it to access the curve points.
+    expect(lastBez.curve().p3.x).toBeLessThan(300);
   });
 
   it('_segmentsForLink prefers the link\'s structural peer over the address lookup (handles cross-link IP collisions)', () => {
@@ -175,8 +180,9 @@ describe('PacketAnim._bezBetween — packet curves match drawEdge', () => {
     };
     const segs = PacketAnim._segmentsForLink(evt, srcNode);
     expect(segs.length).toBe(1);
+    // The bezier is a live thunk — evaluate it to access the curve points.
     // p3.x should be near r3's clipped left edge (around 668), NOT near h5's center (400).
-    expect(segs[0].p3.x).toBeGreaterThan(500);
+    expect(segs[0].curve().p3.x).toBeGreaterThan(500);
   });
 
   it('_segmentsForLink falls back to "the other endpoint" when dst is the link broadcast', () => {

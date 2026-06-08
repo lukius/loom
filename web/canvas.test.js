@@ -1,5 +1,5 @@
 import { describe, it, test, expect, beforeEach } from 'vitest';
-import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, deviceNameForEndpointOnFabric, lookupAddressNodeOnFabric, renderCanvas, lookupLinkMidpoint, lookupDeviceNode, shiftLinkLabelsForDeviceMove, startLinkWizard, cancelLinkWizard, finishLinkWizard, getLinkWizard, linkBezier, ensurePositions, drawNode } from './canvas.js';
+import { tapPointOnRail, railTapPoint, deviceNameForEndpoint, deviceNameForEndpointOnFabric, lookupAddressNodeOnFabric, renderCanvas, lookupLinkMidpoint, lookupDeviceNode, shiftLinkLabelsForDeviceMove, startLinkWizard, cancelLinkWizard, finishLinkWizard, getLinkWizard, linkBezier, ensurePositions, drawNode, getNodeCenter } from './canvas.js';
 import {
   state, bus,
   RAIL_DEFAULT_WIDTH, RAIL_THICKNESS, RAIL_TICK_INSET,
@@ -1451,5 +1451,20 @@ describe('down link ✕ marker', () => {
     // Both up → marker clears.
     applyInterfaceStateChanged({ device: 'r2', interface: 'eth0', up: true });
     expect(marker.classList.contains('down')).toBe(false);
+  });
+});
+
+/* -----------------------------------------------------------------------
+   getNodeCenter (live re-resolution primitive for packet thunks)
+   ----------------------------------------------------------------------- */
+
+describe('getNodeCenter (live re-resolution primitive)', () => {
+  it('reflects the current transform each call', () => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('transform', 'translate(100, 200)');
+    expect(getNodeCenter(g)).toEqual({ x: 100, y: 200 });
+    // Simulate a mid-drag move: the drag handler rewrites the transform.
+    g.setAttribute('transform', 'translate(340, 260)');
+    expect(getNodeCenter(g)).toEqual({ x: 340, y: 260 });
   });
 });
