@@ -254,9 +254,9 @@ internet:
           address: "100.100.100.10"
 ```
 
-The SPA's **Export** writes both blocks when non-default values are
-present. **Import** restores them, so packet duration and protocol
-timer values persist across sessions.
+The SPA's **Export** always writes both blocks. **Import** restores
+them, so packet duration and protocol timer values persist across
+sessions.
 
 ## Naming rules
 
