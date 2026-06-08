@@ -995,6 +995,14 @@ svg.canvas.linking { cursor: crosshair; }
   to   { filter: drop-shadow(0 0 18px var(--accent-glow)); }
 }
 
+/* drop-blocked — foreign-fabric drop refused while the sim is running */
+.canvas .node.network.drop-blocked .rail {
+  stroke: var(--neg);
+  stroke-dasharray: 4 4;
+}
+.canvas .node.network.drop-blocked .endcap { fill: var(--neg); }
+.canvas .node.network.drop-blocked .rail-label .name { fill: var(--neg); }
+
 /* tap-tick brightens when its device is hovered */
 .canvas .node.network .tick.matched-hover { fill: var(--accent); }
 

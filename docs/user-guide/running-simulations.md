@@ -63,6 +63,14 @@ same YAML. The session file is updated either way.
   valid address or CIDR; an incomplete or invalid value simply stays
   pending until you finish it. Your selection and viewport are preserved
   when the topology updates.
+- **Drag any node or link label** to reposition it on the canvas —
+  hosts, routers, networks, and p2p link midpoint labels can all be
+  moved freely while the sim runs. Repositioning is purely visual and
+  does not affect the running simulation. In-flight packet animations
+  follow nodes as you move them. Trying to drag a host or router onto a
+  *different* network or link while running shows a red blocked cue on
+  the target and snaps the node back on release — to reassign a device
+  to a different network, stop the sim first.
 - Right-click → **Rename / Duplicate / Delete** in the canvas is
   blocked.
 - The inspector's editable fields are read-only (interface

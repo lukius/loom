@@ -165,6 +165,24 @@ function _findAddressOwner(addr, fabricKind, fabricName, selfRef, st) {
   return '';
 }
 
+/* True when dropping `name` (a host or router) onto fabric `target` would be a
+ * genuine membership change — i.e. a topology reassignment, not a plain
+ * reposition. Pure: callable from both the drag-move affordance and the drop
+ * handler. Networks are never reassignable, so they always return false. */
+export function isForeignFabricDrop(kind, name, target, state) {
+  if (!target) return false;
+  if (kind === 'host') {
+    const h = state.hosts[name];
+    return !!h && h.network !== target;
+  }
+  if (kind === 'router') {
+    const r = state.routers[name];
+    if (!r) return false;
+    return !Object.values(r.interfaces || {}).some(iff => iff.network === target);
+  }
+  return false;
+}
+
 // RFC1918 ranges. A CIDR is "private" iff *every* address it covers falls
 // inside one of these blocks — i.e. the CIDR's network range is wholly
 // contained in the private block (matches src/entities/address.is_private).

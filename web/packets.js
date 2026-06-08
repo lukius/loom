@@ -328,10 +328,16 @@ export const PacketAnim = {
     const layer = document.getElementById('packet-layer');
     const gen = this._gen;
     const sender = evt.src && evt.src.device;
+    const srcName = sender;
     const fabricName = evt.network;
-    const srcCenter = getNodeCenter(srcNode);
-    const srcTap = railTapPoint(sender, fabricName) || getNodeCenter(netNode);
-    if (!srcCenter || !srcTap) {
+    const netName = fabricName;
+    // Live resolvers — re-read DOM/state every frame so dots follow a dragged node.
+    const netCenter = () => getNodeCenter(lookupNetworkNode(netName)) || getNodeCenter(netNode);
+    const srcCenter = () => getNodeCenter(lookupDeviceNode(srcName)) || netCenter();
+    const srcTap = () => railTapPoint(srcName, fabricName) || netCenter();
+    // Probe once to guard on missing geometry at animation-start (presence is
+    // stable; only positions move).
+    if (!srcCenter() || !srcTap()) {
       // Geometry unresolved — fall back to single-arrival semantics so the
       // chatter row still cleans up.
       if (dot.parentNode) layer.removeChild(dot);
@@ -349,10 +355,12 @@ export const PacketAnim = {
     const phase1Dur = this.DURATION_MS * PHASE1_FRACTION;
     const phase2Dur = this.DURATION_MS * (1 - PHASE1_FRACTION);
 
-    const phase1 = { kind: 'bez', ...this._bezBetween(srcCenter, srcTap) };
     const isChatter = this._ROUTING_CHATTER_TYPES.has(evt.type);
+    // Live curve thunk — re-evaluates both endpoints every frame so the phase-1
+    // dot follows the sender if it is dragged while the tween is in flight.
+    const phase1CurveFn = () => this._bezBetween(srcCenter(), srcTap());
 
-    this._tweenBezier(dot, badge, phase1.p0, phase1.c1, phase1.c2, phase1.p3, phase1Dur, () => {
+    this._tweenBezier(dot, badge, phase1CurveFn, phase1Dur, () => {
       // Retire the source dot; clones will carry the visual onward.
       if (dot.parentNode) layer.removeChild(dot);
       if (badge && badge.parentNode) layer.removeChild(badge);
@@ -374,9 +382,11 @@ export const PacketAnim = {
       };
 
       for (const lis of listeners) {
-        const lisNode = lookupDeviceNode(lis);
-        const lisCenter = lisNode ? getNodeCenter(lisNode) : null;
-        const lisTap = railTapPoint(lis, fabricName) || srcTap;
+        // Live resolvers keyed on the listener's device NAME so dots survive a
+        // renderCanvas rebuild (e.g. on drop-commit) and track the listener if
+        // it is dragged while phase 2 is in flight.
+        const lisTap = () => railTapPoint(lis, fabricName) || netCenter();
+        const lisCenter = () => getNodeCenter(lookupDeviceNode(lis));
         // Build the clone even when geometry is missing so we still fire
         // arrival (and clean up the chatter row).
         const { dot: cdot, badge: cbadge } = this._makeDotAndBadge(evt, color, isChatter, dotKey, layer);
@@ -391,23 +401,23 @@ export const PacketAnim = {
           cloneDone();
         };
 
-        if (!lisCenter || !lisTap) { fireArrival(); continue; }
+        if (!lisCenter() || !lisTap()) { fireArrival(); continue; }
 
         // Position the clone at the source rail tap before animating.
-        setPacketAnchor(cdot, cbadge, srcTap.x, srcTap.y);
+        const p = srcTap();
+        setPacketAnchor(cdot, cbadge, p.x, p.y);
 
         // Same total phase-2 duration for every clone so all listeners
         // visually receive together (broadcast intuition), even though
         // their path lengths differ.
         const railSegLen = this._segLength({ kind: 'line', from: srcTap, to: lisTap });
-        const lisBez = this._bezBetween(lisTap, lisCenter);
-        const lisBezLen = this._segLength({ kind: 'bez', ...lisBez });
+        const lisBezLen = this._segLength({ kind: 'bez', curve: () => this._bezBetween(lisTap(), lisCenter()) });
         const tot = (railSegLen + lisBezLen) || 1;
         const railDur = (railSegLen / tot) * phase2Dur;
         const lisDur = (lisBezLen / tot) * phase2Dur;
 
         this._tweenPoints(cdot, cbadge, srcTap, lisTap, railDur, () => {
-          this._tweenBezier(cdot, cbadge, lisBez.p0, lisBez.c1, lisBez.c2, lisBez.p3, lisDur, fireArrival);
+          this._tweenBezier(cdot, cbadge, () => this._bezBetween(lisTap(), lisCenter()), lisDur, fireArrival);
         });
       }
     });
@@ -591,12 +601,15 @@ export const PacketAnim = {
     if (destInterfaceDown(evt, dstDeviceName)) {
       if (isLink && segs[0] && segs[0].kind === 'bez') {
         // The whole edge is the down link: keep only a short head so the dot
-        // just enters the wire before dropping.
-        segs = [{ kind: 'bez', ...this._bezHead(segs[0], 0.3) }];
+        // just enters the wire before dropping. Wrap _bezHead as a live thunk
+        // so the truncated head still follows the wire if a node moves.
+        const fullCurve = segs[0].curve;
+        segs = [{ kind: 'bez', curve: () => this._bezHead(fullCurve(), 0.3) }];
         durs = [durs[0] * 0.3];
       } else if (segs.length > 1) {
         // LAN: stop at the destination's rail tap — drop the final spoke into
-        // the (down) device.
+        // the (down) device. Slicing thunk-segments is safe; it just drops
+        // the last thunk without evaluating it.
         segs = segs.slice(0, -1);
         durs = durs.slice(0, -1);
       }
@@ -609,7 +622,7 @@ export const PacketAnim = {
       const s = segs[i];
       const d = durs[i];
       const onSegDone = () => { i++; stepNext(); };
-      if (s.kind === 'bez') this._tweenBezier(dot, badge, s.p0, s.c1, s.c2, s.p3, d, onSegDone);
+      if (s.kind === 'bez') this._tweenBezier(dot, badge, s.curve, d, onSegDone);
       else                  this._tweenPoints(dot, badge, s.from, s.to, d, onSegDone);
     };
     stepNext();
@@ -650,36 +663,43 @@ export const PacketAnim = {
 
   // Multi-access (LAN/rail) path:
   //   src device  →[bezier]→  src tap on rail  →[line]→  dst tap  →[bezier]→  dst device
+  // All endpoints are resolver thunks re-evaluated every animation frame so
+  // the packet follows live geometry (drag, resize). Presence of each segment
+  // is probed once at animation-start (stable for the life of the animation;
+  // only positions move).
   _segmentsForNetwork(evt, srcNode, netNode) {
-    const srcCenter = getNodeCenter(srcNode);
-    // Scope the address lookup to this fabric so we don't pick a same-IP
-    // device from a different subnet (private IPs are intentionally
-    // reusable across separate networks per RFC 1918).
-    const dstNode = lookupAddressNodeOnFabric(evt.dst && evt.dst.address, evt.network)
-      || lookupDeviceNode(evt.dst && evt.dst.device);
-    const dstCenter = dstNode ? getNodeCenter(dstNode) : null;
-    // Simulator emits `dst.address` (no `dst.device`); resolve the address
-    // back to a device name to compute the rail tap point.
+    const srcName = evt.src && evt.src.device;
     const dstName = deviceNameForEndpointOnFabric(evt.dst, evt.network);
-    const srcTap = railTapPoint(evt.src && evt.src.device, evt.network) || getNodeCenter(netNode);
-    const dstTap = dstName
-      ? (railTapPoint(dstName, evt.network) || getNodeCenter(netNode))
-      : null;
-
+    const netName = evt.network;
+    // Live resolvers — re-read DOM/state every frame.
+    const srcCenter = () => getNodeCenter(lookupDeviceNode(srcName)) || getNodeCenter(netNode);
+    const netCenter = () => getNodeCenter(lookupNetworkNode(netName)) || getNodeCenter(netNode);
+    const srcTap = () => railTapPoint(srcName, netName) || netCenter();
+    const dstTap = () => (dstName ? (railTapPoint(dstName, netName) || netCenter()) : null);
+    const dstCenter = () => {
+      const n = lookupAddressNodeOnFabric(evt.dst && evt.dst.address, netName)
+        || lookupDeviceNode(dstName);
+      return n ? getNodeCenter(n) : null;
+    };
+    // Probe once to decide which segments exist (presence is stable for the
+    // life of the animation; only positions move).
+    const hasDst = dstName && dstTap() && dstCenter();
     const segs = [];
-    if (srcCenter && srcTap) segs.push({ kind: 'bez', ...this._bezBetween(srcCenter, srcTap) });
-    if (srcTap && dstTap)    segs.push({ kind: 'line', from: srcTap, to: dstTap });
-    if (dstTap && dstCenter) segs.push({ kind: 'bez', ...this._bezBetween(dstTap, dstCenter) });
+    segs.push({ kind: 'bez', curve: () => this._bezBetween(srcCenter(), srcTap()) });
+    if (hasDst) {
+      segs.push({ kind: 'line', from: srcTap, to: dstTap });
+      segs.push({ kind: 'bez', curve: () => this._bezBetween(dstTap(), dstCenter()) });
+    }
     return segs;
   },
 
   // Point-to-point link path: a single bezier directly from src device to
   // dst device, clipped to both device rects so the packet rides the same
-  // curve that drawLinkEdge renders. No rail tap.
+  // curve that drawLinkEdge renders. No rail tap. The curve thunk re-reads
+  // both device positions every frame so the packet follows live geometry.
   _segmentsForLink(evt, srcNode) {
     const srcName = evt.src && evt.src.device;
-    const srcCenter = getNodeCenter(srcNode);
-    if (!srcCenter || !srcName) return [];
+    if (!srcName) return [];
 
     // Resolve the destination device. A p2p link has exactly two endpoints,
     // so the peer is structurally determined: "the endpoint of this link
@@ -693,20 +713,23 @@ export const PacketAnim = {
     // shouldn't happen in a valid topology), try the address lookup.
     if (!dstName) dstName = deviceNameForEndpoint(evt.dst);
     if (!dstName) return [];
-    const dstNode = lookupDeviceNode(dstName);
-    const dstCenter = dstNode ? getNodeCenter(dstNode) : null;
-    if (!dstCenter) return [];
+    if (!lookupDeviceNode(dstName) || !getNodeCenter(lookupDeviceNode(dstName))) return [];
+    if (!getNodeCenter(lookupDeviceNode(srcName))) return [];
 
     const srcKind = state.routers[srcName] ? 'router' : 'host';
     const dstKind = state.routers[dstName] ? 'router' : 'host';
     const aSize = NODE[srcKind];
     const bSize = NODE[dstKind];
-    const [ax, ay] = clipToRect(srcCenter.x, srcCenter.y, aSize.w, aSize.h, dstCenter.x, dstCenter.y);
-    const [bx, by] = clipToRect(dstCenter.x, dstCenter.y, bSize.w, bSize.h, srcCenter.x, srcCenter.y);
-    // Use the same bowed bezier the canvas renders so the packet rides the
-    // visible wire (otherwise parallel-link packets would diverge from their
-    // edge paths).
-    return [{ kind: 'bez', ...linkBezier(evt.network, { x: ax, y: ay }, { x: bx, y: by }) }];
+    // Live curve thunk — re-reads both device positions every frame so the
+    // packet rides the visible wire even when a node is dragged mid-flight.
+    const curve = () => {
+      const sc = getNodeCenter(lookupDeviceNode(srcName));
+      const dc = getNodeCenter(lookupDeviceNode(dstName));
+      const [ax, ay] = clipToRect(sc.x, sc.y, aSize.w, aSize.h, dc.x, dc.y);
+      const [bx, by] = clipToRect(dc.x, dc.y, bSize.w, bSize.h, sc.x, sc.y);
+      return linkBezier(evt.network, { x: ax, y: ay }, { x: bx, y: by });
+    };
+    return [{ kind: 'bez', curve }];
   },
 
   // Cubic bezier with horizontal tangents at both ends — same shape used by
@@ -720,20 +743,23 @@ export const PacketAnim = {
     };
   },
 
-  // Approximate segment arc length. For lines: exact. For beziers: sum a
-  // handful of chord lengths between sampled points — accurate enough to
-  // keep packet velocity perceptually constant.
+  // Approximate segment arc length. Samples each thunk-segment once at
+  // animation-start for velocity weighting — accurate enough to keep packet
+  // velocity perceptually constant.
   _segLength(s) {
-    if (s.kind === 'line') return Math.hypot(s.to.x - s.from.x, s.to.y - s.from.y);
+    if (s.kind === 'line') {
+      const a = s.from(), b = s.to();
+      return Math.hypot(b.x - a.x, b.y - a.y);
+    }
     // bezier: sample 8 points along the curve and sum distances
+    const c = s.curve();
     const N = 8;
-    let prevX = s.p0.x, prevY = s.p0.y, len = 0;
+    let prevX = c.p0.x, prevY = c.p0.y, len = 0;
     for (let k = 1; k <= N; k++) {
-      const t = k / N;
-      const u = 1 - t;
-      const a = u*u*u, b = 3*u*u*t, c = 3*u*t*t, d = t*t*t;
-      const x = a*s.p0.x + b*s.c1.x + c*s.c2.x + d*s.p3.x;
-      const y = a*s.p0.y + b*s.c1.y + c*s.c2.y + d*s.p3.y;
+      const t = k / N, u = 1 - t;
+      const a = u*u*u, b = 3*u*u*t, cc = 3*u*t*t, d = t*t*t;
+      const x = a*c.p0.x + b*c.c1.x + cc*c.c2.x + d*c.p3.x;
+      const y = a*c.p0.y + b*c.c1.y + cc*c.c2.y + d*c.p3.y;
       len += Math.hypot(x - prevX, y - prevY);
       prevX = x; prevY = y;
     }
@@ -754,11 +780,11 @@ export const PacketAnim = {
     return true;
   },
 
-  // Straight-line tween between two world-space points. Freezes while paused.
-  // Captures the current generation and aborts silently — without finishing —
-  // if the sim resets mid-flight, so a stale tween can't dispatch an arrival
-  // onto a just-cleared (or next-run's) canvas.
-  _tweenPoints(dot, badge, fp, tp, durationMs, done) {
+  // Straight-line tween between two resolver thunks. Each thunk returns the
+  // current world point for its endpoint, re-evaluated every frame so the
+  // packet follows live geometry (drag, resize). Freezes while paused; aborts
+  // on sim reset.
+  _tweenPoints(dot, badge, fromFn, toFn, durationMs, done) {
     const gen = this._gen;
     let elapsed = 0;
     let lastT = performance.now();
@@ -768,6 +794,7 @@ export const PacketAnim = {
       if (Sim.state !== 'paused') elapsed += (now - lastT);
       lastT = now;
       const t = Math.min(1, elapsed / durationMs);
+      const fp = fromFn(), tp = toFn();
       setPacketAnchor(dot, badge, fp.x + (tp.x - fp.x) * t, fp.y + (tp.y - fp.y) * t);
       if (t < 1) requestAnimationFrame(tick);
       else done();
@@ -775,10 +802,10 @@ export const PacketAnim = {
     requestAnimationFrame(tick);
   },
 
-  // Cubic bezier tween — samples B(t) for each frame so the packet rides the
-  // same curve drawEdge renders. Freezes while paused, aborts on reset (same
-  // patterns as _tweenPoints above).
-  _tweenBezier(dot, badge, p0, c1, c2, p3, durationMs, done) {
+  // Cubic-bezier tween. `curveFn` returns the current {p0,c1,c2,p3} each frame
+  // so the packet rides the wire as endpoints move. Freezes while paused;
+  // aborts on reset.
+  _tweenBezier(dot, badge, curveFn, durationMs, done) {
     const gen = this._gen;
     let elapsed = 0;
     let lastT = performance.now();
@@ -788,14 +815,12 @@ export const PacketAnim = {
       if (Sim.state !== 'paused') elapsed += (now - lastT);
       lastT = now;
       const t = Math.min(1, elapsed / durationMs);
+      const { p0, c1, c2, p3 } = curveFn();
       const u = 1 - t;
       const a = u*u*u, b = 3*u*u*t, c = 3*u*t*t, d = t*t*t;
-      setPacketAnchor(
-        dot,
-        badge,
+      setPacketAnchor(dot, badge,
         a*p0.x + b*c1.x + c*c2.x + d*p3.x,
-        a*p0.y + b*c1.y + c*c2.y + d*p3.y,
-      );
+        a*p0.y + b*c1.y + c*c2.y + d*p3.y);
       if (t < 1) requestAnimationFrame(tick);
       else done();
     };

@@ -10,7 +10,7 @@ import {
   RAIL_TICK_INSET, RAIL_TICK_LEN, RAIL_LABEL_GAP,
   isDeviceHalted, isInterfaceDown,
 } from './state.js';
-import { el, escapeHtml, cssEscape, uniqueIface, uniqueName, toast, isPrivateCidr } from './utils.js';
+import { el, escapeHtml, cssEscape, uniqueIface, uniqueName, toast, isPrivateCidr, isForeignFabricDrop } from './utils.js';
 import { isTopologyLocked } from './sim.js';
 
 export function lookupDeviceNode(name) {
@@ -853,7 +853,6 @@ export function drawLinkEdge(linkName, linkObj) {
   midG.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     e.stopPropagation();
-    if (isTopologyLocked()) return;
     // Dispatch selection first — this triggers reRenderEdges() which clears
     // edgesLayer and re-creates the midG element. setPointerCapture must be
     // called AFTER re-render so it targets the fresh (attached) element;
@@ -1355,8 +1354,11 @@ export function attachNodeEvents(g, kind, name) {
     g.classList.add('selected');
     bus.dispatchEvent(new CustomEvent('state:selection-changed'));
 
-    // Drag is gated: only when topology is editable (idle or paused).
-    if (isTopologyLocked()) return;
+    // Drag (repositioning) is allowed in any sim state — positions are pure
+    // client layout, never sent to the server. While running we still REFUSE
+    // foreign-fabric reassignment on drop (see pointerup): a drop onto a
+    // different fabric snaps back, because live reassignment is unsupported.
+    const running = isTopologyLocked();
 
     // capture on the node itself so the synthesized click event stays on the
     // node — capturing on the canvas redirects click to the SVG, which would
@@ -1371,6 +1373,9 @@ export function attachNodeEvents(g, kind, name) {
       offY: start.y - obj.y,
       startClientX: e.clientX,
       startClientY: e.clientY,
+      origX: obj.x,
+      origY: obj.y,
+      running,
       moved: false,
       hoverNet: null,
     };
@@ -1482,8 +1487,12 @@ export function wireCanvas() {
           // re-render to flip drop-target class — cheap enough
           drag.hoverNet = hover;
           // toggle classes directly to avoid full re-render thrash
+          const blocked = drag.running &&
+            isForeignFabricDrop(drag.kind, drag.name, hover, state);
           nodesLayer().querySelectorAll('.node.network').forEach(node => {
-            node.classList.toggle('drop-target', node.getAttribute('data-name') === hover);
+            const isHover = node.getAttribute('data-name') === hover;
+            node.classList.toggle('drop-target', isHover && !blocked);
+            node.classList.toggle('drop-blocked', isHover && blocked);
           });
         }
         // partial: re-render edges connected to drag.obj
@@ -1521,11 +1530,17 @@ export function wireCanvas() {
 
         if (drag.moved) {
           const target = drag.hoverNet;
-          nodesLayer().querySelectorAll('.node.network.drop-target').forEach(n => n.classList.remove('drop-target'));
+          nodesLayer().querySelectorAll('.node.network.drop-target, .node.network.drop-blocked')
+            .forEach(n => n.classList.remove('drop-target', 'drop-blocked'));
           overlayLay().innerHTML = '';
 
-          // commit attachment
-          if (target) {
+          if (drag.running && isForeignFabricDrop(drag.kind, drag.name, target, state)) {
+            // Live reassignment is unsupported — snap the node back and explain.
+            drag.obj.x = drag.origX;
+            drag.obj.y = drag.origY;
+            toast(`Stop the sim to reassign ${drag.kind} ${drag.name}`, 'warn');
+          } else if (target) {
+            // commit attachment (idle/paused, or a same-fabric no-op while running)
             if (drag.kind === 'host') {
               if (state.hosts[drag.name].network !== target) {
                 state.hosts[drag.name].network = target;

@@ -228,7 +228,17 @@ the cursor while zooming.
 Drag works in two modes:
 
 - **Single-node drag** — the focused node's `(x, y)` is updated on every
-  pointermove; `markDirty()` debounces persistence.
+  pointermove; `markDirty()` debounces persistence. This is a **client-only
+  operation**: position changes are never sent to the server and the running
+  AS is unaffected. Single-node drag is therefore allowed in all sim states
+  (idle, running, paused). P2P link midpoint labels follow the same rule
+  and are also draggable in all states.
+  - **Reassignment guard (running only):** if the pointer is released over a
+    *different* fabric (a network or link the device is not currently attached
+    to) while the sim is running, the canvas shows a red/dashed blocked cue
+    on the target fabric and the node snaps back to its last valid position.
+    Reassigning a device to a different network or link requires a full
+    Stop → edit → Start cycle.
 - **Pan** — `state.view.x / y` is updated; `applyView()` re-applies the
   transform without re-rendering nodes.
 
@@ -278,6 +288,12 @@ Listens for `sim:packet` events and schedules per-frame SVG animations.
 The `PacketAnim.DURATION_MS` (toolbar-tunable, 200–5000 ms) controls per-
 hop animation time. The `chatter` toggle (`PacketAnim.muted = true`)
 filters `type === "routing_flood"` out of the animation queue.
+
+Each in-flight animation resolves its endpoint positions by device name on
+every animation frame (`rAF`), so dots follow their source and destination
+nodes as they are dragged. This applies to routing chatter (Hello/LSA
+floods on LANs) and user traffic alike — moving a node mid-animation does
+not strand or misplace the dot.
 
 The packet color/icon comes from the `type` field of the event:
 
