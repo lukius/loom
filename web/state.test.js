@@ -221,7 +221,11 @@ describe('persist / restore', () => {
   });
 
   it('restore falls back to CONFIG_DEFAULTS/PROTOCOL_DEFAULTS when legacy blob has no config/protocol keys', () => {
-    // Simulate a pre-config/protocol session blob
+    // Pre-condition: mutate to non-default values so the assertion proves
+    // restore() actively applied the defaults, not that resetState() left them.
+    state.config = { packet_duration_ms: 999 };
+    state.protocol = { hello_interval: 1, lsa_refresh_interval: 2 };
+    // Simulate a pre-config/protocol session blob (no config/protocol keys).
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       asName: 'legacy_as',
       networks: {},
