@@ -1488,8 +1488,12 @@ export function wireCanvas() {
           // re-render to flip drop-target class — cheap enough
           drag.hoverNet = hover;
           // toggle classes directly to avoid full re-render thrash
+          const blocked = drag.running &&
+            isForeignFabricDrop(drag.kind, drag.name, hover, state);
           nodesLayer().querySelectorAll('.node.network').forEach(node => {
-            node.classList.toggle('drop-target', node.getAttribute('data-name') === hover);
+            const isHover = node.getAttribute('data-name') === hover;
+            node.classList.toggle('drop-target', isHover && !blocked);
+            node.classList.toggle('drop-blocked', isHover && blocked);
           });
         }
         // partial: re-render edges connected to drag.obj
