@@ -1652,3 +1652,10 @@ def test_set_timers_wakes_parked_loop_to_apply_new_cadence():
         if system is not None:
             system.stop()
         os.unlink(path)
+
+
+def test_timer_getters_return_current_values():
+    proto = Router('r1').protocol()
+    proto.set_timers(hello_interval=7, lsa_refresh_interval=21)
+    assert proto.hello_interval() == 7.0
+    assert proto.lsa_refresh_interval() == 21.0

@@ -155,6 +155,12 @@ class LinkStateProtocol(RoutingProtocol):
         if hasattr(self, '_wake_event') and self._wake_event is not None:
             self._wake_event.set()
 
+    def hello_interval(self) -> float:
+        return self._hello_interval
+
+    def lsa_refresh_interval(self) -> float:
+        return self._lsa_refresh_interval
+
     def lsdb(self):
         return self._lsdb
 
