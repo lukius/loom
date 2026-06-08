@@ -176,11 +176,10 @@ export const PacketAnim = {
     }
 
     if (this._SEQUENTIAL.has(evt.type)) {
-      if (evt._t == null) evt._t = this._now();   // arrival time, for inter-probe spacing
       const session = this._sessionKey(evt);
       const q = this._queues.get(session);
       if (q) { q.pending.push(evt); return; }
-      this._queues.set(session, { pending: [], curFlow: evt.flow, flowStartT: evt._t });
+      this._queues.set(session, { pending: [] });
       this._render(evt, () => this._onSegmentDone(session));
       return;
     }
@@ -429,21 +428,6 @@ export const PacketAnim = {
     return key;
   },
 
-  // Wall-clock source, indirected so tests can control inter-probe timing.
-  _now() {
-    return performance.now();
-  },
-
-  // Visible pause (ms) before the next queued packet animates: zero within a
-  // probe (consecutive hops of one round trip are continuous), or the real
-  // inter-probe gap when a new probe (a new flow) starts — so a `ping -c`'s
-  // -i spacing shows as a pause between round trips instead of being collapsed
-  // by the queue when the animation is slower than the interval.
-  _probeGapMs(q, next) {
-    if (q.curFlow === undefined || next.flow === q.curFlow) return 0;
-    return Math.max(0, (next._t || 0) - (q.flowStartT || 0));
-  },
-
   _onSegmentDone(key) {
     const q = this._queues.get(key);
     if (!q) return;
@@ -452,15 +436,7 @@ export const PacketAnim = {
       return;
     }
     const next = q.pending.shift();
-    const gap = this._probeGapMs(q, next);
-    if (next.flow !== q.curFlow) { q.curFlow = next.flow; q.flowStartT = next._t; }
-    const gen = this._gen;
-    const go = () => {
-      if (gen !== this._gen) return;        // sim reset during the pause: abort
-      this._render(next, () => this._onSegmentDone(key));
-    };
-    if (gap > 0) setTimeout(go, gap);
-    else go();
+    this._render(next, () => this._onSegmentDone(key));
   },
 
   _render(evt, onDone) {
