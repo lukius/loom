@@ -241,6 +241,22 @@ describe('toast', () => {
     vi.advanceTimersByTime(5000 + 320);
     expect(wrap.children.length).toBe(0);
   });
+
+  it('renders a countdown bar inside the toast', () => {
+    toast('hello');
+    const bar = document.querySelector('#toasts .toast-bar');
+    expect(bar).not.toBeNull();
+  });
+  it('sets the countdown bar animation duration to the toast lifetime', () => {
+    toast('hello');             // default kind → 2400ms
+    const bar = document.querySelector('#toasts .toast-bar');
+    expect(bar.style.animationDuration).toBe('2400ms');
+  });
+  it('uses the longer lifetime for the error countdown bar', () => {
+    toast('boom', 'error');     // error → 5000ms
+    const bar = document.querySelector('#toasts .toast-bar');
+    expect(bar.style.animationDuration).toBe('5000ms');
+  });
 });
 
 // ---------------------------------------------------------------------------

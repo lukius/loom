@@ -1624,6 +1624,20 @@ input.invalid { border-color: var(--neg); box-shadow: 0 0 0 2px color-mix(in srg
   margin-bottom: 1px;
 }
 .toast .body .msg { line-height: 1.4; }
+.toast-bar {
+  position: absolute; left: 0; bottom: 0;
+  height: 3px; width: 100%;
+  background: var(--text-3);
+  transform-origin: left;
+  animation-name: toast-countdown;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  border-bottom-left-radius: 8px;
+}
+@keyframes toast-countdown { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.toast.ok    .toast-bar { background: var(--pos); }
+.toast.error .toast-bar { background: var(--neg); }
+.toast.info  .toast-bar { background: var(--accent); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ============================================================

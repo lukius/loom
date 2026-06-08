@@ -246,10 +246,13 @@ export function toast(msg, kind = '', label = null) {
       ${label ? `<div class="lab">${escapeHtml(label)}</div>` : ''}
       <div class="msg">${escapeHtml(msg)}</div>
     </div>
+    <div class="toast-bar"></div>
   `;
   wrap.appendChild(elT);
   // Errors linger so the user actually sees them; other kinds dismiss fast.
   const lifetime = kind === 'error' ? 5000 : 2400;
+  const bar = elT.querySelector('.toast-bar');
+  bar.style.animationDuration = `${lifetime}ms`;
   setTimeout(() => {
     elT.style.transition = 'opacity .3s, transform .3s';
     elT.style.opacity = 0;
