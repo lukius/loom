@@ -8,6 +8,7 @@ export const THEME_KEY = 'loom.theme';
 
 export const state = {
   asName: 'test_as',
+  asn: 65000,
   /* networks[name] = { cidr, x, y } */
   networks: {},
   /* hosts[name] = { network, address, x, y } OR { link, address, x, y }  — network and link are mutually exclusive */
@@ -81,6 +82,7 @@ export const HIT_PAD = { network: { x: 12, top: 12, bottom: 32 }, host: { x: 18,
 
 export const SAMPLE = {
   asName: 'test_as',
+  asn: 65000,
   links: {
     p2p1: { cidr: '10.0.0.0/30', x: 920, y: 355 },
   },
@@ -129,6 +131,7 @@ export function persist() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       asName: state.asName,
+      asn: state.asn,
       networks: state.networks,
       hosts: state.hosts,
       routers: state.routers,
@@ -149,6 +152,7 @@ export function restore() {
     if (!raw) return false;
     const d = JSON.parse(raw);
     state.asName = d.asName || 'test_as';
+    state.asn = (typeof d.asn === 'number' && d.asn > 0) ? d.asn : 65000;
     state.networks = d.networks || {};
     state.hosts = d.hosts || {};
     state.routers = d.routers || {};
@@ -179,6 +183,7 @@ export function defaultExportFilename(sourceName) {
 }
 export function loadSample() {
   state.asName = SAMPLE.asName;
+  state.asn = SAMPLE.asn;
   state.networks = JSON.parse(JSON.stringify(SAMPLE.networks));
   state.hosts = JSON.parse(JSON.stringify(SAMPLE.hosts));
   state.routers = JSON.parse(JSON.stringify(SAMPLE.routers));
@@ -204,6 +209,7 @@ export function loadSample() {
    neutral default AS name. */
 export function clearTopology() {
   state.asName = 'loom';
+  state.asn = 65000;
   state.networks = {};
   state.hosts = {};
   state.routers = {};

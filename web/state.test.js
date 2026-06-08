@@ -238,6 +238,31 @@ describe('persist / restore', () => {
     expect(state.config).toEqual(CONFIG_DEFAULTS);
     expect(state.protocol).toEqual(PROTOCOL_DEFAULTS);
   });
+
+  it('round-trips a non-default state.asn through persist/restore', () => {
+    state.asn = 64500;
+    persist();
+    // mutate in memory so we know restore actually applied the stored value
+    state.asn = 9999;
+    expect(restore()).toBe(true);
+    expect(state.asn).toBe(64500);
+  });
+
+  it('restore falls back to 65000 when legacy blob lacks asn', () => {
+    // Pre-condition: mutate to a non-default so the assertion proves restore()
+    // actively applies the default, not that resetState() left 65000.
+    state.asn = 64500;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      asName: 'legacy_as',
+      networks: {},
+      hosts: {},
+      routers: {},
+      view: { x: 0, y: 0, k: 1 },
+      display: { showCosts: true, showIfaces: true },
+    }));
+    expect(restore()).toBe(true);
+    expect(state.asn).toBe(65000);
+  });
 });
 
 describe('loadSample', () => {

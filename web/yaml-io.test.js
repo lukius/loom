@@ -235,6 +235,54 @@ internet:
   });
 });
 
+describe('asn round-trip', () => {
+  it('exportYaml emits state.asn in the AS block', () => {
+    state.asName = 'my_as';
+    state.asn = 64500;
+    state.networks = {}; state.hosts = {}; state.routers = {}; state.links = {};
+    const out = globalThis.jsyaml.load(exportYaml());
+    expect(out.internet.autonomous_systems.my_as.asn).toBe(64500);
+  });
+
+  it('exportYaml emits 65000 when state.asn is the default', () => {
+    state.asName = 'my_as';
+    state.asn = 65000;
+    state.networks = {}; state.hosts = {}; state.routers = {}; state.links = {};
+    const out = globalThis.jsyaml.load(exportYaml());
+    expect(out.internet.autonomous_systems.my_as.asn).toBe(65000);
+  });
+
+  it('importYaml reads asn from the AS block into state.asn', () => {
+    const yaml = `
+internet:
+  name: test
+  autonomous_systems:
+    test:
+      asn: 64500
+      networks: {}
+      hosts: {}
+      routers: {}
+`;
+    importYaml(yaml);
+    expect(state.asn).toBe(64500);
+  });
+
+  it('importYaml defaults state.asn to 65000 when asn is absent from the AS block', () => {
+    state.asn = 64500;
+    const yaml = `
+internet:
+  name: test
+  autonomous_systems:
+    test:
+      networks: {}
+      hosts: {}
+      routers: {}
+`;
+    importYaml(yaml);
+    expect(state.asn).toBe(65000);
+  });
+});
+
 describe('importYaml — position-preserving reimport (Finding 1)', () => {
   it('preserves a pre-seeded network position across reimport', () => {
     // First import: no saved position → importYaml populates without coords.

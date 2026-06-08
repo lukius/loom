@@ -65,7 +65,7 @@ function ensureLinkPositions() {
    -------------------------------------------------------------------------- */
 export function exportYaml() {
   const asBlock = {
-    asn: 65000,
+    asn: state.asn,
     config: {
       protocol: {
         hello_interval: state.protocol.hello_interval,
@@ -190,6 +190,8 @@ export function importYaml(text, { ensurePositions, fitView, renderAll, preserve
       generalConfig.packet_duration_ms, CONFIG_DEFAULTS.packet_duration_ms
     );
   }
+  state.asn = (Number.isFinite(Number(node.asn)) && Number(node.asn) > 0)
+    ? Number(node.asn) : 65000;
   const protoConfig = node.config && node.config.protocol;
   state.protocol = { ...PROTOCOL_DEFAULTS };
   if (protoConfig && typeof protoConfig === 'object') {
