@@ -77,6 +77,76 @@ test('refuses foreign-fabric reassignment while running: snaps back + warns', as
   await expect(page.locator('#toasts .toast.warn')).toContainText(/stop the sim/i);
 });
 
+test('broadcast-chatter dot follows a dragged router while paused', async ({ page }) => {
+  // Start the sim and let Hello/LSA chatter begin.
+  await page.locator('#tb-play').click();
+  await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
+  // loom-OSPF sends an initial Hello + LSA at t≈0; chatter dots appear within
+  // the first second. Wait for any chatter dot — phase 1 lasts ~540 ms
+  // (30% of 1800 ms), so a dot caught early enough will still be mid-phase-1
+  // when we pause, meaning the rAF loop is still evaluating the srcCenter/srcTap
+  // thunks every frame.
+  const chatterDot = page.locator(
+    '#packet-layer rect[data-packet-type="routing_flood"], ' +
+    '#packet-layer rect[data-packet-type="hello"]',
+  ).first();
+  await expect(chatterDot).toBeVisible({ timeout: 10000 });
+
+  // Read the sender from the dot's data-evt before pausing so we know which
+  // router to drag. The sender's srcCenter/srcTap are the live geometry inputs
+  // for phase-1 — dragging the sender while paused is what discriminates the
+  // live-resolver path from fixed-capture.
+  const senderName = await page.evaluate(() => {
+    const dot = document.querySelector(
+      '#packet-layer rect[data-packet-type="routing_flood"], ' +
+      '#packet-layer rect[data-packet-type="hello"]',
+    );
+    if (!dot || !dot.dataset.evt) return null;
+    try { return JSON.parse(dot.dataset.evt).src?.device ?? null; }
+    catch (_) { return null; }
+  });
+  // If we couldn't read the sender (edge case), fall back to r1.
+  const dragTargetName = senderName || 'r1';
+
+  // PAUSE the sim. While paused:
+  //   - elapsed is frozen → t is constant → bezier parameter does NOT advance
+  //   - rAF keeps firing → curveFn() (which calls srcCenter()/srcTap() thunks)
+  //     is evaluated every frame against the current DOM transform.
+  // OLD code (822462a trivial thunks): captures fixed srcCenter/srcTap once;
+  //   dragging the sender leaves the dot pinned. FAIL.
+  // NEW code (live resolvers): srcCenter() = getNodeCenter(lookupDeviceNode(name))
+  //   is re-read each rAF from the current DOM transform; dragging the sender
+  //   shifts srcCenter(), changing the bezier, so the dot tracks the node. PASS.
+  await page.locator('#tb-pause').click();
+  await expect(page.locator('#tb-play')).toHaveClass(/paused/, { timeout: 5000 });
+
+  // Let one rAF tick settle before recording the baseline position.
+  await page.waitForTimeout(80);
+
+  // Confirm the dot is still visible (phase 1 is frozen mid-flight) and record x.
+  await expect(chatterDot).toBeVisible({ timeout: 2000 });
+  const x0 = await chatterDot.getAttribute('x');
+
+  // Drag the sender router a large distance while the sim is paused. Each
+  // pointermove step writes a new transform to the SVG <g>, which the next rAF
+  // frame reads via lookupDeviceNode(dragTargetName) → getNodeCenter().
+  const senderNode = page.locator(`#nodes-layer g.node.router[data-name="${dragTargetName}"]`);
+  await expect(senderNode).toBeVisible();
+  const b = await senderNode.boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.down();
+  // Many steps so the DOM transform updates incrementally and rAF has
+  // opportunities to re-sample the thunks before the final position.
+  await page.mouse.move(b.x + 300, b.y + 200, { steps: 40 });
+  await page.mouse.up();
+
+  // The frozen dot must have moved from its baseline x. Use poll to absorb
+  // the final rAF settle after mouseup. Also assert the dot is still in the
+  // DOM (a vanished dot would spuriously appear to have "moved").
+  await expect(chatterDot).toBeVisible({ timeout: 2000 });
+  await expect.poll(() => chatterDot.getAttribute('x'), { timeout: 3000 }).not.toBe(x0);
+});
+
 test('an in-flight packet follows a node moved mid-flight', async ({ page }) => {
   // Start the sim and wait for routing to converge.
   await page.locator('#tb-play').click();

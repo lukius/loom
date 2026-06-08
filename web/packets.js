@@ -329,10 +329,16 @@ export const PacketAnim = {
     const layer = document.getElementById('packet-layer');
     const gen = this._gen;
     const sender = evt.src && evt.src.device;
+    const srcName = sender;
     const fabricName = evt.network;
-    const srcCenter = getNodeCenter(srcNode);
-    const srcTap = railTapPoint(sender, fabricName) || getNodeCenter(netNode);
-    if (!srcCenter || !srcTap) {
+    const netName = fabricName;
+    // Live resolvers — re-read DOM/state every frame so dots follow a dragged node.
+    const netCenter = () => getNodeCenter(lookupNetworkNode(netName)) || getNodeCenter(netNode);
+    const srcCenter = () => getNodeCenter(lookupDeviceNode(srcName)) || netCenter();
+    const srcTap = () => railTapPoint(srcName, fabricName) || netCenter();
+    // Probe once to guard on missing geometry at animation-start (presence is
+    // stable; only positions move).
+    if (!srcCenter() || !srcTap()) {
       // Geometry unresolved — fall back to single-arrival semantics so the
       // chatter row still cleans up.
       if (dot.parentNode) layer.removeChild(dot);
@@ -351,11 +357,9 @@ export const PacketAnim = {
     const phase2Dur = this.DURATION_MS * (1 - PHASE1_FRACTION);
 
     const isChatter = this._ROUTING_CHATTER_TYPES.has(evt.type);
-    // Wrap fixed geometry in trivial thunks so the updated _tweenBezier /
-    // _tweenPoints / _segLength signatures work. Task 6 will convert these to
-    // real live resolvers; this wrapping keeps broadcast fanout behaviorally
-    // identical (still fixed points) while keeping the suite green.
-    const phase1CurveFn = () => this._bezBetween(srcCenter, srcTap);
+    // Live curve thunk — re-evaluates both endpoints every frame so the phase-1
+    // dot follows the sender if it is dragged while the tween is in flight.
+    const phase1CurveFn = () => this._bezBetween(srcCenter(), srcTap());
 
     this._tweenBezier(dot, badge, phase1CurveFn, phase1Dur, () => {
       // Retire the source dot; clones will carry the visual onward.
@@ -379,9 +383,11 @@ export const PacketAnim = {
       };
 
       for (const lis of listeners) {
-        const lisNode = lookupDeviceNode(lis);
-        const lisCenter = lisNode ? getNodeCenter(lisNode) : null;
-        const lisTap = railTapPoint(lis, fabricName) || srcTap;
+        // Live resolvers keyed on the listener's device NAME so dots survive a
+        // renderCanvas rebuild (e.g. on drop-commit) and track the listener if
+        // it is dragged while phase 2 is in flight.
+        const lisTap = () => railTapPoint(lis, fabricName) || netCenter();
+        const lisCenter = () => getNodeCenter(lookupDeviceNode(lis));
         // Build the clone even when geometry is missing so we still fire
         // arrival (and clean up the chatter row).
         const { dot: cdot, badge: cbadge } = this._makeDotAndBadge(evt, color, isChatter, dotKey, layer);
@@ -396,24 +402,23 @@ export const PacketAnim = {
           cloneDone();
         };
 
-        if (!lisCenter || !lisTap) { fireArrival(); continue; }
+        if (!lisCenter() || !lisTap()) { fireArrival(); continue; }
 
         // Position the clone at the source rail tap before animating.
-        setPacketAnchor(cdot, cbadge, srcTap.x, srcTap.y);
+        const p = srcTap();
+        setPacketAnchor(cdot, cbadge, p.x, p.y);
 
         // Same total phase-2 duration for every clone so all listeners
         // visually receive together (broadcast intuition), even though
         // their path lengths differ.
-        // Wrap fixed points in trivial thunks for updated _segLength signature.
-        const railSegLen = this._segLength({ kind: 'line', from: () => srcTap, to: () => lisTap });
-        const lisBez = this._bezBetween(lisTap, lisCenter);
-        const lisBezLen = this._segLength({ kind: 'bez', curve: () => lisBez });
+        const railSegLen = this._segLength({ kind: 'line', from: srcTap, to: lisTap });
+        const lisBezLen = this._segLength({ kind: 'bez', curve: () => this._bezBetween(lisTap(), lisCenter()) });
         const tot = (railSegLen + lisBezLen) || 1;
         const railDur = (railSegLen / tot) * phase2Dur;
         const lisDur = (lisBezLen / tot) * phase2Dur;
 
-        this._tweenPoints(cdot, cbadge, () => srcTap, () => lisTap, railDur, () => {
-          this._tweenBezier(cdot, cbadge, () => lisBez, lisDur, fireArrival);
+        this._tweenPoints(cdot, cbadge, srcTap, lisTap, railDur, () => {
+          this._tweenBezier(cdot, cbadge, () => this._bezBetween(lisTap(), lisCenter()), lisDur, fireArrival);
         });
       }
     });
