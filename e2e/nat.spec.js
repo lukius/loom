@@ -73,86 +73,90 @@ test.describe('loom NAT - visual smoke', () => {
     await expect(term).toBeVisible({ timeout: 3000 });
     const input = term.locator('textarea.term-in');
 
-    // Send a datagram and wait for the sim:nat event to arrive in PacketStore.
-    // The packet may be silently dropped if the link-state protocol hasn't
-    // fully converged yet (no route to host → exception swallowed in
-    // Interface._pkt_loop, no NAT event emitted). To avoid a fixed sleep that
-    // is long enough for the worst case but slow on the fast path, we retry:
-    // re-send every 1 s until PacketStore registers a NAT translation or the
-    // overall deadline expires.
+    // --- Capture a NAT'd datagram frozen on the canvas --------------------
+    // We need a single green rect that is BOTH still on the canvas AND whose
+    // payload has a NAT entry, frozen by a pause so we can hover it. Two facts
+    // make this racy if handled naively:
+    //   • The store's NAT entry and the on-canvas rect can belong to DIFFERENT
+    //     payloads. An earlier NAT'd datagram may finish animating (and be
+    //     removed) just as its NAT event lands, while a newer, not-yet-NAT'd
+    //     datagram is the rect actually in flight. So "wait for any NAT entry,
+    //     then hover any present rect" races — under load the frozen rect can
+    //     be one whose NAT hasn't arrived, so no tooltip is ever built.
+    //   • Pausing before the packet has traversed r_a can let the PauseGate
+    //     block r_a's interface thread before handle_packet runs, so NAT never
+    //     fires for that packet.
+    // We therefore loop on the real invariant: while RUNNING, send and wait
+    // until a CURRENTLY-PRESENT rect is already NAT'd (NAT has fired, rect still
+    // animating); then pause to freeze it; then ATOMICALLY re-confirm a present
+    // rect is NAT'd and hover it in one evaluate (no gap in which it could be
+    // removed). If the freeze lost the rect, resume and retry.
     //
-    // We wait for NAT BEFORE pausing for two reasons:
-    //   (a) NAT fires inside Interface._pkt_loop → handle_packet. Pausing
-    //       first can cause the PauseGate to block r_a's interface thread
-    //       before handle_packet runs, so NAT never fires during the pause.
-    //   (b) page.evaluate with an async callback cannot be used in
-    //       waitForFunction: Playwright evaluates the returned Promise as a
-    //       truthy object on every tick and therefore always resolves
-    //       immediately — a poll loop with page.evaluate is necessary.
+    // Note: an async page.evaluate must be polled manually — it cannot drive
+    // waitForFunction (a returned Promise reads as truthy every tick, resolving
+    // immediately), so the inner waits are explicit poll loops.
     const pktSel = '#packet-layer rect[fill="#22c55e"]';
-    const NAT_OVERALL_MS = 20000;
-    const NAT_RETRY_MS  = 1000;
-    const natDeadline = Date.now() + NAT_OVERALL_MS;
-    let natReady = false;
-    while (!natReady && Date.now() < natDeadline) {
-      // Re-issue the send command (each call allocates a new payload_id, so
-      // multiple in-flight datagrams are harmless).
+    const presentNatd = () => page.evaluate(async (sel) => {
+      const { PacketStore } = await import('/packetstore.js');
+      return [...document.querySelectorAll(sel)].some(r => {
+        let e; try { e = JSON.parse(r.dataset.evt); } catch (_) { return false; }
+        return e && e.payload_id && PacketStore.natFor(e.payload_id).length > 0;
+      });
+    }, pktSel);
+
+    const CAPTURE_OVERALL_MS = 25000;
+    const captureDeadline = Date.now() + CAPTURE_OVERALL_MS;
+    let hovered = false;
+    while (!hovered && Date.now() < captureDeadline) {
+      // 1. Ensure the sim is running (clicking #tb-pause toggles run/pause; the
+      //    play button's class carries the current state).
+      const cls = (await page.locator('#tb-play').getAttribute('class')) || '';
+      if (!/running/.test(cls)) {
+        await page.locator('#tb-pause').click();
+        await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 5000 });
+      }
+
+      // 2. Send a datagram (each call allocates a fresh payload_id).
       await input.click();
       await input.fill('send 200.100.0.10 hello');
       await input.press('Enter');
 
-      // Wait for the green rect to appear and check PacketStore for a NAT entry.
-      // If the rect never appears in 3 s the packet was dropped before entering
-      // the canvas layer — skip to the next retry without waiting the full budget.
-      const rectSeen = await page.waitForFunction(
-        (sel) => document.querySelectorAll(sel).length > 0,
-        pktSel,
-        { timeout: 3000 },
-      ).then(() => true).catch(() => false);
-
-      if (rectSeen) {
-        // Give the NAT event ~1 s to propagate through the WS pipeline.
-        const pollDeadline = Date.now() + NAT_RETRY_MS;
-        while (!natReady && Date.now() < pollDeadline) {
-          natReady = await page.evaluate(async () => {
-            const { PacketStore } = await import('/packetstore.js');
-            return PacketStore.natByPayload.size > 0;
-          });
-          if (!natReady) await page.waitForTimeout(100);
-        }
+      // 3. While running, wait (≤3 s) until a present rect is NAT'd. This proves
+      //    NAT has fired (so the upcoming pause cannot prevent it) and the rect
+      //    is still in flight. If nothing shows — packet dropped pre-convergence
+      //    or too slow this round — resend.
+      let ready = false;
+      const readyDeadline = Date.now() + 3000;
+      while (!ready && Date.now() < readyDeadline) {
+        ready = await presentNatd();
+        if (!ready) await page.waitForTimeout(100);
       }
+      if (!ready) continue;
+
+      // 4. Pause to freeze whatever is in flight.
+      await page.locator('#tb-pause').click();
+      await expect(page.locator('#tb-play')).toHaveClass(/paused/, { timeout: 5000 });
+
+      // 5. Atomically re-confirm a frozen rect is NAT'd and hover it. Dispatch
+      //    mouseenter directly (the rect sits under toolbar/zoom overlays in
+      //    some viewport sizes; its own listener is all the tooltip needs). If
+      //    the NAT'd rect vanished in the brief freeze window, return false and
+      //    loop — step 1 will resume the sim.
+      hovered = await page.evaluate(async (sel) => {
+        const { PacketStore } = await import('/packetstore.js');
+        for (const rect of document.querySelectorAll(sel)) {
+          let evtData;
+          try { evtData = JSON.parse(rect.dataset.evt); } catch (_) { continue; }
+          if (!evtData || !evtData.payload_id) continue;
+          if (PacketStore.natFor(evtData.payload_id).length > 0) {
+            rect.dispatchEvent(new MouseEvent('mouseenter'));
+            return true;
+          }
+        }
+        return false;
+      }, pktSel);
     }
-    expect(natReady, 'timed out waiting for sim:nat to populate PacketStore').toBe(true);
-
-    // Pause so the packet freezes in flight and we can hover it. NAT is already
-    // in the store, so showPacketTooltip will build the NAT line for the rect
-    // whose payload_id has a registered NAT translation.
-    await page.locator('#tb-pause').click();
-    await expect(page.locator('#tb-play')).toHaveClass(/paused/, { timeout: 5000 });
-
-    // Hover the frozen user-datagram packet — Sim.state === 'paused' freezes
-    // the tween, so the rect stays put while showPacketTooltip runs. Use
-    // dispatchEvent rather than mouse hover because the rect is inside an
-    // SVG layer that sits underneath the toolbar/zoom overlays in some
-    // viewport sizes; the rect's own mouseenter listener is the only thing
-    // the tooltip flow actually requires.
-    //
-    // Retry sends may have left multiple green rects in flight simultaneously
-    // (one per send). We need to hover the rect whose payload_id is present in
-    // PacketStore.natByPayload — not necessarily the first in DOM order.
-    await page.evaluate(async (sel) => {
-      const { PacketStore } = await import('/packetstore.js');
-      const rects = [...document.querySelectorAll(sel)];
-      for (const rect of rects) {
-        let evtData;
-        try { evtData = JSON.parse(rect.dataset.evt); } catch (_) { continue; }
-        if (!evtData || !evtData.payload_id) continue;
-        if (PacketStore.natFor(evtData.payload_id).length > 0) {
-          rect.dispatchEvent(new MouseEvent('mouseenter'));
-          return;
-        }
-      }
-    }, pktSel);
+    expect(hovered, 'no NAT-bearing datagram could be frozen on the canvas to hover').toBe(true);
 
     const tt = page.locator('#packet-tooltip');
     await expect(tt).toBeVisible({ timeout: 3000 });
