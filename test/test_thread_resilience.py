@@ -6,6 +6,7 @@ from entities import (
     AS,
     Address,
     Datagram,
+    Frame,
     Host,
     Interface,
     Link,
@@ -14,6 +15,7 @@ from entities import (
     Router,
     UserMessage,
 )
+from routing import Scheduler
 
 
 def _wait(condition, timeout=2.0, interval=0.01):
@@ -134,7 +136,6 @@ class RoutingProtocolThreadResilienceTest(unittest.TestCase):
         self._net.stop()
 
     def test_thread_survives_dispatch_exception(self):
-        from routing import Scheduler  # noqa: PLC0415  # test-only local import
         protocol = self._router.protocol()
         call_count = 0
         completed = threading.Event()
@@ -166,8 +167,6 @@ class RoutingProtocolThreadResilienceTest(unittest.TestCase):
 
 
 def _make_frame(src, dst):
-    from entities.packet import Datagram, Frame, UserMessage  # noqa: PLC0415
-
     datagram = Datagram(src_addr=src, dst_addr=dst, payload=UserMessage("test"))
     return Frame(src_addr=src, dst_addr=dst, payload=datagram)
 
