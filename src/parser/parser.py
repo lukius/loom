@@ -160,11 +160,7 @@ class Parser:
 
                 cost = 1
                 if 'cost' in iface:
-                    cost = iface['cost']
-                try:
-                    cost = int(cost)
-                except ValueError:
-                    self._fail(f'{name}: {iface_name}: invalid cost')
+                    cost = self._positive_int_cost(name, iface_name, iface['cost'])
 
                 iface_obj = Interface(
                     iface_name, fabric, address, cost, gate=system.gate()
@@ -329,6 +325,11 @@ class Parser:
                 f'{short_name}: "{key}" must be a positive number (got {value!r})'
             )
         return float(value)
+
+    def _positive_int_cost(self, router_name, iface_name, value):
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            self._fail(f'{router_name}: {iface_name}: invalid cost')
+        return value
 
     def _fail(self, msg):
         raise ParsingException(msg)

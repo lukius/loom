@@ -155,6 +155,15 @@ class ParserTest(unittest.TestCase):
     def test_invalid_cost(self):
         self._run_parsing_error_test('invalid_cost', 'invalid cost')
 
+    def test_negative_cost(self):
+        self._run_parsing_error_test('cost_negative', 'invalid cost')
+
+    def test_zero_cost(self):
+        self._run_parsing_error_test('cost_zero', 'invalid cost')
+
+    def test_boolean_cost(self):
+        self._run_parsing_error_test('cost_boolean', 'invalid cost')
+
     def test_invalid_host_address(self):
         self._run_parsing_error_test('invalid_host_address', 'invalid address')
 

@@ -1,0 +1,14 @@
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: 100.100.100.0/24
+      routers:
+        r1:
+          interfaces:
+            eth0:
+              network: lan1
+              address: 100.100.100.1
+              cost: 0
