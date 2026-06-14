@@ -54,6 +54,7 @@ class _FabricBase(Entity):
         for iface in self._interfaces.values():
             iface.stop()
         self._in_queue.put(None)
+        self._pkt_thread.join(timeout=2.0)
 
     def join(self):
         self._pkt_thread.join()

@@ -3,9 +3,12 @@ import time
 import unittest
 
 from entities import (
+    AS,
     Address,
     Datagram,
+    Host,
     Interface,
+    Link,
     Network,
     NetworkAddress,
     Router,
@@ -163,7 +166,102 @@ class RoutingProtocolThreadResilienceTest(unittest.TestCase):
 
 
 def _make_frame(src, dst):
-    from entities.packet import Datagram, Frame, UserMessage
+    from entities.packet import Datagram, Frame, UserMessage  # noqa: PLC0415
 
     datagram = Datagram(src_addr=src, dst_addr=dst, payload=UserMessage("test"))
     return Frame(src_addr=src, dst_addr=dst, payload=datagram)
+
+
+def _collect_as_threads(autonomous_system):
+    """Return all worker threads owned by an AS: fabric, interface, and protocol."""
+    threads = []
+    for fabric in list(autonomous_system.networks().values()) + list(
+        autonomous_system.links().values()
+    ):
+        threads.append(fabric._pkt_thread)
+    for device in list(autonomous_system.routers().values()) + list(
+        autonomous_system.hosts().values()
+    ):
+        for iface in device.interfaces().values():
+            threads.append(iface._pkt_thread)
+        if isinstance(device, Router):
+            for proto in device.protocols():
+                pt = getattr(proto, '_protocol_thread', None)
+                if pt is not None:
+                    threads.append(pt)
+    return threads
+
+
+def _build_small_as():
+    """Build a minimal AS: one network, one router with one interface, one host.
+
+    Thread inventory created per AS:
+      - net._pkt_thread        (Network fabric)
+      - link._pkt_thread       (Link fabric)
+      - r_iface._pkt_thread    (router eth0 on network)
+      - r_link_iface._pkt_thread (router eth1 on link)
+      - host.interface()._pkt_thread  (host iface on network)
+      - router protocol._protocol_thread
+    """
+    net = Network("lan", NetworkAddress("10.0.1.0/24"))
+
+    r_iface = Interface("eth0", net, Address("10.0.1.1"))
+    net.add_interface(r_iface)
+    router = Router("r1")
+    router.add_interface(r_iface)
+
+    host = Host("h1", net, Address("10.0.1.10"), gw_address=Address("10.0.1.1"))
+    net.add_interface(host.interface())
+
+    link = Link("p2p", NetworkAddress("192.168.0.0/30"))
+    r_link_iface = Interface("eth1", link, Address("192.168.0.1"))
+    link.add_interface(r_link_iface)
+    router.add_interface(r_link_iface)
+
+    as_ = AS("test-as")
+    as_.add_network(net)
+    as_.add_link(link)
+    as_.add_router(router)
+    as_.add_host(host)
+    router.start()
+    return as_
+
+
+class StopJoinsAllThreadsTest(unittest.TestCase):
+    """AS.stop() must fully join every worker thread (fabric, interface, protocol)."""
+
+    def test_all_threads_dead_after_stop(self):
+        """Collect all worker threads, call stop(), assert none are alive."""
+        as_ = _build_small_as()
+
+        # Allow threads a moment to start.
+        time.sleep(0.05)
+
+        threads = _collect_as_threads(as_)
+        self.assertTrue(
+            all(t.is_alive() for t in threads),
+            "pre-condition: all threads should be alive before stop()",
+        )
+
+        as_.stop()
+
+        dead = [not t.is_alive() for t in threads]
+        self.assertTrue(
+            all(dead),
+            f"threads still alive after stop(): "
+            f"{[t.name for t, d in zip(threads, dead) if not d]}",
+        )
+
+    def test_repeated_start_stop_does_not_leak_threads(self):
+        """Multiple stop cycles leave no threads alive from previous runs."""
+        for cycle in range(3):
+            as_ = _build_small_as()
+            time.sleep(0.05)
+            threads = _collect_as_threads(as_)
+            as_.stop()
+            still_alive = [t for t in threads if t.is_alive()]
+            self.assertEqual(
+                still_alive,
+                [],
+                f"cycle {cycle}: threads still alive: {[t.name for t in still_alive]}",
+            )

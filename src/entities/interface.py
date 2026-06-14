@@ -123,6 +123,7 @@ class Interface(Entity):
 
     def stop(self):
         self._in_queue.put(None)
+        self._pkt_thread.join(timeout=2.0)
 
     def join(self):
         self._pkt_thread.join()
