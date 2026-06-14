@@ -4,7 +4,10 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
+from entities import Address, Network, NetworkAddress
+from entities.host import Host
 from server.app import create_app
+from server.command.dispatch import dispatch
 from server.command.host import cmd_ping
 from server.command.router import cmd_halt, cmd_ifconfig, cmd_resume
 
@@ -444,3 +447,28 @@ internet:
     proto = dumped["internet"]["autonomous_systems"]["main"]["config"]["protocol"]
     assert proto["hello_interval"] == 8.0
     assert proto["lsa_refresh_interval"] == 24.0
+
+
+# ---------------------------------------------------------------------------
+# Fix C: unbalanced-quote command returns ok=False instead of raising 500
+# ---------------------------------------------------------------------------
+
+
+def test_unbalanced_quote_command_returns_error_not_500(client):
+    """A command with an unbalanced quote must return ok=False, not a 500."""
+    r = client.post("/devices/h1/command", json={"cmd": 'send h2 "hi'})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is False
+    assert "syntax" in body["output"].lower() or "quotation" in body["output"].lower()
+
+
+def test_unbalanced_quote_dispatch_returns_error_dict():
+    """dispatch() must return {ok: False, output: ...} for unbalanced quotes."""
+    net = Network("lan", NetworkAddress("10.0.0.0/24"))
+    host = Host("h1", net, Address("10.0.0.1"))
+
+    result = dispatch(host, 'send h2 "hi')
+    assert isinstance(result, dict)
+    assert result["ok"] is False
+    assert result["output"]  # some error message

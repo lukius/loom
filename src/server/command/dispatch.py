@@ -8,7 +8,10 @@ def dispatch(device, cmd_line: str, as_obj=None) -> dict:
 
     Returns a dict with keys 'ok' (bool) and 'output' (str).
     """
-    parts = shlex.split(cmd_line.strip()) if cmd_line.strip() else []
+    try:
+        parts = shlex.split(cmd_line.strip()) if cmd_line.strip() else []
+    except ValueError:
+        return {"ok": False, "output": "invalid command syntax"}
     if not parts:
         return {"ok": False, "output": "empty command"}
     name, args = parts[0], parts[1:]
