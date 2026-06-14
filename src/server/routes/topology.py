@@ -31,8 +31,11 @@ def load(body: dict, request: Request):
 @router.get("/topology")
 def fetch(request: Request):
     s = _state(request)
-    if s.as_obj is not None:
-        with s._lock:  # noqa: SLF001
+    # Both the None-check and _dump_yaml must be inside a single _lock
+    # acquisition so stop() cannot null _as between them, which would cause
+    # _dump_yaml to dereference None → 500.
+    with s._lock:  # noqa: SLF001
+        if s._as is not None:  # noqa: SLF001
             return {"yaml": s._dump_yaml()}  # noqa: SLF001
     return {"yaml": s.session_path.read_text()}
 
