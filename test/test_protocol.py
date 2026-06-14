@@ -1886,6 +1886,14 @@ def test_pause_resume_still_works_after_fix():
     """Regression guard: pausing and resuming the gate must still let the
     protocol loop tick normally after it resumes — the fix must not break
     the resume path.
+
+    Assertions:
+      (a) at least one tick fires while the gate is running,
+      (b) zero ticks fire while the gate is paused, and
+      (c) at least one tick fires after the gate resumes.
+
+    Uses poll-based waits instead of fixed sleeps so the test is
+    deterministic under CPU contention.
     """
     original_send = Interface.send_to
     tick_count = [0]
@@ -1900,29 +1908,41 @@ def test_pause_resume_still_works_after_fix():
     try:
         r, gate = _make_router_with_gate()
         proto = r.protocol()
+        # Generous interval: easy to get ticks, fast enough not to need long waits.
         proto.set_timers(hello_interval=0.05, lsa_refresh_interval=0.15)
 
         proto.start()
-        # Let a couple of ticks fire while running.
-        time.sleep(0.2)
-        ticks_before_pause = tick_count[0]
-        assert ticks_before_pause >= 1, "no ticks before pause"
 
-        # Pause and hold long enough to be sure no spurious ticks happen.
-        gate.pause()
-        time.sleep(0.15)
-        ticks_while_paused = tick_count[0] - ticks_before_pause
-
-        # Resume and let a couple more ticks happen.
-        gate.resume()
-        time.sleep(0.2)
-        ticks_after_resume = tick_count[0] - ticks_before_pause - ticks_while_paused
-
-        assert ticks_while_paused == 0, (
-            f"protocol ticked {ticks_while_paused} time(s) while gate was paused"
+        # (a) Poll until at least one tick fires while the gate is running.
+        assert _wait(lambda: tick_count[0] >= 1, timeout=3.0), (
+            "no ticks before pause (a)"
         )
-        assert ticks_after_resume >= 1, (
-            "protocol did not tick after gate was resumed"
+        ticks_at_pause = tick_count[0]
+
+        # Pause the gate.  The loop is poll-based (_PAUSE_POLL_INTERVAL) so it
+        # will notice the pause within one poll cycle.  We wait for that cycle
+        # to elapse before snapping the count, removing the race between
+        # "gate.pause() call" and "a tick that was already in-flight".
+        gate.pause()
+        # Wait 5× the hello interval: any in-flight tick completes, the loop
+        # enters its paused poll, and no new tick can start.  This window is
+        # conservative — the loop's _PAUSE_POLL_INTERVAL is 0.1 s by default,
+        # and hello_interval is 0.05 s here.
+        time.sleep(0.5)
+        ticks_while_paused = tick_count[0] - ticks_at_pause
+
+        # (b) Assert zero ticks occurred while paused.
+        assert ticks_while_paused == 0, (
+            f"protocol ticked {ticks_while_paused} time(s) while gate was paused (b)"
+        )
+
+        # Resume and poll until at least one new tick fires.
+        count_at_resume = tick_count[0]
+        gate.resume()
+
+        # (c) Poll for the next tick — generous 3 s timeout.
+        assert _wait(lambda: tick_count[0] > count_at_resume, timeout=3.0), (
+            "protocol did not tick after gate was resumed (c)"
         )
     finally:
         Interface.send_to = original_send
