@@ -1293,6 +1293,65 @@ describe('PacketAnim — routing chatter is also dropped at a down link', () => 
   });
 });
 
+describe('PacketAnim — _lastChatter and _lsaArrivedAt are bounded (H17)', () => {
+  beforeEach(() => {
+    PacketAnim._reset();
+  });
+
+  it('_lastChatter stays bounded when many distinct chatter payload_ids are seen', () => {
+    // Drive 2000 distinct chatter keys through _chatterAllowed (which sets _lastChatter).
+    // Without a cap the map grows to 2000; with a cap it must stay <= _LAST_CHATTER_LIMIT.
+    const N = 2000;
+    for (let i = 0; i < N; i++) {
+      PacketAnim._chatterAllowed({
+        type: 'routing_flood',
+        payload_id: `lsa-${i}`,
+        network: 'lan_a',
+        src: { device: 'r1', iface: 'eth0' },
+      });
+    }
+    expect(PacketAnim._lastChatter.size).toBeLessThanOrEqual(PacketAnim._LAST_CHATTER_LIMIT);
+  });
+
+  it('_lastChatter still deduplicates recent repeated entries (dedup intact after cap)', () => {
+    // After driving many keys in, a same-key repeat within 200ms must still be throttled.
+    const N = 500;
+    for (let i = 0; i < N; i++) {
+      PacketAnim._chatterAllowed({
+        type: 'routing_flood', payload_id: `lsa-${i}`,
+        network: 'lan_a', src: { device: 'r1', iface: 'eth0' },
+      });
+    }
+    // The most recent key should still be in the map and cause throttling.
+    const recent = `lsa-${N - 1}`;
+    const allowed = PacketAnim._chatterAllowed({
+      type: 'routing_flood', payload_id: recent,
+      network: 'lan_a', src: { device: 'r1', iface: 'eth0' },
+    });
+    expect(allowed).toBe(false); // throttled — same key within 200ms
+  });
+
+  it('_lsaArrivedAt stays bounded when many distinct payload/device combos are marked', () => {
+    // Drive 2000 distinct (payloadId, device) pairs through _markLSAArrivedAt.
+    // Without a cap the set grows to 2000; with a cap it must stay <= _LSA_ARRIVED_LIMIT.
+    const N = 2000;
+    for (let i = 0; i < N; i++) {
+      PacketAnim._markLSAArrivedAt(`lsa-${i}`, 'r1');
+    }
+    expect(PacketAnim._lsaArrivedAt.size).toBeLessThanOrEqual(PacketAnim._LSA_ARRIVED_LIMIT);
+  });
+
+  it('_lsaArrivedAt still allows a fresh entry after eviction (not a dead set)', () => {
+    // Fill past the cap, then add one more. The last entry should be present.
+    const N = 2000;
+    for (let i = 0; i < N; i++) {
+      PacketAnim._markLSAArrivedAt(`lsa-${i}`, 'r1');
+    }
+    PacketAnim._markLSAArrivedAt('lsa-new', 'r2');
+    expect(PacketAnim._lsaArrivedAt.has('lsa-new|r2')).toBe(true);
+  });
+});
+
 describe('PacketAnim._sessionKey — groups a conversation across probes and NAT', () => {
   beforeEach(() => { PacketAnim._reset(); });
 

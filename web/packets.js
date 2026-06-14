@@ -253,10 +253,20 @@ export const PacketAnim = {
     }
   },
 
+  // Size cap for _lsaArrivedAt: keeps the set comfortably above the number of
+  // concurrently in-flight LSA propagations (per-originator × per-router).
+  // Matches the existing cache-cap idiom; 1024 covers at least 10 full
+  // propagation waves across a 100-router topology simultaneously.
+  _LSA_ARRIVED_LIMIT: 1024,
+
   _markLSAArrivedAt(payloadId, device) {
     if (!payloadId || !device) return;
     const key = `${payloadId}|${device}`;
     this._lsaArrivedAt.add(key);
+    if (this._lsaArrivedAt.size > this._LSA_ARRIVED_LIMIT) {
+      const firstKey = this._lsaArrivedAt.values().next().value;
+      this._lsaArrivedAt.delete(firstKey);
+    }
     const queued = this._lsaPending.get(key);
     if (queued) {
       this._lsaPending.delete(key);
@@ -766,6 +776,11 @@ export const PacketAnim = {
     return len;
   },
 
+  // Size cap for _lastChatter: comfortably above the number of in-flight chatter
+  // messages on any realistic topology (100 routers × 5 ifaces × 2 types ≈ 1000),
+  // matching the _INTERCEPT_CACHE_LIMIT / _NAT_CACHE_LIMIT idiom already in the file.
+  _LAST_CHATTER_LIMIT: 1024,
+
   _chatterAllowed(evt) {
     // Key on the message identity, not just (device, network): a router
     // re-floods several *distinct* LSAs out one interface in a tight burst
@@ -777,6 +792,10 @@ export const PacketAnim = {
     const last = this._lastChatter.get(key) || 0;
     if (now - last < 200) return false;
     this._lastChatter.set(key, now);
+    if (this._lastChatter.size > this._LAST_CHATTER_LIMIT) {
+      const firstKey = this._lastChatter.keys().next().value;
+      this._lastChatter.delete(firstKey);
+    }
     return true;
   },
 
