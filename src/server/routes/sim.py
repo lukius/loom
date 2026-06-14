@@ -86,7 +86,10 @@ def stop(request: Request):
 @router.get("/state")
 def get_state(request: Request):
     s = _state(request)
-    return {"state": s.state, "as_name": s.as_obj.name() if s.as_obj else None}
+    # Read _as once into a local under the lock to avoid a TOCTOU race:
+    # stop() could null _as between the truthiness check and .name() call.
+    as_obj = s.as_obj_under_lock()
+    return {"state": s.state, "as_name": as_obj.name() if as_obj else None}
 
 
 @router.post("/protocol_config")
@@ -106,13 +109,17 @@ def set_protocol_config(request: Request, body: dict = Body(...)):
     if hello <= 0 or refresh <= 0:
         raise HTTPException(status_code=400, detail="timers must be positive")
     s = _state(request)
-    if s.as_obj is None:
+    # Snapshot the routers list under _lock so a concurrent stop() or
+    # load_from_session() cannot swap _as (and its routers dict) underneath
+    # the iteration, which would cause AttributeError or RuntimeError.
+    routers = s.routers_under_lock()
+    if not routers and s.as_obj_under_lock() is None:
         raise HTTPException(status_code=409, detail="no system loaded")
     # Mutating the live protocols is sufficient for persistence: the topology
     # serializer reads each AS's timers straight off its routers' protocols, so
     # this change is captured on the next dump/export without a separate
     # write-through to the AS.
-    for r in s.as_obj.routers().values():
+    for r in routers:
         for proto in r.protocols():
             if isinstance(proto, LinkStateProtocol):
                 proto.set_timers(hello_interval=hello, lsa_refresh_interval=refresh)
