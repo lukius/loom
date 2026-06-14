@@ -16,6 +16,7 @@ from entities import (
     NullAddress,
     Router,
 )
+from entities.clock import PauseGate
 from entities.event import EventTracer
 from parser import Parser
 from routing import LSA, Hello, LinkStateProtocol, RouteMap, Scheduler
@@ -1780,3 +1781,152 @@ def test_readded_router_not_blackholed_by_tombstone():
         )
     finally:
         Interface.send_to = original_send
+
+
+# ---------------------------------------------------------------------------
+# H4: protocol.stop() must return promptly when the loop is parked on a
+# paused PauseGate (finding H4)
+# ---------------------------------------------------------------------------
+
+def _make_router_with_gate():
+    """Return (router, gate) with a single interface, router NOT started."""
+    gate = PauseGate()
+    net = Network("lan0", NetworkAddress("10.0.0.0/24"))
+    r = Router("r_h4")
+    iface = Interface("eth0", net, Address("10.0.0.1"), cost=1, gate=gate)
+    net.add_interface(iface)
+    r.add_interface(iface)
+    # Wire the gate: Router.gate() reads r._as_gate (set by AS.add_router).
+    r._as_gate = gate  # noqa: SLF001
+    return r, gate
+
+
+def test_stop_returns_quickly_when_loop_parked_at_initial_gate_wait():
+    """H4-repro (initial-wait site): pause the gate BEFORE start() so the
+    protocol thread parks at the very first gate.wait_or_stop() call.
+    protocol.stop() must return in well under 2 s (the join timeout) while
+    the thread is stuck there.
+
+    Pre-fix: stop() burned the full 2.0 s join because _wake_event only
+    woke the scheduler sleep, not the gate wait — thread still blocked.
+    Post-fix: the loop polls self._stopped every _PAUSE_POLL_INTERVAL and
+    exits promptly.
+    """
+    original_send = Interface.send_to
+    Interface.send_to = lambda self, pkt, dst_addr: None
+    try:
+        r, gate = _make_router_with_gate()
+        proto = r.protocol()
+
+        # Gate is paused BEFORE the thread launches: the thread will park
+        # immediately at the initial gate.wait_or_stop() call (no timeout).
+        gate.pause()
+        proto.start()
+
+        # Give the thread time to actually reach the gate wait.
+        time.sleep(0.05)
+        assert proto._protocol_thread.is_alive(), "thread did not start"  # noqa: SLF001
+
+        t0 = time.monotonic()
+        proto.stop()
+        elapsed = time.monotonic() - t0
+
+        # Must be fast (well below the 2.0 s join timeout).
+        assert elapsed < 1.0, (
+            f"protocol.stop() took {elapsed:.3f}s while parked on paused gate; "
+            "expected < 1.0s (pre-fix this would be ~2.0s)"
+        )
+        assert not proto._protocol_thread.is_alive(), (  # noqa: SLF001
+            "protocol thread must have exited after stop()"
+        )
+    finally:
+        Interface.send_to = original_send
+
+
+def test_stop_returns_quickly_when_loop_parked_at_main_loop_gate_wait():
+    """H4-repro (main-loop site): let the initial tick fire (gate running),
+    then pause the gate so the main loop parks at the main-loop gate check.
+    stop() must still return promptly.
+    """
+    original_send = Interface.send_to
+    Interface.send_to = lambda self, pkt, dst_addr: None
+    try:
+        r, gate = _make_router_with_gate()
+        proto = r.protocol()
+        proto.set_timers(hello_interval=60.0, lsa_refresh_interval=180.0)
+
+        # Gate starts running — thread gets past the initial tick.
+        proto.start()
+        # Wait for the thread to complete the initial tick and enter the main loop.
+        time.sleep(0.1)
+        assert proto._protocol_thread.is_alive(), "thread did not start"  # noqa: SLF001
+
+        # Pause: next time the loop checks the gate it will park.
+        gate.pause()
+        # Nudge the loop out of its scheduler sleep so it reaches the gate check.
+        proto._wake_event.set()  # noqa: SLF001
+        time.sleep(0.05)  # let it reach gate.wait_or_stop()
+
+        t0 = time.monotonic()
+        proto.stop()
+        elapsed = time.monotonic() - t0
+
+        assert elapsed < 1.0, (
+            f"protocol.stop() took {elapsed:.3f}s while parked on paused gate "
+            "(main-loop site); expected < 1.0s"
+        )
+        assert not proto._protocol_thread.is_alive(), (  # noqa: SLF001
+            "protocol thread must have exited after stop()"
+        )
+    finally:
+        Interface.send_to = original_send
+
+
+def test_pause_resume_still_works_after_fix():
+    """Regression guard: pausing and resuming the gate must still let the
+    protocol loop tick normally after it resumes — the fix must not break
+    the resume path.
+    """
+    original_send = Interface.send_to
+    tick_count = [0]
+    original_emit = LinkStateProtocol._emit_hello_on_up_interfaces
+
+    def counting_emit(self, now):
+        tick_count[0] += 1
+        return original_emit(self, now)
+
+    Interface.send_to = lambda self, pkt, dst_addr: None
+    LinkStateProtocol._emit_hello_on_up_interfaces = counting_emit
+    try:
+        r, gate = _make_router_with_gate()
+        proto = r.protocol()
+        proto.set_timers(hello_interval=0.05, lsa_refresh_interval=0.15)
+
+        proto.start()
+        # Let a couple of ticks fire while running.
+        time.sleep(0.2)
+        ticks_before_pause = tick_count[0]
+        assert ticks_before_pause >= 1, "no ticks before pause"
+
+        # Pause and hold long enough to be sure no spurious ticks happen.
+        gate.pause()
+        time.sleep(0.15)
+        ticks_while_paused = tick_count[0] - ticks_before_pause
+
+        # Resume and let a couple more ticks happen.
+        gate.resume()
+        time.sleep(0.2)
+        ticks_after_resume = tick_count[0] - ticks_before_pause - ticks_while_paused
+
+        assert ticks_while_paused == 0, (
+            f"protocol ticked {ticks_while_paused} time(s) while gate was paused"
+        )
+        assert ticks_after_resume >= 1, (
+            "protocol did not tick after gate was resumed"
+        )
+    finally:
+        Interface.send_to = original_send
+        LinkStateProtocol._emit_hello_on_up_interfaces = original_emit
+        if proto._protocol_thread.is_alive():  # noqa: SLF001
+            gate.resume()
+            proto.stop()
