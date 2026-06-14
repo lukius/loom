@@ -1258,6 +1258,10 @@ export function deleteSelected() {
     delete state.networks[name];
     applyEdit({ op: 'remove_network', name });
   } else if (kind === 'link') {
+    if (isTopologyLocked()) {
+      toast('Stop the simulation to delete a link.', 'error', 'Delete link');
+      return;
+    }
     const linkUsedBy = [];
     Object.entries(state.hosts).forEach(([hn, h]) => { if (h.link === name) linkUsedBy.push(`host ${hn}`); });
     Object.entries(state.routers).forEach(([rn, r]) => {

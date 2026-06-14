@@ -2102,3 +2102,55 @@ describe('deleteSelected (B2): blocks in-use LAN delete while sim is running', (
     vi.restoreAllMocks();
   });
 });
+
+// H15: deleteSelected — block live link deletion while the sim is running
+// ---------------------------------------------------------------------------
+describe('deleteSelected (H15): blocks link delete while sim is running', () => {
+  beforeEach(() => {
+    Sim.state = 'running';
+  });
+
+  afterEach(() => {
+    Sim.state = 'idle';
+  });
+
+  it('does NOT delete the link when sim is running', () => {
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
+    state.hosts = { h1: { link: 'p2p1', address: '10.0.0.1', x: 0, y: 0 } };
+    state.routers = {
+      r1: { interfaces: { eth0: { link: 'p2p1', address: '10.0.0.2' } }, x: 0, y: 0 },
+    };
+    state.selection = { kind: 'link', name: 'p2p1' };
+
+    deleteSelected();
+
+    expect(state.links.p2p1).toBeDefined();           // NOT deleted locally
+    expect(state.hosts.h1.link).toBe('p2p1');          // host reference unchanged
+    expect(state.routers.r1.interfaces.eth0.link).toBe('p2p1'); // iface reference unchanged
+  });
+
+  it('shows an error toast when link deletion is blocked while running', () => {
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
+    state.hosts = {};
+    state.routers = {};
+    state.selection = { kind: 'link', name: 'p2p1' };
+
+    deleteSelected();
+
+    const toastEl = document.querySelector('.toast.error');
+    expect(toastEl).not.toBeNull();
+    expect(toastEl.textContent.toLowerCase()).toContain('stop');
+  });
+
+  it('still allows link deletion when sim is idle (regression guard)', () => {
+    Sim.state = 'idle';
+    state.links = { p2p1: { cidr: '10.0.0.0/30', x: 0, y: 0 } };
+    state.hosts = {};
+    state.routers = {};
+    state.selection = { kind: 'link', name: 'p2p1' };
+
+    deleteSelected();
+
+    expect(state.links.p2p1).toBeUndefined();         // deleted normally when idle
+  });
+});
