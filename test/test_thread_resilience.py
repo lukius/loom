@@ -12,6 +12,7 @@ from entities import (
     Link,
     Network,
     NetworkAddress,
+    PauseGate,
     Router,
     UserMessage,
 )
@@ -264,3 +265,156 @@ class StopJoinsAllThreadsTest(unittest.TestCase):
                 [],
                 f"cycle {cycle}: threads still alive: {[t.name for t in still_alive]}",
             )
+
+
+# ---------------------------------------------------------------------------
+# T6b — stop() is responsive while the worker is parked on a paused gate
+# ---------------------------------------------------------------------------
+
+class InterfaceStopResponsiveWhilePausedTest(unittest.TestCase):
+    """Interface.stop() must return quickly even if the gate is paused and the
+    worker loop has already dequeued a frame and is now parked on
+    gate.wait_or_stop()."""
+
+    _STOP_TIMEOUT = 1.0  # must complete well under the 2.0-s join deadline
+
+    def _make_interface_with_gate(self):
+        gate = PauseGate()
+        net = Network("lan", NetworkAddress("10.0.0.0/24"), gate=gate)
+        iface = Interface("eth0", net, Address("10.0.0.1"), gate=gate)
+        net.add_interface(iface)
+        return iface, net, gate
+
+    def test_stop_responsive_while_interface_parked_on_paused_gate(self):
+        """stop() on an Interface returns in < 1 s when the gate is paused and
+        the worker has already dequeued a frame."""
+        iface, net, gate = self._make_interface_with_gate()
+        gate.pause()
+
+        # Enqueue one frame so the worker dequeues it and then parks on the gate.
+        src = Address("10.0.0.2")
+        frame = _make_frame(src, Address("10.0.0.1"))
+        iface._in_queue.put(frame)
+
+        # Poll until the frame has been consumed from the queue (worker is now
+        # at the gate-wait) then call stop().
+        ok = _wait(lambda: iface._in_queue.empty(), timeout=2.0)
+        self.assertTrue(ok, "worker never dequeued the frame — pre-condition failed")
+
+        t0 = time.monotonic()
+        iface.stop()
+        elapsed = time.monotonic() - t0
+
+        limit = self._STOP_TIMEOUT
+        self.assertLess(
+            elapsed,
+            limit,
+            f"Interface.stop() took {elapsed:.3f}s while gate paused (want < {limit}s)",
+        )
+        self.assertFalse(
+            iface._pkt_thread.is_alive(),
+            "Interface worker thread still alive after stop()",
+        )
+        net.stop()
+
+    def test_normal_stop_still_joins_thread(self):
+        """Regression guard: stop() with a running gate still kills the thread."""
+        iface, net, gate = self._make_interface_with_gate()
+        iface.stop()
+        self.assertFalse(
+            iface._pkt_thread.is_alive(),
+            "Interface worker still alive after normal stop()",
+        )
+        net.stop()
+
+    def test_stop_with_gate_stopped_still_joins_thread(self):
+        """Regression guard: stop() after gate.stop() kills the thread quickly."""
+        iface, net, gate = self._make_interface_with_gate()
+        gate.stop()
+        iface.stop()
+        self.assertFalse(
+            iface._pkt_thread.is_alive(),
+            "Interface worker still alive after gate-stopped stop()",
+        )
+        net.stop()
+
+
+class FabricStopResponsiveWhilePausedTest(unittest.TestCase):
+    """_FabricBase.stop() must return quickly even if the gate is paused and
+    the fabric worker loop is parked on gate.wait_or_stop()."""
+
+    _STOP_TIMEOUT = 1.0
+
+    def _make_network_with_gate(self):
+        gate = PauseGate()
+        net = Network("lan", NetworkAddress("10.0.0.0/24"), gate=gate)
+        return net, gate
+
+    def _make_link_with_gate(self):
+        gate = PauseGate()
+        link = Link("p2p", NetworkAddress("192.168.1.0/30"), gate=gate)
+        return link, gate
+
+    def test_stop_responsive_while_network_fabric_parked_on_paused_gate(self):
+        """Network.stop() returns in < 1 s when the gate is paused and the
+        fabric worker is parked on gate.wait_or_stop()."""
+        net, gate = self._make_network_with_gate()
+        gate.pause()
+
+        # Give the fabric thread a moment to park on the gate.
+        time.sleep(0.05)
+
+        t0 = time.monotonic()
+        net.stop()
+        elapsed = time.monotonic() - t0
+
+        timeout = self._STOP_TIMEOUT
+        self.assertLess(
+            elapsed,
+            timeout,
+            f"Network.stop() took {elapsed:.3f}s (gate paused) — expected < {timeout}s",
+        )
+        self.assertFalse(
+            net._pkt_thread.is_alive(),
+            "Network fabric thread still alive after stop()",
+        )
+
+    def test_stop_responsive_while_link_fabric_parked_on_paused_gate(self):
+        """Link.stop() returns in < 1 s when the gate is paused."""
+        link, gate = self._make_link_with_gate()
+        gate.pause()
+        time.sleep(0.05)
+
+        t0 = time.monotonic()
+        link.stop()
+        elapsed = time.monotonic() - t0
+
+        timeout = self._STOP_TIMEOUT
+        self.assertLess(
+            elapsed,
+            timeout,
+            f"Link.stop() took {elapsed:.3f}s (gate paused) — expected < {timeout}s",
+        )
+        self.assertFalse(
+            link._pkt_thread.is_alive(),
+            "Link fabric thread still alive after stop()",
+        )
+
+    def test_normal_stop_still_joins_fabric_thread(self):
+        """Regression guard: Network.stop() with running gate still kills thread."""
+        net, gate = self._make_network_with_gate()
+        net.stop()
+        self.assertFalse(
+            net._pkt_thread.is_alive(),
+            "Network fabric thread still alive after normal stop()",
+        )
+
+    def test_stop_with_gate_stopped_still_joins_fabric_thread(self):
+        """Regression guard: Network.stop() after gate.stop() kills thread quickly."""
+        net, gate = self._make_network_with_gate()
+        gate.stop()
+        net.stop()
+        self.assertFalse(
+            net._pkt_thread.is_alive(),
+            "Network fabric thread still alive after gate-stopped stop()",
+        )

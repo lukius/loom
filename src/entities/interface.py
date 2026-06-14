@@ -8,6 +8,11 @@ from .event import EventTracer
 from .exception import InterfaceNotReadyException
 from .packet import Datagram, Frame, PingReply, PingRequest, RoutingMessage, UserMessage
 
+# How often (seconds) a gate-parked worker re-checks its own stop flag so
+# that stop() is noticed within one poll interval rather than after the full
+# join timeout.  Mirrors LinkStateProtocol._PAUSE_POLL_INTERVAL.
+_PAUSE_POLL_INTERVAL = 0.1
+
 _PACKET_KIND = {
     "Hello": "hello",
     "LSA": "routing_flood",
@@ -82,6 +87,7 @@ class Interface(Entity):
         self._out_queue = None
 
         self._stopped = False
+        self._stop_event = threading.Event()
         self._pkt_thread = threading.Thread(target=self._pkt_loop, daemon=True)
         self._pkt_thread.start()
 
@@ -122,6 +128,10 @@ class Interface(Entity):
         )
 
     def stop(self):
+        # Set the stop event BEFORE the sentinel so a gate-parked worker's
+        # next poll sees the flag and exits without waiting for the gate to
+        # resume.  The None sentinel wakes a worker blocked on queue.get().
+        self._stop_event.set()
         self._in_queue.put(None)
         self._pkt_thread.join(timeout=2.0)
 
@@ -170,17 +180,37 @@ class Interface(Entity):
     def _set_out_queue(self, net_queue):
         self._out_queue = net_queue
 
+    def _await_gate_running(self) -> bool:
+        """Block until the gate is RUNNING, or until this interface is stopped.
+
+        Returns True when the loop should proceed (gate running or no gate),
+        False when it should exit (gate stopped, or stop() was called on this
+        interface).
+
+        When the gate is PAUSED, polls every _PAUSE_POLL_INTERVAL seconds and
+        re-checks _stop_event each time, so stop() is noticed within one poll
+        interval instead of after the full join timeout.
+        """
+        if self._gate is None:
+            return True
+        while not self._stop_event.is_set():
+            running, stopped = self._gate.wait_or_stop(timeout=_PAUSE_POLL_INTERVAL)
+            if stopped:
+                return False        # AS gate stopped
+            if running:
+                return True         # gate resumed — proceed
+            # (False, False): timeout while paused — re-check _stop_event
+        return False                # stop() set _stop_event
+
     def _pkt_loop(self):
         while not self._stopped:
             frame = self._in_queue.get()
             if frame is None:
                 self._stopped = True
                 continue
-            if self._gate is not None:
-                running, stopped = self._gate.wait_or_stop()
-                if stopped:
-                    self._stopped = True
-                    continue
+            if not self._await_gate_running():
+                self._stopped = True
+                continue
             try:
                 if self._device is None:
                     raise InterfaceNotReadyException()
