@@ -286,7 +286,8 @@ class ProtocolTest(unittest.TestCase):
 
         msg = datagram.payload()
         self.assertIsInstance(msg, LSA)
-        self.assertEqual(msg.seq(), 1)
+        # seq is seeded from a monotonic source; assert it is positive (> 0).
+        self.assertGreater(msg.seq(), 0)
         links = msg.links()
         self.assertEqual(len(links), 2)
         self.assertIs(msg.origin(), router)
@@ -1659,3 +1660,123 @@ def test_timer_getters_return_current_values():
     proto.set_timers(hello_interval=7, lsa_refresh_interval=21)
     assert proto.hello_interval() == 7.0
     assert proto.lsa_refresh_interval() == 21.0
+
+
+# ---------------------------------------------------------------------------
+# H1: re-added router must not be black-holed by a stale LSDB tombstone
+# ---------------------------------------------------------------------------
+
+def test_readded_router_not_blackholed_by_tombstone():
+    """Re-adding a same-named router after a graceful withdrawal must not be
+    black-holed by the peer's LSDB tombstone.
+
+    Scenario (LSDB-level seam test, no threads required):
+    1. r1 holds r2's LSDB entry at a high sequence number.
+    2. r2 departs gracefully: a withdrawal LSA raises the tombstone and
+       purges the LSDB entry.
+    3. A fresh LinkStateProtocol instance is created for a new Router("r2")
+       (same name, different Python object — the re-add case).
+    4. The fresh protocol's first emitted LSA sequence must be strictly above
+       the tombstone, so r1's LSDB accepts it and reinstates the route.
+
+    The bug: old code seeds _seq=0 so the first emitted seq is 1, which is
+    always <= the tombstone left by a departed router that had emitted >=1
+    LSA. The fix (monotonic seed) makes the fresh instance start above any
+    prior tombstone value.
+    """
+    # --- build minimal two-router topology (no live threads) ---
+    net_shared = Network('lan_shared', NetworkAddress('200.0.0.0/24'))
+    net_behind_r2 = Network('lan_r2', NetworkAddress('200.0.2.0/24'))
+
+    r1 = Router('r1')
+    r1_eth0 = Interface('eth0', net_shared, Address('200.0.0.1'), cost=1)
+    r1.add_interface(r1_eth0)
+
+    r2_orig = Router('r2')
+    r2_orig_eth0 = Interface('eth0', net_shared, Address('200.0.0.2'), cost=1)
+    r2_orig_eth1 = Interface('eth1', net_behind_r2, Address('200.0.2.1'), cost=1)
+    r2_orig.add_interface(r2_orig_eth0)
+    r2_orig.add_interface(r2_orig_eth1)
+
+    # Silence all sends so no real network plumbing is needed.
+    original_send = Interface.send_to
+    Interface.send_to = lambda self, pkt, dst_addr: None
+
+    try:
+        proto_r1 = LinkStateProtocol(r1)
+
+        # Seed a TWO_WAY adjacency so r2's LSAs are eligible for the graph.
+        proto_r1._neighbor_table.record_hello(  # noqa: SLF001
+            r1_eth0, r2_orig, peer_listed_us=True,
+            dead_interval=proto_r1._dead_interval, now=time.monotonic(),  # noqa: SLF001
+        )
+
+        # Step 1: r2_orig emits several LSAs; r1 installs all of them,
+        # advancing the per-origin tombstone.  Simulate N=13 refresh cycles
+        # (realistic number before someone removes and re-adds the router).
+        tombstone_seq = 13
+        for seq in range(1, tombstone_seq + 1):
+            lsa = LSA(origin=r2_orig, seq=seq)
+            lsa.add_link(net_shared.address(), 1)    # shared link (r2's side)
+            lsa.add_link(net_behind_r2.address(), 1)  # r2's own LAN
+            proto_r1.handle_incoming_message(lsa, r1_eth0)
+
+        # r1 must have a route to 200.0.2.0/24 via r2_orig.
+        assert _table_has_prefix(r1, '200.0.2.0/24'), (
+            "pre-condition: r1 should have a route to lan_r2 via r2_orig"
+        )
+
+        # Step 2: r2_orig departs gracefully — withdrawal advances tombstone.
+        withdrawal = LSA.withdrawal(r2_orig, seq=tombstone_seq + 1)
+        proto_r1.handle_incoming_message(withdrawal, r1_eth0)
+
+        # The route behind r2_orig must now be gone.
+        assert not _table_has_prefix(r1, '200.0.2.0/24'), (
+            "post-withdrawal: r1 must not have a route to lan_r2"
+        )
+        # The tombstone is now at tombstone_seq + 1.
+        actual_tombstone = proto_r1._lsdb._last_seq.get(r2_orig)  # noqa: SLF001
+        assert actual_tombstone == tombstone_seq + 1, (
+            f"tombstone should be {tombstone_seq + 1}, got {actual_tombstone}"
+        )
+
+        # Step 3: a fresh protocol instance for a NEW Router("r2") — same name,
+        # different Python object.  This simulates the re-add patch op.
+        r2_new = Router('r2')
+        r2_new_eth0 = Interface('eth0', net_shared, Address('200.0.0.2'), cost=1)
+        r2_new_eth1 = Interface('eth1', net_behind_r2, Address('200.0.2.1'), cost=1)
+        r2_new.add_interface(r2_new_eth0)
+        r2_new.add_interface(r2_new_eth1)
+
+        proto_r2_new = LinkStateProtocol(r2_new)
+
+        # r2_new and r2_orig are equal by name+class (same LSDB key).
+        assert r2_new == r2_orig, (
+            "Router equality must be name+class-based for the tombstone to apply"
+        )
+
+        # Step 4: the fresh protocol's first emitted LSA seq must exceed the
+        # tombstone so r1's LSDB accepts it.
+        first_seq = proto_r2_new._next_seq()  # noqa: SLF001
+        assert first_seq > actual_tombstone, (
+            f"fresh protocol first seq ({first_seq}) must be > tombstone "
+            f"({actual_tombstone}); got {first_seq} <= {actual_tombstone} — "
+            "re-added router will be black-holed"
+        )
+
+        # Verify end-to-end: r1 must accept the fresh LSA and reinstall the route.
+        # Re-seed adjacency for the new router object.
+        proto_r1._neighbor_table.record_hello(  # noqa: SLF001
+            r1_eth0, r2_new, peer_listed_us=True,
+            dead_interval=proto_r1._dead_interval, now=time.monotonic(),  # noqa: SLF001
+        )
+        fresh_lsa = LSA(origin=r2_new, seq=first_seq)
+        fresh_lsa.add_link(net_shared.address(), 1)
+        fresh_lsa.add_link(net_behind_r2.address(), 1)
+        result = proto_r1._lsdb.install(fresh_lsa, now=time.monotonic())  # noqa: SLF001
+        assert result.is_accepted(), (
+            f"r1's LSDB must accept the fresh LSA (seq {first_seq}); "
+            f"tombstone was at {actual_tombstone}"
+        )
+    finally:
+        Interface.send_to = original_send

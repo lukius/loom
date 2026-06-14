@@ -64,7 +64,7 @@ class LinkStateProtocol(RoutingProtocol):
             outbound_policy if outbound_policy is not None else RFC1918_OUTBOUND
         )
 
-        self._seq = 0
+        self._seq = time.monotonic_ns()
         self._lsdb = LSDB(router)
         self._neighbor_table = NeighborTable()
         # Timer state — bootstrapped to the canonical loom-OSPF production
