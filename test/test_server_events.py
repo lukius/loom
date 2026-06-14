@@ -1,8 +1,13 @@
 import asyncio
+import textwrap
+import time
 
 import pytest
+from fastapi.testclient import TestClient
 
+from server.app import create_app
 from server.events import EventBus
+from server.routes.ws import events as ws_handler
 
 
 @pytest.mark.asyncio
@@ -217,3 +222,132 @@ def test_ws_streams_packet_events(tmp_path, monkeypatch):
                     break
             types = [(e.get("kind"), e.get("type")) for e in kinds]
             assert any(t == ("packet", "user_datagram") for t in types)
+
+
+# ---------------------------------------------------------------------------
+# Fix A: WebSocket broadcast loop handles non-WebSocketDisconnect send errors
+# ---------------------------------------------------------------------------
+
+_MINIMAL_YAML = textwrap.dedent("""
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: "10.0.0.0/24"
+      hosts:
+        h1: {network: lan1, address: "10.0.0.1"}
+""")
+
+
+def test_ws_broadcast_non_disconnect_error_does_not_leak_and_unsubscribes(
+    tmp_path, monkeypatch
+):
+    """A RuntimeError raised by ws.send_json must end the handler silently.
+
+    The subscriber queue must be removed from the bus (no leak) and the error
+    must not propagate as an unhandled exception.
+    """
+    src = tmp_path / "src.yaml"
+    src.write_text(_MINIMAL_YAML)
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
+
+    app = create_app()
+    bus = app.state.event_bus
+
+    # Unit-level: create a fake WebSocket whose send_json raises RuntimeError.
+    async def _run():
+        loop = asyncio.get_running_loop()
+        bus.attach_loop(loop)
+
+        sends = []
+        errors = []
+
+        class FakeWS:
+            async def accept(self):
+                pass
+
+            async def send_json(self, data):
+                sends.append(data)
+                raise RuntimeError("Cannot call send once close message sent")
+
+        fake_ws = FakeWS()
+        fake_ws.app = type("App", (), {"state": type("S", (), {"event_bus": bus})()})()
+
+        # Run the handler in background; emit one event to trigger the error path.
+        task = loop.create_task(ws_handler(fake_ws))
+        await asyncio.sleep(0.01)
+        bus.emit({"kind": "probe"})
+        await asyncio.sleep(0.05)
+        try:
+            await asyncio.wait_for(task, timeout=0.5)
+        except Exception as exc:
+            errors.append(exc)
+
+        return sends, errors, len(bus._queues)
+
+    sends, errors, remaining_queues = asyncio.run(_run())
+
+    # The handler must have attempted one send (and hit the error).
+    assert len(sends) >= 1
+    # No exception must have escaped the handler task.
+    assert errors == [], f"unexpected exception escaped: {errors}"
+    # The subscriber queue must have been removed (no leak).
+    assert remaining_queues == 0, f"leaked {remaining_queues} subscriber queue(s)"
+
+
+# ---------------------------------------------------------------------------
+# Fix B: EventBus.emit is a safe no-op when loop is None or closed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_emit_is_noop_when_loop_is_none():
+    """emit() must not raise when _loop is None."""
+    bus = EventBus(loop=None)
+    q = bus.subscribe()
+    # Must not raise.
+    bus.emit({"kind": "x"})
+    await asyncio.sleep(0.02)
+    assert q.empty()
+
+
+@pytest.mark.asyncio
+async def test_emit_is_noop_when_loop_is_closed():
+    """emit() must not raise when the loop is already closed."""
+    closed_loop = asyncio.new_event_loop()
+    closed_loop.close()
+    bus = EventBus(loop=closed_loop)
+    q = bus.subscribe()
+    # Must not raise even though the loop is closed.
+    bus.emit({"kind": "x"})
+    await asyncio.sleep(0.02)
+    assert q.empty()
+
+
+def test_lifespan_shutdown_detaches_bridge_and_clears_loop(tmp_path, monkeypatch):
+    """After app shutdown the event bridge is detached.
+
+    A post-shutdown emit must not reach any subscriber and must not raise.
+    """
+    src = tmp_path / "src.yaml"
+    src.write_text(_MINIMAL_YAML)
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
+
+    app = create_app()
+    bus = app.state.event_bus
+
+    with TestClient(app):
+        # The bridge is active during the session; shut it down by exiting.
+        pass  # app is now shut down
+
+    # After the context manager exits, lifespan teardown has run.
+    # The bus loop should be None (cleared) so emit is a no-op.
+    assert bus._loop is None, f"_loop not cleared after shutdown: {bus._loop}"
+
+    # Emitting after shutdown must not raise and must not deliver to any queue.
+    sub_q = bus.subscribe()
+    bus.emit({"kind": "post-shutdown"})
+    time.sleep(0.05)
+    assert sub_q.empty(), "post-shutdown emit delivered to subscriber"

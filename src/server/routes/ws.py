@@ -16,7 +16,7 @@ async def events(ws: WebSocket):
         while True:
             event = await q.get()
             await ws.send_json(event)
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError, ConnectionError):
         pass
     finally:
         bus.unsubscribe(q)
