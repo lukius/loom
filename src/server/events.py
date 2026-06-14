@@ -32,13 +32,14 @@ class EventBus:
 
     def emit(self, event: dict) -> None:
         """Called from any thread. Non-blocking. Drops oldest on overflow."""
-        if self._loop is None or self._loop.is_closed():
+        loop = self._loop
+        if loop is None or loop.is_closed():
             return
         with self._lock:
             queues = list(self._queues)
         for q in queues:
             try:
-                self._loop.call_soon_threadsafe(self._enqueue, q, event)
+                loop.call_soon_threadsafe(self._enqueue, q, event)
             except RuntimeError:
                 # Loop closed between the is_closed() check and the call.
                 return
