@@ -26,7 +26,6 @@ Barrier injection details
 
 import textwrap
 import threading
-import time
 import unittest.mock
 
 import pytest
