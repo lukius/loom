@@ -102,8 +102,8 @@ def nat_table(name: str, request: Request):
     """Return the NAT-table snapshot for a router (empty list for hosts).
 
     Events on the bus carry incremental changes only, so a fresh subscriber
-    (e.g. the inspector panel after a page reload) has no way to recover the
-    current table without this read endpoint.
+    with no prior event history has no way to recover the current table
+    without this read endpoint.
     """
     s = request.app.state.sim_state
     with s._lock:  # noqa: SLF001
