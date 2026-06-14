@@ -21,8 +21,10 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         app.state.event_bus.attach_loop(asyncio.get_running_loop())
-        EventTracer.subscribe(app.state.event_bus.emit)
+        unsubscribe = EventTracer.subscribe(app.state.event_bus.emit)
         yield
+        unsubscribe()
+        app.state.event_bus.clear_loop()
 
     app = FastAPI(title="loom", lifespan=lifespan)
 

@@ -32,25 +32,36 @@ class EventBus:
 
     def emit(self, event: dict) -> None:
         """Called from any thread. Non-blocking. Drops oldest on overflow."""
-        if self._loop is None:
+        if self._loop is None or self._loop.is_closed():
             return
         with self._lock:
             queues = list(self._queues)
         for q in queues:
-            self._loop.call_soon_threadsafe(self._enqueue, q, event)
+            try:
+                self._loop.call_soon_threadsafe(self._enqueue, q, event)
+            except RuntimeError:
+                # Loop closed between the is_closed() check and the call.
+                return
 
     def _enqueue(self, q: asyncio.Queue, event: dict) -> None:
         if q.full():
             try:
                 q.get_nowait()
-                self._overflow_count += 1
+                with self._lock:
+                    self._overflow_count += 1
             except asyncio.QueueEmpty:
                 pass
         try:
             q.put_nowait(event)
         except asyncio.QueueFull:
-            self._overflow_count += 1
+            with self._lock:
+                self._overflow_count += 1
+
+    def clear_loop(self) -> None:
+        """Detach the event loop so post-shutdown emits are safe no-ops."""
+        self._loop = None
 
     @property
     def overflow_count(self) -> int:
-        return self._overflow_count
+        with self._lock:
+            return self._overflow_count
