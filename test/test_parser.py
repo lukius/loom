@@ -350,6 +350,16 @@ class ParserTest(unittest.TestCase):
             'link_host_addr_is_network_or_broadcast', 'invalid address for link'
         )
 
+    def test_network_interface_on_network_address(self):
+        self._run_parsing_error_test(
+            'interface_on_network_address', 'invalid address for network'
+        )
+
+    def test_network_interface_on_broadcast_address(self):
+        self._run_parsing_error_test(
+            'interface_on_broadcast_address', 'invalid address for network'
+        )
+
     def test_host_on_full_link(self):
         self._run_parsing_error_test('host_on_full_link', 'two endpoints')
 

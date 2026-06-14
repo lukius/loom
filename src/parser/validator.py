@@ -1,6 +1,6 @@
 from collections import defaultdict
 
-from entities import Host, Link, Network, NetworkDevice, Router
+from entities import Host, Network, NetworkDevice, Router
 
 
 class ValidationResult:
@@ -128,11 +128,7 @@ class DeviceValidator(Validator):
             net = iface.network()
             addr = iface.address()
 
-            valid = (
-                net.is_valid_host_address(addr)
-                if isinstance(net, Link)
-                else net.contains_address(addr)
-            )
+            valid = net.is_valid_host_address(addr)
             if not valid:
                 return ValidationResult.invalid(
                     f'invalid address for network {net.name()}'
