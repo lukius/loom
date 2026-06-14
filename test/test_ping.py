@@ -529,6 +529,14 @@ def test_ping_router_on_its_inbound_interface():
     system = Parser(path).parse().single_as()
     try:
         h1 = system.host("h1")
+        r1 = system.router("r1")
+        # r1._reply_to_ping looks up a return route to h1's address in the
+        # routing table; the table is populated by the protocol daemon thread's
+        # initial tick. Wait until lan1 (h1's network) appears in r1's table
+        # before firing the ping, or the reply is silently dropped under load.
+        assert _wait(lambda: _table_has_prefix(r1, "10.0.0.0/24")), (
+            "r1 did not populate its routing table before ping (inbound iface)"
+        )
         rtt = h1.ping(Address("10.0.0.1"), timeout=2.0)
         assert rtt is not None, "router did not reply to ping on its inbound interface"
     finally:
@@ -550,6 +558,13 @@ def test_ping_router_on_its_far_side_interface():
     try:
         h1 = system.host("h1")
         r1 = system.router("r1")
+        # r1._reply_to_ping looks up a return route to h1's address in the
+        # routing table; the table is populated by the protocol daemon thread's
+        # initial tick. Wait until lan1 (h1's network) appears in r1's table
+        # before firing the ping, or the reply is silently dropped under load.
+        assert _wait(lambda: _table_has_prefix(r1, "10.0.0.0/24")), (
+            "r1 did not populate its routing table before ping (far-side iface)"
+        )
         far_addr = r1.interfaces()["eth1"].address()
         rtt = h1.ping(far_addr, timeout=2.0)
         assert rtt is not None, (
@@ -576,6 +591,14 @@ def test_router_ping_intercept_emits_event():
     unsub = EventTracer.subscribe(on_evt)
     try:
         h1 = system.host("h1")
+        r1 = system.router("r1")
+        # r1._reply_to_ping looks up a return route to h1's address in the
+        # routing table; the table is populated by the protocol daemon thread's
+        # initial tick. Wait until lan1 (h1's network) appears in r1's table
+        # before firing the ping, or the reply is silently dropped under load.
+        assert _wait(lambda: _table_has_prefix(r1, "10.0.0.0/24")), (
+            "r1 did not populate its routing table before ping (intercept event)"
+        )
         rtt = h1.ping(Address("192.168.0.1"), timeout=2.0)
         assert rtt is not None
         # The intercept event should carry the router name + the source host
