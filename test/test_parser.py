@@ -164,6 +164,18 @@ class ParserTest(unittest.TestCase):
     def test_boolean_cost(self):
         self._run_parsing_error_test('cost_boolean', 'invalid cost')
 
+    def test_routers_as_list(self):
+        self._run_parsing_error_test('routers_as_list', 'must be a mapping')
+
+    def test_network_as_int(self):
+        self._run_parsing_error_test('network_as_int', 'must be a string')
+
+    def test_empty_as_block(self):
+        self._run_parsing_error_test('empty_as_block', 'must be a mapping')
+
+    def test_empty_interface(self):
+        self._run_parsing_error_test('empty_interface', 'must be a mapping')
+
     def test_invalid_host_address(self):
         self._run_parsing_error_test('invalid_host_address', 'invalid address')
 

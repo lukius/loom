@@ -47,6 +47,7 @@ class Parser:
         if 'autonomous_systems' not in internet_dict:
             self._fail('missing "autonomous_systems" in internet block')
         ases_dict = internet_dict['autonomous_systems']
+        self._require_mapping(ases_dict, '"autonomous_systems"')
         if not ases_dict:
             self._fail('"autonomous_systems" must contain at least one AS')
 
@@ -67,6 +68,7 @@ class Parser:
         return internet
 
     def _parse_single_as(self, short_name, system_dict, internet):
+        self._require_mapping(system_dict, f'AS "{short_name}"')
         system = AS(short_name, gate=internet.gate())
         internet.add_as(system)
         validator = SystemValidator(system)
@@ -100,6 +102,7 @@ class Parser:
         return system
 
     def _parse_networks(self, system, validator, network_dict):
+        self._require_mapping(network_dict, '"networks"')
         for name, addr in network_dict.items():
             address = self._parse_net_address(name, addr, validator)
 
@@ -111,6 +114,7 @@ class Parser:
             system.add_network(net)
 
     def _parse_links(self, system, validator, link_dict):
+        self._require_mapping(link_dict, '"links"')
         for name, addr in link_dict.items():
             address = self._parse_net_address(name, addr, validator)
 
@@ -126,13 +130,16 @@ class Parser:
             system.add_link(lnk)
 
     def _parse_routers(self, system, validator, router_dict):
+        self._require_mapping(router_dict, '"routers"')
         for name, obj in router_dict.items():
             if obj is None or 'interfaces' not in obj:
                 self._fail(f'{name}: no interfaces declared')
 
             router = Router(name)
 
+            self._require_mapping(obj['interfaces'], f'{name}: "interfaces"')
             for iface_name, iface in obj['interfaces'].items():
+                self._require_mapping(iface, f'{name}: {iface_name}')
                 has_network = 'network' in iface
                 has_link = 'link' in iface
 
@@ -178,6 +185,7 @@ class Parser:
             system.add_router(router)
 
     def _parse_hosts(self, system, validator, host_dict, hosts_on_links):
+        self._require_mapping(host_dict, '"hosts"')
         for name, obj in host_dict.items():
             has_network = obj is not None and 'network' in obj
             has_link = obj is not None and 'link' in obj
@@ -273,6 +281,8 @@ class Parser:
                 self._fail(f'{dev_name}: link not found')
 
     def _parse_net_address(self, name, addr, validator):
+        if not isinstance(addr, str):
+            self._fail(f'{name}: address must be a string')
         if '/' not in addr:
             self._fail(f'{name}: missing netmask')
 
@@ -318,6 +328,10 @@ class Parser:
                 short_name, 'lsa_refresh_interval', protocol['lsa_refresh_interval']
             ),
         }
+
+    def _require_mapping(self, value, label):
+        if not isinstance(value, dict):
+            self._fail(f'{label} must be a mapping')
 
     def _positive_number(self, short_name, key, value):
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:

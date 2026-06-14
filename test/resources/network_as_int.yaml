@@ -1,0 +1,7 @@
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: 24
