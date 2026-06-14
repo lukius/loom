@@ -178,6 +178,32 @@ def test_address_hash_matches_equality_on_octet_value():
     assert hash(a) == hash(tuple(a.octets()))
 
 
+def test_network_matches_slash32():
+    """NetworkAddress._matches must not raise IndexError for a /32 prefix.
+
+    divmod(32, 8) == (4, 0), which previously indexed octets[4] on a
+    4-element list, crashing the forwarding hot path and SPF thread.
+    A /32 must match only the exact host address and nothing else.
+    """
+    host_route = NetworkAddress('10.0.0.1/32')
+
+    # Must match the exact host — no IndexError.
+    assert host_route.matches(Address('10.0.0.1')) is True
+
+    # Must not match an adjacent host.
+    assert host_route.matches(Address('10.0.0.2')) is False
+    assert host_route.matches(Address('10.0.0.0')) is False
+
+    # Sanity: /0, /24, /30, /31 still behave correctly.
+    assert NetworkAddress('0.0.0.0/0').matches(Address('1.2.3.4')) is True
+    assert NetworkAddress('10.0.0.0/24').matches(Address('10.0.0.42')) is True
+    assert NetworkAddress('10.0.0.0/24').matches(Address('10.0.1.1')) is False
+    assert NetworkAddress('10.0.0.0/30').matches(Address('10.0.0.2')) is True
+    assert NetworkAddress('10.0.0.0/30').matches(Address('10.0.0.4')) is False
+    assert NetworkAddress('10.0.0.0/31').matches(Address('10.0.0.1')) is True
+    assert NetworkAddress('10.0.0.0/31').matches(Address('10.0.0.2')) is False
+
+
 def test_address_eq_is_octet_based_not_string_based():
     """Address.__eq__ must compare by octet values, not raw input strings.
 

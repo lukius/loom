@@ -89,12 +89,13 @@ class NetworkAddress(BaseAddress):
 
     def _matches(self, octets: List[int]) -> bool:
         idx, bits = divmod(self._mask, 8)
-        bitmask = 0xff - (1 << (8 - bits)) + 1
 
-        masked = octets[idx] & bitmask
-        net_octet = self._octets[idx] & bitmask
-        if masked != net_octet:
-            return False
+        if idx < len(self._octets):
+            bitmask = 0xff - (1 << (8 - bits)) + 1
+            masked = octets[idx] & bitmask
+            net_octet = self._octets[idx] & bitmask
+            if masked != net_octet:
+                return False
 
         for i in range(idx):
             if octets[i] != self._octets[i]:
