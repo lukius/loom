@@ -763,6 +763,74 @@ describe('PacketStore — chatter composite key (T29)', () => {
   });
 });
 
+describe('PacketStore — transit-drop eviction (H16)', () => {
+  it('removes a user row from inFlight when the last arrival is a transit drop (device: null)', () => {
+    // Hop 1: h1 → r1 (transit, not the final destination)
+    const e1 = userPacketEvt({
+      payload_id: 'p1', srcDev: 'h1', srcAddr: '10.0.0.1',
+      dstDev: 'r1', dstAddr: '10.0.0.254', network: 'lan_a',
+      payload_src: '10.0.0.1', payload_dst: '10.0.1.5',
+    });
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: e1 }));
+    expect(PacketStore.inFlight.has('p1')).toBe(true);
+
+    // Transit drop: device: null, non-final hop
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: 'p1', device: null } }));
+
+    // Row must be removed from inFlight (not leaked as a ghost packet)
+    expect(PacketStore.inFlight.has('p1')).toBe(false);
+  });
+
+  it('moves a transit-dropped row to recent with status "dropped"', () => {
+    const e1 = userPacketEvt({
+      payload_id: 'p1', srcDev: 'h1', srcAddr: '10.0.0.1',
+      dstDev: 'r1', dstAddr: '10.0.0.254', network: 'lan_a',
+      payload_src: '10.0.0.1', payload_dst: '10.0.1.5',
+    });
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: e1 }));
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: 'p1', device: null } }));
+
+    expect(PacketStore.recent.length).toBe(1);
+    expect(PacketStore.recent[0].status).toBe('dropped');
+    expect(PacketStore.recent[0].payloadId).toBe('p1');
+  });
+
+  it('a transit-drop on a multi-hop packet (not yet reached count) is still terminal', () => {
+    const e1 = userPacketEvt({
+      payload_id: 'p1', srcDev: 'h1', srcAddr: '10.0.0.1',
+      dstDev: 'r1', dstAddr: '10.0.0.254', network: 'lan_a',
+      payload_dst: '10.0.1.5',
+    });
+    const e2 = userPacketEvt({
+      payload_id: 'p1', srcDev: 'r1', srcAddr: '10.0.1.1',
+      dstDev: 'r2', dstAddr: '10.0.1.2', network: 'link_0',
+      payload_src: '10.0.0.1', payload_dst: '10.0.1.5',
+    });
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: e1 }));
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: e2 }));
+    // One non-final arrival fires (hop 1 animation done), then a transit drop.
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: 'p1', device: 'r1' } }));
+    expect(PacketStore.inFlight.has('p1')).toBe(true);
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: 'p1', device: null } }));
+    expect(PacketStore.inFlight.has('p1')).toBe(false);
+    expect(PacketStore.recent.length).toBe(1);
+    expect(PacketStore.recent[0].status).toBe('dropped');
+  });
+
+  it('normal final delivery still works exactly as before (not broken by the fix)', () => {
+    const e1 = userPacketEvt({
+      payload_id: 'p1', srcDev: 'h1', srcAddr: '10.0.0.1',
+      dstDev: 'h2', dstAddr: '10.0.0.2', network: 'lan_a',
+      payload_src: '10.0.0.1', payload_dst: '10.0.0.2',
+    });
+    bus.dispatchEvent(new CustomEvent('sim:packet', { detail: e1 }));
+    bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: 'p1', device: 'h2' } }));
+    expect(PacketStore.inFlight.has('p1')).toBe(false);
+    expect(PacketStore.recent.length).toBe(1);
+    expect(PacketStore.recent[0].status).toBe('delivered');
+  });
+});
+
 describe('PacketStore — hello routing-chatter classification', () => {
   beforeEach(() => {
     state.routers = { r1: { interfaces: { eth0: { network: 'lan_a', address: '10.0.0.254', cost: 5 } } } };

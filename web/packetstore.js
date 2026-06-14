@@ -265,6 +265,18 @@ bus.addEventListener('sim:packet-arrived', (e) => {
   }
   const row = PacketStore.inFlight.get(payloadId);
   if (!row) return;
+  // A transit drop is signalled by device: null. Treat it as TERMINAL: the
+  // packet will never reach its final destination, so evict the row from
+  // inFlight immediately and move it to recent as 'dropped'.
+  if (detail.device === null) {
+    row.status = 'dropped';
+    delete row._arrivedCount;
+    PacketStore.inFlight.delete(payloadId);
+    PacketStore.recent.push(row);
+    if (PacketStore.recent.length > 10) PacketStore.recent.shift();
+    _scheduleEmit();
+    return;
+  }
   row._arrivedCount = (row._arrivedCount || 0) + 1;
   const lastHop = row.hops[row.hops.length - 1];
   if (row._arrivedCount >= row.hops.length && lastHop && lastHop.isFinal) {
