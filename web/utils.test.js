@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { escapeHtml, uniqueName, uniqueIface, pad2, cssEscape, el, toast, isValidIpv4, isValidNetworkCidr, addressInCidr, isPrivateCidr, isForeignFabricDrop } from './utils.js';
+import { escapeHtml, uniqueName, uniqueIface, pad2, cssEscape, el, toast, isValidIpv4, isValidNetworkCidr, addressInCidr, isPrivateCidr, isForeignFabricDrop, validateAddressOnFabric } from './utils.js';
 
 describe('escapeHtml', () => {
   it('escapes ampersand and angle brackets', () => {
@@ -495,5 +495,56 @@ describe('isForeignFabricDrop', () => {
   });
   it('network: always false (networks are not reassignable)', () => {
     expect(isForeignFabricDrop('network', 'lan1', 'lan2', state)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateAddressOnFabric — /30 link network/broadcast rejection (H14)
+// ---------------------------------------------------------------------------
+describe('validateAddressOnFabric — /30 link reserved address rejection', () => {
+  // Minimal state: one link with cidr 10.0.0.0/30, two hosts with addresses.
+  function makeState(overrides = {}) {
+    return {
+      hosts: {},
+      routers: {},
+      networks: {},
+      links: {
+        lnk1: { cidr: '10.0.0.0/30' },
+        lnk31: { cidr: '10.0.0.0/31' },
+        ...((overrides.links) || {}),
+      },
+    };
+  }
+
+  it('/30: rejects the network address (all-zero host bits)', () => {
+    const r = validateAddressOnFabric('10.0.0.0', 'link', 'lnk1', null, makeState());
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('network');
+  });
+
+  it('/30: rejects the broadcast address (all-one host bits)', () => {
+    const r = validateAddressOnFabric('10.0.0.3', 'link', 'lnk1', null, makeState());
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('broadcast');
+  });
+
+  it('/30: accepts the first usable host address (.1)', () => {
+    const r = validateAddressOnFabric('10.0.0.1', 'link', 'lnk1', null, makeState());
+    expect(r.ok).toBe(true);
+  });
+
+  it('/30: accepts the second usable host address (.2)', () => {
+    const r = validateAddressOnFabric('10.0.0.2', 'link', 'lnk1', null, makeState());
+    expect(r.ok).toBe(true);
+  });
+
+  it('/31: accepts the network address (RFC 3021 — both addresses are usable)', () => {
+    const r = validateAddressOnFabric('10.0.0.0', 'link', 'lnk31', null, makeState());
+    expect(r.ok).toBe(true);
+  });
+
+  it('/31: accepts the peer address (RFC 3021)', () => {
+    const r = validateAddressOnFabric('10.0.0.1', 'link', 'lnk31', null, makeState());
+    expect(r.ok).toBe(true);
   });
 });

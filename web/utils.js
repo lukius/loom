@@ -137,6 +137,29 @@ export function validateAddressOnFabric(addr, fabricKind, fabricName, selfRef, s
       if (!addressInCidr(addr, fabric.cidr)) {
         return { ok: false, reason: `not in ${fabricName} (${fabric.cidr})` };
       }
+      // For /30 links, the network and broadcast addresses are reserved and
+      // not usable as host addresses (mirrors Link.is_valid_host_address in
+      // src/entities/link.py). /31 links (RFC 3021) have no reserved addresses.
+      if (fabricKind === 'link') {
+        const slash = fabric.cidr.lastIndexOf('/');
+        const prefix = Number(fabric.cidr.slice(slash + 1));
+        if (prefix === 30) {
+          const toInt = (a) => {
+            const p = a.split('.').map(Number);
+            return (p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3]) >>> 0;
+          };
+          const maskInt = (~0 << (32 - prefix)) >>> 0;
+          const networkInt = (toInt(fabric.cidr.slice(0, slash)) & maskInt) >>> 0;
+          const broadcastInt = (networkInt | (~maskInt >>> 0)) >>> 0;
+          const addrInt = toInt(addr);
+          if (addrInt === networkInt) {
+            return { ok: false, reason: 'network/broadcast address not usable on a /30 link' };
+          }
+          if (addrInt === broadcastInt) {
+            return { ok: false, reason: 'network/broadcast address not usable on a /30 link' };
+          }
+        }
+      }
     }
   }
   const owner = _findAddressOwner(addr, fabricKind, fabricName, selfRef, st);
