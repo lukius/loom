@@ -245,3 +245,20 @@ def test_network_is_valid_host_address_slash16():
     assert net.is_valid_host_address(Address("10.10.1.1")) is True
     assert net.is_valid_host_address(Address("10.10.0.0")) is False   # network
     assert net.is_valid_host_address(Address("10.10.255.255")) is False  # broadcast
+
+
+def test_network_is_valid_host_address_noncanonical_network_address():
+    # Regression: non-canonical spelling of the network address (leading zero in
+    # last octet) must still be rejected.  Address.__str__ returns the raw input
+    # string, so a raw-string comparison would see '100.100.100.000' != '100.100.100.0'
+    # and wrongly return True.  The fix must compare by octets (Address.__eq__).
+    net = Network("lan", NetworkAddress("100.100.100.0/24"))
+    assert net.is_valid_host_address(Address("100.100.100.000")) is False
+
+
+def test_network_is_valid_host_address_noncanonical_broadcast_address():
+    # Regression: non-canonical spelling of the broadcast address must also be
+    # rejected — same root cause as the network-address case above.
+    net = Network("lan", NetworkAddress("100.100.100.0/24"))
+    # Canonical broadcast is 100.100.100.255; spell it with a leading zero.
+    assert net.is_valid_host_address(Address("100.100.100.0255")) is False

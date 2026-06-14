@@ -465,3 +465,72 @@ class LinkIterationConcurrencyTest(unittest.TestCase):
         d[3] = "c"    # mutate after snapshot
         result = list(snapshot)
         self.assertEqual(len(result), 2)  # snapshot sees only 2 items
+
+
+# ------------------------------------------------------ Link.is_valid_host_address
+
+
+def test_link_is_valid_host_address_slash30_normal_hosts():
+    link = Link("p2p", NetworkAddress("10.0.0.0/30"))
+    assert link.is_valid_host_address(Address("10.0.0.1")) is True
+    assert link.is_valid_host_address(Address("10.0.0.2")) is True
+    link.stop()
+    link.join()
+
+
+def test_link_is_valid_host_address_slash30_rejects_network():
+    link = Link("p2p", NetworkAddress("10.0.0.0/30"))
+    assert link.is_valid_host_address(Address("10.0.0.0")) is False
+    link.stop()
+    link.join()
+
+
+def test_link_is_valid_host_address_slash30_rejects_broadcast():
+    link = Link("p2p", NetworkAddress("10.0.0.0/30"))
+    assert link.is_valid_host_address(Address("10.0.0.3")) is False
+    link.stop()
+    link.join()
+
+
+def test_link_is_valid_host_address_slash30_rejects_outside():
+    link = Link("p2p", NetworkAddress("10.0.0.0/30"))
+    assert link.is_valid_host_address(Address("10.0.0.5")) is False
+    link.stop()
+    link.join()
+
+
+def test_link_is_valid_host_address_slash30_noncanonical_network_address():
+    # Regression: non-canonical spelling of the /30 network address must be
+    # rejected.  Raw-string comparison sees '10.0.0.00' != '10.0.0.0' and
+    # wrongly returns True; fix must compare by octets (Address.__eq__).
+    link = Link("p2p", NetworkAddress("10.0.0.0/30"))
+    assert link.is_valid_host_address(Address("10.0.0.00")) is False
+    link.stop()
+    link.join()
+
+
+def test_link_is_valid_host_address_slash30_noncanonical_broadcast_address():
+    # Regression: non-canonical spelling of the /30 broadcast address must also
+    # be rejected — same root cause as the network-address case above.
+    # For 10.0.0.0/30 the broadcast is 10.0.0.3; spelled with a leading zero: 10.0.0.03
+    link = Link("p2p", NetworkAddress("10.0.0.0/30"))
+    assert link.is_valid_host_address(Address("10.0.0.03")) is False
+    link.stop()
+    link.join()
+
+
+def test_link_is_valid_host_address_slash31_both_addresses_valid():
+    # RFC 3021: on a /31, BOTH addresses are usable host addresses.
+    # The /31 exemption must survive the octet-comparison fix.
+    link = Link("p2p31", NetworkAddress("10.0.1.0/31"))
+    assert link.is_valid_host_address(Address("10.0.1.0")) is True
+    assert link.is_valid_host_address(Address("10.0.1.1")) is True
+    link.stop()
+    link.join()
+
+
+def test_link_is_valid_host_address_slash31_rejects_outside():
+    link = Link("p2p31", NetworkAddress("10.0.1.0/31"))
+    assert link.is_valid_host_address(Address("10.0.1.2")) is False
+    link.stop()
+    link.join()

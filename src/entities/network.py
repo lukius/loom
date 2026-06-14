@@ -24,13 +24,14 @@ class Network(_FabricBase):
 
         The network address (all-zero host bits) and the broadcast address
         (all-one host bits) are reserved and not usable as interface addresses.
+
+        Comparison is by octets (via Address.__eq__), not raw strings, so
+        non-canonical spellings such as '10.0.0.00' are correctly rejected.
         """
         if not self._address.matches(address):
             return False
-        network_addr_str = str(self._address).split('/')[0]
-        broadcast_str = str(self._address.broadcast())
-        addr_str = str(address)
-        if addr_str == network_addr_str or addr_str == broadcast_str:
+        network_addr = Address(str(self._address).split('/')[0])
+        if address == network_addr or address == self._address.broadcast():
             return False
         return True
 

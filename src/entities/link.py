@@ -36,14 +36,15 @@ class Link(_FabricBase):
         For /30 links, the network (.0) and broadcast (.3) addresses are
         reserved and not usable.  For /31 links (RFC 3021) both addresses
         are valid host addresses.
+
+        Comparison is by octets (via Address.__eq__), not raw strings, so
+        non-canonical spellings such as '10.0.0.00' are correctly rejected.
         """
         if not self._address.matches(address):
             return False
         if self._address.mask() == 30:
-            network_host = str(self._address).split('/')[0]
-            broadcast = str(self._address.broadcast())
-            addr_str = str(address)
-            if addr_str == network_host or addr_str == broadcast:
+            network_addr = Address(str(self._address).split('/')[0])
+            if address == network_addr or address == self._address.broadcast():
                 return False
         return True
 
