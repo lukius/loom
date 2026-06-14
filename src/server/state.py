@@ -55,6 +55,47 @@ class SimState:
             self._session = prepare_session(self._source)
         return self._session
 
+    # ---- safe readers ----
+
+    def device_under_lock(self, name: str):
+        """Resolve a device by name under _lock.
+
+        Raises InvalidStateTransition('no_topology', ...) if no topology is
+        loaded, or propagates HostNotFoundException/RouterNotFoundException
+        (both subclass EntityException) if the name is unknown. Callers map
+        these to 409/404 respectively.
+
+        The returned device object is valid at the moment of resolution. If the
+        caller needs to act on it, it should do so promptly; operations on
+        entities from a torn-down sim are idempotent (stops, disabled ifaces)
+        and will not raise unhandled exceptions.
+        """
+        with self._lock:
+            if self._as is None:
+                raise InvalidStateTransition("no_topology", "device_lookup")
+            return self._as.device(name)
+
+    def as_obj_under_lock(self):
+        """Return the current AS object under _lock, or None if idle.
+
+        Use this when the caller needs a single consistent snapshot of _as
+        for both a None-check and subsequent attribute access (avoiding TOCTOU).
+        """
+        with self._lock:
+            return self._as
+
+    def routers_under_lock(self) -> list:
+        """Return a stable snapshot of the routers list under _lock.
+
+        Prevents 'dictionary changed size during iteration' if stop() or
+        load_from_session() rebuilds the routers dict concurrently.
+        Returns an empty list when no topology is loaded.
+        """
+        with self._lock:
+            if self._as is None:
+                return []
+            return list(self._as.routers().values())
+
     # ---- transitions ----
 
     def load_from_session(self):
