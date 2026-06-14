@@ -58,18 +58,24 @@ class SimState:
     # ---- transitions ----
 
     def load_from_session(self):
-        """Parse the session file into an AS. Routers are built but not started."""
-        with self._lock:
-            if self._internet is not None:
-                self._internet.stop()
-            # `start_routing=False`: build routers without starting their
-            # keepalive threads. Starting them here would let the initial
-            # routing tick fire — emitting packet events on a sim that is
-            # still 'idle' — before /sim/start has been called.
-            internet = Parser(str(self.session_path)).parse(start_routing=False)
-            self._internet = internet
-            self._as = internet.single_as()
-            self._state = "idle"
+        """Parse the session file into an AS. Routers are built but not started.
+
+        Takes _edit_lock then _lock (matching stop()'s ordering) so that a
+        load cannot race an in-flight edit() or stop() that is still joining
+        old worker threads.
+        """
+        with self._edit_lock:
+            with self._lock:
+                if self._internet is not None:
+                    self._internet.stop()
+                # `start_routing=False`: build routers without starting their
+                # keepalive threads. Starting them here would let the initial
+                # routing tick fire — emitting packet events on a sim that is
+                # still 'idle' — before /sim/start has been called.
+                internet = Parser(str(self.session_path)).parse(start_routing=False)
+                self._internet = internet
+                self._as = internet.single_as()
+                self._state = "idle"
 
     def start(self):
         """Transition idle -> running. No-op if already running."""
@@ -109,6 +115,11 @@ class SimState:
         """Apply a topology patch to a running sim, atomically against other
         editors. Validate-all-then-apply-all under the editor lock; readers
         (packet/protocol threads) snapshot interface dicts and never block.
+
+        _lock is held across _apply_patch and _persist so that a concurrent
+        GET /topology (_dump_yaml under _lock) cannot observe a half-mutated
+        dict. EventTracer._broadcast is called AFTER _lock is released to
+        avoid running subscriber callbacks under the lock.
         """
         if not patch:
             return
@@ -116,9 +127,9 @@ class SimState:
             with self._lock:
                 if self._state != "running":
                     raise InvalidStateTransition(self._state, "edit")
-            self._apply_patch(patch)
-            self._persist()
-            EventTracer._broadcast({"kind": "topology_changed", "ops": patch})
+                self._apply_patch(patch)
+                self._persist()
+        EventTracer._broadcast({"kind": "topology_changed", "ops": patch})
 
     # ---- patch helpers ----
 
@@ -400,13 +411,24 @@ class SimState:
         return yaml.safe_dump(root, sort_keys=False)
 
     def stop(self):
-        """Transition any state -> idle. No-op if already idle."""
+        """Transition any state -> idle. No-op if already idle.
+
+        The state flip and ref-nulling happen INSIDE _lock so readers always
+        see a consistent view.  _lock is then RELEASED before the blocking
+        internet.stop() joins, so GET /topology and start() are not stalled
+        for the join duration.  _edit_lock is kept held across the joins so
+        that no concurrent load_from_session() or edit() can swap the
+        EventTracer or mutate the topology while old worker threads are still
+        alive (H3 invariant).
+        """
         with self._edit_lock:
             with self._lock:
                 if self._state == "idle":
                     return
-                if self._internet is not None:
-                    self._internet.stop()
-                    self._internet = None
-                    self._as = None
+                internet = self._internet
+                self._internet = None
+                self._as = None
                 self._state = "idle"
+            # _lock released; _edit_lock still held across the blocking joins.
+            if internet is not None:
+                internet.stop()
