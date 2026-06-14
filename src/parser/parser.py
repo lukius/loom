@@ -235,7 +235,10 @@ class Parser:
                 if not result.ok():
                     self._fail(f'{name}: {result.reason()}')
 
-            fabric.add_interface(host.interface())
+            try:
+                fabric.add_interface(host.interface())
+            except TooManyEndpointsException as e:
+                self._fail(f'{name}: {e}')
             system.add_host(host)
 
             if has_link:

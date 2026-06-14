@@ -350,6 +350,9 @@ class ParserTest(unittest.TestCase):
             'link_host_addr_is_network_or_broadcast', 'invalid address for link'
         )
 
+    def test_host_on_full_link(self):
+        self._run_parsing_error_test('host_on_full_link', 'two endpoints')
+
     def test_parses_top_level_config_as_opaque_dict(self):
         internet = Parser(f'{self.FILE_PATH}/config_roundtrip.yaml').parse(
             start_routing=False
