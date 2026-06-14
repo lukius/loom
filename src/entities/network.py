@@ -19,6 +19,21 @@ class Network(_FabricBase):
     def contains_address(self, address: Address) -> bool:
         return self._address.matches(address)
 
+    def is_valid_host_address(self, address: Address) -> bool:
+        """Return True only if address is a usable unicast host address in this network.
+
+        The network address (all-zero host bits) and the broadcast address
+        (all-one host bits) are reserved and not usable as interface addresses.
+        """
+        if not self._address.matches(address):
+            return False
+        network_addr_str = str(self._address).split('/')[0]
+        broadcast_str = str(self._address.broadcast())
+        addr_str = str(address)
+        if addr_str == network_addr_str or addr_str == broadcast_str:
+            return False
+        return True
+
     def devices(self) -> dict:
         return {
             interface.device().name(): interface.device()

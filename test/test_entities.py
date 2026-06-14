@@ -213,3 +213,35 @@ def test_fabric_remove_interface_missing_is_noop():
     net = Network("lan", NetworkAddress("10.0.0.0/24"))
     net.remove_interface(Address("10.0.0.9"))  # should not raise
     assert net.endpoint_count() == 0
+
+
+# ------------------------------------------------------ Network.is_valid_host_address
+
+
+def test_network_is_valid_host_address_normal_host():
+    net = Network("lan", NetworkAddress("192.168.1.0/24"))
+    assert net.is_valid_host_address(Address("192.168.1.10")) is True
+
+
+def test_network_is_valid_host_address_rejects_network_address():
+    net = Network("lan", NetworkAddress("192.168.1.0/24"))
+    # .0 is the network address — must be rejected
+    assert net.is_valid_host_address(Address("192.168.1.0")) is False
+
+
+def test_network_is_valid_host_address_rejects_broadcast_address():
+    net = Network("lan", NetworkAddress("192.168.1.0/24"))
+    # .255 is the broadcast address — must be rejected
+    assert net.is_valid_host_address(Address("192.168.1.255")) is False
+
+
+def test_network_is_valid_host_address_rejects_outside_cidr():
+    net = Network("lan", NetworkAddress("192.168.1.0/24"))
+    assert net.is_valid_host_address(Address("10.0.0.1")) is False
+
+
+def test_network_is_valid_host_address_slash16():
+    net = Network("wan", NetworkAddress("10.10.0.0/16"))
+    assert net.is_valid_host_address(Address("10.10.1.1")) is True
+    assert net.is_valid_host_address(Address("10.10.0.0")) is False   # network
+    assert net.is_valid_host_address(Address("10.10.255.255")) is False  # broadcast
