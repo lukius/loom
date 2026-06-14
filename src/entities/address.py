@@ -40,7 +40,7 @@ class Address(BaseAddress):
                 return False
         if other.__class__ != self.__class__:
             return False
-        return self._address == other._address
+        return self._octets == other._octets
 
     def __hash__(self) -> int:
         return hash(tuple(self._octets))

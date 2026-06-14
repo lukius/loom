@@ -178,6 +178,35 @@ def test_address_hash_matches_equality_on_octet_value():
     assert hash(a) == hash(tuple(a.octets()))
 
 
+def test_address_eq_is_octet_based_not_string_based():
+    """Address.__eq__ must compare by octet values, not raw input strings.
+
+    Two Address objects with the same numeric value but different string
+    representations (e.g. leading zeros) must compare equal and be
+    interchangeable as dict keys and set members.
+    """
+    canonical = Address('10.0.0.1')
+    leading_zero = Address('010.0.0.1')
+
+    # Equality must hold despite different _address strings.
+    assert canonical == leading_zero
+    assert leading_zero == canonical
+
+    # Must be usable as equivalent set members.
+    assert leading_zero in {canonical}
+    assert canonical in {leading_zero}
+
+    # Must be interchangeable as dict keys.
+    d = {canonical: 'value'}
+    assert d[leading_zero] == 'value'
+
+    # Genuinely different addresses must remain unequal.
+    assert Address('10.0.0.1') != Address('10.0.0.2')
+
+    # Same-spelling equality must still hold.
+    assert Address('192.168.1.1') == Address('192.168.1.1')
+
+
 def test_network_matches_does_not_mutate_caller():
     """Address._matches must not write into the caller's octets list.
 
