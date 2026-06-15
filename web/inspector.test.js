@@ -698,6 +698,28 @@ describe('duplicate-* in paused sim', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 10c. duplicateNetwork and duplicateHost must be guarded by isTopologyLocked()
+// just like every other peer mutation (renameNetwork, duplicateLink, etc.).
+// ---------------------------------------------------------------------------
+describe('duplicate-* locked while sim is running', () => {
+  beforeEach(() => { Sim.state = 'running'; });
+  afterEach(() => { Sim.state = 'idle'; });
+
+  it('duplicateNetwork is a no-op when the sim is running', () => {
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    duplicateNetwork('lan1');
+    expect(Object.keys(state.networks)).toEqual(['lan1']);
+  });
+
+  it('duplicateHost is a no-op when the sim is running', () => {
+    state.hosts = { h1: { network: 'lan1', address: '10.0.0.5', x: 0, y: 0 } };
+    state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
+    duplicateHost('h1');
+    expect(Object.keys(state.hosts)).toEqual(['h1']);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Right-click "Add host / router here" on a LAN must queue a patch op while
 // paused, mirroring the toolbar's addNew() — otherwise the new device exists
 // only in the SPA and Resume sees nothing to ship to the server.

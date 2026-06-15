@@ -394,6 +394,20 @@ describe('clearTopology', () => {
   it('does not throw without fitView/renderAll in scope', () => {
     expect(() => clearTopology()).not.toThrow();
   });
+
+  it('resets neighborsByDevice to {}', () => {
+    state.neighborsByDevice = { r1: { eth0: { r2: { state: 'two_way' } } } };
+    clearTopology();
+    expect(state.neighborsByDevice).toEqual({});
+  });
+});
+
+describe('loadSample — neighborsByDevice reset', () => {
+  it('resets neighborsByDevice to {} on loadSample', () => {
+    state.neighborsByDevice = { r1: { eth0: { r2: { state: 'two_way' } } } };
+    loadSample();
+    expect(state.neighborsByDevice).toEqual({});
+  });
 });
 
 describe('markDirty / setSave', () => {

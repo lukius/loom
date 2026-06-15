@@ -1190,6 +1190,7 @@ export function renameRouter(oldName, newName) {
   markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
 }
 export function duplicateNetwork(name) {
+  if (isTopologyLocked()) return;
   const newName = uniqueName(name + '_', state.networks);
   const src = state.networks[name];
   state.networks[newName] = { ...src, x: src.x + 30, y: src.y + 30 };
@@ -1198,6 +1199,7 @@ export function duplicateNetwork(name) {
   markDirty(); bus.dispatchEvent(new CustomEvent('state:topology-changed'));
 }
 export function duplicateHost(name) {
+  if (isTopologyLocked()) return;
   const newName = uniqueName(name + '_', state.hosts);
   const src = state.hosts[name];
   state.hosts[newName] = { ...src, x: src.x + 30, y: src.y + 30 };

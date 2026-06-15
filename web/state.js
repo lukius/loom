@@ -181,22 +181,33 @@ export function defaultExportFilename(sourceName) {
   const stem = m[1].replace(/\.session$/i, '');
   return `${stem}${m[2]}`;
 }
-export function loadSample() {
-  state.asName = SAMPLE.asName;
-  state.asn = SAMPLE.asn;
-  state.networks = JSON.parse(JSON.stringify(SAMPLE.networks));
-  state.hosts = JSON.parse(JSON.stringify(SAMPLE.hosts));
-  state.routers = JSON.parse(JSON.stringify(SAMPLE.routers));
-  state.links = JSON.parse(JSON.stringify(SAMPLE.links));
+/* Shared reset helper: wipe all transient and topology fields and seed from
+   `seed` (an object with networks/hosts/routers/links/asName/asn). Both
+   loadSample and clearTopology delegate here so neither can accidentally
+   omit a field. `sourceName` is caller-controlled — pass null to clear it
+   or leave it unchanged by not passing it. */
+function _resetTopologyState(seed, { sourceName } = {}) {
+  state.asName = seed.asName;
+  state.asn = seed.asn;
+  state.networks = JSON.parse(JSON.stringify(seed.networks));
+  state.hosts = JSON.parse(JSON.stringify(seed.hosts));
+  state.routers = JSON.parse(JSON.stringify(seed.routers));
+  state.links = JSON.parse(JSON.stringify(seed.links));
   state.selection = null;
+  if (sourceName !== undefined) state.sourceName = sourceName;
   state.view = { x: 0, y: 0, k: 1 };
   state.display = { ...DISPLAY_DEFAULTS };
   state.ui = { packetsPanelOpen: false, showChatter: true };
   state.natTables = {};
   state.downInterfaces = {};
   state.haltedDevices = {};
+  state.neighborsByDevice = {};
   const projName = document.getElementById('proj-name');
   if (projName) projName.value = state.asName;
+}
+
+export function loadSample() {
+  _resetTopologyState(SAMPLE);
   persist();
   bus.dispatchEvent(new CustomEvent('state:topology-changed'));
   bus.dispatchEvent(new CustomEvent('state:topology-loaded'));
@@ -208,22 +219,10 @@ export function loadSample() {
    then renders. Resets sourceName (no file backs a fresh topology) and uses a
    neutral default AS name. */
 export function clearTopology() {
-  state.asName = 'loom';
-  state.asn = 65000;
-  state.networks = {};
-  state.hosts = {};
-  state.routers = {};
-  state.links = {};
-  state.selection = null;
-  state.sourceName = null;
-  state.view = { x: 0, y: 0, k: 1 };
-  state.display = { ...DISPLAY_DEFAULTS };
-  state.ui = { packetsPanelOpen: false, showChatter: true };
-  state.natTables = {};
-  state.downInterfaces = {};
-  state.haltedDevices = {};
-  const projName = document.getElementById('proj-name');
-  if (projName) projName.value = state.asName;
+  _resetTopologyState(
+    { asName: 'loom', asn: 65000, networks: {}, hosts: {}, routers: {}, links: {} },
+    { sourceName: null },
+  );
   persist();
   bus.dispatchEvent(new CustomEvent('state:topology-changed'));
   bus.dispatchEvent(new CustomEvent('state:topology-loaded'));

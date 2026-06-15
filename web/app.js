@@ -80,12 +80,6 @@ wireProtocolPopover({
   },
 });
 
-bus.addEventListener('sim:status-changed', () => {
-  const enabled = Sim.state !== 'idle';
-  const protocol = document.getElementById('tb-protocol');
-  if (protocol) protocol.disabled = !enabled;
-});
-
 (() => {
   const inp = document.getElementById('tb-speed');
   if (!inp) return;
