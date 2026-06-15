@@ -1,12 +1,12 @@
 # Parser & Validator
 
 The YAML loader and the structural validator live in `src/parser/`. They
-are the only path from on-disk topology to a live `AS` instance —
-everything else in the codebase assumes the AS is already well-formed.
+are the only path from on-disk topology to a live `Internet` instance —
+everything else in the codebase assumes the topology is already well-formed.
 
 ```
 parser/
-├── parser.py      # Parser — Parser(filename).parse() -> AS
+├── parser.py      # Parser — Parser(filename).parse() -> Internet
 ├── validator.py   # SystemValidator (address, network, link, device, host)
 ├── exception.py   # ParsingException
 └── __init__.py
@@ -70,7 +70,7 @@ The parser validates that the value is a mapping (`dict`), then calls
 `internet.set_config(config)` to store it verbatim on the `Internet`
 object. The backend does not interpret the keys — they are stored
 opaquely and re-emitted unchanged on serialization. Any consumer of the
-topology (such as the SPA) may define its own keys here.
+topology may define its own keys here.
 
 ### `<as>.config.protocol`
 
@@ -105,12 +105,20 @@ Parsing rules (enforced by `_parse_protocol_config`):
 
 ## `Parser.parse()` flow
 
+`Parser(filename).parse()` returns an **`Internet`** instance containing
+one or more `AS` objects. (Not a bare `AS` — the `Internet` wrapper holds
+the gate, the config, and the multi-AS container.)
+
 ```mermaid
 flowchart TD
   A[open file] --> B[yaml.safe_load]
   B --> C{has 'internet' key?}
   C -- no --> X[ParsingException: missing &quot;internet&quot; key]
-  C -- yes --> D[iterate 'autonomous_systems' mapping]
+  C -- yes --> C2{has 'autonomous_systems'?}
+  C2 -- no --> X2[ParsingException: missing &quot;autonomous_systems&quot;]
+  C2 -- yes --> C3{is mapping and non-empty?}
+  C3 -- no --> X3[ParsingException: must contain at least one AS]
+  C3 -- yes --> D[iterate 'autonomous_systems' mapping]
   D --> E[create AS from short-name key]
   E --> F[parse networks]
   F --> G{has 'links'?}
@@ -122,13 +130,13 @@ flowchart TD
   K --> L{start_routing?}
   L -- yes --> N[router.start for each router]
   L -- no --> M
-  N --> M[return AS]
+  N --> M[return Internet]
 ```
 
 A failure at any step raises `ParsingException` with a descriptive
-message. The AS is **partially constructed** at that point — threads
+message. The topology is **partially constructed** at that point — threads
 have already been spawned for networks/links — but the caller (the FastAPI
-`SimState`) is expected to `as_obj.stop()` and discard it.
+`SimState`) is expected to call `internet.stop()` and discard it.
 There is no in-parser rollback.
 
 Three notes:
@@ -137,16 +145,19 @@ Three notes:
    default. The server layer opts out: it calls
    `Parser(...).parse(start_routing=False)` because `idle` semantics demand
    that routers wait for an explicit `/sim/start` before broadcasting their
-   first keepalive. Starting then stopping would race the initial tick and
+   first Hello. Starting then stopping would race the initial tick and
    leak `packet` events on the event bus while the sim is still `idle`.
+   (`load_from_session` also passes `start_routing=False` for the same reason —
+   routers are built but their protocol threads are not started.)
 2. **Hosts on a link** are parsed *after* the link itself, but the link's
    peer may not be attached yet (in the case of two hosts on the same
    link). The parser collects `hosts_on_links = [(host, explicit_gw_or_None), ...]`
    during the host pass, then resolves gateways in `_post_pass_links`
    once every endpoint is attached.
 3. **Cost defaults to 1.** Omitting `cost:` on a router interface yields
-   `cost=1`. The validator does not require costs to be unique or
-   distinct.
+   `cost=1`; an explicit `cost:` must be a **positive** integer (≥1) —
+   `0` and non-integers are rejected. The validator does not require costs
+   to be unique or distinct.
 
 ## Address parsing
 
@@ -171,7 +182,7 @@ correct even when the user accidentally writes a host bit set.
 4. Register on the AS.
 
 A failed validation aborts the parse via `ParsingException`. The already-
-spawned thread will be cleaned up by `AS.stop()` on the caller's side.
+spawned thread will be cleaned up by `internet.stop()` on the caller's side.
 
 ## Links
 
@@ -201,14 +212,13 @@ after the parse completes.
    - Resolve to the actual `Network` / `Link` instance (raise if not
      found).
    - Validate the address.
-   - Parse the optional `cost:` (default 1, must be a non-negative int).
+   - Parse the optional `cost:` (default 1, must be a positive int ≥1).
    - Construct an `Interface(...)`, attach to the fabric, attach to the
      router.
 3. Validate the assembled router via `DeviceValidator`:
-   - Each interface's address must be valid for its fabric:
-     - On a `Network`: `net.contains_address(addr)`.
-     - On a `Link`: `link.is_valid_host_address(addr)` — rejects `/30`
-       network and broadcast, accepts both `/31` halves.
+   - Each interface's address must be valid for its fabric via
+     `net.is_valid_host_address(addr)` — rejects the network address,
+     the broadcast address, and any address outside the prefix.
    - No two interfaces of any router/host share an address on the same
      fabric.
 
@@ -225,7 +235,7 @@ after the parse completes.
    - On a `Link`: store the literal string; the post-pass will validate
      against the link peer.
 4. Address-in-fabric checks:
-   - On a `Link`: address must be `link.contains_address(addr)` and
+   - On a `Link`: address must satisfy both `link.contains_address(addr)` and
      `link.is_valid_host_address(addr)`.
    - On a `Network`: `network.contains_address(addr)`, plus
      `HostValidator.validate` for the gateway-in-network check.
@@ -248,21 +258,51 @@ allowed (and validated) for clarity but is never required on a link.
 ## Validators
 
 `SystemValidator` is a thin facade over five concrete validators. Each
-returns a `ValidationResult` (`ValidationSuccess` or
-`ValidationFailure(reason)`):
+returns a `ValidationResult` (`valid()` or `invalid(reason)`):
 
 | Validator | What it checks |
 |---|---|
-| `AddressValidator` | Dotted-quad syntax + octet range `[0, 255]` |
-| `NetworkValidator` | No duplicate name, no duplicate prefix |
-| `LinkValidator` | `/30` or `/31` mask, no name collision with networks or other links |
-| `DeviceValidator` | Each interface address is in-fabric and not duplicated within the AS |
+| `AddressValidator` | Dotted-quad syntax, octet range `[0, 255]`, no leading-zero octets |
+| `NetworkValidator` | No duplicate name; no duplicate public CIDR (private CIDRs may repeat for NAT); no prefix-containment overlap with any existing network |
+| `LinkValidator` | `/30` or `/31` mask; no name collision with networks or other links; no prefix-containment overlap with any existing fabric |
+| `DeviceValidator` | Each interface address passes `net.is_valid_host_address` (rejects network + broadcast); no two interfaces share an address on the same fabric |
 | `HostValidator` | Inherits `DeviceValidator`, then checks `gateway in network` |
 
+### Additional validations
+
+Beyond the validator table, the parser enforces several rules directly:
+
+- **`asn` type-check** (`_parse_single_as`): if `asn:` is present it
+  must be a non-negative integer; booleans are explicitly rejected.
+  Omitting `asn:` is allowed (defaults silently).
+- **Duplicate device names** (`_check_no_duplicate_device_names`): a
+  host name that duplicates a router name raises `ParsingException`
+  because `AS.device()` resolves hosts first, making the router
+  unreachable by name.
+- **`autonomous_systems` guards**: `autonomous_systems:` must be present
+  in the `internet:` block, must be a mapping, and must contain at least
+  one AS.
+- **Host-bits-set rejection** (`_parse_net_address`): a network CIDR
+  where the host portion is non-zero (e.g. `10.0.0.5/24`) is rejected.
+  `NetworkAddress` silently clears host bits internally, so the parser
+  compares the canonical form against the raw input and raises if they
+  differ.
+- **Leading-zero octet rejection** (`AddressValidator`): octets with
+  leading zeros (e.g. `010.0.0.1`) are rejected as non-canonical and
+  potentially ambiguous.
+- **Subnet-overlap containment check + private-duplicate exemption**
+  (`NetworkValidator._overlap_checks`): a strict prefix-containment
+  overlap (A ⊂ B or B ⊂ A, excluding exact duplicates) is always
+  rejected — it is ambiguous for longest-prefix-match routing. Exact
+  duplicates (`A == B`) follow separate logic: they are permitted for
+  private CIDRs (supporting the NAT multi-tenant pattern where two
+  internal networks reuse the same RFC 1918 block) but rejected for
+  public CIDRs.
+
 `DeviceValidator._addr_already_used` walks every router and every host
-to check for duplicate addresses on the same fabric. That's `O(R · K + H)`
-per validation; the parser invokes it once per device, so the overall
-parse is `O(R · K · (R · K + H))`.
+to check for duplicate addresses on the same fabric. At a few hundred
+devices this is fast enough in practice; it is proportional to the
+number of devices in the AS per validation call.
 
 ## Errors and fixtures
 
@@ -277,7 +317,8 @@ YAML fixtures** under `test/resources/`:
 - `invalid_address.yaml`, `invalid_netmask.yaml`,
   `invalid_router_address.yaml`, ... — assert the matching validator
   message.
-- `link_too_many_endpoints.yaml`, `link_bad_mask.yaml`, ... — assert
+- `link_three_endpoints.yaml`, `link_one_endpoint.yaml`,
+  `link_no_endpoints.yaml`, `link_too_wide.yaml`, ... — assert
   link-specific failures.
 - `missing_as.yaml`, `missing_networks.yaml` — assert structural
   failures.
@@ -291,7 +332,9 @@ additional fixtures referenced from `test/test_parser.py`.
 
 | Caller | What it does next |
 |---|---|
-| `src/server/state.py:load_from_session` | Parses the session file, then **stops every router** to enforce `idle` semantics before the next `/sim/start` |
+| `src/server/state.py:load_from_session` | Parses the session file with `start_routing=False` — routers are built but their protocol threads are not started, enforcing `idle` semantics until `/sim/start` is called |
+| `src/server/state.py:load_from_text` | Parses incoming YAML into a temp file; on success atomically replaces the session file and swaps the live topology |
+| `src/server/state.py:reset_session` | Re-clones the source file, then re-parses with `start_routing=False` |
 
 Nothing else parses YAML. `GET /topology` returns re-serialized live
 state via `SimState._dump_yaml()` when a topology is loaded, or the
