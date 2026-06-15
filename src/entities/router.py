@@ -166,7 +166,7 @@ class Router(NetworkDevice):
         return list(self._protocols)
 
     # BGP-FOLLOWUP: remove this single-protocol accessor once a second
-    # protocol exists. Migrate the ~16 callers (tests, shell, server commands)
+    # protocol exists. Migrate the callers (tests, server commands)
     # to either `protocols()` for multi-protocol operations or named accessors
     # (`link_state()`, `bgp()`) for protocol-specific queries.
     def protocol(self):

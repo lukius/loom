@@ -574,8 +574,8 @@ class ProtocolTest(unittest.TestCase):
 
     def test_update_interface_triggers_immediate_lsa_and_recompute(self):
         # Same triangle as the previous test, but exercises the public
-        # Router.update_interface entry point (the one the shell and web
-        # `update_cost` op call into). A user-driven cost change must
+        # Router.update_interface entry point (the one the web
+        # `update_cost` op calls into). A user-driven cost change must
         # converge immediately: the local LSA must reflect the new cost
         # and the local routing table must point at the new shortest
         # path, without anyone pumping _run_keepalive_cycle() or waiting for
@@ -638,7 +638,7 @@ class ProtocolTest(unittest.TestCase):
             (self.name(), pkt.payload()),
         )
         try:
-            # Use the public API the shell + server invoke.
+            # Use the public API the server invokes.
             r1.update_interface('eth1', 100)
         finally:
             Interface.send_to = original_send

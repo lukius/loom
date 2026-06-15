@@ -169,9 +169,8 @@ class LinkStateProtocol(RoutingProtocol):
 
     def start(self):
         # Always clear the stop flag first. A start() that follows a prior
-        # stop() on the same protocol instance (e.g. tests reusing a router,
-        # or the shell `read` re-loading a topology after pings stopped the
-        # threads) would otherwise see _stopped=True and exit on first wake.
+        # stop() on the same protocol instance (e.g. tests reusing a router)
+        # would otherwise see _stopped=True and exit on first wake.
         self._stopped = False
         self._stop_event.clear()
         if self._protocol_thread is not None and self._protocol_thread.is_alive():
