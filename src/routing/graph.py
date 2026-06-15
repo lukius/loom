@@ -19,9 +19,6 @@ class HeapItem:
     def __lt__(self, other):
         return self._weight < other.weight()
 
-    def __le__(self, other):
-        return self._weight <= other.weight()
-
 
 class NetworkGraph:
 
@@ -69,7 +66,7 @@ class NetworkGraph:
         self._costs[src][dst] = weight
 
     def shortest_paths(self, src):
-        distances, previous = self._shortest_paths(src)
+        _, previous = self._shortest_paths(src)
         paths = dict()
 
         for node in self._costs.keys():

@@ -272,7 +272,7 @@ class LinkStateProtocol(RoutingProtocol):
     def _refresh_local_lsa(self) -> bool:
         # Local LSA uses permit-all so the local graph includes all directly
         # connected networks (including RFC 1918). The outbound policy only
-        # controls what is flooded to peers in _handle_update.
+        # controls what is flooded to peers in _run_keepalive_cycle.
         lsa = LSA.from_router(
             self._router, seq=self._next_seq(), policy=self._local_policy,
         )
@@ -281,11 +281,12 @@ class LinkStateProtocol(RoutingProtocol):
             self._rebuild_graph_and_recompute()
         return result.changed_graph()
 
-    def _handle_update(self):
-        """Back-compat shim used by tests.
+    def _run_keepalive_cycle(self):
+        """Run one full keepalive cycle synchronously.
 
-        Runs all three actions in sequence, equivalent to one keepalive
-        cycle under the old single-timer model.
+        Sweeps dead neighbors and expired LSAs, then emits a Hello and an
+        LSA on every up interface — the same three steps the background
+        protocol loop executes on each scheduled tick.
         """
         now = time.monotonic()
         self._sweep_dead_and_expired(now)

@@ -301,7 +301,7 @@ def test_packet_event_for_routing_flood_carries_seq_and_destinations():
         events = []
         system = Parser(path).parse().single_as()
         EventTracer.subscribe(events.append)
-        system.router("r1").protocol()._handle_update()  # noqa: SLF001
+        system.router("r1").protocol()._run_keepalive_cycle()  # noqa: SLF001
         time.sleep(0.2)
         flood_events = [
             e for e in events
@@ -353,7 +353,7 @@ def test_routing_table_changed_event_fires():
         # First keepalive within ~lsa_refresh_interval; for a test, manually update.
         system.router("r1").update_interface("eth0", 99)
         # nudge protocol to recompute by faking a keepalive call:
-        system.router("r1").protocol()._handle_update()  # noqa: SLF001
+        system.router("r1").protocol()._run_keepalive_cycle()  # noqa: SLF001
         kinds = [e.get("kind") for e in events]
         assert "routing_table_changed" in kinds
         system.stop()

@@ -43,12 +43,12 @@ def test_one_cycle_emits_single_lsa_with_uniform_seq_across_interfaces():
     Interface.send_to = lambda self, pkt, dst_addr: sent.append((self.name(), pkt))
     try:
         proto = LinkStateProtocol(r)
-        proto._handle_update()  # noqa: SLF001
+        proto._run_keepalive_cycle()  # noqa: SLF001
     finally:
         Interface.send_to = original_send
 
     lsa_payloads = [pkt.payload() for _, pkt in sent if isinstance(pkt.payload(), LSA)]
-    # jitter-audit: synchronous _handle_update call; count == N interfaces
+    # jitter-audit: synchronous _run_keepalive_cycle call; count == N interfaces
     assert len(lsa_payloads) == 3
     # Single LSA object reused.
     assert all(p is lsa_payloads[0] for p in lsa_payloads[1:])
@@ -266,9 +266,9 @@ class ProtocolTest(unittest.TestCase):
         router.add_interface(iface2)
 
         proto = LinkStateProtocol(router)
-        proto._handle_update()
+        proto._run_keepalive_cycle()
 
-        # _handle_update now emits a Hello then an LSA per interface; drain
+        # _run_keepalive_cycle now emits a Hello then an LSA per interface; drain
         # until we find the first LSA datagram.
         datagram = None
         dst_addr = None
@@ -566,7 +566,7 @@ class ProtocolTest(unittest.TestCase):
 
         r1_eth1.set_cost(100)
 
-        proto._handle_update()
+        proto._run_keepalive_cycle()
 
         result = r1.routing_table().match(Address('10.0.4.100'))
         self.assertTrue(result.is_matched())
@@ -578,7 +578,7 @@ class ProtocolTest(unittest.TestCase):
         # `update_cost` op call into). A user-driven cost change must
         # converge immediately: the local LSA must reflect the new cost
         # and the local routing table must point at the new shortest
-        # path, without anyone pumping _handle_update() or waiting for
+        # path, without anyone pumping _run_keepalive_cycle() or waiting for
         # the next periodic refresh tick. Public addresses so the
         # default RFC1918_OUTBOUND policy doesn't strip them from the
         # flooded LSA — we want to assert the cost reaches peers.
@@ -942,7 +942,7 @@ def test_link_cost_propagates():
         os.unlink(path)
 
 
-def test_handle_update_omits_private_prefixes_from_outbound_message():
+def test_keepalive_cycle_omits_private_prefixes_from_outbound_message():
     """A router with one public and one private interface advertises only
     the public prefix on every interface's RoutingMessage.
 
@@ -978,7 +978,7 @@ def test_handle_update_omits_private_prefixes_from_outbound_message():
     try:
         r1 = system.routers()["r1"]
         # Join r1's keepalive thread before patching so its initial tick
-        # (fired by Parser auto-start) can't race the explicit _handle_update
+        # (fired by Parser auto-start) can't race the explicit _run_keepalive_cycle
         # below and double the captured-message count.
         r1.protocol().stop()
 
@@ -991,11 +991,11 @@ def test_handle_update_omits_private_prefixes_from_outbound_message():
             return original_send(self, pkt, dst_addr)
         Interface.send_to = capturing_send
         try:
-            r1.protocol()._handle_update()  # noqa: SLF001
+            r1.protocol()._run_keepalive_cycle()  # noqa: SLF001
         finally:
             Interface.send_to = original_send
 
-        # jitter-audit: synchronous _handle_update call; count == N interfaces
+        # jitter-audit: synchronous _run_keepalive_cycle call; count == N interfaces
         assert len(captured) == 2, (
             f"expected one LSA per interface, got {len(captured)}"
         )
@@ -1155,12 +1155,12 @@ def test_hello_emitted_on_every_interface_each_cycle():
     Interface.send_to = lambda self, pkt, dst_addr: sent.append(pkt)
     try:
         proto = LinkStateProtocol(r)
-        proto._handle_update()  # noqa: SLF001
+        proto._run_keepalive_cycle()  # noqa: SLF001
     finally:
         Interface.send_to = original_send
 
     hellos = [p.payload() for p in sent if isinstance(p.payload(), Hello)]
-    # jitter-audit: synchronous _handle_update call; count == N interfaces
+    # jitter-audit: synchronous _run_keepalive_cycle call; count == N interfaces
     assert len(hellos) == 2  # one per interface
 
 
