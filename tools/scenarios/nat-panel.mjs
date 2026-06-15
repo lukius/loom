@@ -5,7 +5,7 @@
 //   npm run screenshot -- docs/images/51-nat-panel.png \
 //       --load-yaml=samples/multi_tenant_nat.yaml \
 //       --exec-file=tools/scenarios/nat-panel.mjs \
-//       --selector=#insp-nat
+//       --selector=.insp
 //
 // Runs in the page context (wrapped in an async IIFE by screenshot.mjs).
 const { Sim, RuntimeClient } = await import('/sim.js');
@@ -25,15 +25,23 @@ if (Sim.state !== 'running') {
 }
 
 // Wait for routing convergence — r_a needs a route to 200.100.0.0/24 before
-// the ping can go through and trigger NAT.
-await new Promise(r => setTimeout(r, 700));
+// the ping can go through and trigger NAT. Wait longer to ensure full convergence.
+await new Promise(r => setTimeout(r, 1200));
 
 // Ping h_a → h_public. The server's command endpoint blocks until the ping
 // completes or times out; on return, r_a's NAT table has an entry.
 await RuntimeClient.deviceCommand('h_a', 'ping h_public -W 2.0');
 
+// Reset natTables cache so refreshNAT re-fetches the latest data.
+state.natTables = {};
+
 // Select r_a so renderInspector() mounts the NAT panel. Inspector.refreshNAT
 // primes state.natTables from GET /devices/r_a/nat-table and renders.
 state.selection = { kind: 'router', name: 'r_a' };
 bus.dispatchEvent(new CustomEvent('state:selection-changed'));
-await new Promise(r => setTimeout(r, 400));
+await new Promise(r => setTimeout(r, 600));
+
+// Make sure the NAT section is expanded.
+const natSec = document.querySelector('#insp-nat details.insp-section[data-section="nat"]');
+if (natSec) natSec.open = true;
+await new Promise(r => setTimeout(r, 200));
