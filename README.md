@@ -51,6 +51,10 @@ see [ns-3](https://www.nsnam.org/), [mininet](https://mininet.org/),
 - **Packet animations** — Datagrams, ping, and routing-protocol packets
   animate across the canvas as they flow; toolbar toggles control speed
   and chatter visibility.
+- **NAT and private LANs** — Source-NAT rewrites private (RFC 1918)
+  addresses on egress to public networks, with per-flow rewrite tables and
+  reverse translation on return traffic. Routing policy keeps private
+  prefixes local — they are never advertised to peer routers.
 - **YAML import / export** — The topology is the source of truth. Drop a
   YAML file into the import dialog, copy the canvas back out, persist or
   share.
@@ -65,7 +69,7 @@ see [ns-3](https://www.nsnam.org/), [mininet](https://mininet.org/),
 | Web server | FastAPI + Uvicorn, static SPA mount, REST + WebSocket |
 | Web UI | Plain ES modules + SVG (no framework, no bundler) |
 | Topology | YAML (PyYAML), with a structural validator |
-| Tests | `pytest` (190+), `pytest-asyncio`, `vitest`, Playwright |
+| Tests | `pytest` (526+), `pytest-asyncio`, `vitest`, Playwright |
 | Lint / format | `ruff` |
 
 External dependencies: none beyond the four packages above. No database,
@@ -130,6 +134,7 @@ Start here if you want to **drive** the simulator.
 | [`docs/user-guide/routing-tables.md`](docs/user-guide/routing-tables.md) | Inspecting routing tables, neighbors, costs |
 | [`docs/user-guide/terminals.md`](docs/user-guide/terminals.md) | Per-device terminals: `ping`, `send`, `ifconfig`, ... |
 | [`docs/user-guide/yaml-format.md`](docs/user-guide/yaml-format.md) | YAML schema reference, save / resume workflow |
+| [`docs/user-guide/nat-and-private-lans.md`](docs/user-guide/nat-and-private-lans.md) | NAT, private LANs, source address rewriting |
 
 ### Architecture / Technical Reference
 
@@ -143,6 +148,8 @@ Start here if you want to **change** the simulator or understand how it works.
 | [`docs/architecture/routing-protocol.md`](docs/architecture/routing-protocol.md) | Link-state protocol, flooding, Dijkstra, sequence diagrams |
 | [`docs/architecture/concurrency.md`](docs/architecture/concurrency.md) | Threads, queues, `PauseGate`, lifecycle |
 | [`docs/architecture/parser.md`](docs/architecture/parser.md) | YAML parser, validators, error paths |
+| [`docs/architecture/nat.md`](docs/architecture/nat.md) | Source-NAT, per-flow rewrite tables, NAT events |
+| [`docs/architecture/policy.md`](docs/architecture/policy.md) | Routing policy, RFC 1918 outbound filter |
 | [`docs/architecture/web-spa.md`](docs/architecture/web-spa.md) | SPA module map and event-bus contract |
 | [`docs/architecture/server-api.md`](docs/architecture/server-api.md) | HTTP + WebSocket reference |
 
@@ -159,11 +166,11 @@ Start here if you want to **change** the simulator or understand how it works.
 loom/
 ├── src/
 │   ├── loom.py            # Entry point — starts the web UI
-│   ├── entities/          # AS, Router, Host, Network, Link, Interface, Address, Packet, Event, PauseGate
+│   ├── entities/          # AS, Router, Host, Network, Link, Interface, Address, Packet, Event, nat.py, PauseGate
 │   ├── routing/           # RoutingProtocol (loom-OSPF link-state) + LSDB → NetworkGraph (Dijkstra)
 │   ├── parser/            # YAML topology loader + SystemValidator
 │   └── server/            # FastAPI app, routes, sim state machine, persistence, command dispatch
-├── test/                  # pytest suite (190+ tests) + invalid YAML fixtures under resources/
+├── test/                  # pytest suite (526+ tests) + invalid YAML fixtures under resources/
 ├── samples/               # sample.yaml — the bundled example topology
 ├── web/                   # SPA: ES modules, styles, favicon, vitest tests
 ├── e2e/                   # Playwright/Chromium smoke suite
