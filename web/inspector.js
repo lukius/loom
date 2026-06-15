@@ -998,6 +998,18 @@ export function renderRouterInsp(name, elI) {
     };
     markDirty(); renderInspector(); renderCanvas(); renderNav();
   });
+  _wireIfaceListeners(elI, name);
+  elI.querySelector('#f-del').addEventListener('click', deleteSelected);
+  elI.querySelector('#f-dup').addEventListener('click', () => duplicateRouter(name));
+  // Persist open/closed state of top-level collapsible sections across re-renders.
+  wireSectionToggles(elI);
+  Inspector.refreshRoutes(name);
+  Inspector.refreshNAT(name);
+}
+
+/* Wire all per-interface event listeners onto the router inspector panel.
+   Extracted from renderRouterInsp to keep that function at a manageable size. */
+function _wireIfaceListeners(elI, name) {
   elI.querySelectorAll('[data-del-iface]').forEach(b => {
     b.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1145,12 +1157,6 @@ export function renderRouterInsp(name, elI) {
       else if (act === 'fail') RuntimeClient.fail(name, ifn).catch(showErr);
     });
   });
-  elI.querySelector('#f-del').addEventListener('click', deleteSelected);
-  elI.querySelector('#f-dup').addEventListener('click', () => duplicateRouter(name));
-  // Persist open/closed state of top-level collapsible sections across re-renders.
-  wireSectionToggles(elI);
-  Inspector.refreshRoutes(name);
-  Inspector.refreshNAT(name);
 }
 
 /* ---------- crud ---------- */

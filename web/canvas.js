@@ -728,24 +728,7 @@ export function drawLinkEdge(linkName, linkObj) {
     bus.dispatchEvent(new CustomEvent('state:selection-changed'));
   });
 
-  // hover: add p2p-hovered class to both endpoint device groups (deferred lookup
-  // so the nodes layer is guaranteed to exist even though edges are drawn first)
-  const addP2pHover = () => {
-    const g1 = lookupDeviceNode(ep1.device);
-    const g2 = lookupDeviceNode(ep2.device);
-    g1?.classList.add('p2p-hovered');
-    g2?.classList.add('p2p-hovered');
-    path.classList.add('p2p-hovered');
-    lookupLinkMidpoint(linkName)?.classList.add('p2p-hovered');
-  };
-  const removeP2pHover = () => {
-    const g1 = lookupDeviceNode(ep1.device);
-    const g2 = lookupDeviceNode(ep2.device);
-    g1?.classList.remove('p2p-hovered');
-    g2?.classList.remove('p2p-hovered');
-    path.classList.remove('p2p-hovered');
-    lookupLinkMidpoint(linkName)?.classList.remove('p2p-hovered');
-  };
+  const { addP2pHover, removeP2pHover } = _makeLinkHoverHandlers(linkName, ep1, ep2, path);
   path.addEventListener('mouseenter', addP2pHover);
   path.addEventListener('mouseleave', removeP2pHover);
 
@@ -756,57 +739,13 @@ export function drawLinkEdge(linkName, linkObj) {
   const mmy = bezPoint(ay, c1y, c2y, by, 0.5);
   drawDownMarker(mmx, mmy, linkDown, { 'data-down-link': linkName });
 
-  // Per-endpoint iface/cost tags
-  const showCosts  = state.display?.showCosts  ?? true;
-  const showIfaces = state.display?.showIfaces ?? true;
-
-  if (showIfaces && ep1.iface) {
-    // near endpoint 1 (t≈0.12)
-    const t1 = 0.12;
-    const ix = bezPoint(ax, c1x, c2x, bx, t1);
-    const iy = bezPoint(ay, c1y, c2y, by, t1);
-    edgesLayer().appendChild(el('text', {
-      class: 'edge-iface',
-      x: ix, y: iy - 5,
-      'text-anchor': 'middle',
-    }, ep1.iface));
-  }
-  if (showIfaces && ep2.iface) {
-    // near endpoint 2 (t≈0.88)
-    const t2 = 0.88;
-    const ix = bezPoint(ax, c1x, c2x, bx, t2);
-    const iy = bezPoint(ay, c1y, c2y, by, t2);
-    edgesLayer().appendChild(el('text', {
-      class: 'edge-iface',
-      x: ix, y: iy - 5,
-      'text-anchor': 'middle',
-    }, ep2.iface));
-  }
-  if (showCosts && ep1.cost != null && ep1.cost !== '') {
-    const t1c = 0.25;
-    const cx1 = bezPoint(ax, c1x, c2x, bx, t1c);
-    const cy1 = bezPoint(ay, c1y, c2y, by, t1c);
-    edgesLayer().appendChild(el('text', {
-      class: 'edge-cost',
-      x: cx1, y: cy1 - 6,
-      'text-anchor': 'middle',
-    }, `c·${ep1.cost}`));
-  }
-  if (showCosts && ep2.cost != null && ep2.cost !== '') {
-    const t2c = 0.75;
-    const cx2 = bezPoint(ax, c1x, c2x, bx, t2c);
-    const cy2 = bezPoint(ay, c1y, c2y, by, t2c);
-    edgesLayer().appendChild(el('text', {
-      class: 'edge-cost',
-      x: cx2, y: cy2 - 6,
-      'text-anchor': 'middle',
-    }, `c·${ep2.cost}`));
-  }
+  _drawLinkLabels({ linkName, ep1, ep2, ax, ay, c1x, c1y, c2x, c2y, bx, by });
 
   // Midpoint label group — the selection/drag target. Skip rendering entirely
   // when the iface-labels toggle is off: the per-end iface tags above are
   // already gated on the same flag, so a clean canvas hides ALL fabric-name
   // text consistently. Edge selection still works via the path itself.
+  const showIfaces = state.display?.showIfaces ?? true;
   if (!showIfaces) return;
 
   // Fall back to geometric midpoint if no x,y stored yet (ensureLinkPositions
@@ -881,6 +820,75 @@ export function drawLinkEdge(linkName, linkObj) {
   midG.addEventListener('mouseleave', removeP2pHover);
 
   edgesLayer().appendChild(midG);
+}
+
+/* Return {add, remove} hover handlers that toggle the `p2p-hovered` class on
+   both endpoint device groups, the edge path, and the midpoint label group.
+   Deferred lookups ensure the nodes layer exists when the events fire. */
+function _makeLinkHoverHandlers(linkName, ep1, ep2, pathEl) {
+  const addP2pHover = () => {
+    lookupDeviceNode(ep1.device)?.classList.add('p2p-hovered');
+    lookupDeviceNode(ep2.device)?.classList.add('p2p-hovered');
+    pathEl.classList.add('p2p-hovered');
+    lookupLinkMidpoint(linkName)?.classList.add('p2p-hovered');
+  };
+  const removeP2pHover = () => {
+    lookupDeviceNode(ep1.device)?.classList.remove('p2p-hovered');
+    lookupDeviceNode(ep2.device)?.classList.remove('p2p-hovered');
+    pathEl.classList.remove('p2p-hovered');
+    lookupLinkMidpoint(linkName)?.classList.remove('p2p-hovered');
+  };
+  return { addP2pHover, removeP2pHover };
+}
+
+/* Append iface-name and cost text labels to the edges layer for a p2p link.
+   Labels are positioned along the bezier at fixed t-parameters. */
+function _drawLinkLabels({ ep1, ep2, ax, ay, c1x, c1y, c2x, c2y, bx, by }) {
+  const showCosts  = state.display?.showCosts  ?? true;
+  const showIfaces = state.display?.showIfaces ?? true;
+
+  if (showIfaces && ep1.iface) {
+    // near endpoint 1 (t≈0.12)
+    const t1 = 0.12;
+    const ix = bezPoint(ax, c1x, c2x, bx, t1);
+    const iy = bezPoint(ay, c1y, c2y, by, t1);
+    edgesLayer().appendChild(el('text', {
+      class: 'edge-iface',
+      x: ix, y: iy - 5,
+      'text-anchor': 'middle',
+    }, ep1.iface));
+  }
+  if (showIfaces && ep2.iface) {
+    // near endpoint 2 (t≈0.88)
+    const t2 = 0.88;
+    const ix = bezPoint(ax, c1x, c2x, bx, t2);
+    const iy = bezPoint(ay, c1y, c2y, by, t2);
+    edgesLayer().appendChild(el('text', {
+      class: 'edge-iface',
+      x: ix, y: iy - 5,
+      'text-anchor': 'middle',
+    }, ep2.iface));
+  }
+  if (showCosts && ep1.cost != null && ep1.cost !== '') {
+    const t1c = 0.25;
+    const cx1 = bezPoint(ax, c1x, c2x, bx, t1c);
+    const cy1 = bezPoint(ay, c1y, c2y, by, t1c);
+    edgesLayer().appendChild(el('text', {
+      class: 'edge-cost',
+      x: cx1, y: cy1 - 6,
+      'text-anchor': 'middle',
+    }, `c·${ep1.cost}`));
+  }
+  if (showCosts && ep2.cost != null && ep2.cost !== '') {
+    const t2c = 0.75;
+    const cx2 = bezPoint(ax, c1x, c2x, bx, t2c);
+    const cy2 = bezPoint(ay, c1y, c2y, by, t2c);
+    edgesLayer().appendChild(el('text', {
+      class: 'edge-cost',
+      x: cx2, y: cy2 - 6,
+      'text-anchor': 'middle',
+    }, `c·${ep2.cost}`));
+  }
 }
 
 // Compute where an edge from `device` should terminate on `rail`.
@@ -1446,122 +1454,12 @@ export function wireCanvas() {
       updateWizardPreview(w.x, w.y);
       return;
     }
-    if (drag) {
-      // ignore tiny jitter so a click isn't mis-classified as a drag
-      if (!drag.moved) {
-        const dxc = e.clientX - drag.startClientX;
-        const dyc = e.clientY - drag.startClientY;
-        if (dxc * dxc + dyc * dyc < 16) return;  // 4px threshold
-        drag.moved = true;
-      }
-      const w = clientToWorld(e.clientX, e.clientY);
-      const newX = w.x - drag.offX;
-      const newY = w.y - drag.offY;
-      // Drag along the midpoint label of every p2p link that touches this
-      // device.  See shiftLinkLabelsForDeviceMove for the math.
-      if (drag.kind === 'host' || drag.kind === 'router') {
-        shiftLinkLabelsForDeviceMove(drag.name, newX - drag.obj.x, newY - drag.obj.y);
-      }
-      drag.obj.x = newX;
-      drag.obj.y = newY;
-
-      if (drag.kind === 'link') {
-        // p2p midpoint drag: reRenderEdges() clears and fully rebuilds edgesLayer
-        // (including the midpoint group), so a direct setAttribute here would be
-        // immediately discarded. Unlike node drag — where nodes live in a separate
-        // layer that reRenderEdges does NOT touch — there is nothing to pre-update.
-        reRenderEdges();
-      } else {
-        // for host/router: detect drop target (LAN under cursor)
-        let hover = null;
-        if (drag.kind === 'host' || drag.kind === 'router') {
-          for (const [nn, nv] of Object.entries(state.networks)) {
-            const { width: nw, height: nh } = railRenderSize(nv);
-            if (Math.abs(w.x - nv.x) < nw/2 + 24 && Math.abs(w.y - nv.y) < nh/2 + 24) {
-              hover = nn; break;
-            }
-          }
-        }
-        if (drag.hoverNet !== hover) {
-          // re-render to flip drop-target class — cheap enough
-          drag.hoverNet = hover;
-          // toggle classes directly to avoid full re-render thrash
-          const blocked = drag.running &&
-            isForeignFabricDrop(drag.kind, drag.name, hover, state);
-          nodesLayer().querySelectorAll('.node.network').forEach(node => {
-            const isHover = node.getAttribute('data-name') === hover;
-            node.classList.toggle('drop-target', isHover && !blocked);
-            node.classList.toggle('drop-blocked', isHover && blocked);
-          });
-        }
-        // partial: re-render edges connected to drag.obj
-        reRenderEdges();
-        // and update the dragged node's transform directly — the group is
-        // centered at obj.x/obj.y (its inner contents are placed around 0,0),
-        // so the transform is just translate(obj.x, obj.y), not offset by w/2.
-        const nodeEl = nodesLayer().querySelector(`.node[data-kind="${drag.kind}"][data-name="${cssEscape(drag.name)}"]`);
-        if (nodeEl) {
-          nodeEl.setAttribute('transform', `translate(${drag.obj.x} ${drag.obj.y})`);
-        }
-        // preview link line for host/router → hovered LAN
-        drawDragPreview();
-      }
-    }
-    if (pan) {
-      state.view.x = pan.ox + (e.clientX - pan.sx);
-      state.view.y = pan.oy + (e.clientY - pan.sy);
-      bus.dispatchEvent(new CustomEvent('view:changed'));
-    }
+    if (drag) _handleDragMove(e);
+    if (pan)  _handlePan(e);
   });
 
-  document.addEventListener('pointerup', (e) => {
-    if (drag) {
-      if (drag.kind === 'link') {
-        // p2p midpoint drag cleanup — just persist the new position
-        if (drag.moved) {
-          markDirty();
-          bus.dispatchEvent(new CustomEvent('state:topology-changed'));
-        }
-        drag = null;
-      } else {
-        const node = nodesLayer().querySelector(`.node[data-kind="${drag.kind}"][data-name="${cssEscape(drag.name)}"]`);
-        node?.classList.remove('dragging');
-
-        if (drag.moved) {
-          const target = drag.hoverNet;
-          nodesLayer().querySelectorAll('.node.network.drop-target, .node.network.drop-blocked')
-            .forEach(n => n.classList.remove('drop-target', 'drop-blocked'));
-          overlayLay().innerHTML = '';
-
-          if (drag.running && isForeignFabricDrop(drag.kind, drag.name, target, state)) {
-            // Live reassignment is unsupported — snap the node back and explain.
-            drag.obj.x = drag.origX;
-            drag.obj.y = drag.origY;
-            toast(`Stop the sim to reassign ${drag.kind} ${drag.name}`, 'warn');
-          } else if (target) {
-            // commit attachment (idle/paused, or a same-fabric no-op while running)
-            if (drag.kind === 'host') {
-              if (state.hosts[drag.name].network !== target) {
-                state.hosts[drag.name].network = target;
-                toast(`Pinned host ${drag.name} → ${target}`, 'ok');
-              }
-            } else if (drag.kind === 'router') {
-              const r = state.routers[drag.name];
-              const has = Object.values(r.interfaces || {}).some(iff => iff.network === target);
-              if (!has) {
-                const newIf = uniqueIface(r.interfaces);
-                r.interfaces[newIf] = { network: target, address: '', cost: 10 };
-                toast(`Added ${newIf} on ${drag.name} → ${target}`, 'ok');
-              }
-            }
-          }
-
-          markDirty();
-          bus.dispatchEvent(new CustomEvent('state:topology-changed'));
-        }
-        drag = null;
-      }
-    }
+  document.addEventListener('pointerup', () => {
+    if (drag) _handleDragEnd();
     if (pan) {
       canvasEl().classList.remove('panning');
       pan = null;
@@ -1614,6 +1512,128 @@ export function wireCanvas() {
     bus.dispatchEvent(new CustomEvent('state:selection-changed'));
   });
 
+}
+
+/* Handle pointermove while a node/link drag is active.
+   Reads/writes the module-level `drag` object; called from wireCanvas. */
+function _handleDragMove(e) {
+  // ignore tiny jitter so a click isn't mis-classified as a drag
+  if (!drag.moved) {
+    const dxc = e.clientX - drag.startClientX;
+    const dyc = e.clientY - drag.startClientY;
+    if (dxc * dxc + dyc * dyc < 16) return;  // 4px threshold
+    drag.moved = true;
+  }
+  const w = clientToWorld(e.clientX, e.clientY);
+  const newX = w.x - drag.offX;
+  const newY = w.y - drag.offY;
+  // Drag along the midpoint label of every p2p link that touches this
+  // device.  See shiftLinkLabelsForDeviceMove for the math.
+  if (drag.kind === 'host' || drag.kind === 'router') {
+    shiftLinkLabelsForDeviceMove(drag.name, newX - drag.obj.x, newY - drag.obj.y);
+  }
+  drag.obj.x = newX;
+  drag.obj.y = newY;
+
+  if (drag.kind === 'link') {
+    // p2p midpoint drag: reRenderEdges() clears and fully rebuilds edgesLayer
+    // (including the midpoint group), so a direct setAttribute here would be
+    // immediately discarded. Unlike node drag — where nodes live in a separate
+    // layer that reRenderEdges does NOT touch — there is nothing to pre-update.
+    reRenderEdges();
+  } else {
+    // for host/router: detect drop target (LAN under cursor)
+    let hover = null;
+    if (drag.kind === 'host' || drag.kind === 'router') {
+      for (const [nn, nv] of Object.entries(state.networks)) {
+        const { width: nw, height: nh } = railRenderSize(nv);
+        if (Math.abs(w.x - nv.x) < nw/2 + 24 && Math.abs(w.y - nv.y) < nh/2 + 24) {
+          hover = nn; break;
+        }
+      }
+    }
+    if (drag.hoverNet !== hover) {
+      // re-render to flip drop-target class — cheap enough
+      drag.hoverNet = hover;
+      // toggle classes directly to avoid full re-render thrash
+      const blocked = drag.running &&
+        isForeignFabricDrop(drag.kind, drag.name, hover, state);
+      nodesLayer().querySelectorAll('.node.network').forEach(node => {
+        const isHover = node.getAttribute('data-name') === hover;
+        node.classList.toggle('drop-target', isHover && !blocked);
+        node.classList.toggle('drop-blocked', isHover && blocked);
+      });
+    }
+    // partial: re-render edges connected to drag.obj
+    reRenderEdges();
+    // and update the dragged node's transform directly — the group is
+    // centered at obj.x/obj.y (its inner contents are placed around 0,0),
+    // so the transform is just translate(obj.x, obj.y), not offset by w/2.
+    const nodeEl = nodesLayer().querySelector(`.node[data-kind="${drag.kind}"][data-name="${cssEscape(drag.name)}"]`);
+    if (nodeEl) {
+      nodeEl.setAttribute('transform', `translate(${drag.obj.x} ${drag.obj.y})`);
+    }
+    // preview link line for host/router → hovered LAN
+    drawDragPreview();
+  }
+}
+
+/* Handle pointerup to finalise a drag operation.
+   Reads/writes the module-level `drag` object; called from wireCanvas. */
+function _handleDragEnd() {
+  if (drag.kind === 'link') {
+    // p2p midpoint drag cleanup — just persist the new position
+    if (drag.moved) {
+      markDirty();
+      bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+    }
+    drag = null;
+  } else {
+    const node = nodesLayer().querySelector(`.node[data-kind="${drag.kind}"][data-name="${cssEscape(drag.name)}"]`);
+    node?.classList.remove('dragging');
+
+    if (drag.moved) {
+      const target = drag.hoverNet;
+      nodesLayer().querySelectorAll('.node.network.drop-target, .node.network.drop-blocked')
+        .forEach(n => n.classList.remove('drop-target', 'drop-blocked'));
+      overlayLay().innerHTML = '';
+
+      if (drag.running && isForeignFabricDrop(drag.kind, drag.name, target, state)) {
+        // Live reassignment is unsupported — snap the node back and explain.
+        drag.obj.x = drag.origX;
+        drag.obj.y = drag.origY;
+        toast(`Stop the sim to reassign ${drag.kind} ${drag.name}`, 'warn');
+      } else if (target) {
+        // commit attachment (idle/paused, or a same-fabric no-op while running)
+        if (drag.kind === 'host') {
+          if (state.hosts[drag.name].network !== target) {
+            state.hosts[drag.name].network = target;
+            toast(`Pinned host ${drag.name} → ${target}`, 'ok');
+          }
+        } else if (drag.kind === 'router') {
+          const r = state.routers[drag.name];
+          const has = Object.values(r.interfaces || {}).some(iff => iff.network === target);
+          if (!has) {
+            const newIf = uniqueIface(r.interfaces);
+            r.interfaces[newIf] = { network: target, address: '', cost: 10 };
+            toast(`Added ${newIf} on ${drag.name} → ${target}`, 'ok');
+          }
+        }
+      }
+
+      markDirty();
+      bus.dispatchEvent(new CustomEvent('state:topology-changed'));
+    }
+    drag = null;
+  }
+}
+
+/* Update the pan offset during a pan gesture.
+   Reads/writes the module-level `pan` object; called from wireCanvas. */
+function _handlePan(e) {
+  state.view.x = pan.ox + (e.clientX - pan.sx);
+  state.view.y = pan.oy + (e.clientY - pan.sy);
+  bus.dispatchEvent(new CustomEvent('view:changed'));
 }
 
 /* re-render only the edges (drag perf) */
