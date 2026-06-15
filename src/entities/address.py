@@ -56,11 +56,18 @@ class NetworkAddress(BaseAddress):
         self._mask = int(mask)
         self._canonicalize()
 
+    def _split(self):
+        """Return (whole_octet_index, remaining_bits) for this prefix length."""
+        return divmod(self._mask, 8)
+
+    def _host_bitmask(self, bits: int) -> int:
+        """Return the intra-octet mask with host bits set (net bits clear)."""
+        return (1 << (8 - bits)) - 1
+
     def _canonicalize(self):
-        idx, bits = divmod(self._mask, 8)
+        idx, bits = self._split()
         if bits > 0:
-            host_bitmask = (1 << (8 - bits)) - 1
-            self._octets[idx] &= ~host_bitmask & 0xff
+            self._octets[idx] &= ~self._host_bitmask(bits) & 0xff
             for i in range(idx + 1, 4):
                 self._octets[i] = 0
         else:
@@ -74,29 +81,27 @@ class NetworkAddress(BaseAddress):
         return self._matches(address.octets())
 
     def contains(self, address: BaseAddress) -> bool:
-        return self._matches(address.octets())
+        # Alias for matches(); kept as a distinct name for readability at call sites.
+        return self.matches(address)
 
     def broadcast(self) -> Address:
-        idx, bits = divmod(self._mask, 8)
+        idx, bits = self._split()
         octets = list()
         for i in range(idx):
             octets.append(self._octets[i])
         if idx < len(self._octets):
-            bitmask = (1 << (8 - bits)) - 1
-            octets.append(self._octets[idx] | bitmask)
+            octets.append(self._octets[idx] | self._host_bitmask(bits))
             for i in range(idx + 1, 4):
                 octets.append(0xff)
         addr_str = '.'.join(map(str, octets))
         return Address(addr_str)
 
     def _matches(self, octets: List[int]) -> bool:
-        idx, bits = divmod(self._mask, 8)
+        idx, bits = self._split()
 
         if idx < len(self._octets):
-            bitmask = 0xff - (1 << (8 - bits)) + 1
-            masked = octets[idx] & bitmask
-            net_octet = self._octets[idx] & bitmask
-            if masked != net_octet:
+            net_bitmask = ~self._host_bitmask(bits) & 0xff
+            if octets[idx] & net_bitmask != self._octets[idx] & net_bitmask:
                 return False
 
         for i in range(idx):
