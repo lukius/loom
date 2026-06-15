@@ -111,17 +111,8 @@ class LinkStateProtocol(RoutingProtocol):
         Validates positivity and derives dead_interval = 3·hello and
         max_age = 2·refresh from the canonical loom-OSPF ratios.
         """
-        if not isinstance(hello_interval, (int, float)) or hello_interval <= 0:
-            raise ValueError(
-                f"hello_interval must be positive (got {hello_interval!r})"
-            )
-        if (
-            not isinstance(lsa_refresh_interval, (int, float))
-            or lsa_refresh_interval <= 0
-        ):
-            raise ValueError(
-                f"lsa_refresh_interval must be positive (got {lsa_refresh_interval!r})"
-            )
+        self._validate_positive(hello_interval, "hello_interval")
+        self._validate_positive(lsa_refresh_interval, "lsa_refresh_interval")
         self._hello_interval = float(hello_interval)
         self._lsa_refresh_interval = float(lsa_refresh_interval)
         self._dead_interval = self._hello_interval * self._DEAD_INTERVAL_RATIO
@@ -130,11 +121,7 @@ class LinkStateProtocol(RoutingProtocol):
         # stale LSA is caught within one refresh interval after it expires.
         self._maxage_check_interval = self._lsa_refresh_interval
         # Refresh the scheduler so a live config change takes effect on the
-        # next loop iteration. When the loop is running and the new interval
-        # is shorter than the remaining time on the existing deadline, reset
-        # fire_at to now+interval so the loop dispatches promptly after waking.
-        # When the loop is not yet running (bootstrap or pre-start), preserve
-        # the existing fire_at to avoid spurious immediate fires on start.
+        # next loop iteration.
         now = time.monotonic()
         loop_running = (
             self._protocol_thread is not None
@@ -145,19 +132,37 @@ class LinkStateProtocol(RoutingProtocol):
             ('lsa_refresh', self._lsa_refresh_interval),
             ('maxage_check', self._maxage_check_interval),
         ):
-            existing = self._scheduler.peek_deadline(name)
-            if existing is None:
-                fire_at = now + interval
-            elif loop_running and (existing - now) > interval:
-                # Old deadline is further away than the new interval;
-                # reset so the loop fires at the new (shorter) cadence.
-                fire_at = now + interval
-            else:
-                fire_at = existing
-            self._scheduler.schedule(name, base_interval=interval, fire_at=fire_at)
+            self._reconcile_deadline(name, interval, now, loop_running)
         # Wake a parked protocol loop so it picks up the new cadence promptly
         # instead of waiting until the old timer fires.
         self._wake_event.set()
+
+    @staticmethod
+    def _validate_positive(value, label: str) -> None:
+        """Raise ValueError if *value* is not a positive number."""
+        if not isinstance(value, (int, float)) or value <= 0:
+            raise ValueError(f"{label} must be positive (got {value!r})")
+
+    def _reconcile_deadline(
+        self, name: str, interval: float, now: float, loop_running: bool
+    ) -> None:
+        """Schedule *name* with a fire_at that honours an in-flight deadline.
+
+        When the loop is running and the existing deadline is further away
+        than the new interval, reset fire_at to now+interval so the loop
+        fires at the new (shorter) cadence.  When the loop is not running
+        (bootstrap or pre-start), preserve the existing fire_at to avoid
+        spurious immediate fires on start.  A brand-new timer (no existing
+        deadline) always schedules at now+interval.
+        """
+        existing = self._scheduler.peek_deadline(name)
+        if existing is None:
+            fire_at = now + interval
+        elif loop_running and (existing - now) > interval:
+            fire_at = now + interval
+        else:
+            fire_at = existing
+        self._scheduler.schedule(name, base_interval=interval, fire_at=fire_at)
 
     def hello_interval(self) -> float:
         return self._hello_interval
@@ -404,24 +409,7 @@ class LinkStateProtocol(RoutingProtocol):
         routing_table = self._router.routing_table()
         routing_table.clear()
         paths = self._graph.shortest_paths(self._router)
-        for prefix in self._graph.networks():
-            path = paths.get(prefix)
-            if path is None or len(path) < 2:
-                continue
-            next_hop_network = path[1]
-            next_hop_address = NullAddress
-            if len(path) > 2:
-                next_hop = path[2]
-                for _, iface in next_hop.interfaces().items():
-                    if iface.network().address() == next_hop_network:
-                        next_hop_address = iface.address()
-                        break
-
-            for _, iface in self._router.interfaces().items():
-                if iface.network().address() == next_hop_network:
-                    routing_table.add_rule(prefix, next_hop_address, iface)
-                    break
-
+        self._build_rules_from_paths(paths, routing_table)
         rules_payload = [
             {
                 "prefix": str(r.prefix()),
@@ -430,7 +418,39 @@ class LinkStateProtocol(RoutingProtocol):
             }
             for r in routing_table.rules()
         ]
+        self._emit_rule_change_events(rules_payload)
 
+    def _build_rules_from_paths(self, paths, routing_table) -> None:
+        """Install routing rules derived from shortest-path results."""
+        for prefix in self._graph.networks():
+            path = paths.get(prefix)
+            if path is None or len(path) < 2:
+                continue
+            next_hop_network = path[1]
+            next_hop_address = self._next_hop_address(next_hop_network, path)
+            for _, iface in self._router.interfaces().items():
+                if iface.network().address() == next_hop_network:
+                    routing_table.add_rule(prefix, next_hop_address, iface)
+                    break
+
+    def _next_hop_address(self, next_hop_network, path):
+        """Resolve the next-hop IP for a path via an intermediate router.
+
+        Returns NullAddress when the destination is directly connected
+        (path length <= 2, meaning no intermediate router node), or the
+        IP address of the intermediate router's interface on next_hop_network
+        when a multi-hop path is present.
+        """
+        if len(path) <= 2:
+            return NullAddress
+        next_hop_router = path[2]
+        for _, iface in next_hop_router.interfaces().items():
+            if iface.network().address() == next_hop_network:
+                return iface.address()
+        return NullAddress
+
+    def _emit_rule_change_events(self, rules_payload: list) -> None:
+        """Broadcast lsdb_changed and routing_table_changed with the new rules."""
         # LS-protocol-level: the link-state graph dictated a new set of
         # rules. Emitted whenever LinkStateProtocol writes into the
         # routing table; downstream tooling that wants to know "the LS
