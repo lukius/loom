@@ -481,7 +481,7 @@ floods on large topologies.
 For tests requiring deterministic timing, `Scheduler` accepts
 `jitter_range=(1.0, 1.0)`.
 
-The `POST /sim/protocol_config` endpoint (and the toolbar) expose
+The `POST /sim/protocol_config` endpoint exposes
 `hello_interval` and `lsa_refresh_interval` as the two tuneable knobs. The
 `set_timers` method recomputes all derived values and wakes the protocol loop
 immediately so the new cadence takes effect without waiting for the old deadline
