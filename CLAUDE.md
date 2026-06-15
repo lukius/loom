@@ -55,7 +55,7 @@ loom/
 
 - Requires Python 3.11+. Install runtime deps: `pip install -r requirements.txt`. For dev (tests + lint): `pip install -r requirements-dev.txt`.
 - **Web UI:** `cd src && python loom.py` — launches FastAPI on http://127.0.0.1:8000 and serves the SPA from `web/`.
-- Topology source path: env var `LOOM_TOPOLOGY` (default `samples/sample.yaml`). The server clones to `<source>.session.yaml` and writes only there.
+- Topology source path: env var `LOOM_TOPOLOGY` (default `samples/sample.yaml`). The server never writes the source; it clones to a session file under a temp dir (`<system-tmp>/loom/<stem>.<hash>.session.yaml`, overridable via `LOOM_SESSION_DIR`) and writes only there.
 - HTTP port: env var `LOOM_PORT` (default `8000`). The Playwright suite uses `8766` to avoid colliding with a dev server.
 - Run tests: `pytest` from the repo root. Single suite: `pytest test/test_address.py`.
 - JS tests: `npm install` (first time only), then `npm test` from the repo root. Uses vitest + happy-dom.
