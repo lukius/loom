@@ -46,55 +46,40 @@ def command(name: str, body: dict, request: Request):
 @router.get("/{name}/interfaces")
 def interfaces(name: str, request: Request):
     """Return all interfaces of a device, plus a router-level halted flag."""
-    s = request.app.state.sim_state
-    with s._lock:  # noqa: SLF001
-        if s._as is None:  # noqa: SLF001
-            raise HTTPException(409, "no topology loaded")
-        try:
-            device = s._as.device(name)  # noqa: SLF001
-        except EntityException:
-            raise HTTPException(404, f"unknown device: {name}")
-        out = []
-        for iname, iface in device.interfaces().items():
-            out.append(
-                {
-                    "name": iname,
-                    "address": str(iface.address()),
-                    "network": iface.network().name(),
-                    "cost": iface.cost(),
-                    "up": iface.is_up(),
-                }
-            )
-        return {
-            "interfaces": out,
-            "halted": bool(getattr(device, "is_halted", lambda: False)()),
-        }
+    device = _device_or_404(request, name)
+    out = []
+    for iname, iface in device.interfaces().items():
+        out.append(
+            {
+                "name": iname,
+                "address": str(iface.address()),
+                "network": iface.network().name(),
+                "cost": iface.cost(),
+                "up": iface.is_up(),
+            }
+        )
+    return {
+        "interfaces": out,
+        "halted": isinstance(device, Router) and device.is_halted(),
+    }
 
 
 @router.get("/{name}/routes")
 def routes(name: str, request: Request):
     """Return routing table rules for a device (empty list for hosts)."""
-    s = request.app.state.sim_state
-    with s._lock:  # noqa: SLF001
-        if s._as is None:  # noqa: SLF001
-            raise HTTPException(409, "no topology loaded")
-        try:
-            device = s._as.device(name)  # noqa: SLF001
-        except EntityException:
-            raise HTTPException(404, f"unknown device: {name}")
-        table = getattr(device, "routing_table", None)
-        if table is None:
-            return {"rules": []}
-        rules = []
-        for r in table().rules():
-            rules.append(
-                {
-                    "prefix": str(r.prefix()),
-                    "next_hop": str(r.next_hop()),
-                    "iface": r.interface().name(),
-                }
-            )
-        return {"rules": rules}
+    device = _device_or_404(request, name)
+    if not isinstance(device, Router):
+        return {"rules": []}
+    rules = []
+    for r in device.routing_table().rules():
+        rules.append(
+            {
+                "prefix": str(r.prefix()),
+                "next_hop": str(r.next_hop()),
+                "iface": r.interface().name(),
+            }
+        )
+    return {"rules": rules}
 
 
 @router.get("/{name}/nat-table")
@@ -105,18 +90,10 @@ def nat_table(name: str, request: Request):
     with no prior event history has no way to recover the current table
     without this read endpoint.
     """
-    s = request.app.state.sim_state
-    with s._lock:  # noqa: SLF001
-        if s._as is None:  # noqa: SLF001
-            raise HTTPException(409, "no topology loaded")
-        try:
-            device = s._as.device(name)  # noqa: SLF001
-        except EntityException:
-            raise HTTPException(404, f"unknown device: {name}")
-        table = getattr(device, "nat_table", None)
-        if table is None:
-            return {"entries": []}
-        return {"entries": table().snapshot()}
+    device = _device_or_404(request, name)
+    if not isinstance(device, Router):
+        return {"entries": []}
+    return {"entries": device.nat_table().snapshot()}
 
 
 @router.post("/{name}/fail")
@@ -126,21 +103,14 @@ def fail(name: str, request: Request, body: dict | None = Body(default=None)):
     No body / no ``interface`` key -> crash the whole router.
     ``{"interface": "eth0"}`` -> crash that one interface. Routers only.
     """
-    s = request.app.state.sim_state
-    with s._lock:  # noqa: SLF001
-        if s._as is None:  # noqa: SLF001
-            raise HTTPException(409, "no topology loaded")
-        try:
-            device = s._as.device(name)  # noqa: SLF001
-        except EntityException:
-            raise HTTPException(404, f"unknown device: {name}")
-        if not isinstance(device, Router):
-            raise HTTPException(400, "fail is only supported on routers")
-        iface = (body or {}).get("interface")
-        if iface:
-            if iface not in device.interfaces():
-                raise HTTPException(404, f"unknown interface: {iface}")
-            device.disable_interface(iface, graceful=False)
-        else:
-            device.halt(graceful=False)
+    device = _device_or_404(request, name)
+    if not isinstance(device, Router):
+        raise HTTPException(400, "fail is only supported on routers")
+    iface = (body or {}).get("interface")
+    if iface:
+        if iface not in device.interfaces():
+            raise HTTPException(404, f"unknown interface: {iface}")
+        device.disable_interface(iface, graceful=False)
+    else:
+        device.halt(graceful=False)
     return {"ok": True}

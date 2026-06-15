@@ -11,6 +11,7 @@ from entities.event import EventTracer
 from parser import Parser
 
 from .persistence import atomic_write, prepare_session
+from .persistence import reset_session as _reset_session_file
 
 
 class InvalidStateTransition(Exception):
@@ -96,6 +97,17 @@ class SimState:
                 return []
             return list(self._as.routers().values())
 
+    def dump_yaml_under_lock(self) -> str | None:
+        """Return the current topology as YAML under _lock, or None if idle.
+
+        Both the None-check and the dump are inside a single _lock acquisition
+        so stop() cannot null _as between them.
+        """
+        with self._lock:
+            if self._as is None:
+                return None
+            return self._dump_yaml()
+
     # ---- transitions ----
 
     def load_from_session(self):
@@ -114,6 +126,24 @@ class SimState:
                 # routing tick fire — emitting packet events on a sim that is
                 # still 'idle' — before /sim/start has been called.
                 internet = Parser(str(self.session_path)).parse(start_routing=False)
+                self._internet = internet
+                self._as = internet.single_as()
+                self._state = "idle"
+
+    def reset_session(self):
+        """Re-clone the source file and reload the topology atomically.
+
+        Under _edit_lock (matching load_from_session's ordering): reclones the
+        source onto the session path, clears the cached session reference, then
+        re-parses — all in one critical section so no concurrent editor or loader
+        can observe the partially-reset state.
+        """
+        with self._edit_lock:
+            self._session = _reset_session_file(self._source)
+            with self._lock:
+                if self._internet is not None:
+                    self._internet.stop()
+                internet = Parser(str(self._session)).parse(start_routing=False)
                 self._internet = internet
                 self._as = internet.single_as()
                 self._state = "idle"

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request
 
-from server.persistence import atomic_write, reset_session
+from server.persistence import atomic_write
 
 router = APIRouter(tags=["topology"])
 
@@ -31,12 +31,9 @@ def load(body: dict, request: Request):
 @router.get("/topology")
 def fetch(request: Request):
     s = _state(request)
-    # Both the None-check and _dump_yaml must be inside a single _lock
-    # acquisition so stop() cannot null _as between them, which would cause
-    # _dump_yaml to dereference None → 500.
-    with s._lock:  # noqa: SLF001
-        if s._as is not None:  # noqa: SLF001
-            return {"yaml": s._dump_yaml()}  # noqa: SLF001
+    yaml_text = s.dump_yaml_under_lock()
+    if yaml_text is not None:
+        return {"yaml": yaml_text}
     return {"yaml": s.session_path.read_text()}
 
 
@@ -55,7 +52,5 @@ def reset(request: Request):
     s = _state(request)
     if s.state != "idle":
         raise HTTPException(409, "stop the simulation before reset")
-    reset_session(s.source)
-    s._session = None  # noqa: SLF001 — deliberate private poke; refactor later
-    s.load_from_session()
+    s.reset_session()
     return {"ok": True, "as_name": s.as_obj.name()}
