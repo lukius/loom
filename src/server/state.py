@@ -430,30 +430,40 @@ class SimState:
     def _persist(self) -> None:
         atomic_write(self.session_path, self._dump_yaml())
 
-    def _dump_yaml(self) -> str:
-        def fabric_kv(fabric):
-            # Interface (and Host) fabric refs round-trip back to the same
-            # YAML key the parser accepted: `link:` for point-to-point Links,
-            # `network:` for multi-access Networks.
-            key = "link" if isinstance(fabric, Link) else "network"
-            return key, fabric.name()
+    # ---- YAML serialisation helpers ----
 
-        def iface_dict(iface):
-            key, name = fabric_kv(iface.network())
-            return {
-                key: name,
-                "address": str(iface.address()),
-                "cost": iface.cost(),
-            }
+    @staticmethod
+    def _fabric_kv(fabric):
+        """Return the (yaml_key, fabric_name) pair for a fabric reference.
 
-        def host_dict(host):
-            key, name = fabric_kv(host.network())
-            d = {key: name, "address": str(host.address())}
-            if host.gateway():
-                d["gateway"] = str(host.gateway())
-            return d
+        Interface (and Host) fabric refs round-trip back to the same YAML key
+        the parser accepted: ``link:`` for point-to-point Links, ``network:``
+        for multi-access Networks.
+        """
+        key = "link" if isinstance(fabric, Link) else "network"
+        return key, fabric.name()
 
-        as_block = {"asn": self._as.asn()}
+    @staticmethod
+    def _iface_dict(iface):
+        key, name = SimState._fabric_kv(iface.network())
+        return {key: name, "address": str(iface.address()), "cost": iface.cost()}
+
+    @staticmethod
+    def _host_dict(host):
+        key, name = SimState._fabric_kv(host.network())
+        d = {key: name, "address": str(host.address())}
+        if host.gateway():
+            d["gateway"] = str(host.gateway())
+        return d
+
+    def _build_as_block(self) -> dict:
+        """Build the per-AS YAML mapping (asn, config, networks, links, hosts, routers).
+
+        Conventional key order (matching the source schema): asn, config (if
+        present), networks, links (if any — omitted on link-free topologies),
+        hosts, routers.
+        """
+        as_block: dict = {"asn": self._as.asn()}
 
         routers = list(self._as.routers().values())
         if routers:
@@ -477,21 +487,29 @@ class SimState:
             as_block["links"] = {
                 lnk.name(): str(lnk.address()) for lnk in self._as.links().values()
             }
-        as_block["hosts"] = {h.name(): host_dict(h) for h in self._as.hosts().values()}
+        as_block["hosts"] = {
+            h.name(): self._host_dict(h) for h in self._as.hosts().values()
+        }
         as_block["routers"] = {
             r.name(): {
-                "interfaces": {i.name(): iface_dict(i) for i in r.interfaces().values()}
+                "interfaces": {
+                    i.name(): self._iface_dict(i) for i in r.interfaces().values()
+                }
             }
             for r in self._as.routers().values()
         }
-        internet_block = {
+        return as_block
+
+    def _dump_yaml(self) -> str:
+        internet_block: dict = {
             "name": self._internet.name() if self._internet else "loom",
         }
         if self._internet is not None and self._internet.config():
             internet_block["config"] = dict(self._internet.config())
-        internet_block["autonomous_systems"] = {self._as.name(): as_block}
-        root = {"internet": internet_block}
-        return yaml.safe_dump(root, sort_keys=False)
+        internet_block["autonomous_systems"] = {
+            self._as.name(): self._build_as_block()
+        }
+        return yaml.safe_dump({"internet": internet_block}, sort_keys=False)
 
     def stop(self):
         """Transition any state -> idle. No-op if already idle.
