@@ -1,6 +1,6 @@
+import logging
 import threading
 import time
-import traceback
 from abc import ABC, abstractmethod
 from typing import Iterable
 
@@ -14,6 +14,8 @@ from .messages import Datagram
 from .neighbor import NeighborTable
 from .policy import PERMIT_ALL, RFC1918_OUTBOUND
 from .scheduler import Scheduler
+
+_logger = logging.getLogger(__name__)
 
 
 class RoutingProtocol(ABC):
@@ -193,7 +195,7 @@ class LinkStateProtocol(RoutingProtocol):
         try:
             self._flood_withdrawal()
         except Exception:
-            traceback.print_exc()
+            _logger.exception("error flooding withdrawal LSA on stop")
         self._stopped = True
         self._stop_event.set()
         self._wake_event.set()  # ensure a parked loop exits immediately
@@ -589,7 +591,7 @@ class LinkStateProtocol(RoutingProtocol):
             self._emit_hello_on_up_interfaces(now)
             self._emit_lsa_on_up_interfaces(now)
         except Exception:
-            traceback.print_exc()
+            _logger.exception("error during initial protocol tick")
 
     def _dispatch(self, name: str, now: float):
         try:
@@ -600,4 +602,4 @@ class LinkStateProtocol(RoutingProtocol):
             elif name == 'maxage_check':
                 self._sweep_dead_and_expired(now)
         except Exception:
-            traceback.print_exc()
+            _logger.exception("error dispatching protocol tick %r", name)
