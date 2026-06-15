@@ -78,7 +78,7 @@ same YAML. The session file is updated either way.
   stopping first).
 - The **Protocol** button is active — you can re-tune the Hello and
   LSA-refresh intervals live.
-- Right-click a router → **Halt router**, **Crash router**, or
+- Right-click a router → **Halt router (graceful)**, **Crash router**, or
   **Resume router** to take a router offline or bring it back, without
   stopping the sim. A halted/crashed router grays out on the canvas.
 - Select a router → use the **Disable / Fail / Enable** buttons next

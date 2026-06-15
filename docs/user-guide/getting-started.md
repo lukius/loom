@@ -82,7 +82,7 @@ What happens, in order:
 ![Simulation running — routing-protocol chatter visible](../images/02-running.png)
 
 If you don't see chatter, click the **Chatter** toolbar button — it
-mutes the routing-protocol animations by default in some sessions.
+mutes the routing-protocol animations.
 
 ## Your first ping
 
@@ -109,7 +109,9 @@ ping h3
 Output:
 
 ```
-ping h3 (150.10.10.30): time=12.34 ms
+seq=0 150.10.10.30: time=12.34 ms
+--- h3 ping statistics ---
+1 sent, 1 received, 0% loss
 ```
 
 On the canvas, you should see a packet animate from `h1` to `r1` (the
@@ -122,7 +124,7 @@ ping h99
 ```
 
 ```
-ping h99: invalid destination: h99
+ping: invalid destination: h99
 ```
 
 Or a routable address that doesn't exist:
@@ -134,7 +136,9 @@ ping 200.100.0.99
 Times out after the default 3 seconds and prints:
 
 ```
-ping 200.100.0.99: timeout after 3.00 s
+seq=0 200.100.0.99: timeout
+--- 200.100.0.99 ping statistics ---
+1 sent, 0 received, 100% loss
 ```
 
 ## Inspect a routing table
