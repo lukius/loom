@@ -314,13 +314,13 @@ the offending entity name and the underlying reason — e.g.
 The test suite drives `Parser.parse()` against **deliberately invalid
 YAML fixtures** under `test/resources/`:
 
-- `invalid_address.yaml`, `invalid_netmask.yaml`,
+- `invalid_host_address.yaml`, `invalid_netmask.yaml`,
   `invalid_router_address.yaml`, ... — assert the matching validator
   message.
 - `link_three_endpoints.yaml`, `link_one_endpoint.yaml`,
   `link_no_endpoints.yaml`, `link_too_wide.yaml`, ... — assert
   link-specific failures.
-- `missing_as.yaml`, `missing_networks.yaml` — assert structural
+- `missing_as.yaml`, `no_networks.yaml` — assert structural
   failures.
 
 **Most fixtures under `test/resources/` are intentionally broken** —
