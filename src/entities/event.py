@@ -1,5 +1,11 @@
 import logging
+from collections import OrderedDict
 from threading import Lock
+
+# Maximum number of in-flight message events tracked by EventTracer._events.
+# Oldest entries are evicted first once the registry reaches this size.
+# 4096 is comfortably larger than any realistic in-flight population.
+_MAX_TRACKED_EVENTS = 4096
 
 _logger = logging.getLogger(__name__)
 
@@ -49,7 +55,7 @@ class EventTracer:
     _current_lock = Lock()
 
     def __init__(self):
-        self._events = dict()
+        self._events = OrderedDict()
         self._lock = Lock()
         self._subscribers = []
         self._sub_lock = Lock()
@@ -157,6 +163,10 @@ class EventTracer:
         )
         with self._lock:
             self._events[message] = event
+            # Evict the oldest entry when the registry exceeds the cap so that
+            # _events remains bounded for the lifetime of a tracer.
+            if len(self._events) > _MAX_TRACKED_EVENTS:
+                self._events.popitem(last=False)
         return event
 
     def message_sent_instance(self, src, dst, msg):

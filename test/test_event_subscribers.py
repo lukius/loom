@@ -428,3 +428,40 @@ def test_neighbor_state_changed_event_payload_shape():
         system.stop()
     finally:
         os.unlink(path)
+
+
+def test_event_registry_is_bounded():
+    """EventTracer._events must not grow without bound.
+
+    Registering more than _MAX_TRACKED_EVENTS messages must cap the registry
+    at that size.  A freshly-registered event (registered last, after the cap
+    is exceeded) must still fire its on_forwarded callback.
+    """
+    from entities.event import (
+        _MAX_TRACKED_EVENTS,  # noqa: PLC0415 — module-level line kept clean
+    )
+
+    tracer = EventTracer()
+
+    # (a) Register more than the cap — registry size must stay bounded.
+    cap = _MAX_TRACKED_EVENTS
+    messages = [object() for _ in range(cap + 10)]
+    for msg in messages:
+        tracer.register_message_event_instance(msg)
+    assert len(tracer._events) <= cap, (
+        f"_events grew to {len(tracer._events)}, expected <= {cap}"
+    )
+
+    # (b) A freshly-registered event (after eviction) must still fire its callbacks.
+    fired = []
+    fresh_msg = object()
+
+    class _FakeDatagram:
+        def payload(self):
+            return fresh_msg
+
+    tracer.register_message_event_instance(
+        fresh_msg, on_forwarded=lambda *a, **kw: fired.append(True)
+    )
+    tracer.datagram_forwarded_instance("src", "dst", _FakeDatagram())
+    assert fired, "on_forwarded callback for a fresh event was not called after eviction"  # noqa: E501
