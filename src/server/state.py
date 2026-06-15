@@ -169,16 +169,24 @@ class SimState:
         Takes _edit_lock then _lock (matching stop()'s ordering) so that a
         load cannot race an in-flight edit() or stop() that is still joining
         old worker threads.
+
+        _lock is released before the blocking internet.stop() join (mirroring
+        stop()'s lock discipline) so that concurrent GET /topology and
+        /sim/state readers are not stalled for the join duration.  _edit_lock
+        is held across the join to serialise concurrent loaders/editors.
         """
         with self._edit_lock:
+            # `start_routing=False`: build routers without starting their
+            # keepalive threads. Starting them here would let the initial
+            # routing tick fire — emitting packet events on a sim that is
+            # still 'idle' — before /sim/start has been called.
+            internet = Parser(str(self.session_path)).parse(start_routing=False)
             with self._lock:
-                if self._internet is not None:
-                    self._internet.stop()
-                # `start_routing=False`: build routers without starting their
-                # keepalive threads. Starting them here would let the initial
-                # routing tick fire — emitting packet events on a sim that is
-                # still 'idle' — before /sim/start has been called.
-                internet = Parser(str(self.session_path)).parse(start_routing=False)
+                old_internet = self._internet
+            # _lock released; _edit_lock still held across the blocking join.
+            if old_internet is not None:
+                old_internet.stop()
+            with self._lock:
                 self._internet = internet
                 self._as = internet.single_as()
                 self._state = "idle"
@@ -190,13 +198,20 @@ class SimState:
         source onto the session path, clears the cached session reference, then
         re-parses — all in one critical section so no concurrent editor or loader
         can observe the partially-reset state.
+
+        _lock is released before the blocking internet.stop() join (mirroring
+        stop()'s lock discipline) so that concurrent GET /topology and
+        /sim/state readers are not stalled for the join duration.
         """
         with self._edit_lock:
             self._session = _reset_session_file(self._source)
+            internet = Parser(str(self._session)).parse(start_routing=False)
             with self._lock:
-                if self._internet is not None:
-                    self._internet.stop()
-                internet = Parser(str(self._session)).parse(start_routing=False)
+                old_internet = self._internet
+            # _lock released; _edit_lock still held across the blocking join.
+            if old_internet is not None:
+                old_internet.stop()
+            with self._lock:
                 self._internet = internet
                 self._as = internet.single_as()
                 self._state = "idle"

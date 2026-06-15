@@ -388,3 +388,155 @@ def test_stop_state_visible_without_lock(sample_running, monkeypatch):
     )
     assert as_during_join is None, "_as should be None before the join completes"
     assert internet_during_join is None, "_internet should be None before the join"
+
+
+# ---------------------------------------------------------------------------
+# H3: load_from_session() must release _lock before internet.stop() joins
+# ---------------------------------------------------------------------------
+# Strategy mirrors H11 (stop()): monkeypatch the old internet's stop() to
+# block on an Event.  Run load_from_session() in a background thread.  While
+# it is blocking inside internet.stop(), assert _lock is acquirable from the
+# main thread (i.e. _lock is NOT held across the join) and _edit_lock IS held.
+# ---------------------------------------------------------------------------
+
+
+def test_load_from_session_releases_lock_before_internet_stop(
+    sample_running, monkeypatch
+):
+    """load_from_session() must release _lock before blocking on internet.stop().
+
+    Mirrors the H11 guarantee for stop(): slow joins must not stall concurrent
+    GET /topology or /sim/state readers that only need _lock briefly.
+    _edit_lock must remain held to serialise concurrent load/edit calls.
+    """
+    sim = sample_running
+    # sample_running has state=running; load_from_session will find
+    # self._internet is not None and call self._internet.stop().
+    internet = sim._internet
+
+    join_started = threading.Event()
+    allow_join = threading.Event()
+
+    original_internet_stop = internet.stop
+
+    def blocking_internet_stop():
+        join_started.set()
+        allow_join.wait()
+        original_internet_stop()
+
+    monkeypatch.setattr(internet, "stop", blocking_internet_stop)
+
+    load_finished = threading.Event()
+
+    def run_load_from_session():
+        sim.load_from_session()
+        load_finished.set()
+
+    t_load = threading.Thread(target=run_load_from_session, daemon=True)
+    t_load.start()
+
+    joined = join_started.wait(timeout=5.0)
+    assert joined, "internet.stop() was never called — load_from_session may have hung"
+
+    # load_from_session() is blocking inside internet.stop().
+    # _lock must be FREE so GET /topology won't stall.
+    lock_acquired = sim._lock.acquire(blocking=True, timeout=0.5)
+    lock_free_during_join = lock_acquired
+    edit_lock_free = False
+    try:
+        if lock_acquired:
+            sim._lock.release()
+        # _edit_lock must be HELD (serialises concurrent load/edit calls).
+        edit_lock_free = sim._edit_lock.acquire(blocking=False)
+        if edit_lock_free:
+            sim._edit_lock.release()
+    finally:
+        # Always unblock the background thread so the test does not hang.
+        allow_join.set()
+
+    t_load.join(timeout=15.0)
+    assert not t_load.is_alive(), "load_from_session() thread did not finish"
+    assert load_finished.is_set()
+
+    assert lock_free_during_join, (
+        "_lock is still held during internet.stop() in load_from_session() — "
+        "GET /topology would stall (H3)"
+    )
+    assert not edit_lock_free, (
+        "_edit_lock was NOT held during internet.stop() in load_from_session() — "
+        "a concurrent load/edit could race (H3)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# H3: reset_session() must release _lock before internet.stop() joins
+# ---------------------------------------------------------------------------
+
+
+def test_reset_session_releases_lock_before_internet_stop(
+    sample_running, monkeypatch
+):
+    """reset_session() must release _lock before blocking on internet.stop().
+
+    reset_session() follows the same pattern as load_from_session(): snapshot
+    the old internet, release _lock, join, then re-acquire _lock to assign the
+    new topology. _edit_lock must stay held across the join.
+    """
+    sim = sample_running
+    # Stop the running sim cleanly, then reload so _internet is not None again.
+    # We want to observe reset_session()'s internet.stop() join — not stop()'s.
+    sim.stop()
+    sim.load_from_session()  # _internet is now the freshly loaded internet
+
+    internet2 = sim._internet
+    join_started = threading.Event()
+    allow_join = threading.Event()
+    original_stop2 = internet2.stop
+
+    def blocking_stop2():
+        join_started.set()
+        allow_join.wait()
+        original_stop2()
+
+    monkeypatch.setattr(internet2, "stop", blocking_stop2)
+
+    reset_finished = threading.Event()
+
+    def run_reset_session():
+        sim.reset_session()
+        reset_finished.set()
+
+    t_reset = threading.Thread(target=run_reset_session, daemon=True)
+    t_reset.start()
+
+    joined = join_started.wait(timeout=5.0)
+    assert joined, "internet.stop() was never called in reset_session()"
+
+    # reset_session() is blocking inside internet.stop().
+    # _lock must be FREE.
+    lock_acquired = sim._lock.acquire(blocking=True, timeout=0.5)
+    lock_free_during_join = lock_acquired
+    edit_lock_free = False
+    try:
+        if lock_acquired:
+            sim._lock.release()
+        # _edit_lock must be HELD.
+        edit_lock_free = sim._edit_lock.acquire(blocking=False)
+        if edit_lock_free:
+            sim._edit_lock.release()
+    finally:
+        # Always unblock the background thread so the test does not hang.
+        allow_join.set()
+
+    t_reset.join(timeout=15.0)
+    assert not t_reset.is_alive(), "reset_session() thread did not finish"
+    assert reset_finished.is_set()
+    sim.stop()  # clean up
+
+    assert lock_free_during_join, (
+        "_lock is still held during internet.stop() in reset_session() — "
+        "GET /topology would stall"
+    )
+    assert not edit_lock_free, (
+        "_edit_lock was NOT held during internet.stop() in reset_session()"
+    )

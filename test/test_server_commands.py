@@ -383,6 +383,7 @@ internet:
               address: 100.100.100.1
               cost: 10
 """
+    client.post("/sim/stop")  # import requires idle state
     assert client.post("/topology", json={"yaml": src}).status_code == 200
     dumped = yaml.safe_load(client.get("/topology").json()["yaml"])
     internet = dumped["internet"]
@@ -413,6 +414,7 @@ internet:
               address: 100.100.100.1
               cost: 10
 """
+    client.post("/sim/stop")  # import requires idle state
     assert client.post("/topology", json={"yaml": src}).status_code == 200
     dumped = yaml.safe_load(client.get("/topology").json()["yaml"])
     assert dumped["internet"]["autonomous_systems"]["main"]["asn"] == 64500
@@ -439,6 +441,7 @@ internet:
               address: 100.100.100.1
               cost: 10
 """
+    client.post("/sim/stop")  # import requires idle state
     assert client.post("/topology", json={"yaml": src}).status_code == 200
     assert client.post(
         "/sim/protocol_config",
