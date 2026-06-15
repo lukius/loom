@@ -79,20 +79,17 @@ class AddressValidator(Validator):
         if len(octets) != 4:
             return ValidationResult.invalid(msg)
 
-        try:
-            for octet in octets:
-                # Reject non-canonical spellings: leading zeros, sign characters,
-                # whitespace.  Each octet must be exactly 1-3 decimal digits with
-                # no leading zero (except the lone "0").
-                if not _OCTET_RE.match(octet):
-                    return ValidationResult.invalid(msg)
-                value = int(octet)
-                if len(octet) > 1 and octet[0] == '0':
-                    return ValidationResult.invalid(msg)
-                if value < 0 or value > 255:
-                    return ValidationResult.invalid(msg)
-        except ValueError:
-            return ValidationResult.invalid(msg)
+        for octet in octets:
+            # Reject non-canonical spellings: leading zeros, sign characters,
+            # whitespace.  Each octet must be exactly 1-3 decimal digits with
+            # no leading zero (except the lone "0").  The regex guarantees that
+            # int() cannot raise ValueError here, so no try/except is needed.
+            if not _OCTET_RE.match(octet):
+                return ValidationResult.invalid(msg)
+            if len(octet) > 1 and octet[0] == '0':
+                return ValidationResult.invalid(msg)
+            if int(octet) > 255:
+                return ValidationResult.invalid(msg)
 
         return ValidationResult.valid()
 
@@ -124,9 +121,10 @@ class NetworkValidator(Validator):
         (A ⊂ B or B ⊂ A) is rejected here.
         """
         new_addr = net.address()
-        candidates = list(self._system.networks().values()) + list(
-            self._system.links().values()
-        )
+        # Only other networks are candidates: links are parsed after networks, so
+        # self._system.links() is always empty at network-validation time.  Link
+        # vs. network overlap is caught by LinkValidator when the link is added.
+        candidates = list(self._system.networks().values())
         for existing in candidates:
             ex_addr = existing.address()
             if ex_addr == new_addr:
