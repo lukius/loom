@@ -4,7 +4,7 @@ import {
   Sim, RuntimeClient,
   setConnectionStatus, isTopologyLocked, recordPatchOp, updatePatchIndicator, reconcilePatch,
   applyEdit, finalizePendingAdd, pendingLiveAdds,
-  _onEvent, _resetPendingNAT, recoverDownState,
+  _onEvent, _resetPendingNAT, recoverDownState, recoverNATState,
 } from './sim.js';
 
 // ---------- bus helpers ----------
@@ -969,6 +969,56 @@ describe('recoverDownState', () => {
     state.routers = {};
     const spy = vi.spyOn(RuntimeClient, 'deviceInterfaces').mockResolvedValue({ halted: false, interfaces: [] });
     await recoverDownState();
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
+// ---------- recoverNATState ----------
+describe('recoverNATState', () => {
+  it('fetches NAT tables for each router and applies them to state.natTables', async () => {
+    state.routers = { r1: { x: 0, y: 0, interfaces: {} }, r2: { x: 0, y: 0, interfaces: {} } };
+    state.natTables = {};
+    const spy = vi.spyOn(RuntimeClient, 'deviceNatTable').mockImplementation(async (n) => {
+      if (n === 'r1') return { entries: [{ original_src: 'a', rewritten_src: 'b', dst: 'c', flow_id: null }] };
+      return { entries: [] };
+    });
+    await recoverNATState();
+    expect(state.natTables.r1).toEqual([{ original_src: 'a', rewritten_src: 'b', dst: 'c', flow_id: null }]);
+    expect(state.natTables.r2).toEqual([]);
+    spy.mockRestore();
+  });
+
+  it('dispatches sim:nat-table-changed for each router applied', async () => {
+    state.routers = { r1: { x: 0, y: 0, interfaces: {} } };
+    const events = [];
+    const handler = (e) => events.push(e.detail);
+    bus.addEventListener('sim:nat-table-changed', handler);
+    const spy = vi.spyOn(RuntimeClient, 'deviceNatTable').mockResolvedValue({ entries: [] });
+    await recoverNATState();
+    bus.removeEventListener('sim:nat-table-changed', handler);
+    expect(events).toEqual([{ device: 'r1' }]);
+    spy.mockRestore();
+  });
+
+  it('skips routers that throw (best-effort — fetch error does not abort sweep)', async () => {
+    state.routers = { r1: { x: 0, y: 0, interfaces: {} }, r2: { x: 0, y: 0, interfaces: {} } };
+    state.natTables = {};
+    const spy = vi.spyOn(RuntimeClient, 'deviceNatTable').mockImplementation(async (n) => {
+      if (n === 'r1') throw new Error('network error');
+      return { entries: [{ original_src: 'x', rewritten_src: 'y', dst: 'z', flow_id: null }] };
+    });
+    await recoverNATState();
+    // r1 threw — r2 should still be applied
+    expect(state.natTables.r1).toBeUndefined();
+    expect(state.natTables.r2).toEqual([{ original_src: 'x', rewritten_src: 'y', dst: 'z', flow_id: null }]);
+    spy.mockRestore();
+  });
+
+  it('is a no-op when state.routers is empty', async () => {
+    state.routers = {};
+    const spy = vi.spyOn(RuntimeClient, 'deviceNatTable').mockResolvedValue({ entries: [] });
+    await recoverNATState();
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });

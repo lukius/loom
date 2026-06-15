@@ -240,6 +240,16 @@ function init() {
   // reflect restored display toggles on the toolbar buttons
   syncToggleBtn('tb-toggle-costs',  state.display.showCosts);
   syncToggleBtn('tb-toggle-ifaces', state.display.showIfaces);
+  // Re-apply persisted timers so the UI matches the stored config after a plain
+  // reload (importYaml does this on YAML load; we mirror it here for the
+  // localStorage-restore path).
+  PacketAnim.DURATION_MS = state.config.packet_duration_ms;
+  const speedInp = document.getElementById('tb-speed');
+  if (speedInp) speedInp.value = state.config.packet_duration_ms;
+  const helloInp   = document.getElementById('proto-hello');
+  const refreshInp = document.getElementById('proto-refresh');
+  if (helloInp)   helloInp.value   = state.protocol.hello_interval;
+  if (refreshInp) refreshInp.value = state.protocol.lsa_refresh_interval;
   PacketsPanel.init();
   renderAll();
   // initial fit (after layout)

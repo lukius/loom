@@ -335,6 +335,23 @@ export async function recoverDownState() {
   }
 }
 
+/* ---------- recoverNATState — NAT table resync on reconnect ----------
+   On WS reconnect, NAT table events emitted during the disconnected window
+   are lost. This sweep fetches the current NAT table for every known router
+   and applies it via the existing _applyNATTableChange path, so the inspector
+   NAT panel is up-to-date after the socket is restored. Best-effort: fetch
+   errors per router are silently skipped so a transient network failure during
+   the reconnect window does not abort the sweep. Called fire-and-forget from
+   refreshState() whenever the sim is running. */
+export async function recoverNATState() {
+  for (const name of Object.keys(state.routers)) {
+    try {
+      const data = await RuntimeClient.deviceNatTable(name);
+      _applyNATTableChange(name, data.entries || []);
+    } catch (_) { /* device gone / transient — skip */ }
+  }
+}
+
 /* ---------- Sim — start/stop/pause/resume state machine ---------- */
 export const Sim = {
   state: 'idle',
@@ -350,6 +367,7 @@ export const Sim = {
     }
     if (this.state === 'running') {
       recoverDownState().catch(() => {});
+      recoverNATState().catch(() => {});
     }
   },
 
