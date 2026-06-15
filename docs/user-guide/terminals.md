@@ -55,10 +55,13 @@ iface_h1: addr=200.100.0.10 net=lan1 (200.100.0.0/24) cost=0
 For a **router** (one line per interface, no gateway line):
 
 ```
-eth0: addr=200.100.0.1 net=lan1 (200.100.0.0/24) cost=10
-eth1: addr=100.200.0.1 net=lan2 (100.200.0.0/24) cost=15
-eth2: addr=10.0.0.1 net=p2p1 (10.0.0.0/30) cost=5
+eth0: addr=200.100.0.1 net=lan1 (200.100.0.0/24) cost=10 up
+eth1: addr=100.200.0.1 net=lan2 (100.200.0.0/24) cost=15 up
+eth2: addr=10.0.0.1 net=p2p1 (10.0.0.0/30) cost=5 up
 ```
+
+Each line ends with `up` or `down` to reflect the current admin state
+of that interface. Use `ifconfig <iface> up|down` to change it.
 
 Cost on a host's interface is always `0` — costs are a routing-protocol
 concept and only matter on routers.
@@ -75,8 +78,8 @@ route
 prefix               next_hop        iface
 200.100.0.0/24       0.0.0.0         eth0
 100.200.0.0/24       0.0.0.0         eth1
-150.10.10.0/24       150.10.10.1     eth2
-10.0.0.0/30          0.0.0.0         eth2
+150.10.10.0/24       0.0.0.0         eth2
+10.0.0.0/30          200.100.0.1     eth0
 ```
 
 `0.0.0.0` next-hop means the destination is directly connected on the
@@ -105,9 +108,11 @@ List the commands available for this device kind.
 ```
 # host:
 available: ifconfig, send <dst> <msg>, ping <dst> [-W t] [-c n] [-i s], route, set_gateway <ip>, help
+terminal: clear, Ctrl+L (clear), Ctrl+D (close)
 
 # router:
-available: route, update_cost <iface> <cost>, ifconfig, neighbors, help
+available: route, update_cost <iface> <cost>, ifconfig [<iface> up|down], halt, resume, neighbors, help
+terminal: clear, Ctrl+L (clear), Ctrl+D (close)
 ```
 
 ---
@@ -151,7 +156,9 @@ ping h3
 ```
 
 ```
-ping h3 (150.10.10.30): time=12.34 ms
+seq=0 150.10.10.30: time=12.34 ms
+--- h3 ping statistics ---
+1 sent, 1 received, 0% loss
 ```
 
 Override the timeout:
@@ -160,10 +167,12 @@ Override the timeout:
 ping h3 -W 0.5
 ```
 
-If unreachable:
+If unreachable (no host answers the ping):
 
 ```
-ping h99: timeout after 3.00 s
+seq=0 200.100.0.99: timeout
+--- 200.100.0.99 ping statistics ---
+1 sent, 0 received, 100% loss
 ```
 
 Errors:
@@ -192,10 +201,10 @@ ping h2 -c 4 -W 1.5
 ```
 
 ```
-seq=0 time=3.21 ms
-seq=1 time=2.88 ms
-seq=2 time=3.05 ms
-seq=3 time=2.94 ms
+seq=0 100.200.0.20: time=3.21 ms
+seq=1 100.200.0.20: time=2.88 ms
+seq=2 100.200.0.20: time=3.05 ms
+seq=3 100.200.0.20: time=2.94 ms
 --- h2 ping statistics ---
 4 sent, 4 received, 0% loss
 ```
@@ -234,7 +243,7 @@ gateway set to 200.100.0.254
 The new gateway must be inside the host's network, else:
 
 ```
-set_gateway: gateway 10.0.0.1 not in host network
+gateway 10.0.0.1 not in host network
 ```
 
 For hosts on a `/30` or `/31` **link**, the gateway is the peer's IP
@@ -301,6 +310,55 @@ keepalive cycle:
 
 ```
 (no neighbors yet)
+```
+
+#### `halt`
+
+Gracefully take the router offline: it floods a withdrawal LSA so
+neighbors remove it from their graphs immediately, then stops
+forwarding.
+
+```
+halt
+```
+
+```
+r1 halted
+```
+
+#### `resume`
+
+Bring a halted router back online. It re-announces its links and
+resumes forwarding.
+
+```
+resume
+```
+
+```
+r1 resumed
+```
+
+#### `ifconfig <iface> up|down`
+
+Bring a single interface up or down without halting the whole router.
+Taking an interface down gracefully withdraws that link from the
+routing-protocol advertisements; bringing it back up re-announces it.
+
+```
+ifconfig eth0 down
+```
+
+```
+eth0 down
+```
+
+```
+ifconfig eth0 up
+```
+
+```
+eth0 up
 ```
 
 ---
