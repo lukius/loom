@@ -44,8 +44,8 @@ def fetch(request: Request):
 def source(request: Request):
     """Basename of the topology source file (LOOM_TOPOLOGY).
 
-    The SPA uses this as the default stem for Export filenames when the
-    user has not imported a file in the current session.
+    Returns the basename of the topology source; consumers may use it
+    as a default filename stem.
     """
     return {"name": _state(request).source.name}
 

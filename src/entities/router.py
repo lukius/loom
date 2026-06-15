@@ -317,8 +317,9 @@ class Router(NetworkDevice):
         Mirrors a real router's behavior. Important when interface IPs
         coincide with addresses on other subnets (e.g. two /30 links that
         accidentally share a CIDR): the router answers, the sender sees a
-        successful ping that didn't actually reach the intended host. A
-        `router_intercept` event is emitted so the SPA can flag the reply.
+        successful ping that didn't actually reach the intended host.
+        A `router_intercept` event is emitted recording that this router
+        answered for an address owned by a different interface.
         """
         originator = packet.source()
         result = self._routing_table.match(originator)

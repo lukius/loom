@@ -47,8 +47,8 @@ class NATTable:
     def snapshot(self):
         """Return entries in LRU order (oldest first, most recent last).
 
-        Each entry is a dict suitable for JSON serialization. Used by
-        the SPA inspector to render the per-router NAT table panel.
+        Each entry is a JSON-serializable dict; consumed by
+        `nat_table_changed` subscribers.
         """
         with self._lock:
             return [

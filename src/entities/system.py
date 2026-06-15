@@ -109,7 +109,7 @@ class Internet(Entity):
     """Top-level container for an entire `loom` simulation.
 
     Holds one or more `AS` instances and owns the shared `PauseGate`
-    (and, after D.2.c, the shared `EventTracer`). Today every
+    and the shared `EventTracer`. Today every
     simulation has exactly one `AS`, so single-AS files are wrapped
     in an `Internet` with that one member. When external routing
     lands, `Internet` will also own the inter-AS link registry.
@@ -159,8 +159,8 @@ class Internet(Entity):
     # `internet.autonomous_system(name)`.
     def single_as(self):
         """Return the only AS in this Internet. Raises if there are
-        zero or multiple ASes. Used by single-AS consumers (the SPA's
-        server, the legacy shell) during the multi-AS transition.
+        zero or multiple ASes. Used by single-AS consumers during the
+        multi-AS transition.
         """
         ases = list(self._ases.values())
         if len(ases) != 1:

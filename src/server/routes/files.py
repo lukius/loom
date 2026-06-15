@@ -1,8 +1,8 @@
-"""Read-only endpoints that back the Import file picker.
+"""Read-only endpoints that list and serve ``*.yaml`` topologies.
 
-Lists `*.yaml` topologies in the configured samples directory (default
-`<repo>/samples`, overridable via the `LOOM_SAMPLES` env var) and serves
-their contents. Session clones (`*.session.yaml`) are filtered out.
+Lists ``*.yaml`` topologies in the configured samples directory (default
+``<repo>/samples``, overridable via the ``LOOM_SAMPLES`` env var) and serves
+their contents. Session clones (``*.session.yaml``) are filtered out.
 
 Subpaths are intentionally not registered: `/samples/{name}` only accepts
 a bare filename, so a request like `/samples/../etc/passwd` falls through
