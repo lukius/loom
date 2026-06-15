@@ -20,7 +20,10 @@
 └────────────────────────────────────────────────────┘
 ```
 
-All four classes live in `src/entities/packet.py`.
+`Frame`, `Message`, and their user/ping subclasses live in
+`src/entities/packet.py`. `Datagram` lives in `src/routing/messages.py`
+(re-exported from `entities/packet.py` for back-compat). `RoutingMessage`
+is an abstract base in `src/routing/lsa.py` (also re-exported).
 
 ## `Packet` (base)
 
@@ -32,8 +35,10 @@ class Packet:
         self._payload = payload
 ```
 
-Just three accessors: `source()`, `destination()`, `payload()`. `Frame`
-inherits directly (it adds nothing); `Datagram` extends it with TTL.
+Five accessors/mutators: `source()`, `destination()`, `payload()`, and the
+NAT mutators `rewrite_source(addr)` / `rewrite_destination(addr)` which
+overwrite the stored address in place. `Frame` inherits directly (it adds
+nothing); `Datagram` extends it with TTL.
 
 ## `Frame`
 
@@ -83,7 +88,7 @@ TTL handling lives in `Router._handle_forwarding`:
 ```python
 packet.decrement_ttl()
 if packet.ttl() <= 0:
-    print(f'TTL expired: dropping datagram to {dst}', file=sys.stderr)
+    _logger.warning("TTL expired: dropping datagram to %s", dst)
     return None
 ```
 
@@ -91,9 +96,14 @@ Two consequences:
 
 - **Hosts do not decrement TTL.** `Host._handle_message` is the terminal
   receiver; TTL is only touched on forwarding hops.
-- **TTL-expired packets are dropped silently** to the simulator process
-  (log to stderr only). No ICMP-style notification, no UI signal. The
-  packet animation simply ends.
+- **TTL-expired packets are dropped silently** (logged via the standard
+  logging framework). No ICMP-style notification.
+
+When a route lookup in `_handle_forwarding` fails, the router raises:
+
+- `NoRouteToHostException` — no matching prefix in the routing table.
+- `NoNATEgressException` — the packet's source is private but the router
+  has no public interface to egress through.
 
 ## `Message`
 
@@ -107,13 +117,22 @@ class Message:
 
     def id(self):
         return self._id
+
+    def flow_key(self) -> str:
+        return str(self._id)
 ```
 
 A `Message` is identified by a fresh UUID. Two `Message` instances are
 equal iff they have the same class **and** the same `_id` — important
 because `EventTracer.register_message_event` uses the message as a dict
-key, and the `RoutingProtocol` uses sequence numbers separately from
+key, and the routing protocol uses sequence numbers separately from
 message identity.
+
+`flow_key()` returns a stable conversation identifier keyed on the
+payload, not the packet's address pair. This means it survives NAT
+rewrites of `src`/`dst` mid-path. Request/reply subtypes (`PingReply`)
+override `flow_key()` to echo the originating request's key, so both
+directions of a conversation share one id.
 
 Four subclasses live alongside the base.
 
@@ -159,10 +178,10 @@ class LSA(RoutingMessage):
     def has_same_links_as(self, other): return self._links == other._links
 ```
 
-Origination: `LinkStateProtocol._emit_lsa_on_all_interfaces` builds
+Origination: `LinkStateProtocol._emit_lsa_on_up_interfaces` builds
 **one shared `LSA`** per cycle via `LSA.from_router(router, seq,
 policy)`, installs it into the local LSDB, then sends that **same
-object** out every interface — so all N emissions carry the same `seq`.
+object** out every up interface — so all N emissions carry the same `seq`.
 
 #### `Hello`
 
@@ -173,7 +192,7 @@ class Hello(RoutingMessage):
     def neighbors_heard(self): return list(self._neighbors_heard)
 ```
 
-`_emit_hello_on_all_interfaces` builds **one `Hello` per interface**
+`_emit_hello_on_up_interfaces` builds **one `Hello` per interface**
 (each carries that interface's per-fabric `neighbors_heard` list).
 
 **`seq` is per-origin (one counter per router), not per-interface.**
@@ -196,11 +215,20 @@ class PingRequest(Message):
     # exposes .seq and .sent_at as @property
 
 class PingReply(Message):
-    def __init__(self, seq: int, request_ts: float):
+    def __init__(self, seq: int, request_ts: float, request_id=None):
         super().__init__()
         self._seq = seq
         self._request_ts = request_ts
-    # exposes .seq and .request_ts as @property
+        self._request_id = request_id
+    # exposes .seq, .request_ts, .request_id as @property
+
+    def flow_key(self) -> str:
+        # Echo the originating request's UUID so request + reply share
+        # one conversation key. Falls back to self._id when request_id
+        # is None (e.g. router-generated replies before BGP era).
+        if self._request_id is None:
+            return super().flow_key()
+        return str(self._request_id)
 ```
 
 The flow:
@@ -226,30 +254,31 @@ If a host has no gateway and the destination is off-link, `ping` raises
 `ValueError("no route to host: no gateway configured")` *before* sending
 anything (and the pending-pings entry is rolled back).
 
-## Packet classification for the UI
+## Packet classification
 
-`Interface.send_to` emits an event with a `type` field for the SPA to
-color-code packet animations:
+`Interface.send_to` emits a `packet` event with a `type` field.
+Classification is by `type(payload).__name__`:
 
 ```python
 _PACKET_KIND = {
-    "RoutingMessage": "routing_flood",
-    "UserMessage":    "user_datagram",
-    "PingRequest":    "ping_request",
-    "PingReply":      "ping_reply",
+    "Hello":       "hello",
+    "LSA":         "routing_flood",
+    "UserMessage": "user_datagram",
+    "PingRequest": "ping_request",
+    "PingReply":   "ping_reply",
 }
 ```
 
-Unknown classes get `"unknown"` — they animate too, just in the default
-color.
+Unknown classes get `"unknown"`.
 
 Two correlation ids accompany every packet event:
 
 - `payload_id` = `str(message.id())` — identifies the single direction of
   a flow. A ping request and its reply have **different** `payload_id`s.
-- `flow` = `"{min}<->{max}"` (sorted endpoints) — identifies the
-  end-to-end conversation. The ping pair shares the same `flow`, so
-  subscribers can sequence their processing in order.
+- `flow` = `payload.flow_key()` — the stable end-to-end conversation UUID.
+  The ping pair shares the same `flow` (because `PingReply.flow_key()`
+  echoes the request's UUID), so subscribers can group both directions.
+  This value survives NAT rewrites of `src`/`dst` mid-path.
 
 Each event also carries a `payload` dict with per-Message-subclass
 metadata:
@@ -259,7 +288,8 @@ metadata:
 | `user_datagram` | `{"bytes": <int>}` always; `"text": <str>` when the body is a string |
 | `ping_request`  | `{"seq": <int>}`                        |
 | `ping_reply`    | `{"seq": <int>, "request_ts": <float>}` |
-| `routing_flood` | `{"seq": <int>, "destinations": [{"prefix": <str>, "cost": <int>}, ...]}` |
+| `routing_flood` | `{"seq": <int>, "originator": <str>, "destinations": [{"prefix": <str>, "cost": <int>}, ...]}` |
+| `hello`         | `{"originator": <str>, "neighbors_heard": [<str>, ...]}` |
 | anything else   | `{}`                                    |
 
 The shape is intentionally free-form — future message types add their own
@@ -283,6 +313,22 @@ Emitted by a router after each NAT table registration. Carries `device`
 and `entries` — a list of `{rewritten_src, dst, flow_id, original_src}`
 dicts in LRU order, oldest first.
 
+### `kind: "router_intercept"`
+
+Emitted by a router when it answers a `PingRequest` addressed to one of
+its own interface IPs (via `_reply_to_ping`). Carries `router`,
+`originator` (sender's address), `pinged_address`, `received_on`
+(interface name the request arrived on), `owning_iface` (interface name
+that owns the pinged address, or `None`), and `payload_id` (the reply's
+UUID). See [`server-api.md`](server-api.md) for the full event contract.
+
+### `kind: "ping_result"`
+
+Emitted by a host after each `ping()` call completes (whether the reply
+arrived or timed out). Carries `device` (host name), `dst`, `seq`, and
+`rtt_ms` (`float` on success, `null` on timeout). See
+[`server-api.md`](server-api.md) for the full event contract.
+
 ## NAT entry lifetime
 
 NAT entries persist until LRU-evicted at capacity (default 1024 per
@@ -295,10 +341,14 @@ to clear all entries.
 ## Flow multiplexing
 
 Concurrent flows from multiple private hosts to the same public
-destination are multiplexed by a per-payload flow ID — currently the
-shared `seq` on ping requests and replies. Message types without a flow
-identity (such as one-off `UserMessage` sends) share a single slot per
-(router, destination); since they have no reply, this is harmless. New
-request/reply message subtypes should expose a `seq` attribute (or, when
-a more general convention is needed, a `flow_id()` method) so the NAT
-table can disambiguate concurrent flows correctly.
+destination are multiplexed by `nat.flow_id(payload)`, which calls
+`payload.flow_key()` — the same conversation UUID used in `packet`
+events. Because `PingReply` echoes its request's UUID, request and reply
+share the same NAT entry even across NAT rewrites.
+
+Message types without `flow_key` support (arbitrary objects) get
+`flow_id=None` and share a single NAT slot per `(rewritten_src,
+original_dst)`. Since they have no reply, this is harmless. New
+request/reply message subtypes should override `flow_key()` so the NAT
+table can disambiguate concurrent flows correctly — do not rely on a `seq`
+attribute.
