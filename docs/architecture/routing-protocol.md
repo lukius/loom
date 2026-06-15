@@ -3,8 +3,9 @@
 `loom` implements a link-state routing protocol deliberately modelled after
 OSPF's core mechanics while shedding the protocol machinery that does not make
 sense in a single-area, broadcast-free simulator. The protocol lives in
-`src/routing/` and is split across six modules: `lsa.py`, `lsdb.py`,
-`hello.py`, `neighbor.py`, `scheduler.py`, and `protocol.py`.
+`src/routing/`; the core protocol modules are `lsa.py`, `lsdb.py`,
+`hello.py`, `neighbor.py`, `scheduler.py`, and `protocol.py` (the package
+also contains `messages.py`, `graph.py`, `policy.py`, and `exception.py`).
 
 ---
 
@@ -72,10 +73,11 @@ Hellos are **built per-interface** and are not shared across interfaces.
 
 ### `Datagram`
 
-Both LSAs and Hellos are transported inside a `Datagram` (in `messages.py`),
-which adds a per-emission source and destination address (fabric broadcast).
-The same `LSA` object may be carried by many `Datagram`s — one per outbound
-interface — without mutation.
+Both LSAs and Hellos are transported inside a `Datagram` (in `messages.py`).
+`Datagram` is a `Packet` (carrier frame), not a `RoutingMessage`; it adds a
+per-emission source and destination address (fabric broadcast). The same `LSA`
+object may be carried by many `Datagram`s — one per outbound interface — without
+mutation.
 
 ---
 
@@ -121,7 +123,7 @@ uses it to decide whether an accepted LSA actually changed the graph:
 
 ## Originating an LSA flood
 
-`_emit_lsa_on_all_interfaces` runs on every LSA-refresh timer tick. It uses
+`_emit_lsa_on_up_interfaces` runs on every LSA-refresh timer tick. It uses
 **two LSA instances at the same sequence number** in one atomic lock section:
 
 ```mermaid
@@ -132,7 +134,7 @@ sequenceDiagram
   participant G as NetworkGraph (derived)
   participant IFs as all interfaces
 
-  Sched->>Proto: _emit_lsa_on_all_interfaces(now)
+  Sched->>Proto: _emit_lsa_on_up_interfaces(now)
   Proto->>Proto: seq = _next_seq()
   Proto->>DB: install(local_lsa[permit-all], now) → result
   note over DB: RFC 1918 links included
@@ -159,8 +161,8 @@ instead of waiting one full refresh interval.
 
 ## Hello protocol
 
-`_emit_hello_on_all_interfaces` runs on every hello-timer tick. For each
-interface it builds a `Hello` listing all non-DOWN neighbors currently heard
+`_emit_hello_on_up_interfaces` runs on every hello-timer tick. For each
+up interface it builds a `Hello` listing all non-DOWN neighbors currently heard
 on that fabric, then sends it as a broadcast Datagram.
 
 ### Neighbor state machine
@@ -243,7 +245,7 @@ if links actually changed), and flood it out every interface immediately —
 the same actions a scheduled `lsa_refresh` tick would take, but without
 waiting for the timer. Without this, a user-driven cost change would only
 propagate at the next periodic refresh (up to `lsa_refresh_interval + jitter`
-later — ~37 s with defaults).
+later — up to 1.25 × `lsa_refresh_interval` ≈ 37.5 s with defaults).
 
 The periodic `lsa_refresh` deadline is reset to `now + lsa_refresh_interval`
 after a manual emission, so a burst of edits collapses into one refresh
@@ -517,8 +519,8 @@ tick is simply the first event after unpausing.
 | Neighbor state machine | `src/routing/neighbor.py` | `Neighbor.state`, `NeighborTable` |
 | Timer deadlines + jitter | `src/routing/scheduler.py` | `Scheduler` |
 | Protocol loop | `src/routing/protocol.py` | `LinkStateProtocol._protocol_loop` |
-| LSA origination | `src/routing/protocol.py` | `_emit_lsa_on_all_interfaces` |
-| Hello origination | `src/routing/protocol.py` | `_emit_hello_on_all_interfaces` |
+| LSA origination | `src/routing/protocol.py` | `_emit_lsa_on_up_interfaces` |
+| Hello origination | `src/routing/protocol.py` | `_emit_hello_on_up_interfaces` |
 | LSA reception | `src/routing/protocol.py` | `_handle_incoming_lsa` |
 | Hello reception | `src/routing/protocol.py` | `_handle_incoming_hello` |
 | Eligibility filter | `src/routing/protocol.py` | `_rebuild_graph_and_recompute` |
