@@ -3,8 +3,6 @@ from .address import NetworkAddress as NetworkAddress
 from .address import NullAddress as NullAddress
 from .clock import PauseGate as PauseGate
 from .device import NetworkDevice as NetworkDevice
-from .event import Event as Event
-from .event import EventLog as EventLog
 from .event import EventTracer as EventTracer
 from .event import MessageEvent as MessageEvent
 from .exception import AddressNotInNetworkException as AddressNotInNetworkException

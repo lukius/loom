@@ -1,39 +1,16 @@
 import logging
-from datetime import datetime
 from threading import Lock
 
 _logger = logging.getLogger(__name__)
 
 
 class Event:
-
-    _id_seq = 0
-    _id_lock = Lock()
-
-    @classmethod
-    def _new_id(cls):
-        with cls._id_lock:
-            event_id = cls._id_seq
-            cls._id_seq += 1
-            return event_id
-
-    def __init__(self):
-        self._id = self._new_id()
-        self._lock = Lock()
-        self._callbacks = list()
-
-    def id(self):
-        return self._id
-
-    def add_callback(self, callback):
-        with self._lock:
-            self._callbacks.append(callback)
+    """Minimal base for simulator events."""
 
 
 class MessageEvent(Event):
 
     def __init__(self, message, on_sent=None, on_received=None, on_forwarded=None):
-        super().__init__()
         self._message = message
         self._on_sent = on_sent or (lambda *a, **kw: None)
         self._on_received = on_received or (lambda *a, **kw: None)
@@ -50,27 +27,6 @@ class MessageEvent(Event):
 
     def on_forwarded(self, *args, **kwargs):
         return self._on_forwarded(*args, **kwargs)
-
-
-class EventLog:
-
-    def __init__(self):
-        self._logs = list()
-        self._lock = Lock()
-
-    def add_log(self, log):
-        timestamp = datetime.now()
-        log = f'[{timestamp}] {log}'
-        with self._lock:
-            self._logs.append(log)
-
-    def dump(self):
-        with self._lock:
-            return self._logs
-
-    def dump_string(self):
-        with self._lock:
-            return '\n'.join(self._logs)
 
 
 class EventTracer:
