@@ -23,6 +23,11 @@ class Parser:
 
     def __init__(self, filename: str):
         self.filename = filename
+        # Every fabric (_FabricBase) and Interface constructed during the build
+        # is appended here so that a partial build can be fully cleaned up on
+        # failure — even when add_interface clobbers an earlier entry at the
+        # same address key and the clobbered object becomes otherwise unreachable.
+        self._tracked: list = []
 
     def parse(self, start_routing: bool = True) -> Internet:
         with open(self.filename, 'r') as f:
@@ -53,19 +58,31 @@ class Parser:
         if not ases_dict:
             self._fail('"autonomous_systems" must contain at least one AS')
 
-        for as_short_name, as_block in ases_dict.items():
-            self._parse_single_as(as_short_name, as_block, internet)
+        try:
+            for as_short_name, as_block in ases_dict.items():
+                self._parse_single_as(as_short_name, as_block, internet)
 
-        # BGP-FOLLOWUP: inter-AS wiring pass — when BGP lands, the YAML grows
-        # an `external_links:` block under `internet:` that names router/iface
-        # endpoints across ASes. Parse and wire those links here, after every
-        # AS has been built. The current single-AS topologies have no external
-        # links so this pass is a no-op today.
+            # BGP-FOLLOWUP: inter-AS wiring pass — when BGP lands, the YAML grows
+            # an `external_links:` block under `internet:` that names router/iface
+            # endpoints across ASes. Parse and wire those links here, after every
+            # AS has been built. The current single-AS topologies have no external
+            # links so this pass is a no-op today.
 
-        if start_routing:
-            for system in internet.ases().values():
-                for router in system.routers().values():
-                    router.start()
+            if start_routing:
+                for system in internet.ases().values():
+                    for router in system.routers().values():
+                        router.start()
+        except Exception:
+            # Stop every constructed fabric and interface, including any whose
+            # fabric slot was clobbered by a duplicate-address add_interface
+            # call — those become otherwise unreachable.  Guard each stop()
+            # individually so a cleanup failure cannot mask the original error.
+            for obj in self._tracked:
+                try:
+                    obj.stop()
+                except Exception:
+                    pass
+            raise
 
         return internet
 
@@ -119,6 +136,7 @@ class Parser:
             address = self._parse_net_address(name, addr, validator)
 
             net = Network(name, address, gate=system.gate())
+            self._tracked.append(net)
             result = validator.validate_network(net)
             if not result.ok():
                 self._fail(f'{name}: {result.reason()}')
@@ -135,6 +153,7 @@ class Parser:
             except ValueError as e:
                 self._fail(f'{name}: {e}')
 
+            self._tracked.append(lnk)
             result = validator.validate_link(lnk)
             if not result.ok():
                 self._fail(f'{name}: {result.reason()}')
@@ -184,6 +203,7 @@ class Parser:
                 iface_obj = Interface(
                     iface_name, fabric, address, cost, gate=system.gate()
                 )
+                self._tracked.append(iface_obj)
                 try:
                     fabric.add_interface(iface_obj)
                 except TooManyEndpointsException as e:
@@ -241,6 +261,7 @@ class Parser:
                     self._fail(f'{name}: invalid address for link {fabric.name()}')
 
             host = Host(name, fabric, address, gw_address, gate=system.gate())
+            self._tracked.append(host.interface())
 
             if has_network:
                 result = validator.validate_host(host)

@@ -1,3 +1,5 @@
+import threading
+import time
 import unittest
 
 from parser import Parser, ParsingException
@@ -444,6 +446,66 @@ class ParserTest(unittest.TestCase):
 
     def test_overlapping_subnets(self):
         self._run_parsing_error_test('overlapping_subnets', 'overlapping subnet')
+
+    # ---------------------------------------------------------- H2 thread cleanup
+
+    def test_failed_parse_leaves_no_orphan_threads(self):
+        """Loading an invalid topology must not leave orphaned daemon threads.
+
+        Exercises five fixtures that fail at different parse stages:
+        - duplicate_address: fails in _parse_hosts after Host/Interface
+          constructed but before add_interface (interface thread leaks without
+          track-all cleanup)
+        - link_three_endpoints: fails when the third endpoint Interface is
+          constructed and fabric.add_interface throws TooManyEndpointsException
+        - missing_network: fails before Host constructed (network/interface
+          threads already running need cleanup)
+        - router_dup_address_same_net: two router interfaces at the same address
+          on the same network; add_interface clobbers the first slot, so the
+          clobbered thread is unreachable via the fabric — leaks without
+          track-all cleanup
+        - host_on_link_dup_address: host address equals an existing link
+          endpoint; add_interface clobbers the router interface slot, leaving
+          it unreachable — _post_pass_links detects endpoint_count != 2 but
+          the clobbered thread has no other reference
+        """
+        _pkt_or_proto = ('_pkt_loop', '_protocol_loop')
+
+        def live_worker_threads():
+            return {
+                t for t in threading.enumerate()
+                if t.is_alive() and t.daemon
+                and any(marker in t.name for marker in _pkt_or_proto)
+            }
+
+        before = live_worker_threads()
+
+        for fixture in (
+            'duplicate_address',
+            'link_three_endpoints',
+            'missing_network',
+            'router_dup_address_same_net',
+            'host_on_link_dup_address',
+        ):
+            try:
+                Parser(f'{self.FILE_PATH}/{fixture}.yaml').parse()
+            except ParsingException:
+                pass
+
+        # Allow daemon threads up to 2.5s to wind down after stop().
+        deadline = time.monotonic() + 2.5
+        while time.monotonic() < deadline:
+            leaked = live_worker_threads() - before
+            if not leaked:
+                break
+            time.sleep(0.05)
+
+        leaked = live_worker_threads() - before
+        self.assertEqual(
+            leaked,
+            set(),
+            msg=f'Orphaned threads after failed parse: {leaked}',
+        )
 
     # ----------------------------------------------------------------- helpers
 

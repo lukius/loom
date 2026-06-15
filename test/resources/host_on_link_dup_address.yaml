@@ -1,0 +1,22 @@
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan1: 200.100.0.0/24
+      links:
+        p2p1: 10.0.0.0/30
+      routers:
+        r1:
+          interfaces:
+            eth0:
+              network: lan1
+              address: 200.100.0.1
+            eth1:
+              link: p2p1
+              address: 10.0.0.1
+      hosts:
+        h1:
+          link: p2p1
+          address: 10.0.0.1
