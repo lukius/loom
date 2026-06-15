@@ -67,17 +67,25 @@ class LinkStateProtocol(RoutingProtocol):
         self._seq = time.monotonic_ns()
         self._lsdb = LSDB(router)
         self._neighbor_table = NeighborTable()
-        # Timer state — bootstrapped to the canonical loom-OSPF production
-        # defaults (hello=10s, refresh=30s, dead=30s, max_age=60s).
-        # _maxage_check_interval is derived by set_timers.
-        self._hello_interval: float = 0.0        # overwritten below
-        self._dead_interval: float = 0.0         # overwritten below
-        self._lsa_refresh_interval: float = 0.0  # overwritten below
-        self._max_age: float = 0.0               # overwritten below
-        self._maxage_check_interval: float = 0.0 # overwritten below
-        # Bootstrap via set_timers.
-        # _scheduler is not yet set; set_timers skips the scheduler block.
+
+        # Lifecycle state and scheduler initialised before set_timers so that
+        # set_timers can unconditionally reference them (no hasattr scaffolding).
+        self._stopped = False
+        self._stop_event = threading.Event()
+        self._wake_event = threading.Event()
+        self._scheduler = Scheduler()
+        self._protocol_thread = None
+
+        # Bootstrap timer state to the canonical loom-OSPF production defaults
+        # (hello=10s, refresh=30s, dead=30s, max_age=60s).
+        # _scheduler/_wake_event exist so set_timers schedules the initial
+        # deadlines; _protocol_thread is None so loop_running is False and
+        # reconciliation treats all deadlines as absent (→ fire_at = now+interval).
+        # _schedule_initial_deadlines overwrites those with fresh timestamps when
+        # the loop starts, so the construction-time scheduling is effectively a
+        # no-op on observable behaviour.
         self.set_timers(hello_interval=10.0, lsa_refresh_interval=30.0)
+
         # Permit-all policy for the local LSA stored in the LSDB — local
         # connectivity (including RFC 1918 prefixes) must appear in the
         # local graph so Dijkstra can route to directly-connected networks.
@@ -86,10 +94,6 @@ class LinkStateProtocol(RoutingProtocol):
         self._local_policy = PERMIT_ALL
         self._graph = self._lsdb.build_graph(eligible_origins=set())
 
-        self._stopped = False
-        self._stop_event = threading.Event()
-        self._wake_event = threading.Event()
-        self._scheduler = Scheduler()
         self._protocol_thread = threading.Thread(
             target=self._protocol_loop, daemon=True,
         )
@@ -131,32 +135,29 @@ class LinkStateProtocol(RoutingProtocol):
         # fire_at to now+interval so the loop dispatches promptly after waking.
         # When the loop is not yet running (bootstrap or pre-start), preserve
         # the existing fire_at to avoid spurious immediate fires on start.
-        if hasattr(self, '_scheduler') and self._scheduler is not None:
-            now = time.monotonic()
-            loop_running = (
-                hasattr(self, '_protocol_thread')
-                and self._protocol_thread is not None
-                and self._protocol_thread.is_alive()
-            )
-            for name, interval in (
-                ('hello', self._hello_interval),
-                ('lsa_refresh', self._lsa_refresh_interval),
-                ('maxage_check', self._maxage_check_interval),
-            ):
-                existing = self._scheduler._deadlines.get(name)  # noqa: SLF001
-                if existing is None:
-                    fire_at = now + interval
-                elif loop_running and (existing - now) > interval:
-                    # Old deadline is further away than the new interval;
-                    # reset so the loop fires at the new (shorter) cadence.
-                    fire_at = now + interval
-                else:
-                    fire_at = existing
-                self._scheduler.schedule(name, base_interval=interval, fire_at=fire_at)
+        now = time.monotonic()
+        loop_running = (
+            self._protocol_thread is not None
+            and self._protocol_thread.is_alive()
+        )
+        for name, interval in (
+            ('hello', self._hello_interval),
+            ('lsa_refresh', self._lsa_refresh_interval),
+            ('maxage_check', self._maxage_check_interval),
+        ):
+            existing = self._scheduler.peek_deadline(name)
+            if existing is None:
+                fire_at = now + interval
+            elif loop_running and (existing - now) > interval:
+                # Old deadline is further away than the new interval;
+                # reset so the loop fires at the new (shorter) cadence.
+                fire_at = now + interval
+            else:
+                fire_at = existing
+            self._scheduler.schedule(name, base_interval=interval, fire_at=fire_at)
         # Wake a parked protocol loop so it picks up the new cadence promptly
         # instead of waiting until the old timer fires.
-        if hasattr(self, '_wake_event') and self._wake_event is not None:
-            self._wake_event.set()
+        self._wake_event.set()
 
     def hello_interval(self) -> float:
         return self._hello_interval
@@ -336,7 +337,7 @@ class LinkStateProtocol(RoutingProtocol):
         self._emit_lsa_on_up_interfaces(now)
         # Reset the periodic refresh deadline so a flurry of edits doesn't
         # produce a tail of identical periodic refreshes right behind us.
-        if 'lsa_refresh' in self._scheduler._deadlines:  # noqa: SLF001
+        if self._scheduler.peek_deadline('lsa_refresh') is not None:
             self._scheduler.schedule(
                 'lsa_refresh',
                 base_interval=self._lsa_refresh_interval,

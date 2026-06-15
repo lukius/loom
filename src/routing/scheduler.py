@@ -37,6 +37,11 @@ class Scheduler:
             self._intervals[name] = float(base_interval)
             self._deadlines[name] = float(fire_at)
 
+    def peek_deadline(self, name: str) -> float | None:
+        """Return the current deadline for *name*, or None if not scheduled."""
+        with self._lock:
+            return self._deadlines.get(name)
+
     def next_deadline(self) -> float:
         """Return the earliest deadline across all registered timers."""
         with self._lock:
