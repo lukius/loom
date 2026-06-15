@@ -6,7 +6,7 @@ from .address import Address
 from .base import Entity
 from .event import EventTracer
 from .exception import InterfaceNotReadyException
-from .packet import Datagram, Frame, PingReply, PingRequest, RoutingMessage, UserMessage
+from .packet import Datagram, Frame, PingReply, PingRequest, UserMessage
 
 # How often (seconds) a gate-parked worker re-checks its own stop flag so
 # that stop() is noticed within one poll interval rather than after the full
@@ -16,7 +16,6 @@ _PAUSE_POLL_INTERVAL = 0.1
 _PACKET_KIND = {
     "Hello": "hello",
     "LSA": "routing_flood",
-    "RoutingMessage": "routing_flood",
     "UserMessage": "user_datagram",
     "PingRequest": "ping_request",
     "PingReply": "ping_reply",
@@ -63,11 +62,6 @@ def _summarize_payload(payload) -> dict:
                 {"prefix": str(p), "cost": c}
                 for p, c in payload.links().items()
             ],
-        }
-    if isinstance(payload, RoutingMessage):
-        return {
-            "seq": payload.seq(),
-            "destinations": [],
         }
     return {}
 

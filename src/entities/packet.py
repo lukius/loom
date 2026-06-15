@@ -26,7 +26,9 @@ class Packet:
 
 
 class Frame(Packet):
-
+    # Semantic L2 wrapper — no added state by design. Used as a marker at
+    # Interface.send_to so the dispatch loop can distinguish the outer frame
+    # from the encapsulated Datagram payload.
     pass
 
 

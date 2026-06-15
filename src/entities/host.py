@@ -120,7 +120,7 @@ class Host(NetworkDevice):
                 self._ping_results[key] = time.monotonic() - msg.request_ts
                 evt.set()
             return
-        if msg.type() == UserMessage:
+        if isinstance(msg, UserMessage):
             return EventTracer.message_received(src=self.address(), msg=msg)
 
     def _handle_forwarding(self, packet):
