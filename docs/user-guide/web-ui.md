@@ -39,18 +39,13 @@ From left to right:
 | Sim | **Start / Stop** (<kbd>Space</kbd>) | Toggle between `idle` and `running`. Starts: serializes YAML → POST `/topology` → POST `/sim/start`. |
 | Sim | **Pause / Resume** (<kbd>P</kbd>) | Toggle between `running` and `paused`. The label shows pending patch ops while paused. |
 | Sim | **Reset** | Idle-only: discard the session and re-clone from the source YAML. |
-| Sim | **Refresh** | LSA-refresh interval in seconds (1–300) — shorthand for the **Protocol** popover's Refresh field. Enabled while sim is loaded. |
-| Sim | **Protocol** | Open the Protocol settings popover (Hello interval and LSA-refresh interval). |
+| Sim | **Protocol** | Open the Protocol settings popover (Hello interval and LSA-refresh interval). Enabled while a topology is loaded or running. |
 | Sim | **Packet speed** | Per-hop animation duration in ms (200–5000). Local to the SPA; doesn't talk to the server. |
 | View | **Chatter** | Mute or unmute routing-protocol packet animations. |
 | View | **Packets** | Open the Packets panel listing all packets currently traveling, with a numeric badge on each. Expand a row to see its hop history and any NAT translations along the way. |
 | View | **Costs** | Show or hide link cost labels at each router interface. |
 | View | **Interfaces** | Show or hide interface name + count badges. |
 | Theme | **Theme buttons** | Light / dark / contrast — persisted to `localStorage`. |
-
-The **Refresh** field is disabled when the sim is `idle` — there's
-nothing to apply the new interval to until a topology is loaded and
-running.
 
 ![Toolbar showing all controls including the Protocol button](../images/toolbar.png)
 
@@ -70,14 +65,14 @@ This controls the two loom-OSPF timing parameters for the running simulation:
 
 - **Hello interval** — how often each router sends a Hello to its
   neighbors to declare itself alive (seconds, 1–300).
-- **Refresh interval** — how often each router rebroadcasts its full
-  link-state advertisement (seconds, 1–300).
+- **LSA refresh interval** — how often each router rebroadcasts its full
+  link-state advertisement (seconds, 1–900).
 
 Two derived values are shown read-only alongside the inputs:
 
-- **Dead interval** — four times the Hello interval. A neighbor silent
+- **Dead interval** — three times the Hello interval. A neighbor silent
   for this long is considered unreachable.
-- **Max age** — three times the Refresh interval. An LSA older than this
+- **Max age** — two times the LSA refresh interval. An LSA older than this
   is expired from the link-state database.
 
 Press **Apply** (or <kbd>Enter</kbd> inside either field) to push the new

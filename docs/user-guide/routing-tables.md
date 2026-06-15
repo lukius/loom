@@ -12,9 +12,9 @@ the toolbar — see [Web UI: Protocol settings](web-ui.md#protocol-settings).
 ## How routes appear
 
 When you press **Start**, every router begins flooding link-state
-advertisements (`RoutingMessage`s) on every interface, once per
-keepalive interval (default 10 s, live-tunable). Each advertisement
-lists the router's directly-connected `(prefix, cost)` pairs.
+advertisements on every interface, once per LSA refresh interval
+(default 30 s, live-tunable via the **Protocol** popover). Each
+advertisement lists the router's directly-connected `(prefix, cost)` pairs.
 
 A receiving router:
 
@@ -113,24 +113,24 @@ Or from the router's inspector panel (the Interfaces list has inline
 **Cost** editors). Either path invokes the same backend cost-update
 operation.
 
-The change propagates on the next keepalive flood. Within one
-keepalive interval per hop, every router has the new graph and has
-recomputed its routes.
+The change propagates on the next LSA flood. Within one LSA refresh
+interval per hop, every router has the new graph and has recomputed its routes.
 
 ## Convergence
 
 Convergence time is dominated by two factors:
 
-1. **Keepalive interval.** New routers / changed costs only flood once
-   per interval. A 10 s interval means each hop can take up to 10 s to
+1. **LSA refresh interval.** New routers / changed costs only flood once
+   per interval. A 30 s interval means each hop can take up to 30 s to
    propagate.
 2. **Network diameter.** A change at one end of an N-hop chain takes up
-   to N keepalives to reach the other end, in the worst case (the
+   to N refresh intervals to reach the other end, in the worst case (the
    "next hop" gates flood propagation on its own schedule).
 
-In the sample topology (diameter 3), convergence at 10 s keepalive
-takes up to ~30 s after a change. Drop the **Refresh** field to 1 s and
-the same change converges in under 3 s.
+In the sample topology (diameter 3), convergence at the default 30 s LSA
+refresh interval takes up to ~90 s after a change. Drop the **LSA refresh
+interval** in the **Protocol** popover to 1 s and the same change converges
+in under 3 s.
 
 There is **no failure detection** in `loom`. If you delete a router
 while the sim is running (only possible while paused), the other

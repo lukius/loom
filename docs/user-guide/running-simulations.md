@@ -76,8 +76,8 @@ same YAML. The session file is updated either way.
 - The inspector's editable fields are read-only (interface
   re-addressing and host/network reassignment require pausing or
   stopping first).
-- The **Refresh** field is editable (you can re-tune the keepalive
-  interval live).
+- The **Protocol** button is active — you can re-tune the Hello and
+  LSA-refresh intervals live.
 - Right-click a router → **Halt router**, **Crash router**, or
   **Resume router** to take a router offline or bring it back, without
   stopping the sim. A halted/crashed router grays out on the canvas.
@@ -97,9 +97,9 @@ same YAML. The session file is updated either way.
 Start, give the routers a few seconds to exchange routes before pinging.
 Until all routers have heard from their neighbors, some packets — especially
 between hosts on different networks — will be dropped. If your first ping
-times out, wait a moment and try again. (The default keepalive interval is
-10 s; lower the **Refresh** field to 1 s if you want routes to settle
-faster.)
+times out, wait a moment and try again. (The default Hello interval is
+10 s; lower the **Hello interval** in the **Protocol** popover to 1 s if
+you want neighbors to be discovered faster.)
 
 ### Streamed ping output
 
@@ -228,21 +228,26 @@ Use Reset when the session has drifted from the source and you want to
 roll back. The source file is **never modified** by the SPA — Reset
 discards only the session clone.
 
-## Tuning the keepalive interval
+## Tuning the protocol intervals
 
-The **Refresh** field is the routing-protocol keepalive interval in
-seconds, range `[1, 300]`. Lower = faster convergence, more chatter.
-Higher = slower convergence, quieter. The default is 10 s.
+Click **Protocol** in the toolbar to open the Protocol settings popover.
+Two fields are tunable:
 
-The change is applied to **every router** the moment you change the
-field — the server updates each router's keepalive interval via
-`POST /sim/refresh_interval`. The new value takes effect at the next
-sleep boundary on each router's keepalive loop, so the maximum lag
-is the *previous* interval's value.
+- **Hello interval** — how often routers send neighbor-discovery messages
+  (default 10 s). Lower = neighbors detected and declared alive more quickly;
+  higher = quieter, but slower to detect new neighbors.
+- **LSA refresh interval** — how often routers re-advertise their full
+  link-state (default 30 s). Lower = routes re-advertise more frequently,
+  faster convergence after a change; higher = quieter canvas.
 
-This is the right knob to reach for if you're watching convergence and
-the default 10 s feels too slow. Dropping it to 1 s makes the protocol
-visibly chatter on the canvas at roughly one flood per second.
+Changes are applied to every router the moment you click **Apply**. The new
+value takes effect at the next interval boundary on each router, so the
+maximum lag is the *previous* interval's value.
+
+To speed up initial convergence when exploring: lower the **Hello interval**
+to 1 s. To make a running simulation re-advertise routes more aggressively:
+lower the **LSA refresh interval**. Dropping either to 1 s makes the protocol
+visibly chatter on the canvas at roughly one cycle per second.
 
 ## Edits while idle vs. paused vs. running: a comparison
 
@@ -262,9 +267,9 @@ several related changes at once, and resume atomically.
 
 ## Tips
 
-- **Set Refresh to 1 s when exploring.** The default 10 s convergence
-  is realistic but tedious. Bring it down to 1 s while you're poking,
-  then up again when you want a quieter canvas.
+- **Lower the Hello interval when exploring.** The default 10 s is
+  realistic but slow for neighbor discovery. Drop it to 1 s while you're
+  poking, then restore it when you want a quieter canvas.
 - **Pause before bulk edits.** The patch list batches efficiently; the
   one server round-trip is cheaper than starting and stopping for each
   change.

@@ -185,10 +185,10 @@ idle), and that the **Chatter** toggle isn't muting all packets. The
 **Packet speed** field controls the animation speed (in milliseconds per
 hop, 200–5000).
 
-**Routing tables stay empty.** The first keepalive happens almost
-immediately, but convergence still takes a few keepalive intervals on
-multi-hop topologies. Drop the **Refresh** field to `1` to speed
-convergence during exploration.
+**Routing tables stay empty.** The first Hello happens almost
+immediately, but convergence still takes a few Hello intervals on
+multi-hop topologies. Drop the **Hello interval** to `1` s in the
+**Protocol** popover to speed neighbor discovery during exploration.
 
 **A change to the YAML didn't take effect.** The SPA serves from
 `<source>.session.yaml`, not the source you edited on disk. Click
