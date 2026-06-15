@@ -234,7 +234,7 @@ visibly switch paths.
 **"My route just appeared and disappeared."** A `routing_table_changed`
 event fires on **every** recompute, including transient intermediate
 states during convergence. If you watch closely during the first
-keepalive cycle, you can see routes settle in two or three passes —
+rounds of link-state flooding, you can see routes settle in two or three passes —
 the protocol is learning the graph one flood at a time.
 
 **"Costs aren't symmetrical."** They aren't required to be. Each
@@ -250,7 +250,7 @@ this property: `r1 → r3` directly over `p2p1` costs 5+5=10, but
 `r1 → r2 → r3` over `lan1 + lan2` can cost less depending on costs.
 
 **"My routing table is empty."** Either the simulator hasn't ticked yet
-(give it one keepalive interval), or the router has no router peers
+(give it a moment for the first protocol tick), or the router has no router peers
 (check `neighbors`). A standalone router still gets `0.0.0.0` rules for
 its directly-connected networks the first time it ticks; an empty
 table really means *zero* networks attached.

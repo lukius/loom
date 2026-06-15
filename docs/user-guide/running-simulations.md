@@ -16,7 +16,7 @@ each transition and what's safe at each step.
                   ┌─────────────────────┐
                   │      running        │
                   │  threads alive,     │
-                  │  keepalives ticking │
+                  │  protocol ticking   │
                   └─────┬───────────┬───┘
               Pause     │           │   Stop
                         ▼           ▼
@@ -47,7 +47,7 @@ Click **Start** (or press <kbd>Space</kbd>). The SPA does, in order:
    autonomous system. On any validation error, the start is aborted
    and the toolbar surfaces the error via toast.
 4. POSTs to `/sim/start` — the server starts the simulation and every
-   router's keepalive.
+   router's routing protocol.
 
 ![Start names what's incomplete and selects it — here a LAN with no range yet](../images/07-start-preflight.png)
 
@@ -132,7 +132,7 @@ the server pauses every simulator thread at its next safe point.
 Effects, observable in the canvas:
 
 - Packet animations freeze (in-flight frames stay parked on the wire).
-- Routing-protocol keepalives stop ticking.
+- The routing protocol's periodic Hello and LSA messages stop.
 - The **Pause** button becomes **Resume**.
 
 Pause is also the natural pairing with the Packets panel (see [web-ui.md](web-ui.md)) — frozen animations make the badge-to-row mapping easy to read.

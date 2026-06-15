@@ -158,7 +158,7 @@ The inspector lets you edit the **Cost** column inline. The change:
   first.
 - While **paused**, the cost change is queued. On **Resume**, the
   server applies it and the routing protocol picks it up on the next
-  keepalive.
+  LSA flood.
 
 You can also edit a cost from the router terminal:
 

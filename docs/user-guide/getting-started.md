@@ -71,7 +71,7 @@ What happens, in order:
 2. The server parses, validates, and constructs a fresh autonomous
    system.
 3. POST `/sim/start` resumes the simulation and starts every router's
-   keepalive.
+   routing protocol.
 4. Within a few hundred milliseconds, routing-protocol packets start
    flooding across the canvas — those are the small hollow dots
    ("chatter").
@@ -151,12 +151,12 @@ router's interfaces and current routing table together:
 Each row is one rule: a destination prefix, the next-hop IP (or
 `0.0.0.0` if directly connected), and the outgoing interface name. The
 table auto-refreshes whenever the router's table changes (because of a
-keepalive arriving, a cost edit, or a topology patch).
+routing update arriving, a cost edit, or a topology patch).
 
 ## Stop the simulation
 
 Click the red **Stop** button (Start replaced) or press <kbd>Space</kbd>.
-The simulation returns to `idle`: routers stop their keepalive threads,
+The simulation returns to `idle`: routers stop their routing-protocol threads,
 the canvas's **Add** buttons re-enable.
 
 You can also **pause** (press <kbd>P</kbd>) — that freezes the entire

@@ -258,7 +258,7 @@ different peer.
 #### `update_cost <iface> <cost>`
 
 Set an interface's cost. The new value propagates via the next
-keepalive flood.
+LSA flood.
 
 ```
 update_cost eth0 25
@@ -303,10 +303,10 @@ neighbors
 
 The view is built from the router's local protocol graph, so it only
 shows neighbors this router has *heard about*. A new neighbor takes
-one keepalive interval to appear here.
+up to one Hello interval to appear here.
 
 If the router has no router peers, or hasn't completed its first
-keepalive cycle:
+Hello exchange:
 
 ```
 (no neighbors yet)
@@ -388,10 +388,8 @@ POST /devices/{name}/command
 { "cmd": "<line>" }
 ```
 
-The server splits the line with `shlex.split`, dispatches to
-`server/command/host.py` or `server/command/router.py` based on the
-device type, calls the matching `cmd_<name>(device, args, as_obj)`, and
-returns:
+The server parses the line (shell-style quoting), routes it to the
+named device, runs the matching command, and returns:
 
 ```json
 { "ok": true, "output": "..." }
