@@ -14,7 +14,7 @@ field on `packet` events), [web-spa.md](web-spa.md) (`sim:nat` and
 ## Why NAT lives in the simulator
 
 The routing protocol filters RFC 1918 prefixes out of every advertised
-LSP, so private LANs are invisible to peer routers. That makes
+LSA, so private LANs are invisible to peer routers. That makes
 overlapping `192.168.1.0/24` LANs safe across tenants, but it also means
 a private host has no globally reachable address. Translation at the
 egress router gives those packets a public source the rest of the AS
@@ -36,10 +36,11 @@ Two events fire on the EventTracer bus immediately after the table
 mutation:
 
 - `nat` (`direction=outbound`) — carries `{router, original_src,
-  rewritten_src, dst, flow_id, payload_id}`. The SPA renders this as
-  a hop-level tooltip line on the animated packet.
+  rewritten_src, dst, flow_id, payload_id}`. Subscribers receive this
+  event for each outbound translation.
 - `nat_table_changed` — carries `{device, entries}` (the full snapshot
-  in LRU order). Drives the inspector's NAT-table panel.
+  in LRU order). Subscribers receive this event to update their view
+  of the NAT table.
 
 If the router has no public interface but the source is private,
 `_handle_forwarding` raises with a "no NAT egress" error rather than
@@ -56,8 +57,8 @@ interface addresses, the router looks up
 the destination back to the original private address and re-enters
 forwarding. On a miss, the packet falls through to `_handle_message`
 (it's actually addressed to the router itself, e.g. a routing message
-broadcast). An `inbound` `nat` event fires on a hit so the tooltip can
-show the reverse-translation. There is no second `nat_table_changed`
+broadcast). An `inbound` `nat` event fires on a hit so subscribers can observe the
+reverse-translation. There is no second `nat_table_changed`
 on the reply — the table state doesn't change on inbound lookup.
 
 ## The conversation key (`flow_id`)
@@ -67,17 +68,17 @@ private hosts behind one router pinging the same public destination
 don't collapse into a single entry. The discriminator is the
 **conversation UUID**, computed as:
 
-- For a `Message` with its own `flow_key()` (the default), `str(id())`.
+- For a `Message` with its own `flow_key()` (the default),
+  `str(self._id)` — a `uuid.uuid4()` assigned at construction time.
 - For a `PingReply`, `str(request_id)` — the originating `PingRequest`'s
-  id, echoed by `Host._handle_message` so the reverse lookup finds the
+  UUID, echoed by `Host._handle_message` so the reverse lookup finds the
   forward registration.
 - For arbitrary payloads with no `flow_key`, `None` — a single shared
   slot per `(rewritten_src, original_dst)`, fine for fire-and-forget.
 
-This is the *same value* the SPA receives as the `flow` field on
-`packet` events (used to group hops of one conversation into a single
-sequential animation track) and as `flow_id` on `nat` events. Three
-distinct concerns, one source of truth.
+This is the *same value* carried as the `flow` field on `packet` events
+(used by subscribers to group hops of one conversation) and as `flow_id`
+on `nat` events. Three distinct concerns, one source of truth.
 
 ## LRU eviction
 
