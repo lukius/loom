@@ -93,6 +93,14 @@ same YAML. The session file is updated either way.
 
 ![The inspector's per-interface controls: a downed interface offers Enable; the others offer Disable and Fail](../images/61-interface-controls.png)
 
+**First pings may drop while the network converges.** After you click
+Start, give the routers a few seconds to exchange routes before pinging.
+Until all routers have heard from their neighbors, some packets — especially
+between hosts on different networks — will be dropped. If your first ping
+times out, wait a moment and try again. (The default keepalive interval is
+10 s; lower the **Refresh** field to 1 s if you want routes to settle
+faster.)
+
 ### Streamed ping output
 
 When you run `ping` from a device terminal while the sim is running,
