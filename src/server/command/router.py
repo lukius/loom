@@ -1,3 +1,6 @@
+from entities import Router
+
+
 def cmd_ifconfig(router, args, as_obj=None):
     """Show interfaces, or toggle one: ifconfig [<iface> up|down]."""
     if not args:
@@ -45,14 +48,12 @@ def cmd_update_cost(router, args, as_obj=None):
 
 def cmd_neighbors(router, args, as_obj=None):
     """Show directly-connected neighbor routers."""
-    from entities import Router as _Router  # noqa: PLC0415, I001 — break entities↔server cycle
-
     seen = set()
     lines = []
     for iface in router.interfaces().values():
         fabric = iface.network()
         for peer_name, peer_device in fabric.devices().items():
-            if not isinstance(peer_device, _Router):
+            if not isinstance(peer_device, Router):
                 continue
             if peer_device is router:
                 continue
