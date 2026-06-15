@@ -24,6 +24,19 @@ class BaseAddress:
     def __repr__(self) -> str:
         return str(self)
 
+    def _eq_fields(self):
+        raise NotImplementedError
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, str):
+            try:
+                other = self.__class__(other)
+            except Exception:
+                return False
+        if other.__class__ != self.__class__:
+            return False
+        return self._eq_fields() == other._eq_fields()
+
 
 class Address(BaseAddress):
 
@@ -34,15 +47,8 @@ class Address(BaseAddress):
         """Return True if this address falls within an RFC 1918 private range."""
         return any(p.contains(self) for p in _RFC1918_PREFIXES)
 
-    def __eq__(self, other) -> bool:
-        if isinstance(other, str):
-            try:
-                other = Address(other)
-            except Exception:
-                return False
-        if other.__class__ != self.__class__:
-            return False
-        return self._octets == other._octets
+    def _eq_fields(self):
+        return (self._octets,)
 
     def __hash__(self) -> int:
         return hash(tuple(self._octets))
@@ -117,15 +123,8 @@ class NetworkAddress(BaseAddress):
     def __str__(self) -> str:
         return '.'.join(map(str, self._octets)) + f'/{self._mask}'
 
-    def __eq__(self, other) -> bool:
-        if isinstance(other, str):
-            try:
-                other = NetworkAddress(other)
-            except Exception:
-                return False
-        if other.__class__ != self.__class__:
-            return False
-        return self._octets == other._octets and self._mask == other._mask
+    def _eq_fields(self):
+        return (self._octets, self._mask)
 
     def __hash__(self) -> int:
         return hash(tuple(self._octets)) ^ self._mask

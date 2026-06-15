@@ -316,3 +316,51 @@ def test_address_str_rebuilds_from_octets():
     """Address.__str__ must equal '.'.join(map(str, octets()))."""
     addr = Address('192.168.001.100')
     assert str(addr) == '.'.join(map(str, addr.octets()))
+
+
+# --- __eq__ contract (H7 lock-in) ---
+
+def test_address_eq_with_matching_string():
+    """Address.__eq__ must return True when compared to an equal string."""
+    assert Address('1.2.3.4') == '1.2.3.4'
+
+
+def test_address_eq_with_bad_string_returns_false():
+    """Address.__eq__ must return False (not raise) on a malformed string."""
+    assert not (Address('1.2.3.4') == 'garbage')
+
+
+def test_address_eq_cross_class_returns_false():
+    """Address and NetworkAddress must not compare equal even on same octets."""
+    assert not (Address('1.2.3.4') == NetworkAddress('1.2.3.0/24'))
+
+
+def test_network_address_eq_with_matching_string():
+    """NetworkAddress.__eq__ must return True when compared to an equal string."""
+    assert NetworkAddress('10.0.0.0/24') == '10.0.0.0/24'
+
+
+def test_network_address_eq_with_bad_string_returns_false():
+    """NetworkAddress.__eq__ must return False (not raise) on a malformed string."""
+    assert not (NetworkAddress('10.0.0.0/24') == 'garbage')
+
+
+def test_network_address_eq_cross_class_returns_false():
+    """NetworkAddress and Address must not compare equal."""
+    assert not (NetworkAddress('10.0.0.0/24') == Address('10.0.0.0'))
+
+
+def test_address_hash_consistent_with_eq_via_string():
+    """If Address(s) == Address(t) then hash(Address(s)) == hash(Address(t))."""
+    a = Address('10.0.0.1')
+    b = Address('10.0.0.1')
+    assert a == b
+    assert hash(a) == hash(b)
+
+
+def test_network_address_hash_consistent_with_eq():
+    """If NetworkAddress(s) == NetworkAddress(t) then hashes agree."""
+    a = NetworkAddress('192.168.1.0/24')
+    b = NetworkAddress('192.168.1.0/24')
+    assert a == b
+    assert hash(a) == hash(b)
