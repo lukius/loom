@@ -7,9 +7,11 @@ A `loom` topology is built from four kinds of entities: **networks**
 While the sim is **idle** or **paused**, all add, rename, duplicate,
 and delete operations are available. While **running**, you can add
 networks, links, hosts, and routers directly on the canvas — each new
-entity commits to the live simulation as soon as you give it a valid
-address or CIDR. Rename, duplicate, delete, and address edits remain
-blocked while running; pause first for those.
+entity commits to the live simulation as soon as you complete its
+address or CIDR (only filling in a new entity's address is allowed live;
+changing the address of an existing interface requires stopping first).
+Rename, duplicate, and address edits on existing entities remain blocked
+while running; pause first for those.
 
 If you want to use raw YAML rather than the canvas, jump to
 [YAML format](yaml-format.md) for the schema reference. The two
@@ -60,8 +62,10 @@ routers, in practice — hosts have exactly one interface).
 ### Move and resize the rail
 
 - Drag the rail body to translate.
-- Drag the handle at either end to lengthen or shorten the rail (range:
-  `RAIL_MIN_WIDTH = 100` to `RAIL_MAX_WIDTH = 800` SVG units).
+- Drag the handle at either end to lengthen or shorten the rail. There
+  is a minimum length (roughly the width of a short label) and a maximum
+  length (roughly screen-wide at normal zoom); the handle snaps to those
+  limits.
 
 ### Delete
 
@@ -134,7 +138,8 @@ Open the inspector. The router's **Interfaces** section shows an
 - **Name** — unique within this router (`eth0`, `eth1`, ...).
 - **Network** or **Link** — pick one; never both.
 - **Address** — must be valid for the chosen fabric.
-- **Cost** — the metric the routing protocol uses. Defaults to 1.
+- **Cost** — the metric the routing protocol uses. Set it explicitly:
+  the default varies depending on how the interface was created.
   Higher = less preferred. Positive integers.
 
 You can connect a router to as many LANs and links as you want, as long
@@ -183,17 +188,22 @@ or host–host). No broadcast domain — frames go directly to the peer.
 
 ### Add one
 
-There is no toolbar button for links: they're created **implicitly** by
-attaching two interfaces to a fabric whose YAML is declared under
-`links:`. The most common way to add a link via the canvas:
+There are two ways to create a link directly in the app:
 
-1. Write the link into a YAML file on your computer and load it via
-   **Import → Browse local file…**, or
-2. Edit a router interface's network/link membership in the inspector.
+**Right-click wizard** — right-click any host or router and choose
+**New p2p link…**. A short wizard opens: pick the peer device and set
+the link CIDR; the two endpoints are wired up automatically and the
+new link appears on the canvas.
 
-The dedicated **Add link** affordance is on the roadmap; for now, the
-canonical path is YAML edit + import. See [YAML format](yaml-format.md)
-for examples.
+**Inspector button** — select a host or router in the inspector, find
+an interface whose fabric type is set to **Link**, and click
+**+ New link** next to the fabric selector. A fresh link is created
+and the interface is attached to it; a second interface (on any device)
+can then be attached to complete the pair.
+
+You can also describe links in YAML and import the file via
+**Import → Browse local file…** if you prefer to author the topology as
+text. See [YAML format](yaml-format.md) for the schema.
 
 ### Rules
 
@@ -247,9 +257,9 @@ To build the sample topology from scratch:
      (`100.200.0.2`, cost 8), eth2 on `lan3` (`150.10.10.1`, cost 15).
    - `r3`: eth0 on `lan2` (`100.200.0.10`, cost 20), eth1 on `lan3`
      (`150.10.10.10`, cost 5).
-4. Add the link `p2p1: "10.0.0.0/30"` by saving the snippet to a local
-   YAML file and loading it via **Import → Browse local file…** (the
-   simplest way today), then assign:
+4. Add the link `p2p1: "10.0.0.0/30"` using **New p2p link…**: right-click
+   `r1`, choose **New p2p link…**, set the peer to `r3` and the CIDR to
+   `10.0.0.0/30`. Then set the costs in the inspector:
    - `r1.eth2` on `p2p1` (`10.0.0.1`, cost 5)
    - `r3.eth2` on `p2p1` (`10.0.0.2`, cost 5)
 
@@ -266,7 +276,8 @@ validator. Common failures:
 
 | Error | What it means |
 |---|---|
-| `missing "as" key` | Top-level YAML doesn't have `as:`. |
+| `missing "internet" key at YAML root` | Top-level YAML doesn't have an `internet:` key. |
+| `missing "autonomous_systems" in internet block` | The `internet:` block doesn't contain an `autonomous_systems:` mapping. |
 | `<dev>: <iface>: declares both network and link` | A single interface can attach to only one fabric. |
 | `<dev>: <iface>: address already in use by <other>` | Two interfaces on the same fabric share an IP. |
 | `<host>: gateway address not in host network` | Gateway IP isn't inside the host's subnet. |
