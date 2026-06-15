@@ -43,22 +43,7 @@ export function lookupInterfaceEdge(device, iface, fabricName, isLink) {
   );
 }
 
-export function lookupAddressNode(address) {
-  if (!address) return null;
-  // Find host whose address matches
-  for (const [hn, h] of Object.entries(state.hosts || {})) {
-    if (h.address === address) return lookupDeviceNode(hn);
-  }
-  // Find router whose interface address matches
-  for (const [rn, r] of Object.entries(state.routers || {})) {
-    for (const iname of Object.keys(r.interfaces || {})) {
-      if (r.interfaces[iname].address === address) return lookupDeviceNode(rn);
-    }
-  }
-  return null;
-}
-
-// Fabric-scoped variant of lookupAddressNode. Only considers devices that are
+// Fabric-scoped address-node lookup. Only considers devices that are
 // actually attached to `fabricName` (a Network OR a Link). Necessary because
 // private IPs are intentionally reusable across separate subnets: e.g. two
 // LANs with 192.168.1.10 on each, or two /30 links both using 10.0.0.0/30.
