@@ -138,5 +138,5 @@ RFC1918_OUTBOUND = RouteMap(
     default='permit',
 )
 """Default outbound route-map for LinkStateProtocol: deny RFC 1918,
-permit everything else. Wired in D.3.b — replaces the hard-coded
+permit everything else. Replaces the hard-coded
 `if prefix.is_private(): continue` in the flood site."""

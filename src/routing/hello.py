@@ -5,7 +5,7 @@ class Hello(RoutingMessage):
     """Liveness message: carries originator + per-interface neighbors-heard.
 
     Built per-interface (not shared): each interface's Hello lists only
-    the peers heard on that specific fabric. See spec section 2.2.
+    the peers heard on that specific fabric; see docs/architecture/routing-protocol.md.
     """
 
     def __init__(self, originator, neighbors_heard):

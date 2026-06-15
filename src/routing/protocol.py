@@ -25,7 +25,7 @@ class RoutingProtocol(ABC):
 
     Each concrete protocol owns its own keepalive lifecycle and produces
     routes via `installed_rules()`; the Router's RIB merges across all
-    its protocols (see D.1.c).
+    its protocols.
     """
 
     @abstractmethod
@@ -506,9 +506,8 @@ class LinkStateProtocol(RoutingProtocol):
 
         Today LinkStateProtocol writes directly into the router's
         RoutingTable via _recompute_routing_table. This accessor returns
-        those rules so the Router-level RIB merge (introduced in D.1.c)
-        can see what each protocol contributes without changing the
-        current write path.
+        those rules so the Router-level RIB merge can see what each
+        protocol contributes without changing the current write path.
         """
         return list(self._router.routing_table().rules())
 
