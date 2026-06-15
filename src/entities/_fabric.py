@@ -4,14 +4,10 @@ import threading
 from typing import Optional
 
 from .base import Entity
+from .clock import wait_for_gate
 from .exception import TooManyEndpointsException
 
 _logger = logging.getLogger(__name__)
-
-# How often (seconds) a gate-parked worker re-checks its own stop flag so
-# that stop() is noticed within one poll interval rather than after the full
-# join timeout.  Mirrors LinkStateProtocol._PAUSE_POLL_INTERVAL.
-_PAUSE_POLL_INTERVAL = 0.1
 
 
 class _FabricBase(Entity):
@@ -74,24 +70,10 @@ class _FabricBase(Entity):
     def _await_gate_running(self) -> bool:
         """Block until the gate is RUNNING, or until this fabric is stopped.
 
-        Returns True when the loop should proceed (gate running or no gate),
-        False when it should exit (gate stopped, or stop() was called on this
-        fabric).
-
-        When the gate is PAUSED, polls every _PAUSE_POLL_INTERVAL seconds and
-        re-checks _stop_event each time, so stop() is noticed within one poll
-        interval instead of after the full join timeout.
+        Delegates to ``clock.wait_for_gate``; see that function for the full
+        semantics.  Returns True to proceed, False to exit the worker loop.
         """
-        if self._gate is None:
-            return True
-        while not self._stop_event.is_set():
-            running, stopped = self._gate.wait_or_stop(timeout=_PAUSE_POLL_INTERVAL)
-            if stopped:
-                return False        # AS gate stopped
-            if running:
-                return True         # gate resumed — proceed
-            # (False, False): timeout while paused — re-check _stop_event
-        return False                # stop() set _stop_event
+        return wait_for_gate(self._gate, self._stop_event)
 
     def _pkt_loop(self):
         while not self._stopped:

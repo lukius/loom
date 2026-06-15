@@ -1,5 +1,36 @@
 import threading
 
+# How often (seconds) a gate-parked worker re-checks its own stop flag so
+# that stop() is noticed within one poll interval rather than after the full
+# join timeout.  Kept here as the canonical constant; interface.py and
+# _fabric.py import it from here rather than defining their own copy.
+_PAUSE_POLL_INTERVAL = 0.1
+
+
+def wait_for_gate(gate: "PauseGate | None", stop_event: threading.Event,
+                  poll: float = _PAUSE_POLL_INTERVAL) -> bool:
+    """Block until the gate is RUNNING, or until the caller's stop event fires.
+
+    Returns:
+        True  — gate is running (or absent): the caller should proceed.
+        False — gate was stopped, or ``stop_event`` was set: the caller
+                should exit its worker loop.
+
+    When the gate is PAUSED, polls every ``poll`` seconds and re-checks
+    ``stop_event`` each time, so ``stop()`` is noticed within one poll
+    interval rather than after the full join timeout.
+    """
+    if gate is None:
+        return True
+    while not stop_event.is_set():
+        running, stopped = gate.wait_or_stop(timeout=poll)
+        if stopped:
+            return False        # AS gate stopped
+        if running:
+            return True         # gate resumed — proceed
+        # (False, False): timeout while paused — re-check stop_event
+    return False                # stop_event was set by caller's stop()
+
 
 class PauseGate:
     """A two-state gate worker threads block on each loop iteration.
