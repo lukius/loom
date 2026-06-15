@@ -21,7 +21,7 @@ from .validator import SystemValidator
 
 class Parser:
 
-    def __init__(self, filename: any):
+    def __init__(self, filename: str):
         self.filename = filename
 
     def parse(self, start_routing: bool = True) -> Internet:
@@ -38,6 +38,8 @@ class Parser:
         internet_name = internet_dict.get('name', 'loom')
         internet = Internet(name=internet_name)
 
+        # Top-level internet.config is an opaque pass-through to Internet; per-AS
+        # config.protocol is parsed and applied in _parse_protocol_config.
         config = internet_dict.get('config')
         if config is not None:
             if not isinstance(config, dict):

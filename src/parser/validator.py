@@ -71,16 +71,12 @@ class AddressValidator(Validator):
             return ValidationResult.invalid(msg)
 
         try:
-            octets[0] = int(octets[0])
-            octets[1] = int(octets[1])
-            octets[2] = int(octets[2])
-            octets[3] = int(octets[3])
+            for i in range(4):
+                octets[i] = int(octets[i])
+                if octets[i] < 0 or octets[i] > 255:
+                    return ValidationResult.invalid(msg)
         except ValueError:
             return ValidationResult.invalid(msg)
-
-        for i in range(4):
-            if octets[i] < 0 or octets[i] > 255:
-                return ValidationResult.invalid(msg)
 
         return ValidationResult.valid()
 
