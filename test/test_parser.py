@@ -429,6 +429,16 @@ class ParserTest(unittest.TestCase):
             'duplicate_device_name', 'duplicate device name'
         )
 
+    def test_address_leading_zero(self):
+        self._run_parsing_error_test(
+            'address_leading_zero', 'invalid address'
+        )
+
+    def test_network_with_host_bits(self):
+        self._run_parsing_error_test(
+            'network_with_host_bits', 'host bits set'
+        )
+
     # ----------------------------------------------------------------- helpers
 
     def _run_parsing_error_test(self, filename, expected_msg):

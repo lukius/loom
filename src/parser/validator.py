@@ -1,6 +1,9 @@
+import re
 from collections import defaultdict
 
 from entities import Host, Network, NetworkDevice, Router
+
+_OCTET_RE = re.compile(r'^\d{1,3}$')
 
 
 class ValidationResult:
@@ -71,9 +74,16 @@ class AddressValidator(Validator):
             return ValidationResult.invalid(msg)
 
         try:
-            for i in range(4):
-                octets[i] = int(octets[i])
-                if octets[i] < 0 or octets[i] > 255:
+            for octet in octets:
+                # Reject non-canonical spellings: leading zeros, sign characters,
+                # whitespace.  Each octet must be exactly 1-3 decimal digits with
+                # no leading zero (except the lone "0").
+                if not _OCTET_RE.match(octet):
+                    return ValidationResult.invalid(msg)
+                value = int(octet)
+                if len(octet) > 1 and octet[0] == '0':
+                    return ValidationResult.invalid(msg)
+                if value < 0 or value > 255:
                     return ValidationResult.invalid(msg)
         except ValueError:
             return ValidationResult.invalid(msg)

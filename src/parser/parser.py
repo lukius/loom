@@ -322,7 +322,18 @@ class Parser:
         if not result.ok():
             self._fail(f'{name}: {result.reason()}')
 
-        return NetworkAddress(addr)
+        net_addr = NetworkAddress(addr)
+        # Reject addresses where the host bits are non-zero (e.g. 10.0.0.5/24).
+        # NetworkAddress._canonicalize silently clears host bits; compare the
+        # canonical string representation against the raw input to detect this.
+        canonical_host = str(net_addr).split('/')[0]
+        if canonical_host != address:
+            self._fail(
+                f'{name}: network address {addr} has host bits set'
+                f' (did you mean {net_addr}?)'
+            )
+
+        return net_addr
 
     def _parse_protocol_config(self, short_name, system_dict):
         config = system_dict.get('config')
