@@ -1036,6 +1036,37 @@ describe('PacketAnim — LSA flooding is sequenced per-hop', () => {
     }
   });
 
+  it('fan-out clones clean up a badge added by live toggle mid-flight (no strand)', async () => {
+    const origDur = PacketAnim.DURATION_MS;
+    PacketAnim.DURATION_MS = 100;   // phase-1 ≈ 30ms, phase-2 ≈ 70ms
+    delete document.body.dataset.chatterBadges;   // start with badges off
+    try {
+      // Chatter badges start off. r1 broadcasts on lan_a → r2 is a listener,
+      // so this renders through the broadcast fan-out (clone per listener).
+      bus.dispatchEvent(new CustomEvent('sim:packet', { detail: originEvt() }));
+      const layer = document.getElementById('packet-layer');
+
+      // Let phase-1 finish so the source dot is retired and a listener clone
+      // is now mid phase-2.
+      await new Promise(r => setTimeout(r, 45));
+      expect(layer.querySelectorAll('text.packet-badge').length).toBe(0);
+
+      // User toggles chatter badges on while the clone is in flight.
+      document.body.dataset.chatterBadges = 'on';
+      bus.dispatchEvent(new CustomEvent('packets:chatter-badges-changed'));
+      expect(layer.querySelectorAll('text.packet-badge').length).toBeGreaterThanOrEqual(1);
+
+      // Once the fan-out completes, the toggle-added badge must be gone too —
+      // it must not strand on the canvas after its dot is removed.
+      await new Promise(r => setTimeout(r, 160));
+      expect(layer.querySelectorAll('rect').length).toBe(0);
+      expect(layer.querySelectorAll('text.packet-badge').length).toBe(0);
+    } finally {
+      PacketAnim.DURATION_MS = origDur;
+      delete document.body.dataset.chatterBadges;
+    }
+  });
+
   it('Hello chatter is not affected by LSA sequencing (plays immediately)', () => {
     bus.dispatchEvent(new CustomEvent('sim:packet', { detail: {
       type: 'hello', payload_id: 'h1', network: 'lan_a',

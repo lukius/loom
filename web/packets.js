@@ -41,9 +41,20 @@ bus.addEventListener('sim:router-intercept', (e) => {
   }
 });
 
+// Monotonic per-dot identity. A badge belongs to exactly one dot (its
+// `badgeKey`), distinct from the dot's `payloadId` (the store/halo key, which a
+// broadcast fan-out shares across every listener clone). Keying badge cleanup
+// on `badgeKey` keeps removal 1:1 with the dot — sibling clones keep their
+// badges, and a badge the live toggle added to *this* dot still gets cleaned.
+let _badgeSeq = 0;
+function nextBadgeKey() {
+  return `b${++_badgeSeq}`;
+}
+
 // Build a packet badge text element. Used by both the initial render pass and
-// the live chatter toggle so both paths stay visually identical.
-function makePacketBadge(payloadId, label, fillColor) {
+// the live chatter toggle so both paths stay visually identical. `badgeKey`
+// ties this badge to a single dot for lifecycle (create/remove).
+function makePacketBadge(badgeKey, label, fillColor) {
   const badge = document.createElementNS('http://www.w3.org/2000/svg', 'text');
   badge.setAttribute('class', 'packet-badge');
   badge.setAttribute('text-anchor', 'middle');
@@ -55,8 +66,19 @@ function makePacketBadge(payloadId, label, fillColor) {
   badge.setAttribute('font-weight', '600');
   badge.style.pointerEvents = 'none';
   badge.textContent = label;
-  badge.dataset.payloadId = payloadId;
+  badge.dataset.badgeKey = badgeKey;
   return badge;
+}
+
+// Remove the badge(s) belonging to `dot` (matched by its `badgeKey`). Sibling
+// dots that share the same store key keep their own badges; a badge appended by
+// the live chatter toggle while this dot was mid-tween is caught too, since the
+// toggle keys it on the dot's `badgeKey`.
+function removeBadgeForDot(layer, dot) {
+  const badgeKey = dot && dot.dataset && dot.dataset.badgeKey;
+  if (!badgeKey) return;
+  const sel = `text.packet-badge[data-badge-key="${cssEscape(badgeKey)}"]`;
+  layer.querySelectorAll(sel).forEach(b => { if (b.parentNode) b.parentNode.removeChild(b); });
 }
 
 // Position a packet rect and optional badge so the rect's center is at (cx, cy).
@@ -313,6 +335,7 @@ export const PacketAnim = {
     dot.style.pointerEvents = 'all';
     dot.dataset.evt = JSON.stringify(evt);
     dot.dataset.payloadId = dotKey;
+    dot.dataset.badgeKey = nextBadgeKey();
     dot.dataset.packetType = evt.type;
     layer.appendChild(dot);
     dot.addEventListener('mouseenter', () => showPacketTooltip(evt, dot));
@@ -323,7 +346,7 @@ export const PacketAnim = {
     const wantBadge = id != null && (!isChatter || chatterBadgesOn);
     if (wantBadge) {
       const label = isChatter ? `#R${id}` : `#${id}`;
-      badge = makePacketBadge(dotKey, label, color.fill);
+      badge = makePacketBadge(dot.dataset.badgeKey, label, color.fill);
       layer.appendChild(badge);
     }
     return { dot, badge };
@@ -351,7 +374,7 @@ export const PacketAnim = {
       // Geometry unresolved — fall back to single-arrival semantics so the
       // chatter row still cleans up.
       if (dot.parentNode) layer.removeChild(dot);
-      if (badge && badge.parentNode) layer.removeChild(badge);
+      removeBadgeForDot(layer, dot);
       if (dotKey) {
         bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: dotKey, device: null } }));
       }
@@ -373,7 +396,7 @@ export const PacketAnim = {
     this._tweenBezier(dot, badge, phase1CurveFn, phase1Dur, () => {
       // Retire the source dot; clones will carry the visual onward.
       if (dot.parentNode) layer.removeChild(dot);
-      if (badge && badge.parentNode) layer.removeChild(badge);
+      removeBadgeForDot(layer, dot);
 
       // The sim stopped (or reset) mid fan-out: the layer has been cleared, so
       // spawning clones now would just dangle them. Clean up the row and stop.
@@ -403,7 +426,7 @@ export const PacketAnim = {
 
         const fireArrival = () => {
           if (cdot.parentNode) layer.removeChild(cdot);
-          if (cbadge && cbadge.parentNode) layer.removeChild(cbadge);
+          removeBadgeForDot(layer, cdot);
           if (dotKey) {
             bus.dispatchEvent(new CustomEvent('sim:packet-arrived', { detail: { payloadId: dotKey, device: lis } }));
           }
@@ -508,6 +531,7 @@ export const PacketAnim = {
     dot.style.pointerEvents = 'all';
     dot.dataset.evt = JSON.stringify(evt);
     dot.dataset.payloadId = dotKey;
+    dot.dataset.badgeKey = nextBadgeKey();
     dot.dataset.packetType = evt.type;
     layer.appendChild(dot);
     bus.dispatchEvent(new CustomEvent('packets:dot-appeared', {
@@ -524,7 +548,7 @@ export const PacketAnim = {
     const wantBadge = id != null && (!isChatter || chatterBadgesOn);
     if (wantBadge) {
       const label = isChatter ? `#R${id}` : `#${id}`;
-      badge = makePacketBadge(dotKey, label, color.fill);
+      badge = makePacketBadge(dot.dataset.badgeKey, label, color.fill);
       layer.appendChild(badge);
     }
 
@@ -562,16 +586,10 @@ export const PacketAnim = {
 
     const finish = () => {
       if (dot.parentNode) layer.removeChild(dot);
-      // Remove every badge tied to this dot's key — covers the badge created
-      // here in _render AND any badge appended later by the
+      // Remove the badge tied to this dot — covers the badge created here in
+      // _render AND any badge appended later by the
       // packets:chatter-badges-changed listener while the dot was mid-tween.
-      if (dotKey) {
-        const sel = `text.packet-badge[data-payload-id="${cssEscape(dotKey)}"]`;
-        layer.querySelectorAll(sel).forEach(b => { if (b.parentNode) b.parentNode.removeChild(b); });
-      } else if (badge && badge.parentNode) {
-        // No key (defensive) — fall back to removing the closure-captured badge.
-        layer.removeChild(badge);
-      }
+      removeBadgeForDot(layer, dot);
       if (dotKey) {
         // Arrival is dispatched even when the destination device couldn't be
         // resolved (chatter broadcasts have no specific destination device).
@@ -660,9 +678,8 @@ export const PacketAnim = {
     setTimeout(() => {
       if (gen !== PacketAnim._gen) return;   // sim reset mid-fade: nothing to do
       if (dot.parentNode) layer.removeChild(dot);
+      removeBadgeForDot(layer, dot);
       if (dotKey) {
-        const sel = `text.packet-badge[data-payload-id="${cssEscape(dotKey)}"]`;
-        layer.querySelectorAll(sel).forEach(b => { if (b.parentNode) b.parentNode.removeChild(b); });
         bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
           detail: { payloadId: dotKey, device: null },
         }));
@@ -925,15 +942,18 @@ bus.addEventListener('packets:chatter-badges-changed', () => {
   const chatterOn = document.body.dataset.chatterBadges === 'on';
   const dots = layer.querySelectorAll(ROUTING_CHATTER_SELECTOR);
   dots.forEach(dot => {
-    // dot.dataset.payloadId is already the composite key for chatter dots.
-    // Look up the row directly rather than going through idFor (which would
-    // need to rebuild the composite key from evt fields not available here).
+    // dot.dataset.payloadId is the composite store key (shared across a
+    // broadcast's listener clones); look up the row directly rather than going
+    // through idFor (which would need to rebuild the key from evt fields not
+    // available here). The badge, though, is keyed to THIS dot's badgeKey so
+    // each clone gets its own badge and cleans up independently.
     const key = dot.dataset.payloadId;
+    const badgeKey = dot.dataset.badgeKey;
     const row = PacketStore.chatter.get(key);
     const id = row ? row.id : null;
-    const existing = layer.querySelector(`text.packet-badge[data-payload-id="${cssEscape(key)}"]`);
+    const existing = layer.querySelector(`text.packet-badge[data-badge-key="${cssEscape(badgeKey)}"]`);
     if (chatterOn && id != null && !existing) {
-      const badge = makePacketBadge(key, `#R${id}`, dot.getAttribute('fill'));
+      const badge = makePacketBadge(badgeKey, `#R${id}`, dot.getAttribute('fill'));
       const cx = parseFloat(dot.getAttribute('x')) + PACKET_W / 2;
       const cy = parseFloat(dot.getAttribute('y')) + PACKET_H / 2;
       badge.setAttribute('x', cx);
