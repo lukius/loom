@@ -176,7 +176,7 @@ The interesting methods:
   network, otherwise the gateway), pushes to the interface, and emits
   `EventTracer.message_sent`.
 - **`set_gateway(addr)`** — must be inside the host's network, else
-  `ValueError`. The shell's `set_gateway` command routes through here.
+  `ValueError`. The terminal's `set_gateway` command routes through here.
 - **`ping(dst_addr, timeout=3.0)`** — synchronous from the caller's view:
   1. Allocates a per-flow `(dst, seq)` key, registers a
      `threading.Event`, sends a `PingRequest`.
@@ -327,8 +327,8 @@ auto-fill a host's gateway to its peer's IP.
 1. **A typed callback registry** for message lifecycle: register a
    `MessageEvent` keyed by message identity, then any thread can call
    `message_sent`, `message_received`, or `datagram_forwarded` to fire
-   the matching callback. Used by the legacy shell to observe a single
-   `send` invocation.
+   the matching callback. Lets a caller observe a single `send` invocation's
+   complete lifecycle.
 
 2. **A class-level pub/sub bus** for the web layer.
    `EventTracer.subscribe(fn)` registers a callback that receives

@@ -127,8 +127,8 @@ send h2 hello
 sent 5 bytes to 100.200.0.20
 ```
 
-Or with quoting (the terminal uses `shlex.split`, unlike the legacy
-shell which uses a single-token split):
+Or with quoting (the terminal uses `shlex.split`, so spaces in the
+payload are supported):
 
 ```
 send h2 "hello world"

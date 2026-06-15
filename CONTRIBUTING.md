@@ -78,16 +78,6 @@ Mutations made during a simulation are persisted to
 `<source>.session.yaml` next to the source. **The source file is never
 modified.** Reset via the toolbar's **Reset** button (or `POST /topology/reset`).
 
-### Legacy shell
-
-```bash
-cd src
-python loom.py shell
-```
-
-See [`docs/user-guide/shell-cli.md`](docs/user-guide/shell-cli.md) for the
-full command set.
-
 ---
 
 ## Getting to Know the Codebase
@@ -404,9 +394,7 @@ one-off doc edits.
 
 The full list lives in `CLAUDE.md`. The most important ones for newcomers:
 
-- **The shell runs from `src/`, everything else from the repo root.** The
-  shell entry point uses bare-package imports (`from entities import ...`).
-  `pytest` and `ruff` are configured from the repo root via
+- **`pytest` and `ruff` run from the repo root**, configured via
   `pyproject.toml`'s `pythonpath = ["src"]`.
 - **AS YAML shape: `as:` at the top, `name:` inside.** The parser requires
   the literal top-level key `as:` and reads the AS name from a nested

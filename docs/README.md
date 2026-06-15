@@ -15,8 +15,7 @@ docs/
 │   ├── routing-tables.md
 │   ├── terminals.md
 │   ├── nat-and-private-lans.md
-│   ├── yaml-format.md
-│   └── shell-cli.md
+│   └── yaml-format.md
 ├── architecture/          ← How the simulator is built
 │   ├── overview.md
 │   ├── entities.md
@@ -37,7 +36,7 @@ Read these to **use** loom. They assume you have Python 3.11+ installed
 and the repo cloned; no other prerequisites.
 
 1. [Getting started](user-guide/getting-started.md) — Install, run the UI,
-   run the legacy shell, send your first packet.
+   send your first packet.
 2. [Web UI](user-guide/web-ui.md) — Toolbar, canvas, inspector, terminals.
 3. [Building topologies](user-guide/building-topologies.md) — Add LANs,
    hosts, routers, point-to-point links; address rules.
@@ -53,7 +52,6 @@ and the repo cloned; no other prerequisites.
    table, overlap rules.
 8. [YAML format](user-guide/yaml-format.md) — Topology schema reference,
    save / resume workflow.
-9. [Shell CLI](user-guide/shell-cli.md) — The legacy `cmd.Cmd` REPL.
 
 ## Architecture / Technical Reference
 

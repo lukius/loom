@@ -332,10 +332,9 @@ This is a real bug class the project hit and fixed; the comment in
 
 ## Why threads, not asyncio?
 
-The simulator core was originally a `cmd.Cmd` shell program. Threads
-were the natural fit: each `Interface` and each `Network` is conceptually
-an autonomous moving piece, and `queue.Queue` + `threading.Event` gave
-the right primitives without an event loop.
+The simulator core uses threads throughout. Each `Interface` and each
+`Network` is conceptually an autonomous moving piece, and `queue.Queue` +
+`threading.Event` gave the right primitives without an event loop.
 
 When the web UI was added, the asyncio loop entered the picture **only
 for the network boundary**. The bridge is `server/events.py`:

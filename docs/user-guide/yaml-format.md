@@ -3,7 +3,6 @@
 The topology is described in YAML. The same format is used by:
 
 - The bundled sample (`samples/sample.yaml`).
-- The legacy shell's `read` command.
 - The SPA's **Import / Export** dialogs.
 - The server's `POST /topology` and the persisted
   `<source>.session.yaml`.
@@ -266,8 +265,7 @@ sessions.
 - `hosts` and `routers` share a namespace — no host can have the same
   name as a router.
 - Names are case-sensitive ASCII; the parser doesn't sanitize them
-  beyond YAML's own rules. Avoid spaces; the legacy shell's
-  whitespace-split arguments will choke.
+  beyond YAML's own rules. Avoid spaces.
 - The empty string is technically allowed as a name. Don't.
 
 ## Costs

@@ -127,15 +127,14 @@ flowchart TD
 
 A failure at any step raises `ParsingException` with a descriptive
 message. The AS is **partially constructed** at that point — threads
-have already been spawned for networks/links — but the caller (the shell
-or the FastAPI `SimState`) is expected to `as_obj.stop()` and discard it.
+have already been spawned for networks/links — but the caller (the FastAPI
+`SimState`) is expected to `as_obj.stop()` and discard it.
 There is no in-parser rollback.
 
 Three notes:
 
 1. **`Parser.parse(start_routing=True)` starts each router's protocol** by
-   default. The shell relies on this — it just calls `Parser(...).parse()`
-   and the routing protocol comes up. The server layer opts out: it calls
+   default. The server layer opts out: it calls
    `Parser(...).parse(start_routing=False)` because `idle` semantics demand
    that routers wait for an explicit `/sim/start` before broadcasting their
    first keepalive. Starting then stopping would race the initial tick and
@@ -292,7 +291,6 @@ additional fixtures referenced from `test/test_parser.py`.
 
 | Caller | What it does next |
 |---|---|
-| `src/shell/shell.py:do_read` | `self._system = Parser(arg).parse()` — replaces the live AS, stopping the previous one first |
 | `src/server/state.py:load_from_session` | Parses the session file, then **stops every router** to enforce `idle` semantics before the next `/sim/start` |
 
 Nothing else parses YAML. `GET /topology` returns re-serialized live

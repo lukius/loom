@@ -54,8 +54,6 @@ see [ns-3](https://www.nsnam.org/), [mininet](https://mininet.org/),
 - **YAML import / export** — The topology is the source of truth. Drop a
   YAML file into the import dialog, copy the canvas back out, persist or
   share.
-- **Legacy `cmd.Cmd` shell** — The original REPL is still available
-  (`python loom.py shell`); same simulator core underneath.
 - **No external state** — No database, no auth, no network calls.
   Everything lives in memory plus a single session-YAML clone on disk.
 
@@ -115,26 +113,6 @@ The server binds `127.0.0.1:8000` by default. Override:
 LOOM_PORT=8123 python loom.py
 ```
 
-### Legacy CLI shell
-
-```bash
-cd src
-python loom.py shell
-```
-
-```
-loom shell v1.0
-# read ../samples/sample.yaml
-# route r1
-# ping h1 h3
-# send h1 h2 hello
-# update_cost r1 eth0 25
-# exit
-```
-
-See [`docs/user-guide/shell-cli.md`](docs/user-guide/shell-cli.md) for the
-full command set.
-
 ## Documentation
 
 The full documentation set lives under [`docs/`](docs/).
@@ -145,14 +123,13 @@ Start here if you want to **drive** the simulator.
 
 | File | Topic |
 |---|---|
-| [`docs/user-guide/getting-started.md`](docs/user-guide/getting-started.md) | Install, run the UI and the shell, your first ping |
+| [`docs/user-guide/getting-started.md`](docs/user-guide/getting-started.md) | Install, run the UI, your first ping |
 | [`docs/user-guide/web-ui.md`](docs/user-guide/web-ui.md) | Toolbar, canvas, inspector, terminals — a guided tour |
 | [`docs/user-guide/building-topologies.md`](docs/user-guide/building-topologies.md) | Add LANs, hosts, routers, point-to-point links |
 | [`docs/user-guide/running-simulations.md`](docs/user-guide/running-simulations.md) | Start / pause / resume / reset, edits while paused, keepalive interval |
 | [`docs/user-guide/routing-tables.md`](docs/user-guide/routing-tables.md) | Inspecting routing tables, neighbors, costs |
 | [`docs/user-guide/terminals.md`](docs/user-guide/terminals.md) | Per-device terminals: `ping`, `send`, `ifconfig`, ... |
 | [`docs/user-guide/yaml-format.md`](docs/user-guide/yaml-format.md) | YAML schema reference, save / resume workflow |
-| [`docs/user-guide/shell-cli.md`](docs/user-guide/shell-cli.md) | The legacy `cmd.Cmd` shell |
 
 ### Architecture / Technical Reference
 
@@ -181,12 +158,11 @@ Start here if you want to **change** the simulator or understand how it works.
 ```
 loom/
 ├── src/
-│   ├── loom.py            # Entry point — web UI (default) or 'shell' subcommand
+│   ├── loom.py            # Entry point — starts the web UI
 │   ├── entities/          # AS, Router, Host, Network, Link, Interface, Address, Packet, Event, PauseGate
 │   ├── routing/           # RoutingProtocol (loom-OSPF link-state) + LSDB → NetworkGraph (Dijkstra)
 │   ├── parser/            # YAML topology loader + SystemValidator
-│   ├── server/            # FastAPI app, routes, sim state machine, persistence, command dispatch
-│   └── shell/             # cmd.Cmd-based REPL
+│   └── server/            # FastAPI app, routes, sim state machine, persistence, command dispatch
 ├── test/                  # pytest suite (190+ tests) + invalid YAML fixtures under resources/
 ├── samples/               # sample.yaml — the bundled example topology
 ├── web/                   # SPA: ES modules, styles, favicon, vitest tests
@@ -226,7 +202,7 @@ carry the load:
   (`docs/architecture/`) cover components, the link-state protocol,
   concurrency, the parser, the HTTP/WS API, and the SPA module map.
   User-guide pages (`docs/user-guide/`) cover the web UI, terminals,
-  YAML format, and the legacy shell.
+  and YAML format.
 
 An AI assistant pointed at `CLAUDE.md` plus the relevant
 `docs/architecture/` page can plan and execute most changes directly.

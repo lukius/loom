@@ -132,9 +132,9 @@ class UserMessage(Message):
 ```
 
 Created by `Host.send_message_to` and by `cmd_send` in the host terminal.
-The `payload` is a single string token — the shell's `send h1 h2 hello`
-syntax does not support quoting or spaces. (The terminals use
-`shlex.split`, so quoting works there if you need it.)
+The `payload` is a single string token. The terminal uses `shlex.split`,
+so quoting is supported: `send h2 "hello world"` yields a payload of
+`hello world`.
 
 ### `RoutingMessage`
 

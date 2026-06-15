@@ -69,14 +69,6 @@ prefix               next_hop        iface
 The columns match the SPA's inspector routing-table section.
 `0.0.0.0` for next hop means the prefix is directly connected.
 
-### From the legacy shell
-
-```
-# route r2
-```
-
-Same output format.
-
 ## What `0.0.0.0` means
 
 The simulator uses `0.0.0.0` as a sentinel meaning *"the destination

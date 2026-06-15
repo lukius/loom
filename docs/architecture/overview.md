@@ -249,10 +249,10 @@ Event kinds currently emitted:
 A few things deliberately don't appear above because they don't fit a
 layer cleanly:
 
-- **`EventTracer.register_message_event`** lets the legacy shell observe a
-  single message's lifecycle (`on_sent` / `on_received` / `on_forwarded`)
-  by registering callbacks keyed by message identity. The web UI doesn't
-  use it — it consumes the broadcast stream instead.
+- **`EventTracer.register_message_event`** lets a caller observe a single
+  message's lifecycle (`on_sent` / `on_received` / `on_forwarded`) by
+  registering callbacks keyed by message identity. Consumers that want a
+  broadcast stream use the WebSocket event bus instead.
 - **`Host.ping`** does its own thread synchronization: a per-flow
   `threading.Event` plus a `_pending_pings` dict, woken by the matching
   `PingReply`. RTT comes back as `time.monotonic() - request_ts`.

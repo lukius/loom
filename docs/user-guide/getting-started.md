@@ -169,7 +169,6 @@ atomically when you click **Resume**. See
   hosts, routers, and point-to-point links.
 - [YAML format](yaml-format.md) — write topologies by hand or import
   them; understand how the SPA saves and resumes.
-- [Shell CLI](shell-cli.md) — the legacy `cmd.Cmd` REPL.
 
 ## Troubleshooting
 

@@ -365,9 +365,8 @@ is failed.
 { "ok": true }
 ```
 
-This endpoint is not exposed as a terminal command and is not available
-in the shell. It is intended for fault-injection scenarios — test
-scripts and future automation.
+This endpoint is not exposed as a terminal command. It is intended for
+fault-injection scenarios — test scripts and future automation.
 
 ### `GET /devices/{name}/routes`
 
@@ -449,8 +448,7 @@ plus one `interface_state_changed` per interface.
 { "kind": "ping_result", "device": "h1", "dst": "100.200.0.20", "seq": 1, "rtt_ms": 2.34 }
 ```
 
-Emitted once per probe from `Host.ping`, regardless of whether the ping
-was issued from the terminal or the shell. `rtt_ms` is `null` on timeout.
+Emitted once per probe from `Host.ping`. `rtt_ms` is `null` on timeout.
 `seq` is a 1-based counter that resets on each `ping` call.
 
 ```json
