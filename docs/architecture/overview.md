@@ -13,7 +13,8 @@ responsibility and a narrow seam to its neighbors.
 │                Web SPA  (web/, native ES modules)               │
 │                                                                 │
 │  app.js · state.js · canvas.js · inspector.js · terminals.js    │
-│  packets.js · sim.js · yaml-io.js · utils.js                    │
+│  packets.js · packetstore.js · packetspanel.js · sim.js         │
+│  yaml-io.js · utils.js · (see web-spa.md for the full map)      │
 │                                                                 │
 │  State + cross-component events flow through `bus`              │
 │  (EventTarget singleton in state.js).                           │
@@ -24,7 +25,7 @@ responsibility and a narrow seam to its neighbors.
 ┌──────────────────────────────▼──────────────────────────────────┐
 │             FastAPI server (src/server/, async)                 │
 │                                                                 │
-│  routes/    sim.py · topology.py · devices.py · ws.py           │
+│  routes/    sim.py · topology.py · devices.py · files.py · ws.py │
 │  command/   dispatch.py · host.py · router.py                   │
 │  state.py   SimState (idle/running/paused) — owns the AS        │
 │  events.py  EventBus — bridges worker threads to asyncio        │
@@ -37,10 +38,11 @@ responsibility and a narrow seam to its neighbors.
 │                                                                 │
 │  AS  Router  Host  Network  Link  Interface  Address  Packet    │
 │  PauseGate   EventTracer                                        │
-│  RoutingProtocol (loom-OSPF link-state) + LSDB → NetworkGraph (Dijkstra)         │
+│  LinkStateProtocol (loom-OSPF; abstract base: RoutingProtocol)  │
+│  + LSDB → NetworkGraph (Dijkstra)                               │
 │                                                                 │
 │  One daemon thread per Interface, one per Network/Link, one     │
-│  keepalive thread per Router. All gate on PauseGate.            │
+│  protocol thread per Router. All gate on PauseGate.             │
 └──────────────────────────────┬──────────────────────────────────┘
                                │   parses, validates
 ┌──────────────────────────────▼──────────────────────────────────┐
@@ -69,7 +71,7 @@ There is one Python process. Inside it:
   |---|---|---|
   | `Interface` | 1 per interface | Drain inbound frames, dispatch to its device |
   | `Network` / `Link` (`_FabricBase`) | 1 per fabric | Drain frames sent into the fabric, dispatch to peers |
-  | `RoutingProtocol` | 1 per router | Periodic keepalive flood + state recompute |
+  | `LinkStateProtocol` | 1 per router | Periodic hello/LSA flood + SPF recompute |
 
 The thread fan-out for a topology with H hosts, R routers, N LANs, L
 links, and an average of K interfaces per router is roughly:
@@ -78,7 +80,7 @@ links, and an average of K interfaces per router is roughly:
 threads ≈ H                           (one Interface thread per host)
         + R · K                       (Interface threads on routers)
         + N + L                       (one fabric thread per network and link)
-        + R                           (one keepalive thread per router)
+        + R                           (one protocol thread per router)
         + 1                           (asyncio loop)
 ```
 
@@ -195,8 +197,8 @@ Rules enforced by `SimState`:
 
 - **`load_from_session`** stops the previous AS (if any) and parses the
   session file with `start_routing=False`, so routers exist but their
-  keepalive threads are not started — they wait for `start()`.
-- **`start`** resumes the gate and starts every router's keepalive.
+  protocol threads are not started — they wait for `start()`.
+- **`start`** resumes the gate and starts every router's protocol thread.
 - **`pause`** pauses the gate. In-flight frames remain queued; threads
   block on `wait_or_stop`. No frames are lost.
 - **`resume`** applies an optional patch (`add_*` / `remove_*` /
@@ -243,6 +245,15 @@ Event kinds currently emitted:
 - `packet` — every frame leaving an interface (`Interface.send_to`)
 - `routing_table_changed` — every recompute (`LinkStateProtocol._recompute_routing_table`)
 - `sim_state` — every state transition (`SimState.start/pause/resume/stop`)
+- `device_state_changed` — router halted or resumed (`Router.halt` / `Router.resume`)
+- `interface_state_changed` — interface brought up or down (`Interface._emit_state`)
+- `lsdb_changed` — LSDB updated with a new LSA (`LinkStateProtocol`); emitted but currently unconsumed by the SPA
+- `neighbor_state_changed` — adjacency state changed (`LinkStateProtocol._broadcast_neighbor_state_changed`)
+- `ping_result` — one ICMP echo reply or timeout (`Host.ping`)
+- `topology_changed` — topology mutated via a live edit (`SimState.edit`)
+- `nat` — a router performed source or destination NAT (`Router._apply_source_nat` / `_reverse_inbound_nat`)
+- `nat_table_changed` — a router's NAT table was mutated (`Router._apply_source_nat`)
+- `router_intercept` — a router answered an ICMP echo addressed to one of its own IPs (`Router._reply_to_ping`)
 
 ## What's Not in This Diagram
 
@@ -257,7 +268,7 @@ layer cleanly:
   `threading.Event` plus a `_pending_pings` dict, woken by the matching
   `PingReply`. RTT comes back as `time.monotonic() - request_ts`.
 - **`Router._handle_forwarding`** does **not** raise on TTL expiry — it
-  drops to stderr and returns `None`. The packet animation simply ends.
+  logs a warning and returns `None`, silently dropping the packet.
 
 For the deep dives, jump to:
 
