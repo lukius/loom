@@ -6,15 +6,17 @@ class BaseAddress:
     _octets: List[int]
 
     def __init__(self, address: str):
-        self._address = address
-
-        octets = address.split('.')
-        self._octets = [
-            int(octets[0]),
-            int(octets[1]),
-            int(octets[2]),
-            int(octets[3])
-        ]
+        parts = address.split('.')
+        if len(parts) != 4:
+            raise ValueError(f'invalid IP address: {address!r}')
+        try:
+            parsed = [int(p) for p in parts]
+        except ValueError:
+            raise ValueError(f'invalid IP address: {address!r}')
+        for octet in parsed:
+            if octet < 0 or octet > 255:
+                raise ValueError(f'invalid IP address: {address!r}')
+        self._octets = parsed
 
     def octets(self) -> list:
         return list(self._octets)
@@ -26,7 +28,7 @@ class BaseAddress:
 class Address(BaseAddress):
 
     def __str__(self) -> str:
-        return self._address
+        return '.'.join(map(str, self._octets))
 
     def is_private(self) -> bool:
         """Return True if this address falls within an RFC 1918 private range."""

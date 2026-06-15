@@ -1,5 +1,7 @@
 import unittest
 
+import pytest
+
 from entities import Address, NetworkAddress
 
 
@@ -256,3 +258,61 @@ def test_network_matches_does_not_mutate_caller():
     local = list(snapshot)
     net._matches(local)
     assert local == snapshot
+
+
+# --- Octet validation (Task 5 item 1) ---
+
+def test_address_too_few_octets_raises_value_error():
+    """Address('1.2.3') must raise ValueError, not a raw IndexError."""
+    with pytest.raises(ValueError, match='1.2.3'):
+        Address('1.2.3')
+
+
+def test_address_octet_above_255_raises_value_error():
+    """Address('999.1.2.500') must reject out-of-range octets with ValueError."""
+    with pytest.raises(ValueError, match='999.1.2.500'):
+        Address('999.1.2.500')
+
+
+def test_network_address_too_few_octets_raises_value_error():
+    """NetworkAddress propagates the octet validation from BaseAddress."""
+    with pytest.raises(ValueError, match='1.2.3'):
+        NetworkAddress('1.2.3/24')
+
+
+def test_network_address_octet_out_of_range_raises_value_error():
+    """NetworkAddress propagates the range check from BaseAddress."""
+    with pytest.raises(ValueError, match='300.0.0.0'):
+        NetworkAddress('300.0.0.0/24')
+
+
+def test_address_zero_octets_raises_value_error():
+    """Empty string address must raise ValueError."""
+    with pytest.raises(ValueError):
+        Address('')
+
+
+def test_address_five_octets_raises_value_error():
+    """Five-octet string must raise ValueError."""
+    with pytest.raises(ValueError):
+        Address('1.2.3.4.5')
+
+
+def test_address_negative_octet_raises_value_error():
+    """Negative octet value must raise ValueError."""
+    with pytest.raises(ValueError):
+        Address('10.0.0.-1')
+
+
+# --- Canonical __str__ (Task 5 item 2) ---
+
+def test_address_str_is_canonical_for_leading_zero_octet():
+    """str(Address('010.0.0.1')) must render '10.0.0.1', not '010.0.0.1'."""
+    addr = Address('010.0.0.1')
+    assert str(addr) == '10.0.0.1'
+
+
+def test_address_str_rebuilds_from_octets():
+    """Address.__str__ must equal '.'.join(map(str, octets()))."""
+    addr = Address('192.168.001.100')
+    assert str(addr) == '.'.join(map(str, addr.octets()))
