@@ -1,4 +1,4 @@
-"""Tests for SimState lock discipline (findings H9, H9b, H11).
+"""Tests for SimState lock discipline (findings H9, H9b, H11, H12).
 
 All assertions use threading.Event barriers — no time.sleep-based races.
 """
@@ -539,4 +539,67 @@ def test_reset_session_releases_lock_before_internet_stop(
     )
     assert not edit_lock_free, (
         "_edit_lock was NOT held during internet.stop() in reset_session()"
+    )
+
+
+# ---------------------------------------------------------------------------
+# H12: start() must hold _edit_lock so it serialises with load_from_text
+#
+# The race: load_from_text checks `_state != "idle"` under _lock, releases
+# _lock for the slow parse, then calls _swap_internet (which re-acquires
+# _lock and sets _state = "idle").  Without _edit_lock in start(), a
+# concurrent start() can flip _state to "running" after the idle-check but
+# before the swap — the import then silently clobbers the running sim.
+#
+# Strategy: hold _edit_lock from a background thread; assert that a
+# concurrent start() BLOCKS until the lock is released.  Deterministic via
+# threading.Event barriers — no time.sleep races.
+# ---------------------------------------------------------------------------
+
+
+def test_start_serializes_under_edit_lock(minimal_src):
+    """start() must not proceed while _edit_lock is held by an editor/importer."""
+    sim = SimState(minimal_src)
+    sim.load_from_session()  # _state = "idle", topology ready
+
+    edit_lock_held = threading.Event()    # background: has _edit_lock
+    edit_lock_release = threading.Event()  # main: tells background to release
+    start_unblocked = threading.Event()   # main: start() returned
+
+    def hold_edit_lock():
+        with sim._edit_lock:
+            edit_lock_held.set()
+            edit_lock_release.wait()
+
+    t_holder = threading.Thread(target=hold_edit_lock, daemon=True)
+    t_holder.start()
+
+    edit_lock_held.wait()  # background now holds _edit_lock
+
+    start_returned_early = threading.Event()
+
+    def do_start():
+        sim.start()
+        start_unblocked.set()
+
+    t_start = threading.Thread(target=do_start, daemon=True)
+    t_start.start()
+
+    # Give start() 0.3 s — it must NOT complete while _edit_lock is held.
+    t_start.join(timeout=0.3)
+    if not t_start.is_alive():
+        start_returned_early.set()
+
+    # Release the editor lock — start() must now proceed.
+    edit_lock_release.set()
+    t_holder.join(timeout=2.0)
+    t_start.join(timeout=5.0)
+    sim.stop()
+
+    assert not start_returned_early.is_set(), (
+        "start() returned while _edit_lock was held by an editor (H12) "
+        "— it does not serialise with load_from_text"
+    )
+    assert start_unblocked.is_set(), (
+        "start() never completed after _edit_lock was released"
     )

@@ -212,18 +212,25 @@ class SimState:
             self._state = "idle"
 
     def start(self):
-        """Transition idle -> running. No-op if already running."""
-        with self._lock:
-            if self._state == "running":
-                return
-            if self._state != "idle":
-                raise InvalidStateTransition(self._state, "running")
-            if self._as is None:
-                raise InvalidStateTransition("no_topology", "running")
-            self._as.gate().resume()
-            for r in self._as.routers().values():
-                r.start()
-            self._state = "running"
+        """Transition idle -> running. No-op if already running.
+
+        Takes _edit_lock before _lock (matching the stop/resume/edit ordering)
+        so that a concurrent load_from_text or reset_session cannot swap the
+        topology between the idle-guard check and the state flip — closing the
+        import↔start TOCTOU window.
+        """
+        with self._edit_lock:
+            with self._lock:
+                if self._state == "running":
+                    return
+                if self._state != "idle":
+                    raise InvalidStateTransition(self._state, "running")
+                if self._as is None:
+                    raise InvalidStateTransition("no_topology", "running")
+                self._as.gate().resume()
+                for r in self._as.routers().values():
+                    r.start()
+                self._state = "running"
 
     def pause(self):
         """Transition running -> paused."""
