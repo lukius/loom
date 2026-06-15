@@ -82,6 +82,7 @@ loom/
 - When touching `docs/user-guide/` for a user-visible change, follow the project-local **`user-guide-update`** skill (`.claude/skills/user-guide-update/SKILL.md`) — it covers page selection, action-level wording, and capturing the screenshot via `npm run screenshot` (tool at `tools/screenshot.mjs`).
 - `CONTRIBUTING.md` is the canonical dev guide; this file (`CLAUDE.md`) is the cheat sheet of non-obvious traps. Don't duplicate content — link from one to the other.
 - If a behavior is intentionally undocumented (e.g. an internal helper), say nothing — do not write speculative docs.
+- **`docs/es/` (and `README.es.md`) is a Spanish translation of `docs/` (and `README.md`); English is canonical.** During normal development, IGNORE it: don't read it for context and don't update it alongside English doc edits — it is a periodically-refreshed translation, not a source of truth, and English is the single authority. Only touch it when explicitly doing translation work (then re-translate the changed English pages). This keeps the English docs authoritative and keeps agent context lean.
 
 ### Linting & style
 - Run `ruff check src/ test/` before every commit; fix or `# noqa` (with reason) any reported issues. Do not commit a dirty lint.
