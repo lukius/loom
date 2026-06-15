@@ -98,6 +98,10 @@ class Parser:
                     router.protocol().set_timers(**protocol_config)
 
         if 'hosts' in system_dict:
+            self._check_no_duplicate_device_names(
+                short_name, system_dict['routers'] if 'routers' in system_dict else {},
+                system_dict['hosts'],
+            )
             self._parse_hosts(system, validator, system_dict['hosts'], hosts_on_links)
 
         self._post_pass_links(system, hosts_on_links)
@@ -245,6 +249,21 @@ class Parser:
 
             if has_link:
                 hosts_on_links.append((host, explicit_gw_str))
+
+    def _check_no_duplicate_device_names(self, short_name, routers_dict, hosts_dict):
+        """Fail if any host name duplicates a router name.
+
+        `AS.device()` resolves hosts first, so a host/router name collision
+        makes the router unreachable via the device lookup path.
+        """
+        router_names = set(routers_dict) if isinstance(routers_dict, dict) else set()
+        host_names = set(hosts_dict) if isinstance(hosts_dict, dict) else set()
+        duplicates = router_names & host_names
+        for name in sorted(duplicates):
+            self._fail(
+                f'{short_name}: duplicate device name {name!r}'
+                f' (used by both a router and a host)'
+            )
 
     def _post_pass_links(self, system, hosts_on_links):
         for name, link in system.links().items():

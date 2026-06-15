@@ -422,6 +422,13 @@ class ParserTest(unittest.TestCase):
         )
         self.assertEqual(internet.single_as().asn(), 64500)
 
+    # --------------------------------------------------------- H1 hardening --
+
+    def test_duplicate_device_name(self):
+        self._run_parsing_error_test(
+            'duplicate_device_name', 'duplicate device name'
+        )
+
     # ----------------------------------------------------------------- helpers
 
     def _run_parsing_error_test(self, filename, expected_msg):
