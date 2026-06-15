@@ -136,9 +136,11 @@ Returns an alphabetically-sorted list of bare filenames. Returns
 { "yaml": "<full YAML text>" }
 ```
 
-Only bare filenames (no `/`, `\`, `.`, or `..`) are accepted; any other
-form returns `400`. A filename that does not exist in the samples
-directory returns `404`.
+Names containing `/` or `\`, or equal to `""`, `"."`, or `".."` return
+`400`; a `.` inside a name is allowed (so `sample.yaml` loads normally).
+A well-formed name that does not exist in the samples directory returns
+`404`. Note that `GET /samples` lists files with both `.yaml` and `.yml`
+extensions.
 
 ---
 
@@ -565,14 +567,15 @@ is the exact list of ops that was applied.
   "device": "r1",
   "interface": "eth0",
   "peer": "r2",
-  "state": "TWO_WAY",
+  "state": "two_way",
   "last_hello_at": 1234567890.123,
   "peer_acked_at": 1234567890.456
 }
 ```
 
 Emitted by `LinkStateProtocol` whenever a neighbor transitions between
-adjacency states (`DOWN`, `INIT`, `TWO_WAY`). `last_hello_at` is the
+adjacency states (emitted values are lowercase: `"down"`, `"init"`,
+`"two_way"`; the enum names in `NeighborState` are uppercase). `last_hello_at` is the
 monotonic timestamp of the last Hello heard from this peer (or `null`
 before the first Hello); `peer_acked_at` is when the peer last listed
 this router in its own `neighbors_heard` list (or `null` if not yet
@@ -624,7 +627,7 @@ fires immediately after from the same method, at the RIB level.
 Emitted once per packet at each NAT rewrite. `direction: "outbound"`
 fires from `Router._apply_source_nat` when a private-source packet
 crosses to a public egress. `direction: "inbound"` fires from
-`Router._handle_inbound_nat` when a return packet's destination is
+`Router._reverse_inbound_nat` when a return packet's destination is
 rewritten back to the original private address. `flow_id` is
 `payload.flow_key()` — the conversation UUID shared between request and
 reply. `payload_id` identifies this specific `Message` instance.
