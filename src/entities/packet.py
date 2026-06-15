@@ -110,6 +110,15 @@ class PingReply(Message):
         return str(self._request_id)
 
 
+def _payload_id(payload) -> str | None:
+    """Return a string payload identifier, or None if the payload has no id.
+
+    Centralised here so interface.py and router.py share the same guard rather
+    than each repeating the ``hasattr`` idiom inline.
+    """
+    return str(payload.id()) if hasattr(payload, "id") else None
+
+
 # Re-exported so `from entities.packet import Datagram, RoutingMessage` and
 # `from entities import Datagram, RoutingMessage` still resolve. Canonical
 # home for these wire-format classes is routing.messages.

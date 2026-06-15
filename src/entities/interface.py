@@ -1,12 +1,14 @@
+import logging
 import queue
 import threading
-import traceback
 
 from .address import Address
 from .base import Entity
 from .event import EventTracer
 from .exception import InterfaceNotReadyException
-from .packet import Datagram, Frame, PingReply, PingRequest, UserMessage
+from .packet import Datagram, Frame, PingReply, PingRequest, UserMessage, _payload_id
+
+_logger = logging.getLogger(__name__)
 
 # How often (seconds) a gate-parked worker re-checks its own stop flag so
 # that stop() is noticed within one poll interval rather than after the full
@@ -142,7 +144,7 @@ class Interface(Entity):
         # NAT rewrites of src/dst and shared between request and reply when
         # the payload supports it (see Message.flow_key).
         payload = datagram.payload()
-        payload_id = str(payload.id()) if hasattr(payload, "id") else None
+        payload_id = _payload_id(payload)
         flow = payload.flow_key() if hasattr(payload, "flow_key") else None
         payload_src = str(datagram.source())
         payload_dst = str(datagram.destination())
@@ -210,4 +212,4 @@ class Interface(Entity):
                     raise InterfaceNotReadyException()
                 self._device.handle_packet(frame.payload(), self)
             except Exception:
-                traceback.print_exc()
+                _logger.exception("unhandled exception in interface dispatch loop")

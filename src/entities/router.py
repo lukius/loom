@@ -1,4 +1,4 @@
-import sys
+import logging
 from threading import Lock
 from typing import List, Optional
 
@@ -10,7 +10,9 @@ from .event import EventTracer
 from .exception import InvalidInterfaceException
 from .interface import Interface
 from .nat import NATTable, flow_id
-from .packet import Datagram, PingReply, PingRequest, RoutingMessage
+from .packet import Datagram, PingReply, PingRequest, RoutingMessage, _payload_id
+
+_logger = logging.getLogger(__name__)
 
 
 class RoutingRule:
@@ -285,7 +287,7 @@ class Router(NetworkDevice):
             )
             if original_dst is not None:
                 payload = packet.payload()
-                payload_id = str(payload.id()) if hasattr(payload, 'id') else None
+                payload_id = _payload_id(payload)
                 EventTracer._broadcast({
                     'kind': 'nat',
                     'router': self.name(),
@@ -365,7 +367,7 @@ class Router(NetworkDevice):
         packet.decrement_ttl()
         if packet.ttl() <= 0:
             dst = packet.destination()
-            print(f'TTL expired: dropping datagram to {dst}', file=sys.stderr)
+            _logger.warning("TTL expired: dropping datagram to %s", dst)
             return None
 
         dest = packet.destination()
@@ -394,7 +396,7 @@ class Router(NetworkDevice):
             )
             packet.rewrite_source(rewritten_src)
             payload = packet.payload()
-            payload_id = str(payload.id()) if hasattr(payload, 'id') else None
+            payload_id = _payload_id(payload)
             EventTracer._broadcast({
                 'kind': 'nat',
                 'router': self.name(),

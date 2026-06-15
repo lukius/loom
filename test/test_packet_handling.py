@@ -1,5 +1,3 @@
-import io
-import sys
 import unittest
 
 from entities import (
@@ -231,15 +229,11 @@ class PacketHandlingTest(unittest.TestCase):
             on_received=lambda *args, **kwargs: None
         )
 
-        captured = io.StringIO()
-        sys.stderr = captured
-        try:
+        with self.assertLogs("entities.router", level="WARNING") as cm:
             self.router._handle_forwarding(datagram)
-        finally:
-            sys.stderr = sys.__stderr__
 
         self.assertFalse(forwarded)
-        self.assertIn('TTL', captured.getvalue())
+        self.assertTrue(any("TTL" in line for line in cm.output))
 
     def _user_msg_datagram(self, payload, src, dst):
         msg = UserMessage(payload)

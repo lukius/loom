@@ -1,10 +1,12 @@
+import logging
 import queue
 import threading
-import traceback
 from typing import Optional
 
 from .base import Entity
 from .exception import TooManyEndpointsException
+
+_logger = logging.getLogger(__name__)
 
 # How often (seconds) a gate-parked worker re-checks its own stop flag so
 # that stop() is noticed within one poll interval rather than after the full
@@ -111,4 +113,4 @@ class _FabricBase(Entity):
             try:
                 self._dispatch_packet(packet)
             except Exception:
-                traceback.print_exc()
+                _logger.exception("unhandled exception in fabric dispatch loop")
