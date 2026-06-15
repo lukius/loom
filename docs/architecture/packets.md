@@ -225,7 +225,7 @@ class PingReply(Message):
     def flow_key(self) -> str:
         # Echo the originating request's UUID so request + reply share
         # one conversation key. Falls back to self._id when request_id
-        # is None (e.g. router-generated replies before BGP era).
+        # is None.
         if self._request_id is None:
             return super().flow_key()
         return str(self._request_id)
