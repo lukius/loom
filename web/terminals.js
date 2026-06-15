@@ -1,5 +1,5 @@
 // web/terminals.js
-// Floating device terminals: per-device cmd.Cmd-style REPL windows that send
+// Floating device terminals: per-node command terminal windows that send
 // commands through RuntimeClient. Listens on the shared bus for sim state
 // (to disable input while paused) and open requests from the canvas.
 import { bus } from './state.js';

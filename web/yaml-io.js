@@ -59,7 +59,7 @@ function ensureLinkPositions() {
 
 /* ---------- exportYaml ---------------------------------------------------
    Serialises state into a YAML string that the Python parser accepts.
-   Envelope: internet: / autonomous_systems: / <asName>: per the D.2.d schema.
+   Envelope: internet: / autonomous_systems: / <asName>: per the current topology schema.
    Links: emitted as a top-level `links:` block when state.links is non-empty.
    Interfaces: emit `link: <name>` if iff.link is set; otherwise `network: <name>`.
    -------------------------------------------------------------------------- */
@@ -140,7 +140,7 @@ export function exportYaml() {
 
 /* ---------- importYaml ---------------------------------------------------
    Parses a YAML string and loads it into state.
-   Envelope: internet: / autonomous_systems: / <asName>: per the D.2.d schema.
+   Envelope: internet: / autonomous_systems: / <asName>: per the current topology schema.
    Links: reads top-level `links:` into state.links.
    Interfaces: if iff.link is present, stores { link, address, cost };
                otherwise stores { network, address, cost } as before.
