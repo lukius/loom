@@ -72,8 +72,9 @@ def wait_for_gate(gate, stop_event, poll=_PAUSE_POLL_INTERVAL) -> bool:
 ```
 
 `wait_for_gate` is the canonical gate primitive for all packet workers
-and for the protocol loop's gate check. `PauseGate.sleep` exists on the
-class but has no callers in the current codebase.
+and for the protocol loop's gate check. `PauseGate.sleep` is not used by
+any worker loop; its sole caller is the ping command's inter-probe wait
+(`server/command/host.py`), which sleeps between probes.
 
 Lifecycle map:
 
