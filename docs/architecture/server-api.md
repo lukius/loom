@@ -654,6 +654,29 @@ LRU order (oldest first). Subscribers that need the current NAT state
 without polling `GET /devices/{name}/nat-table` can maintain a local
 copy by applying each `nat_table_changed` event.
 
+```json
+{
+  "kind": "router_intercept",
+  "router": "r1",
+  "originator": "10.0.0.10",
+  "pinged_address": "200.100.0.1",
+  "received_on": "eth0",
+  "owning_iface": "eth1",
+  "payload_id": "a1b2..."
+}
+```
+
+Emitted by a router when it answers an ICMP echo (`PingRequest`)
+addressed to one of its own interface IPs. `router` is the router
+name. `originator` is the sender's IP address. `pinged_address` is
+the destination IP from the incoming request (the router's own
+address that was targeted). `received_on` is the name of the
+interface the request arrived on. `owning_iface` is the name of the
+interface that owns `pinged_address` (may differ from `received_on`
+when the request arrived on a different interface than the one holding
+the pinged address), or `null` if not found. `payload_id` is the UUID
+of the reply `Message` instance.
+
 Notes:
 
 - `payload_id` identifies a **single direction** of a flow (a single
