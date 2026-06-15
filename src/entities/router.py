@@ -276,33 +276,43 @@ class Router(NetworkDevice):
     def handle_packet(self, packet, interface):
         if not interface.is_up():
             return  # ingress interface administratively down — drop
+        if self._reverse_inbound_nat(packet, interface):
+            return
+        super().handle_packet(packet, interface)
+
+    def _reverse_inbound_nat(self, packet, interface) -> bool:
+        """Reverse destination-NAT for packets arriving on a public interface.
+
+        Returns True if the packet was consumed (caller should return immediately),
+        False to fall through to normal packet handling.
+        """
         dst = packet.destination()
         on_public = not interface.network().address().is_private()
-        if dst == interface.address() and on_public:
-            fid = flow_id(packet.payload())
-            original_dst = self._nat_table.lookup(
-                rewritten_src=dst,
-                original_dst=packet.source(),
-                flow_id=fid,
-            )
-            if original_dst is not None:
-                payload = packet.payload()
-                payload_id = _payload_id(payload)
-                EventTracer._broadcast({
-                    'kind': 'nat',
-                    'router': self.name(),
-                    'direction': 'inbound',
-                    'rewritten_dst': str(dst),
-                    'original_dst': str(original_dst),
-                    'src': str(packet.source()),
-                    'flow_id': fid,
-                    'payload_id': payload_id,
-                })
-                packet.rewrite_destination(original_dst)
-                self._handle_forwarding(packet)
-                return
-
-        super().handle_packet(packet, interface)
+        if not (dst == interface.address() and on_public):
+            return False
+        fid = flow_id(packet.payload())
+        original_dst = self._nat_table.lookup(
+            rewritten_src=dst,
+            original_dst=packet.source(),
+            flow_id=fid,
+        )
+        if original_dst is None:
+            return False
+        payload = packet.payload()
+        payload_id = _payload_id(payload)
+        EventTracer._broadcast({
+            'kind': 'nat',
+            'router': self.name(),
+            'direction': 'inbound',
+            'rewritten_dst': str(dst),
+            'original_dst': str(original_dst),
+            'src': str(packet.source()),
+            'flow_id': fid,
+            'payload_id': payload_id,
+        })
+        packet.rewrite_destination(original_dst)
+        self._handle_forwarding(packet)
+        return True
 
     def _handle_message(self, msg, interface, packet):
         if isinstance(msg, RoutingMessage):
@@ -385,39 +395,45 @@ class Router(NetworkDevice):
         if next_hop == NullAddress:
             next_hop = packet.destination()
 
-        src = packet.source()
-        if src.is_private() and not out_iface.network().address().is_private():
-            original_src = src
-            rewritten_src = out_iface.address()
-            fid = flow_id(packet.payload())
-            self._nat_table.register(
-                rewritten_src, packet.destination(),
-                flow_id=fid, original_src=original_src,
-            )
-            packet.rewrite_source(rewritten_src)
-            payload = packet.payload()
-            payload_id = _payload_id(payload)
-            EventTracer._broadcast({
-                'kind': 'nat',
-                'router': self.name(),
-                'direction': 'outbound',
-                'original_src': str(original_src),
-                'rewritten_src': str(rewritten_src),
-                'dst': str(packet.destination()),
-                'flow_id': fid,
-                'payload_id': payload_id,
-            })
-            EventTracer._broadcast({
-                'kind': 'nat_table_changed',
-                'device': self.name(),
-                'entries': self._nat_table.snapshot(),
-            })
+        if packet.source().is_private() and not out_iface.network().address().is_private():  # noqa: E501
+            self._apply_source_nat(packet, out_iface)
 
         out_iface.send_to(packet, next_hop)
 
         return EventTracer.datagram_forwarded(
             src=out_iface.address(), dst=next_hop, datagram=packet
         )
+
+    def _apply_source_nat(self, packet, out_iface) -> None:
+        """Rewrite the packet's source to the egress interface's public address.
+
+        Records the flow in the NAT table and broadcasts the ``nat`` and
+        ``nat_table_changed`` events so subscribers can track the mapping.
+        """
+        original_src = packet.source()
+        rewritten_src = out_iface.address()
+        fid = flow_id(packet.payload())
+        self._nat_table.register(
+            rewritten_src, packet.destination(),
+            flow_id=fid, original_src=original_src,
+        )
+        packet.rewrite_source(rewritten_src)
+        payload_id = _payload_id(packet.payload())
+        EventTracer._broadcast({
+            'kind': 'nat',
+            'router': self.name(),
+            'direction': 'outbound',
+            'original_src': str(original_src),
+            'rewritten_src': str(rewritten_src),
+            'dst': str(packet.destination()),
+            'flow_id': fid,
+            'payload_id': payload_id,
+        })
+        EventTracer._broadcast({
+            'kind': 'nat_table_changed',
+            'device': self.name(),
+            'entries': self._nat_table.snapshot(),
+        })
 
     def _has_public_interface(self):
         return any(
