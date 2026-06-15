@@ -43,7 +43,7 @@ Columns:
 - **Prefix** — the destination network (an IPv4 CIDR).
 - **Next hop** — the IP of the next-hop router, or `0.0.0.0` if the
   destination is directly connected.
-- **Interface** — which of this router's interfaces forwards traffic
+- **Iface** — which of this router's interfaces forwards traffic
   for this prefix.
 
 The table is **rebuilt from scratch** on every relevant graph change —
@@ -62,11 +62,14 @@ route
 prefix               next_hop        iface
 200.100.0.0/24       0.0.0.0         eth0
 100.200.0.0/24       0.0.0.0         eth1
-150.10.10.0/24       150.10.10.1     eth2
-10.0.0.0/30          0.0.0.0         eth2
+150.10.10.0/24       0.0.0.0         eth2
+10.0.0.0/30          200.100.0.1     eth0
 ```
 
-The columns match the SPA's inspector routing-table section.
+This is `r2`'s table in the sample topology. The three directly-connected
+LANs show `0.0.0.0` as next hop; the point-to-point link (`10.0.0.0/30`)
+is not directly attached to `r2`, so traffic is forwarded to `r1`
+(`200.100.0.1`) on `eth0` — the cheapest path to the link.
 `0.0.0.0` for next hop means the prefix is directly connected.
 
 ## What `0.0.0.0` means
@@ -132,14 +135,25 @@ refresh interval takes up to ~90 s after a change. Drop the **LSA refresh
 interval** in the **Protocol** popover to 1 s and the same change converges
 in under 3 s.
 
-There is **no failure detection** in `loom`. If you delete a router
-while the sim is running (only possible while paused), the other
-routers stop hearing it — but their graphs still reference the dead
-router until *some other* change forces a recompute that drops it.
-This is intentional: the simulator is for teaching link-state
-mechanics, not for modeling failures.
+The protocol **does detect failures**. If a router stops sending
+neighbor-discovery messages (for example, because you crashed it), its
+peers notice the silence. After three consecutive missed intervals —
+the **dead interval**, equal to 3 × the Hello interval (default 30 s)
+— the adjacency is marked down. After two full LSA-refresh intervals
+— the **max-age** timer (default 60 s) — the dead router's
+advertisement is purged from the network graph and every router
+recomputes its routes automatically.
+
+At the default 10 s Hello and 30 s LSA-refresh intervals, the full
+cycle from crash to reconvergence takes on the order of tens of
+seconds (up to 30 s to declare the neighbor dead, then up to 60 s for
+the stale advertisement to expire). Lower the intervals in the
+**Protocol** popover to see convergence happen in a few seconds
+instead.
 
 ## Neighbors
+
+### From the terminal
 
 A router can list its **directly-connected neighbors** — other routers
 on the same LAN or link.
@@ -170,7 +184,24 @@ first advertisement has arrived. If a router shows no neighbors,
 either:
 
 - It has no router peers (you wired it only to hosts), or
-- It hasn't completed a keepalive cycle yet (give it one interval).
+- It hasn't completed a Hello cycle yet (give it one interval).
+
+### From the inspector
+
+Click a router on the canvas. The inspector's **Neighbors** section
+(below the routing table) shows each interface and the adjacency state
+with every peer on that interface:
+
+| State | Meaning |
+|---|---|
+| **TWO_WAY** | Bidirectional — both routers have heard each other's Hello and listed each other as neighbors. Routes are exchanged normally. |
+| **INIT** | One-way — this router has heard a Hello from the peer, but the peer's Hello has not yet listed this router. Typically a transient state that resolves within one Hello interval. |
+| **DOWN** | The peer is expected (another router is attached to the same LAN or link) but no recent Hello has arrived. Shown after a crash or if the peer's dead interval has elapsed. |
+| **no other routers** | The interface connects only to hosts — there is nothing to peer with. This is normal for a stub interface. |
+
+The summary line (e.g. *2 peers · 3 adjacencies · 2 TWO_WAY · 1 DOWN*)
+lets you see at a glance whether the router has fully converged or is
+still waiting for a peer to come up.
 
 ## Reading a path
 
