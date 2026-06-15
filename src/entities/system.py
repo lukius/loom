@@ -153,7 +153,7 @@ class Internet(Entity):
         self._ases[as_.name()] = as_
 
     # BGP-FOLLOWUP: remove this single-AS unwrap once the codebase supports
-    # multi-AS topologies. 34 call sites today (tests, shell, server/state.py)
+    # multi-AS topologies. Call sites today (tests, server/state.py)
     # all assume one AS; migrate each to either iterate `autonomous_systems()`
     # (after the rename above) or look up by name via
     # `internet.autonomous_system(name)`.
