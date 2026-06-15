@@ -8,7 +8,14 @@ _OCTET_RE = re.compile(r'^\d{1,3}$')
 
 def _prefixes_overlap(a, b) -> bool:
     """Return True if NetworkAddress a and b have a strict prefix-containment
-    overlap (i.e. one prefix contains the other, excluding exact duplicates)."""
+    overlap (i.e. one prefix contains the other, excluding exact duplicates).
+
+    Exact duplicates (a == b) are intentionally excluded here: the NAT
+    multi-tenant pattern allows two ASes to reuse the same private CIDR, and
+    that case is handled separately in NetworkValidator.validate().  A
+    containment overlap (one prefix strictly inside another) is still rejected
+    even for private space — it is ambiguous for longest-prefix-match routing.
+    """
     return a != b and (a.contains(b) or b.contains(a))
 
 
