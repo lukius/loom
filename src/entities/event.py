@@ -128,16 +128,32 @@ class EventTracer:
     # ---- instance-level API ----
 
     def subscribe_instance(self, fn):
-        """Register *fn* as a subscriber; return a callable that unsubscribes it."""
+        """Register *fn* as a subscriber; return a callable that unsubscribes it.
+
+        The returned callable removes *fn* from the currently-active tracer
+        (``EventTracer.current()``) as well as from the instance it was
+        originally registered on.  This ensures that after a ``set_current()``
+        carry-over (which propagates *fn* to a new tracer), calling
+        ``unsubscribe()`` silences *fn* on the new tracer rather than only
+        on the now-retired original.
+        """
         with self._sub_lock:
             self._subscribers.append(fn)
 
-        def unsubscribe():
-            with self._sub_lock:
+        origin = self
+
+        def _remove_from(tracer):
+            with tracer._sub_lock:  # noqa: SLF001
                 try:
-                    self._subscribers.remove(fn)
+                    tracer._subscribers.remove(fn)  # noqa: SLF001
                 except ValueError:
                     pass
+
+        def unsubscribe():
+            current = EventTracer.current()
+            _remove_from(current)
+            if origin is not current:
+                _remove_from(origin)
 
         return unsubscribe
 

@@ -430,6 +430,40 @@ def test_neighbor_state_changed_event_payload_shape():
         os.unlink(path)
 
 
+def test_carry_over_still_fires_on_new_tracer():
+    """Subscribers registered on tracer A survive set_current(B) and still receive
+    events broadcast on B (carry-over must be preserved).
+    """
+    EventTracer.set_current(None)
+    a = EventTracer()
+    EventTracer.set_current(a)
+    events = []
+    EventTracer.subscribe(events.append)
+
+    b = EventTracer()
+    EventTracer.set_current(b)  # carries the subscriber from A to B
+    EventTracer._broadcast({"kind": "carried"})
+    assert events == [{"kind": "carried"}]
+    EventTracer.set_current(None)
+
+
+def test_unsubscribe_after_set_current_removes_from_new_tracer():
+    """Calling unsubscribe() after set_current carries the fn to a new tracer must
+    silence the subscriber on the new tracer, not just on the original one."""
+    EventTracer.set_current(None)
+    a = EventTracer()
+    EventTracer.set_current(a)
+    events = []
+    unsub = EventTracer.subscribe(events.append)
+
+    b = EventTracer()
+    EventTracer.set_current(b)  # carries the subscriber from A to B
+    unsub()  # must remove fn from B (the current tracer), not just from A
+    EventTracer._broadcast({"kind": "should-not-appear"})
+    assert events == [], f"fn was still called after unsubscribe; events={events}"
+    EventTracer.set_current(None)
+
+
 def test_event_registry_is_bounded():
     """EventTracer._events must not grow without bound.
 
