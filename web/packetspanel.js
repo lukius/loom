@@ -5,7 +5,7 @@
 // subscribes to packets:list-changed, and renders.
 import { state, bus, markDirty } from './state.js';
 
-import { escapeHtml } from './utils.js';
+import { escapeHtml, cssEscape } from './utils.js';
 import { PacketStore } from './packetstore.js';
 
 // Friendly labels for chatter rows, so the panel shows "Hello" / "LSA"
@@ -291,22 +291,22 @@ export const PacketsPanel = {
           // Chatter group: halo every emission's dot.
           const keys = emissionKeys.split(' ');
           keys.forEach(k => {
-            const dot = document.querySelector(`#packet-layer rect[data-payload-id="${CSS.escape(k)}"]`);
+            const dot = document.querySelector(`#packet-layer rect[data-payload-id="${cssEscape(k)}"]`);
             if (dot) dot.classList.add('halo');
           });
         } else {
-          const dot = document.querySelector(`#packet-layer rect[data-payload-id="${CSS.escape(pid)}"]`);
+          const dot = document.querySelector(`#packet-layer rect[data-payload-id="${cssEscape(pid)}"]`);
           if (dot) dot.classList.add('halo');
         }
       });
       rowEl.addEventListener('mouseleave', () => {
         if (emissionKeys) {
           emissionKeys.split(' ').forEach(k => {
-            const dot = document.querySelector(`#packet-layer rect[data-payload-id="${CSS.escape(k)}"]`);
+            const dot = document.querySelector(`#packet-layer rect[data-payload-id="${cssEscape(k)}"]`);
             if (dot) dot.classList.remove('halo');
           });
         } else {
-          const dot = document.querySelector(`#packet-layer rect[data-payload-id="${CSS.escape(pid)}"]`);
+          const dot = document.querySelector(`#packet-layer rect[data-payload-id="${cssEscape(pid)}"]`);
           if (dot) dot.classList.remove('halo');
         }
       });

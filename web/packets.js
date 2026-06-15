@@ -4,7 +4,7 @@
 // the canvas. Reads Sim.state to freeze in-flight tweens while paused.
 import { bus, state, NODE, isInterfaceDown } from './state.js';
 import { ROUTING_CHATTER_TYPES } from './packettypes.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, cssEscape } from './utils.js';
 import { PacketStore } from './packetstore.js';
 import {
   lookupDeviceNode, lookupAddressNodeOnFabric, lookupNetworkNode,
@@ -566,7 +566,7 @@ export const PacketAnim = {
       // here in _render AND any badge appended later by the
       // packets:chatter-badges-changed listener while the dot was mid-tween.
       if (dotKey) {
-        const sel = `text.packet-badge[data-payload-id="${CSS.escape(dotKey)}"]`;
+        const sel = `text.packet-badge[data-payload-id="${cssEscape(dotKey)}"]`;
         layer.querySelectorAll(sel).forEach(b => { if (b.parentNode) b.parentNode.removeChild(b); });
       } else if (badge && badge.parentNode) {
         // No key (defensive) — fall back to removing the closure-captured badge.
@@ -661,7 +661,7 @@ export const PacketAnim = {
       if (gen !== PacketAnim._gen) return;   // sim reset mid-fade: nothing to do
       if (dot.parentNode) layer.removeChild(dot);
       if (dotKey) {
-        const sel = `text.packet-badge[data-payload-id="${CSS.escape(dotKey)}"]`;
+        const sel = `text.packet-badge[data-payload-id="${cssEscape(dotKey)}"]`;
         layer.querySelectorAll(sel).forEach(b => { if (b.parentNode) b.parentNode.removeChild(b); });
         bus.dispatchEvent(new CustomEvent('sim:packet-arrived', {
           detail: { payloadId: dotKey, device: null },
@@ -931,7 +931,7 @@ bus.addEventListener('packets:chatter-badges-changed', () => {
     const key = dot.dataset.payloadId;
     const row = PacketStore.chatter.get(key);
     const id = row ? row.id : null;
-    const existing = layer.querySelector(`text.packet-badge[data-payload-id="${CSS.escape(key)}"]`);
+    const existing = layer.querySelector(`text.packet-badge[data-payload-id="${cssEscape(key)}"]`);
     if (chatterOn && id != null && !existing) {
       const badge = makePacketBadge(key, `#R${id}`, dot.getAttribute('fill'));
       const cx = parseFloat(dot.getAttribute('x')) + PACKET_W / 2;

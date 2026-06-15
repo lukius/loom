@@ -1998,8 +1998,4 @@ details.insp-section .summary-hint {
   color: var(--text);
   font-weight: 500;
 }
-.neigh-row .timing {
-  color: var(--text-3);
-  margin-left: auto;
-  font-size: 11px;
-}
+
