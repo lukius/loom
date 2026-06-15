@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request
 
-from server.persistence import atomic_write
+from server.state import InvalidStateTransition
 
 router = APIRouter(tags=["topology"])
 
@@ -15,9 +15,10 @@ def load(body: dict, request: Request):
     if not yaml_text:
         raise HTTPException(400, "missing 'yaml'")
     s = _state(request)
-    atomic_write(s.session_path, yaml_text)
     try:
-        s.load_from_session()
+        s.load_from_text(yaml_text)
+    except InvalidStateTransition:
+        raise HTTPException(409, "stop the simulation before importing a topology")
     except Exception as e:
         raise HTTPException(400, str(e))
     return {

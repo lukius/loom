@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import tempfile
 import threading
 from pathlib import Path
 from typing import Optional
@@ -109,6 +111,57 @@ class SimState:
             return self._dump_yaml()
 
     # ---- transitions ----
+
+    def load_from_text(self, yaml_text: str) -> None:
+        """Validate and import a topology from raw YAML text.
+
+        Parses the incoming text into a temporary file. If parsing succeeds,
+        persists the text to the session file and swaps the live topology.
+        If parsing fails the session file is left untouched and the live
+        topology is unchanged.  Raises ParsingException on invalid YAML;
+        raises InvalidStateTransition if the sim is not idle.
+
+        Callers that want HTTP semantics should map ParsingException → 400
+        and InvalidStateTransition('not_idle', ...) → 409.
+        """
+        with self._edit_lock:
+            with self._lock:
+                if self._state != "idle":
+                    raise InvalidStateTransition(self._state, "load_from_text")
+            # Parse into a temp file — parse exactly once, never persist on
+            # failure.  _lock is released here so concurrent readers (GET
+            # /topology) are not stalled during the potentially slow parse.
+            fd, tmp_path = tempfile.mkstemp(
+                prefix=self.session_path.name + ".import.",
+                dir=str(self.session_path.parent),
+                suffix=".yaml",
+            )
+            try:
+                with os.fdopen(fd, "w") as f:
+                    f.write(yaml_text)
+                # Parse from the temp file. On failure, ParsingException
+                # propagates; the temp file is cleaned up in the finally block
+                # and the session file is never touched.
+                internet = Parser(tmp_path).parse(start_routing=False)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+            # Parse succeeded: atomically move the temp file to the session
+            # path (replacing any prior content), then swap the live topology.
+            os.replace(tmp_path, self.session_path)
+            with self._lock:
+                old_internet = self._internet
+            # Release _lock before the (potentially blocking) stop() join,
+            # mirroring stop()'s lock discipline.
+            if old_internet is not None:
+                old_internet.stop()
+            with self._lock:
+                self._internet = internet
+                self._as = internet.single_as()
+                self._state = "idle"
 
     def load_from_session(self):
         """Parse the session file into an AS. Routers are built but not started.

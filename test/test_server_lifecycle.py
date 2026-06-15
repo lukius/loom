@@ -395,3 +395,81 @@ def test_sim_edit_when_idle_is_409(idle_client):
     resp = client.post("/sim/edit", json={"patch": [
         {"op": "add_network", "name": "lanE", "address": "172.16.7.0/24"}]})
     assert resp.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# H3: topology import safety
+# ---------------------------------------------------------------------------
+
+
+def test_invalid_import_leaves_session_file_unchanged(tmp_path, monkeypatch):
+    """POST /topology with invalid YAML must return 400 and NOT modify the
+    session file — the corrupt text must not be persisted.
+    """
+    src = tmp_path / "src.yaml"
+    src.write_text(SAMPLE)
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
+    monkeypatch.setenv("LOOM_SESSION_DIR", str(tmp_path / "sessions"))
+
+    app = create_app()
+    with TestClient(app) as c:
+        # Load a valid topology first so the session file is known-good.
+        ok = c.post("/topology", json={"yaml": SAMPLE})
+        assert ok.status_code == 200
+
+        sim = c.app.state.sim_state
+        session_before = sim.session_path.read_text()
+
+        # Now POST an invalid topology that will fail the parser.
+        bad = c.post("/topology", json={"yaml": "as:\n  rubbish"})
+        assert bad.status_code == 400
+
+        # The session file must be byte-for-byte identical to before the bad POST.
+        session_after = sim.session_path.read_text()
+        assert session_after == session_before, (
+            "session file was modified by a rejected topology import"
+        )
+
+
+def test_invalid_import_topology_still_served_after_failure(tmp_path, monkeypatch):
+    """After a rejected POST /topology, GET /topology must still return the
+    previous valid topology, not the corrupt text.
+    """
+    src = tmp_path / "src.yaml"
+    src.write_text(SAMPLE)
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
+    monkeypatch.setenv("LOOM_SESSION_DIR", str(tmp_path / "sessions"))
+
+    app = create_app()
+    with TestClient(app) as c:
+        c.post("/topology", json={"yaml": SAMPLE})
+        good_yaml = c.get("/topology").json()["yaml"]
+
+        c.post("/topology", json={"yaml": "as:\n  rubbish"})
+
+        after_yaml = c.get("/topology").json()["yaml"]
+        assert after_yaml == good_yaml, (
+            "GET /topology returned changed content after a rejected import"
+        )
+
+
+def test_import_while_running_returns_409(tmp_path, monkeypatch):
+    """POST /topology must return 409 when the simulation is running, mirroring
+    the guard on POST /topology/reset.
+    """
+    src = tmp_path / "src.yaml"
+    src.write_text(SAMPLE_WITH_ROUTER)
+    monkeypatch.setenv("LOOM_TOPOLOGY", str(src))
+    monkeypatch.setenv("LOOM_SESSION_DIR", str(tmp_path / "sessions"))
+
+    app = create_app()
+    with TestClient(app) as c:
+        c.post("/topology", json={"yaml": SAMPLE_WITH_ROUTER})
+        c.post("/sim/start")
+        try:
+            resp = c.post("/topology", json={"yaml": SAMPLE_WITH_ROUTER})
+            assert resp.status_code == 409, (
+                f"expected 409 while running, got {resp.status_code}"
+            )
+        finally:
+            c.post("/sim/stop")
