@@ -170,7 +170,7 @@ parser rejects them. Don't "fix" them.
 ### Python (simulator + server)
 
 ```bash
-pytest                      # full suite (190+ tests)
+pytest                      # full suite (526+ tests)
 pytest test/test_protocol.py        # one suite
 pytest -k routing_table             # one keyword
 pytest -x                           # stop on first failure
@@ -396,10 +396,12 @@ The full list lives in `CLAUDE.md`. The most important ones for newcomers:
 
 - **`pytest` and `ruff` run from the repo root**, configured via
   `pyproject.toml`'s `pythonpath = ["src"]`.
-- **AS YAML shape: `as:` at the top, `name:` inside.** The parser requires
-  the literal top-level key `as:` and reads the AS name from a nested
-  `name:` field. Anything that emits topology YAML (the SPA, future
-  tools) must produce that shape.
+- **AS YAML shape: `internet:` → `autonomous_systems:` → `<short_name>:`.** The
+  parser requires a top-level `internet:` key containing a mandatory
+  `autonomous_systems:` mapping. Each AS is keyed by its short name (the
+  dict key *is* the name — there is no nested `name:`), carrying `asn:`,
+  `networks:`, optional `links:`, `routers:`, `hosts:`. Anything that emits
+  topology YAML (the SPA, future tools) must produce that shape.
 - **`Network._interfaces` is keyed by interface IP, not by `iface.name()`.**
   Interface names are only unique within a single device (`r1.eth0` and
   `r2.eth0` both sit on the same LAN); keying by name would clobber
