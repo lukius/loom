@@ -205,6 +205,42 @@ describe('persist / restore', () => {
     expect(state.view).toEqual({ x: 99, y: 99, k: 9 });
   });
 
+  it('restore falls back to {x:0,y:0,k:1} when stored view.k is NaN', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      asName: 'A', networks: {}, hosts: {}, routers: {},
+      view: { x: 0, y: 0, k: NaN },
+    }));
+    restore();
+    expect(state.view).toEqual({ x: 0, y: 0, k: 1 });
+  });
+
+  it('restore falls back to {x:0,y:0,k:1} when stored view.x is a string', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      asName: 'A', networks: {}, hosts: {}, routers: {},
+      view: { x: 'bad', y: 0, k: 1 },
+    }));
+    restore();
+    expect(state.view).toEqual({ x: 0, y: 0, k: 1 });
+  });
+
+  it('restore falls back to {x:0,y:0,k:1} when stored view.k is zero or negative', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      asName: 'A', networks: {}, hosts: {}, routers: {},
+      view: { x: 10, y: 20, k: 0 },
+    }));
+    restore();
+    expect(state.view).toEqual({ x: 0, y: 0, k: 1 });
+  });
+
+  it('restore keeps a valid view unchanged (regression guard)', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      asName: 'A', networks: {}, hosts: {}, routers: {},
+      view: { x: 50, y: -30, k: 1.5 },
+    }));
+    restore();
+    expect(state.view).toEqual({ x: 50, y: -30, k: 1.5 });
+  });
+
   it('round-trips non-default config.packet_duration_ms and protocol timers through persist/restore', () => {
     state.config.packet_duration_ms = 2500;
     state.protocol.hello_interval = 5;

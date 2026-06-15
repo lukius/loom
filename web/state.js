@@ -157,7 +157,12 @@ export function restore() {
     state.hosts = d.hosts || {};
     state.routers = d.routers || {};
     state.links = (d.links && typeof d.links === 'object' && !Array.isArray(d.links)) ? d.links : {};
-    if (d.view) state.view = d.view;
+    if (d.view && Number.isFinite(d.view.x) && Number.isFinite(d.view.y) &&
+        Number.isFinite(d.view.k) && d.view.k > 0) {
+      state.view = d.view;
+    } else if (d.view) {
+      state.view = { x: 0, y: 0, k: 1 };
+    }
     state.display = { ...DISPLAY_DEFAULTS, ...(d.display || {}) };
     state.ui = { packetsPanelOpen: false, showChatter: true, ...(d.ui || {}) };
     state.config = { ...CONFIG_DEFAULTS, ...(d.config || {}) };
