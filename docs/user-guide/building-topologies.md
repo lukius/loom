@@ -152,11 +152,11 @@ interfaces on the same fabric share an address.
 
 The inspector lets you edit the **Cost** column inline. The change:
 
-- While **idle**, mutates `state` and persists to `localStorage`. Will
-  apply the next time the topology is loaded.
+- While **idle**, the change is saved in the browser and will apply the
+  next time the topology is loaded.
 - While **running**, the toolbar disables direct cost edits — pause
   first.
-- While **paused**, queues an `update_cost` op. On **Resume**, the
+- While **paused**, the cost change is queued. On **Resume**, the
   server applies it and the routing protocol picks it up on the next
   keepalive.
 
@@ -191,9 +191,11 @@ or host–host). No broadcast domain — frames go directly to the peer.
 There are two ways to create a link directly in the app:
 
 **Right-click wizard** — right-click any host or router and choose
-**New p2p link…**. A short wizard opens: pick the peer device and set
-the link CIDR; the two endpoints are wired up automatically and the
-new link appears on the canvas.
+**New p2p link…**. A banner appears prompting you to pick the other
+endpoint. Click the peer device on the canvas; the link is created
+with both endpoints wired and appears immediately. The link starts with
+no CIDR — select it and set the CIDR and endpoint IPs in the
+inspector.
 
 **Inspector button** — select a host or router in the inspector, find
 an interface whose fabric type is set to **Link**, and click
@@ -258,8 +260,9 @@ To build the sample topology from scratch:
    - `r3`: eth0 on `lan2` (`100.200.0.10`, cost 20), eth1 on `lan3`
      (`150.10.10.10`, cost 5).
 4. Add the link `p2p1: "10.0.0.0/30"` using **New p2p link…**: right-click
-   `r1`, choose **New p2p link…**, set the peer to `r3` and the CIDR to
-   `10.0.0.0/30`. Then set the costs in the inspector:
+   `r1`, choose **New p2p link…**, then click `r3` on the canvas. Select
+   the new link and set its CIDR to `10.0.0.0/30`. Then set the costs in
+   the inspector:
    - `r1.eth2` on `p2p1` (`10.0.0.1`, cost 5)
    - `r3.eth2` on `p2p1` (`10.0.0.2`, cost 5)
 
