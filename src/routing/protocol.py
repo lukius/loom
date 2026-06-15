@@ -62,6 +62,7 @@ class LinkStateProtocol(RoutingProtocol):
     def __init__(self, router, outbound_policy=None):
         self._router = router
         self._lock = threading.Lock()
+        self._seq_lock = threading.Lock()
         self._outbound_policy = (
             outbound_policy if outbound_policy is not None else RFC1918_OUTBOUND
         )
@@ -273,8 +274,9 @@ class LinkStateProtocol(RoutingProtocol):
         })
 
     def _next_seq(self) -> int:
-        self._seq += 1
-        return self._seq
+        with self._seq_lock:
+            self._seq += 1
+            return self._seq
 
     def _refresh_local_lsa(self) -> bool:
         # Local LSA uses permit-all so the local graph includes all directly

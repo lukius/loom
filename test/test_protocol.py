@@ -1784,6 +1784,54 @@ def test_readded_router_not_blackholed_by_tombstone():
 
 
 # ---------------------------------------------------------------------------
+# H4 (item 1): _next_seq must be thread-safe under concurrent callers
+# ---------------------------------------------------------------------------
+
+def test_next_seq_unique_and_strictly_increasing_under_concurrency():
+    """Hammer _next_seq from many threads simultaneously and verify that
+    every returned value is unique and strictly increasing.
+
+    Pre-fix: the bare `_seq += 1; return _seq` is a read-modify-write
+    without any lock, so concurrent callers can observe the same value
+    or see a non-monotonic sequence.  Post-fix: _seq_lock serialises the
+    increment, so results are a permutation of N consecutive integers.
+    """
+    r = Router("r_seq")
+    proto = LinkStateProtocol(r)
+
+    n_threads = 20
+    n_calls_each = 500
+    results = []
+    lock = threading.Lock()
+
+    def worker():
+        local = []
+        for _ in range(n_calls_each):
+            local.append(proto._next_seq())  # noqa: SLF001
+        with lock:
+            results.extend(local)
+
+    threads = [threading.Thread(target=worker, daemon=True) for _ in range(n_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=5.0)
+
+    total = n_threads * n_calls_each
+    assert len(results) == total, "not all calls returned"
+    # All values unique.
+    assert len(set(results)) == total, "duplicate sequence numbers observed"
+    # Every returned value is positive (seeded from monotonic_ns, always > 0).
+    assert all(v > 0 for v in results), "sequence values must be positive"
+    # Values form a contiguous block (no gaps from races).
+    sorted_vals = sorted(results)
+    expected = list(range(sorted_vals[0], sorted_vals[0] + total))
+    assert sorted_vals == expected, (
+        "sequence values are not a contiguous block — race produced gaps/duplicates"
+    )
+
+
+# ---------------------------------------------------------------------------
 # H4: protocol.stop() must return promptly when the loop is parked on a
 # paused PauseGate (finding H4)
 # ---------------------------------------------------------------------------
