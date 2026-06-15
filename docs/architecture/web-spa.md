@@ -5,7 +5,7 @@ is shipped from `web/` as static assets and loaded by `index.html`.
 
 ```
 web/
-├── index.html           # ~280 lines of markup + <script type="module" src="app.js">
+├── index.html           # ~355 lines of markup + <script type="module" src="app.js">
 ├── styles.css           # all CSS
 ├── favicon.svg
 ├── app.js               # entrypoint: imports, wire(), init(), DOMContentLoaded
@@ -16,10 +16,13 @@ web/
 ├── packets.js           # packet animation + tooltips
 ├── packetstore.js       # PacketStore — in-flight registry, hop history, NAT cache, #N counters
 ├── packetspanel.js      # Packets panel — toolbar button, mounts inside #inspector, row rendering, hover halo
+├── packettypes.js       # packet-type constants (USER_TYPES, CHATTER_TYPES, type→label map)
 ├── sim.js               # Sim state machine + RuntimeClient + WS dispatcher
 ├── yaml-io.js           # YAML import / export
 ├── preflight.js         # validateTopology() — pre-Start completeness check
 ├── modal.js             # confirmModal() — promise-based confirm dialog
+├── protocolpopover.js   # Protocol timer config popover (hello/lsa_refresh inputs + Apply)
+├── file-picker.js       # Import file-picker dialog (drag-and-drop + browse)
 └── utils.js             # DOM helpers (el, escapeHtml, toast, ...)
 ```
 
@@ -62,7 +65,7 @@ and expected — the SPA is the primary subscriber of those facts.
 | `state:topology-changed` | `inspector`, `state`, `app` | `canvas`, `inspector` | Any mutation to networks/links/hosts/routers/display |
 | `state:topology-loaded` | `state` (loadSample/clearTopology), `yaml-io` (importYaml) | `canvas` (fitView), `inspector` | Wholesale topology replacement |
 | `state:selection-changed` | `canvas`, `inspector`, context menu | `inspector` | User selected a node |
-| `sim:status-changed` | `sim` | `inspector`, `canvas` | Sim transitioned (idle/running/paused) |
+| `sim:status-changed` | `sim` | `inspector`, `terminals`, `packets`, `packetstore` | Sim transitioned (idle/running/paused). Detail: `{status}`. |
 | `sim:packet` | `sim` (from WS) | `packets` | Server emitted a packet event |
 | `sim:routing-table-changed` | `sim` (from WS) | `inspector` (re-fetch routes if selected) | Server emitted a route change |
 | `sim:interface-state-changed` | `sim` (from WS `interface_state_changed`) | `canvas` (gray-out edge), `inspector` (re-render interface buttons) | A router interface was brought up or down. Detail: `{device, iface, up}`. |
@@ -70,11 +73,18 @@ and expected — the SPA is the primary subscriber of those facts.
 | `sim:ping-result` | `sim` (from WS `ping_result`) | `terminals` (stream line to sender's terminal) | One ICMP echo reply (or timeout) arrived. Detail: `{device, dst, seq, rtt_ms}`. `rtt_ms` is `null` on timeout. |
 | `sim:nat` | `sim` (from WS) | packet tooltip renderer | A router performed source or destination NAT on a packet. Outbound carries `{router, direction, original_src, rewritten_src, dst, flow_id, payload_id}`; inbound carries `{router, direction, rewritten_dst, original_dst, src, flow_id, payload_id}`. `flow_id` is the conversation UUID (same value as `flow` on the `packet` event, and same value the router's NAT table is keyed on). |
 | `sim:nat-table-changed` | `sim` (from WS) | `inspector` (NAT table panel) | A router's NAT table was mutated. Carries `{device}` in detail; the full snapshot is mirrored into `state.natTables[device]` for the inspector to render. |
+| `sim:neighbor-state-changed` | `state` (`applyNeighborStateChanged`, called from `sim._onEvent`) | `inspector` (Neighbors section re-render) | A router's neighbor adjacency state changed. Detail: `{device, iface, peer, state}`. |
+| `sim:router-intercept` | `sim` (from WS `router_intercept`) | `packets` (tooltip decoration) | A router answered an ICMP echo addressed to one of its own IPs. Detail: the raw WS event. Fired just before the matching reply packet so `packets.js` can cache by `payload_id` and annotate the reply tooltip. |
+| `sim:topology-changed` | `sim` (from WS `topology_changed`) | `sim` (self-listener triggers resync via `sim:topology-import-requested`) | A topology mutation was confirmed by the server. Detail: `{ops}`. Distinct from `state:topology-changed`, which reflects local mutations. |
 | `sim:packet-arrived` | `packets` (animation finish) | `packetstore` | A packet animation completed at its destination device. Detail: `{payloadId, device}`. Drives last-hop promotion in the store. |
 | `packets:list-changed` | `packetstore` (debounced ~50ms) | `packetspanel` | The store's in-flight or recent set mutated. Panel re-renders on receipt. |
 | `packets:chatter-badges-changed` | `packetspanel` | `packets` | The chatter group's expand state flipped; live chatter dots add/remove their `#R*` badges. |
 | `packets:dot-appeared` | `packets` (after appendChild) | `packetstore` | A new packet dot was appended to the canvas layer. Detail: `{payloadId}`. Drives the panel's visibility filter — rows stay hidden until their dot is on screen. |
 | `packets:chatter-pin` | `packets` (on commit to animate) | `packetstore` | This chatter emission will animate, so its row's fallback timer is cancelled and its `sim:packet-arrived` owns cleanup. Detail: `{key}` (composite chatter key). |
+| `canvas:terminal-requested` | `canvas` (double-click on a device node) | `terminals` | User double-clicked a device; open or focus its terminal popup. Detail: `{name}`. |
+| `canvas:contextmenu-requested` | `canvas` (right-click on a node or canvas background) | `inspector` | Open the context menu at the pointer position. Detail: `{clientX, clientY, target, world}`. |
+| `canvas:contextmenu-close-requested` | `canvas` (pointerdown on background) | `inspector` | Dismiss the open context menu. |
+| `ui:import-requested` | `inspector` (Import toolbar button) | `app.js` | User clicked Import; `app.js` opens the file-picker dialog. |
 | `sim:yaml-export-requested` | `sim.onPrimary` | `app.js` | Sim needs current YAML to load before starting |
 | `sim:topology-import-requested` | `sim.onReset` | `app.js` | Sim received reset; refresh canvas from server YAML |
 | `view:changed` | `canvas` | (none currently — kept for future) | Pan/zoom |
@@ -89,6 +99,7 @@ returns. This is a temporary bridge to module-local `exportYaml`/
 ```js
 export const state = {
   asName: 'test_as',
+  asn: 65000,                 // AS number (persisted)
   networks: { /* name -> { cidr, x, y, w? } */ },
   links:    { /* name -> { cidr, x, y } */ },
   hosts:    { /* name -> { network?, link?, address, gateway?, x, y } */ },
@@ -96,9 +107,15 @@ export const state = {
   selection: { kind, name } | null,
   view: { x, y, k },        // pan + zoom
   display: { showCosts, showIfaces },
+  ui: { packetsPanelOpen, showChatter },  // persisted panel/toggle state
+  config: { packet_duration_ms },         // persisted; round-tripped via internet.config
+  protocol: { hello_interval, lsa_refresh_interval }, // persisted; via AS config.protocol
+  sourceName: null,           // basename of the last-imported YAML file (persisted)
   // transient — not persisted
   downInterfaces: { /* device -> Set<ifaceName> */ },
   haltedDevices:  { /* device -> true */ },
+  natTables:      { /* device -> NatEntry[] */ },       // from nat_table_changed WS events
+  neighborsByDevice: { /* device -> { iface -> { peer -> {state,…} } } */ }, // from neighbor_state_changed
 };
 ```
 
@@ -110,10 +127,12 @@ Notes:
   main-axis length is `w` (defaults to `RAIL_DEFAULT_WIDTH = 180`).
 - Persistence is `localStorage[STORAGE_KEY = 'loom.topology.v5']` —
   serialised on a 200 ms debounce after any `markDirty()` call.
+- `asn`, `ui`, `config`, `protocol`, and `sourceName` are persisted.
 - The bundled `SAMPLE` is the SPA's first-run fallback when local storage
   is empty.
-- `downInterfaces` and `haltedDevices` are **transient** — they are never
-  written to `localStorage`. See [Admin-down / crash state cache](#admin-down--crash-state-cache) below.
+- `downInterfaces`, `haltedDevices`, `natTables`, and `neighborsByDevice`
+  are **transient** — they are never written to `localStorage`.
+  See [Admin-down / crash state cache](#admin-down--crash-state-cache) below.
 
 ## The Sim state machine (`web/sim.js`)
 
@@ -263,6 +282,17 @@ The routing table fetches via `GET /devices/{name}/routes` on
 selection and re-fetches on `sim:routing-table-changed` if this device
 is currently selected.
 
+For a selected router, the panel also renders:
+
+- **Neighbors** (`renderNeighborSection`) — shows adjacency state per
+  interface/peer, sourced from `state.neighborsByDevice`. Updated
+  incrementally on `sim:neighbor-state-changed` without re-rendering
+  the whole panel.
+- **NAT** (`Inspector.refreshNAT`) — shows the current NAT table fetched
+  from `GET /devices/{name}/nat-table`, rendered on selection and
+  re-fetched on `sim:nat-table-changed` for the selected router. Also
+  refreshed on `sim:status-changed` while a router is selected.
+
 The context menu (right-click on any node) lets you rename, duplicate,
 or delete the target with the appropriate prompts. While the sim is
 `running`, mutations are blocked with a toast — the user must pause first.
@@ -328,7 +358,7 @@ The NAT cache previously kept here moved to `packetstore.js` so the tooltip and 
 
 ## Packet store (`web/packetstore.js`)
 
-A singleton registry of packets the simulator is currently animating, plus a small ring of recently delivered ones. Subscribes to `sim:packet`, `sim:packet-arrived`, `sim:nat`, and `sim:status-changed`. Emits `packets:list-changed` (debounced ~50 ms) so the Packets panel can re-render after bursts.
+A singleton registry of packets the simulator is currently animating, plus a small ring of recently delivered ones. Subscribes to `sim:packet`, `sim:packet-arrived`, `sim:nat`, `sim:status-changed`, `packets:chatter-pin`, and `packets:dot-appeared`. Emits `packets:list-changed` (debounced ~50 ms) so the Packets panel can re-render after bursts.
 
 Shape:
 
@@ -343,7 +373,7 @@ export const PacketStore = {
 };
 ```
 
-- A user-traffic row moves from `inFlight` → `recent` when the matching `sim:packet-arrived` fires for the final hop (`evt.dst.address === payload_dst`).
+- A user-traffic row moves from `inFlight` → `recent` when the matching `sim:packet-arrived` fires for the final hop (`evt.dst.address === payload_dst`). A `sim:packet-arrived` with `device: null` signals a transit drop; the row gets `status = 'dropped'` and is evicted to `recent` immediately.
 - Chatter rows are keyed by a composite `"payload_id|srcDev|srcIface|network"` string so that N emissions of the same `RoutingMessage` (one per router interface) each get a distinct store row, badge, and hover-halo hit-target. A chatter row leaves the `chatter` map on its `sim:packet-arrived` and doesn't enter `recent`. Its lifetime is owned by the animation: when `PacketAnim` commits to animating an emission it dispatches `packets:chatter-pin`, which cancels the row's fallback timer so a re-flood deferred for several hops (rendering well past a fixed budget) keeps its `#R` id and panel row until it actually arrives. The fallback timer only reclaims rows whose packet never animates (e.g. muted) — a pin that arrives before the row is created is remembered so the timer is never started.
 - Counters reset to 1 on `sim:status-changed → idle`. They persist across pause/resume.
 - While paused, `_scheduleEmit()` is suppressed and chatter TTL deletions are deferred to `_pendingChatterDeletes`; both are flushed on resume so the panel stays frozen during a pause.
@@ -399,7 +429,7 @@ memory for the duration of the running SPA. On sim idle or reset,
 `resetDownState()` clears both maps. On page reload or WS reconnect the
 cache is re-derived via `recoverDownState()` (see below).
 
-### Reload recovery (`recoverDownState`)
+### Reload recovery (`recoverDownState` + `recoverNATState`)
 
 Because WS events cannot be replayed, a fresh page load or a WS
 reconnect would leave the cache empty and the canvas un-grayed even
@@ -416,6 +446,13 @@ exports `recoverDownState()`, which is called fire-and-forget from
 
 Transient errors (device gone, network blip) are silently skipped so a
 single unreachable device doesn't abort the sweep.
+
+`sim.js` also exports `recoverNATState()`, called alongside
+`recoverDownState()` from `Sim.refreshState()`. It iterates every
+router, fetches `GET /devices/{name}/nat-table`, and applies the result
+via `_applyNATTableChange` — the same path used by live `nat_table_changed`
+WS events — so the inspector NAT panel is up-to-date after a reconnect.
+Per-router fetch errors are silently skipped.
 
 ### Canvas gray-out
 
