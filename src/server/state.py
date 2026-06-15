@@ -213,7 +213,132 @@ class SimState:
             raise InvalidStateTransition("invalid_patch", op_kind)
         return "network" if has_net else "link"
 
-    def _validate_op(  # noqa: C901 (complexity OK here)
+    # ---- per-op validators ----
+
+    def _validate_add_network(
+        self, op: dict, fabrics: set, devices: set, addr_owner: dict
+    ) -> None:
+        if not all(k in op for k in ("name", "address")):
+            raise InvalidStateTransition("invalid_patch", "add_network")
+        if op["name"] in fabrics:
+            raise InvalidStateTransition("duplicate_name", op["name"])
+        fabrics.add(op["name"])
+
+    def _validate_add_link(
+        self, op: dict, fabrics: set, devices: set, addr_owner: dict
+    ) -> None:
+        if not all(k in op for k in ("name", "address")):
+            raise InvalidStateTransition("invalid_patch", "add_link")
+        if op["name"] in fabrics:
+            raise InvalidStateTransition("duplicate_name", op["name"])
+        # Defer CIDR-format validation to construct-time below, but bail
+        # early on obviously wrong shapes.
+        try:
+            NetworkAddress(op["address"])
+        except Exception as e:
+            raise InvalidStateTransition("invalid_link_cidr", str(e))
+        # Links are /30 or /31 only — same rule the parser enforces.
+        cidr = op["address"]
+        prefix = cidr.rsplit("/", 1)[-1] if "/" in cidr else ""
+        if prefix not in ("30", "31"):
+            raise InvalidStateTransition("invalid_link_cidr", cidr)
+        fabrics.add(op["name"])
+
+    def _validate_remove_network(
+        self, op: dict, fabrics: set, devices: set, addr_owner: dict
+    ) -> None:
+        if op.get("name") not in self._as.networks():
+            raise InvalidStateTransition("network_not_found", op.get("name", ""))
+        net_name = op["name"]
+        users = [
+            h.name()
+            for h in self._as.hosts().values()
+            if h.network().name() == net_name
+        ]
+        users += [
+            r.name()
+            for r in self._as.routers().values()
+            if any(i.network().name() == net_name for i in r.interfaces().values())
+        ]
+        if users:
+            raise InvalidStateTransition("network_in_use", ",".join(users))
+        fabrics.discard(net_name)
+
+    def _validate_add_host(
+        self, op: dict, fabrics: set, devices: set, addr_owner: dict
+    ) -> None:
+        if not all(k in op for k in ("name", "address")):
+            raise InvalidStateTransition("invalid_patch", "add_host")
+        fabric_key = self._iface_fabric_key(op, "add_host")
+        fabric_name = op[fabric_key]
+        if fabric_name not in fabrics:
+            raise InvalidStateTransition(f"{fabric_key}_not_found", fabric_name)
+        if op["name"] in devices:
+            raise InvalidStateTransition("duplicate_name", op["name"])
+        key = (fabric_name, op["address"])
+        if key in addr_owner:
+            raise InvalidStateTransition("address_in_use", addr_owner[key])
+        devices.add(op["name"])
+        addr_owner[key] = op["name"]
+
+    def _validate_remove_host(
+        self, op: dict, fabrics: set, devices: set, addr_owner: dict
+    ) -> None:
+        if op.get("name") not in self._as.hosts():
+            raise InvalidStateTransition("host_not_found", op.get("name", ""))
+        devices.discard(op["name"])
+
+    def _validate_add_router(
+        self, op: dict, fabrics: set, devices: set, addr_owner: dict
+    ) -> None:
+        if not all(k in op for k in ("name", "interfaces")):
+            raise InvalidStateTransition("invalid_patch", "add_router")
+        if op["name"] in devices:
+            raise InvalidStateTransition("duplicate_name", op["name"])
+        seen: dict[tuple[str, str], str] = {}
+        for iface in op["interfaces"]:
+            fabric_key = self._iface_fabric_key(iface, "add_router")
+            fabric_name = iface[fabric_key]
+            if fabric_name not in fabrics:
+                raise InvalidStateTransition(f"{fabric_key}_not_found", fabric_name)
+            addr = iface.get("address", "")
+            # Intra-router collision: two ifaces in this op on the same
+            # fabric with the same address.
+            key = (fabric_name, addr)
+            if key in seen:
+                raise InvalidStateTransition(
+                    "address_in_use",
+                    f"{op['name']}/{iface.get('name', '')}",
+                )
+            seen[key] = iface.get("name", "")
+            if key in addr_owner:
+                raise InvalidStateTransition("address_in_use", addr_owner[key])
+            addr_owner[key] = f"{op['name']}/{iface.get('name', '')}"
+        devices.add(op["name"])
+
+    def _validate_remove_router(
+        self, op: dict, fabrics: set, devices: set, addr_owner: dict
+    ) -> None:
+        if op.get("name") not in self._as.routers():
+            raise InvalidStateTransition("router_not_found", op.get("name", ""))
+        devices.discard(op["name"])
+
+    def _validate_update_cost(
+        self, op: dict, fabrics: set, devices: set, addr_owner: dict
+    ) -> None:
+        r = self._as.routers().get(op.get("router"))
+        if r is None or op.get("iface") not in r.interfaces():
+            raise InvalidStateTransition("interface_not_found", op.get("iface", ""))
+        try:
+            cost = int(op.get("cost", 0))
+        except (ValueError, TypeError):
+            raise InvalidStateTransition("invalid_cost", str(op.get("cost", "")))
+        if cost <= 0:
+            raise InvalidStateTransition("invalid_cost", str(op.get("cost", "")))
+
+    _VALIDATORS: dict = {}  # populated after class body; see end of class
+
+    def _validate_op(
         self,
         op: dict,
         fabrics: set,
@@ -221,169 +346,86 @@ class SimState:
         addr_owner: dict,
     ) -> None:
         kind = op.get("op")
-        if kind == "add_network":
-            if not all(k in op for k in ("name", "address")):
-                raise InvalidStateTransition("invalid_patch", kind)
-            if op["name"] in fabrics:
-                raise InvalidStateTransition("duplicate_name", op["name"])
-            fabrics.add(op["name"])
-        elif kind == "add_link":
-            if not all(k in op for k in ("name", "address")):
-                raise InvalidStateTransition("invalid_patch", kind)
-            if op["name"] in fabrics:
-                raise InvalidStateTransition("duplicate_name", op["name"])
-            # Defer CIDR-format validation to construct-time below, but bail
-            # early on obviously wrong shapes.
-            try:
-                NetworkAddress(op["address"])
-            except Exception as e:
-                raise InvalidStateTransition("invalid_link_cidr", str(e))
-            # Links are /30 or /31 only — same rule the parser enforces.
-            cidr = op["address"]
-            prefix = cidr.rsplit("/", 1)[-1] if "/" in cidr else ""
-            if prefix not in ("30", "31"):
-                raise InvalidStateTransition("invalid_link_cidr", cidr)
-            fabrics.add(op["name"])
-        elif kind == "remove_network":
-            if op.get("name") not in self._as.networks():
-                raise InvalidStateTransition("network_not_found", op.get("name", ""))
-            net_name = op["name"]
-            users = [
-                h.name()
-                for h in self._as.hosts().values()
-                if h.network().name() == net_name
-            ]
-            users += [
-                r.name()
-                for r in self._as.routers().values()
-                if any(i.network().name() == net_name for i in r.interfaces().values())
-            ]
-            if users:
-                raise InvalidStateTransition("network_in_use", ",".join(users))
-            fabrics.discard(net_name)
-        elif kind == "add_host":
-            if not all(k in op for k in ("name", "address")):
-                raise InvalidStateTransition("invalid_patch", kind)
-            fabric_key = self._iface_fabric_key(op, kind)
-            fabric_name = op[fabric_key]
-            if fabric_name not in fabrics:
-                raise InvalidStateTransition(f"{fabric_key}_not_found", fabric_name)
-            if op["name"] in devices:
-                raise InvalidStateTransition("duplicate_name", op["name"])
-            key = (fabric_name, op["address"])
-            if key in addr_owner:
-                raise InvalidStateTransition("address_in_use", addr_owner[key])
-            devices.add(op["name"])
-            addr_owner[key] = op["name"]
-        elif kind == "remove_host":
-            if op.get("name") not in self._as.hosts():
-                raise InvalidStateTransition("host_not_found", op.get("name", ""))
-            devices.discard(op["name"])
-        elif kind == "add_router":
-            if not all(k in op for k in ("name", "interfaces")):
-                raise InvalidStateTransition("invalid_patch", kind)
-            if op["name"] in devices:
-                raise InvalidStateTransition("duplicate_name", op["name"])
-            seen: dict[tuple[str, str], str] = {}
-            for iface in op["interfaces"]:
-                fabric_key = self._iface_fabric_key(iface, kind)
-                fabric_name = iface[fabric_key]
-                if fabric_name not in fabrics:
-                    raise InvalidStateTransition(f"{fabric_key}_not_found", fabric_name)
-                addr = iface.get("address", "")
-                # Intra-router collision: two ifaces in this op on the same
-                # fabric with the same address.
-                key = (fabric_name, addr)
-                if key in seen:
-                    raise InvalidStateTransition(
-                        "address_in_use",
-                        f"{op['name']}/{iface.get('name', '')}",
-                    )
-                seen[key] = iface.get("name", "")
-                if key in addr_owner:
-                    raise InvalidStateTransition("address_in_use", addr_owner[key])
-                addr_owner[key] = f"{op['name']}/{iface.get('name', '')}"
-            devices.add(op["name"])
-        elif kind == "remove_router":
-            if op.get("name") not in self._as.routers():
-                raise InvalidStateTransition("router_not_found", op.get("name", ""))
-            devices.discard(op["name"])
-        elif kind == "update_cost":
-            r = self._as.routers().get(op.get("router"))
-            if r is None or op.get("iface") not in r.interfaces():
-                raise InvalidStateTransition("interface_not_found", op.get("iface", ""))
-            try:
-                cost = int(op.get("cost", 0))
-            except (ValueError, TypeError):
-                raise InvalidStateTransition("invalid_cost", str(op.get("cost", "")))
-            if cost <= 0:
-                raise InvalidStateTransition("invalid_cost", str(op.get("cost", "")))
-        else:
+        handler = self._VALIDATORS.get(kind)
+        if handler is None:
             raise InvalidStateTransition("unknown_op", str(kind))
+        handler(self, op, fabrics, devices, addr_owner)
 
     def _fabric_for(self, fabric_key: str, name: str):
         """Resolve a fabric reference to its live Network or Link entity."""
         return self._as.link(name) if fabric_key == "link" else self._as.network(name)
 
-    def _apply_op(self, op: dict) -> None:
-        kind = op["op"]
-        if kind == "add_network":
-            net = Network(
-                op["name"], NetworkAddress(op["address"]), gate=self._as.gate()
-            )
-            self._as.add_network(net)
-        elif kind == "add_link":
-            link = Link(op["name"], NetworkAddress(op["address"]), gate=self._as.gate())
-            self._as.add_link(link)
-        elif kind == "remove_network":
-            net = self._as.network(op["name"])
-            net.stop()
-            del self._as.networks()[op["name"]]
-        elif kind == "add_host":
-            fabric_key = "link" if "link" in op else "network"
-            fabric = self._fabric_for(fabric_key, op[fabric_key])
-            gw = Address(op["gateway"]) if op.get("gateway") else None
-            host = Host(
-                op["name"],
+    # ---- per-op appliers ----
+
+    def _apply_add_network(self, op: dict) -> None:
+        net = Network(op["name"], NetworkAddress(op["address"]), gate=self._as.gate())
+        self._as.add_network(net)
+
+    def _apply_add_link(self, op: dict) -> None:
+        link = Link(op["name"], NetworkAddress(op["address"]), gate=self._as.gate())
+        self._as.add_link(link)
+
+    def _apply_remove_network(self, op: dict) -> None:
+        net = self._as.network(op["name"])
+        net.stop()
+        del self._as.networks()[op["name"]]
+
+    def _apply_add_host(self, op: dict) -> None:
+        fabric_key = "link" if "link" in op else "network"
+        fabric = self._fabric_for(fabric_key, op[fabric_key])
+        gw = Address(op["gateway"]) if op.get("gateway") else None
+        host = Host(
+            op["name"],
+            fabric,
+            Address(op["address"]),
+            gw_address=gw,
+            gate=self._as.gate(),
+        )
+        fabric.add_interface(host.interface())
+        self._as.add_host(host)
+
+    def _apply_remove_host(self, op: dict) -> None:
+        host = self._as.host(op["name"])
+        host.network().remove_interface(host.interface().address())
+        host.interface().stop()
+        del self._as.hosts()[op["name"]]
+
+    def _apply_add_router(self, op: dict) -> None:
+        router = Router(op["name"])
+        for iface_spec in op["interfaces"]:
+            fabric_key = "link" if "link" in iface_spec else "network"
+            fabric = self._fabric_for(fabric_key, iface_spec[fabric_key])
+            iface = Interface(
+                iface_spec["name"],
                 fabric,
-                Address(op["address"]),
-                gw_address=gw,
+                Address(iface_spec["address"]),
+                cost=int(iface_spec.get("cost", 1)),
                 gate=self._as.gate(),
             )
-            fabric.add_interface(host.interface())
-            self._as.add_host(host)
-        elif kind == "remove_host":
-            host = self._as.host(op["name"])
-            host.network().remove_interface(host.interface().address())
-            host.interface().stop()
-            del self._as.hosts()[op["name"]]
-        elif kind == "add_router":
-            router = Router(op["name"])
-            for iface_spec in op["interfaces"]:
-                fabric_key = "link" if "link" in iface_spec else "network"
-                fabric = self._fabric_for(fabric_key, iface_spec[fabric_key])
-                iface = Interface(
-                    iface_spec["name"],
-                    fabric,
-                    Address(iface_spec["address"]),
-                    cost=int(iface_spec.get("cost", 1)),
-                    gate=self._as.gate(),
-                )
-                fabric.add_interface(iface)
-                router.add_interface(iface)
-            self._as.add_router(router)
-            router.start()
-        elif kind == "remove_router":
-            router = self._as.router(op["name"])
-            router.stop()
-            for iface in list(router.interfaces().values()):
-                iface.network().remove_interface(iface.address())
-                iface.stop()
-            del self._as.routers()[op["name"]]
-        elif kind == "update_cost":
-            self._as.router(op["router"]).update_interface(op["iface"], int(op["cost"]))
-        else:
+            fabric.add_interface(iface)
+            router.add_interface(iface)
+        self._as.add_router(router)
+        router.start()
+
+    def _apply_remove_router(self, op: dict) -> None:
+        router = self._as.router(op["name"])
+        router.stop()
+        for iface in list(router.interfaces().values()):
+            iface.network().remove_interface(iface.address())
+            iface.stop()
+        del self._as.routers()[op["name"]]
+
+    def _apply_update_cost(self, op: dict) -> None:
+        self._as.router(op["router"]).update_interface(op["iface"], int(op["cost"]))
+
+    _APPLIERS: dict = {}  # populated after class body; see end of class
+
+    def _apply_op(self, op: dict) -> None:
+        kind = op["op"]
+        handler = self._APPLIERS.get(kind)
+        if handler is None:
             raise InvalidStateTransition("unknown_op", kind)
+        handler(self, op)
 
     def _persist(self) -> None:
         atomic_write(self.session_path, self._dump_yaml())
@@ -473,3 +515,28 @@ class SimState:
             # _lock released; _edit_lock still held across the blocking joins.
             if internet is not None:
                 internet.stop()
+
+
+# Dispatch tables populated after the class body so they can reference bound
+# unbound methods by name without forward-reference issues.
+SimState._VALIDATORS = {
+    "add_network": SimState._validate_add_network,
+    "add_link": SimState._validate_add_link,
+    "remove_network": SimState._validate_remove_network,
+    "add_host": SimState._validate_add_host,
+    "remove_host": SimState._validate_remove_host,
+    "add_router": SimState._validate_add_router,
+    "remove_router": SimState._validate_remove_router,
+    "update_cost": SimState._validate_update_cost,
+}
+
+SimState._APPLIERS = {
+    "add_network": SimState._apply_add_network,
+    "add_link": SimState._apply_add_link,
+    "remove_network": SimState._apply_remove_network,
+    "add_host": SimState._apply_add_host,
+    "remove_host": SimState._apply_remove_host,
+    "add_router": SimState._apply_add_router,
+    "remove_router": SimState._apply_remove_router,
+    "update_cost": SimState._apply_update_cost,
+}
