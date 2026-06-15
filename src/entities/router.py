@@ -395,7 +395,8 @@ class Router(NetworkDevice):
         if next_hop == NullAddress:
             next_hop = packet.destination()
 
-        if packet.source().is_private() and not out_iface.network().address().is_private():  # noqa: E501
+        src = packet.source()
+        if src.is_private() and not out_iface.network().address().is_private():
             self._apply_source_nat(packet, out_iface)
 
         out_iface.send_to(packet, next_hop)

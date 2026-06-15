@@ -12,7 +12,7 @@ class BaseAddress:
         try:
             parsed = [int(p) for p in parts]
         except ValueError:
-            raise ValueError(f'invalid IP address: {address!r}')
+            raise ValueError(f'invalid IP address: {address!r}') from None
         for octet in parsed:
             if octet < 0 or octet > 255:
                 raise ValueError(f'invalid IP address: {address!r}')
