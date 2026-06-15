@@ -108,13 +108,13 @@ export function exportYaml() {
         iface = {
           link: iff.link,
           address: iff.address || '',
-          cost: typeof iff.cost === 'number' ? iff.cost : (parseInt(iff.cost, 10) || 0),
+          cost: typeof iff.cost === 'number' ? iff.cost : (parseInt(iff.cost, 10) || 1),
         };
       } else {
         iface = {
           network: iff.network || '',
           address: iff.address || '',
-          cost: typeof iff.cost === 'number' ? iff.cost : (parseInt(iff.cost, 10) || 0),
+          cost: typeof iff.cost === 'number' ? iff.cost : (parseInt(iff.cost, 10) || 1),
         };
       }
       return [ifn, iface];
@@ -275,13 +275,13 @@ export function importYaml(text, { ensurePositions, fitView, renderAll, preserve
             ifaces[ifn] = {
               link: iff.link,
               address: iff?.address || '',
-              cost: typeof iff?.cost === 'number' ? iff.cost : parseInt(iff?.cost, 10) || 0,
+              cost: typeof iff?.cost === 'number' ? iff.cost : parseInt(iff?.cost, 10) || 1,
             };
           } else {
             ifaces[ifn] = {
               network: iff?.network || '',
               address: iff?.address || '',
-              cost: typeof iff?.cost === 'number' ? iff.cost : parseInt(iff?.cost, 10) || 0,
+              cost: typeof iff?.cost === 'number' ? iff.cost : parseInt(iff?.cost, 10) || 1,
             };
           }
         }

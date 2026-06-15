@@ -74,6 +74,65 @@ beforeEach(() => {
   document.body.innerHTML = '<input id="proj-name" /><div id="toasts"></div>';
 });
 
+describe('interface cost default — backend parity (missing/blank cost → 1, not 0)', () => {
+  // The backend parser defaults a missing interface cost to 1 and REJECTS
+  // cost <= 0. The SPA must match, otherwise a costless interface round-trips
+  // to `cost: 0` and the backend rejects it on re-import.
+  const NET_NO_COST = `
+internet:
+  name: test
+  autonomous_systems:
+    test:
+      asn: 65000
+      networks:
+        lan1: "10.0.0.0/24"
+      hosts: {}
+      routers:
+        r1:
+          interfaces:
+            eth0: { network: lan1, address: "10.0.0.1" }
+`;
+  const LINK_NO_COST = `
+internet:
+  name: test
+  autonomous_systems:
+    test:
+      asn: 65000
+      networks: {}
+      links:
+        p2p1: "192.168.0.0/30"
+      hosts: {}
+      routers:
+        r1:
+          interfaces:
+            eth0: { link: p2p1, address: "192.168.0.1" }
+`;
+
+  it('imports a costless network interface as cost 1', () => {
+    importYaml(NET_NO_COST);
+    expect(state.routers.r1.interfaces.eth0.cost).toBe(1);
+  });
+
+  it('imports a costless link interface as cost 1', () => {
+    importYaml(LINK_NO_COST);
+    expect(state.routers.r1.interfaces.eth0.cost).toBe(1);
+  });
+
+  it('exports a blank network-interface cost as 1, not 0 (backend rejects 0)', () => {
+    importYaml(NET_NO_COST);
+    state.routers.r1.interfaces.eth0.cost = ''; // simulate a cleared cost field
+    const out = globalThis.jsyaml.load(exportYaml());
+    expect(out.internet.autonomous_systems.test.routers.r1.interfaces.eth0.cost).toBe(1);
+  });
+
+  it('exports a blank link-interface cost as 1, not 0 (backend rejects 0)', () => {
+    importYaml(LINK_NO_COST);
+    state.routers.r1.interfaces.eth0.cost = ''; // simulate a cleared cost field
+    const out = globalThis.jsyaml.load(exportYaml());
+    expect(out.internet.autonomous_systems.test.routers.r1.interfaces.eth0.cost).toBe(1);
+  });
+});
+
 describe('exportYaml config blocks', () => {
   beforeEach(() => {
     state.networks = {}; state.hosts = {}; state.routers = {}; state.links = {};
