@@ -4,8 +4,8 @@ The topology is described in YAML. The same format is used by:
 
 - The bundled sample (`samples/sample.yaml`).
 - The SPA's **Import / Export** dialogs.
-- The server's `POST /topology` and the persisted
-  `<source>.session.yaml`.
+- The server's `POST /topology` and the session file it persists
+  internally (see [Save and resume workflow](#save-and-resume-workflow)).
 
 There is exactly one schema. Every consumer goes through the same
 parser.
@@ -14,7 +14,7 @@ parser.
 
 ```yaml
 internet:
-  name: loom              # optional; defaults to 'loom'
+  name: loom              # optional; defaults to 'loom' when absent
   autonomous_systems:
     main:
       asn: 65000          # preserved across round-trips; not yet used for routing (reserved for BGP)
@@ -46,6 +46,11 @@ optional `name:` field labels the internet instance, and
 and each value holds that AS's entity blocks (`networks`, `links`,
 `routers`, `hosts`). Names within an AS must be unique across the kinds
 they collide with — see [Naming rules](#naming-rules) below.
+
+> **Note (SPA export):** When you **Export** from the SPA, `internet.name`
+> and the autonomous-systems key are both set to the project name you typed
+> in the header bar — the SPA keeps them in sync. The `loom` default only
+> applies when you hand-write YAML without a `name:` field.
 
 Single-AS topologies put one entry under `autonomous_systems:`,
 conventionally named `main`. Multiple ASes are reserved for the future
@@ -137,7 +142,7 @@ Rules per interface:
 - Exactly one of `network:` or `link:` must be present.
 - `address:` must be valid for the chosen fabric (in-prefix; on a
   `/30` link, not the network or broadcast IP).
-- `cost:` is optional; defaults to `1`. Must be a non-negative integer.
+- `cost:` is optional; defaults to `1`. Must be a positive integer (≥ 1); `0` is rejected.
 - The named network or link must exist (declared elsewhere in the YAML
   before parsing reaches this point).
 
@@ -343,14 +348,14 @@ file**:
 
 - **Source file** — what `LOOM_TOPOLOGY` points at (default
   `samples/sample.yaml`). The simulator never writes to this file.
-- **Session file** — a clone next to the source, named
-  `<basename>.session<.ext>`. All in-process mutations land here.
+- **Session file** — a clone kept in a temporary directory
+  (`$TMPDIR/loom` on Linux/macOS, overridable via `LOOM_SESSION_DIR`),
+  named `<stem>.<8-hex-hash>.session.yaml`. The hash disambiguates two
+  source files that share a basename. All in-process mutations land
+  here.
 
-```
-samples/
-├── sample.yaml          ← source (read-only from loom's perspective)
-└── sample.session.yaml  ← session (created on first /topology or /sim/* call)
-```
+Because the session file lives outside the source tree, a read-only
+source directory is fine and your project folder stays clean.
 
 Lifecycle:
 
@@ -362,16 +367,18 @@ Lifecycle:
 | `POST /topology/reset` | Deleted and re-cloned from source |
 | `loom.py` exit | Untouched — persists across runs |
 
+The OS typically wipes `$TMPDIR` on reboot (Linux/macOS mount `/tmp`
+as tmpfs). Set `LOOM_SESSION_DIR` to a stable path if you want session
+files to survive reboots.
+
 ### Saving and resuming work
 
 To **save** a topology you built in the SPA:
 
 1. **Export** → the browser's save dialog opens with a suggested
-   filename (the loaded source with a `.session` suffix, e.g.
-   `sample.session.yaml`). Pick a folder and confirm.
-
-Or open `<source>.session.yaml` directly from the source directory —
-it's the same YAML the SPA would Export.
+   filename derived from the loaded source (e.g. `sample.yaml`; a
+   `.session` stem is stripped so the name doesn't grow on each
+   round-trip). Pick a folder and confirm.
 
 To **resume** a saved topology:
 
