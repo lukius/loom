@@ -269,18 +269,6 @@ class LinkStateProtocol(RoutingProtocol):
         self._seq += 1
         return self._seq
 
-    def update_state(self):
-        """Compatibility shim.
-
-        Today's tests call update_state() to force-refresh local-iface
-        info into the graph. After this task the local LSA carries
-        that info via the LSDB; calling update_state() now re-installs
-        the local LSA (with permit-all policy so all local networks are
-        reflected in the graph). Tests using update_state() continue to work.
-        """
-        with self._lock:
-            return self._refresh_local_lsa()
-
     def _refresh_local_lsa(self) -> bool:
         # Local LSA uses permit-all so the local graph includes all directly
         # connected networks (including RFC 1918). The outbound policy only
