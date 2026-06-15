@@ -1,23 +1,23 @@
 # loom
 
-A Python simulator for an IPv4 autonomous system: hosts, routers, networks, and a link-state routing protocol over a YAML-described topology, driven by an interactive web UI (with a legacy `cmd.Cmd` shell still available).
+A Python simulator for an IPv4 autonomous system: hosts, routers, networks, and a link-state routing protocol over a YAML-described topology, driven by an interactive web UI.
 
 ## Project Structure
 
 ```
 loom/
 ├── src/
-│   ├── loom.py            # Entry point — web UI (default) or 'shell' subcommand
-│   ├── entities/          # AS, Router, Host, Network, Interface, Address, Packet, Event
-│   ├── routing/           # RoutingProtocol (loom-OSPF link-state) + LSDB → NetworkGraph (Dijkstra)
+│   ├── loom.py            # Entry point — starts the FastAPI server
+│   ├── entities/          # AS, Router, Host, Network, Interface, Address, Packet, Event, nat.py
+│   ├── routing/           # RoutingProtocol (loom-OSPF link-state), Scheduler, LSDB → NetworkGraph (Dijkstra), policy.py
 │   ├── parser/            # YAML topology loader + SystemValidator
-│   └── shell/             # `cmd.Cmd`-based REPL (read/route/send/update_cost/exit)
+│   └── server/            # FastAPI app, SimState lifecycle/edit controller, EventTracer bridge, routes/, command/
 ├── test/
-│   ├── test_*.py          # Suites: address, entities, event_subscribers, forwarding, graph, packet_handling, parser, pause_gate, ping, protocol, routing_table, shell_commands, thread_resilience
+│   ├── test_*.py          # Suites: address, admin_down, entities, event_subscribers, forwarding, graph, hello, link, lock_safety, lsa, lsdb, nat, neighbor, packet_handling, parser, pause_gate, ping, policy, protocol, routing_table, scheduler, server_{commands,events,files,lifecycle,lock_discipline}, thread_resilience, topology_patch
 │   └── resources/         # YAML fixtures — most are intentionally invalid (parser/validator negative tests)
 ├── samples/sample.yaml    # Example topology
 ├── web/
-│   ├── index.html         # SPA shell (~280 lines: HTML + <script type="module" src="app.js">)
+│   ├── index.html         # SPA shell (~355 lines: HTML + <script type="module" src="app.js">)
 │   ├── styles.css         # Extracted CSS
 │   ├── app.js             # Entrypoint: imports, wire(), init(), DOMContentLoaded
 │   ├── state.js           # State object, persist/restore, sample, bus (EventTarget)
@@ -29,11 +29,17 @@ loom/
 │   ├── packets.js         # PacketAnim + tooltips
 │   ├── packetstore.js     # PacketStore: in-flight registry, NAT cache, #N counters
 │   ├── packetspanel.js    # Slide-out Packets panel
-│   └── *.test.js          # vitest tests co-located (utils, state, sim)
+│   ├── file-picker.js     # Import file picker
+│   ├── modal.js           # Modal dialog helper
+│   ├── packettypes.js     # Packet type constants
+│   ├── preflight.js       # Pre-start environment checks
+│   ├── protocolpopover.js # Protocol timer config popover
+│   ├── yaml-io.js         # YAML import/export helpers
+│   └── *.test.js          # vitest tests co-located (utils, state, sim, …)
 ├── e2e/                   # Playwright smoke suite (real Chromium + spawned FastAPI)
 ├── docs/
-│   ├── architecture/      # Technical reference (overview, entities, packets, routing-protocol, concurrency, parser, server-api, web-spa)
-│   ├── user-guide/        # User manual (getting-started, web-ui, building-topologies, running-simulations, routing-tables, terminals, yaml-format, shell-cli)
+│   ├── architecture/      # Technical reference (overview, entities, packets, routing-protocol, concurrency, parser, server-api, web-spa, nat, policy)
+│   ├── user-guide/        # User manual (getting-started, web-ui, building-topologies, running-simulations, routing-tables, terminals, yaml-format, nat-and-private-lans)
 │   └── images/            # Screenshots used by user-guide
 ├── playwright.config.js   # E2E config: chromium-only, webServer on LOOM_PORT=8766
 ├── pyproject.toml         # ruff + pytest config (sets pythonpath = ["src"], testpaths = ["test"])
@@ -48,8 +54,7 @@ loom/
 ## Build & Run
 
 - Requires Python 3.11+. Install runtime deps: `pip install -r requirements.txt`. For dev (tests + lint): `pip install -r requirements-dev.txt`.
-- **Web UI (default):** `cd src && python loom.py` — launches FastAPI on http://127.0.0.1:8000 and serves the SPA from `web/`.
-- **Legacy shell:** `cd src && python loom.py shell` — original cmd.Cmd REPL. Same simulator under the hood.
+- **Web UI:** `cd src && python loom.py` — launches FastAPI on http://127.0.0.1:8000 and serves the SPA from `web/`.
 - Topology source path: env var `LOOM_TOPOLOGY` (default `samples/sample.yaml`). The server clones to `<source>.session.yaml` and writes only there.
 - HTTP port: env var `LOOM_PORT` (default `8000`). The Playwright suite uses `8766` to avoid colliding with a dev server.
 - Run tests: `pytest` from the repo root. Single suite: `pytest test/test_address.py`.
@@ -60,23 +65,6 @@ loom/
 ## Git & Remote
 
 - Hosted on **GitLab**, not GitHub: `gitlab.com:lukius/netrouting`. `gh` will not work; use `glab` or the web UI for MRs/issues.
-
-## Shell usage
-
-Inside the REPL, load a topology before any other command:
-
-```
-# read samples/sample.yaml
-# route r1
-# send h1 h2 hello
-# update_cost r1 eth0 25
-# set_gateway h1 200.100.0.1
-# ifconfig h1
-# neighbors r1
-# ping h1 h2 -W 1.5
-```
-
-Commands run from `src/`, so paths like `samples/...` are relative to the repo root and need `../samples/...`. The `send` payload is a **single whitespace-delimited token** — no quoting, no spaces.
 
 ## Development Rules
 
@@ -90,7 +78,7 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 ### Documentation — keep in sync with code
 - After a code change, check whether `README.md`, this `CLAUDE.md`, the relevant page under `docs/architecture/` or `docs/user-guide/`, or any docstrings on the changed surface are now stale. If so, update them in the same commit — do not leave docs for "later".
 - Update **only when needed**: a small internal refactor with no observable behavior change typically requires no doc edits. Behavioral, interface, layout, or workflow changes usually do.
-- Surfaces that must stay accurate when touched: entry points and how to run them, shell + per-device command set + syntax, YAML schema, routing protocol wire format, project layout, dependencies, HTTP/WS API.
+- Surfaces that must stay accurate when touched: entry points and how to run them, per-device terminal command set + syntax, YAML schema, routing protocol wire format, project layout, dependencies, HTTP/WS API.
 - When touching `docs/user-guide/` for a user-visible change, follow the project-local **`user-guide-update`** skill (`.claude/skills/user-guide-update/SKILL.md`) — it covers page selection, action-level wording, and capturing the screenshot via `npm run screenshot` (tool at `tools/screenshot.mjs`).
 - `CONTRIBUTING.md` is the canonical dev guide; this file (`CLAUDE.md`) is the cheat sheet of non-obvious traps. Don't duplicate content — link from one to the other.
 - If a behavior is intentionally undocumented (e.g. an internal helper), say nothing — do not write speculative docs.
@@ -102,7 +90,7 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 - `ruff format src/ test/` is fine to run, but format-only churn should land in its own commit (`style:` or `chore:`), not mixed with behavioral changes.
 
 ### Backend ↔ frontend decoupling
-- The Python backend (`src/`) MUST NOT mention the SPA, the web UI, animations, the canvas, tooltips, or any frontend rendering concern in code, comments, docstrings, or test docstrings. The HTTP/WS API and the EventTracer event shape are the public contract; describe events as broadcast facts (e.g. "emits a `packet` event"), not in terms of what the UI does with them. The SPA is one subscriber among many possible — shell tools, tests, future TUIs — and the backend must look the same to all of them.
+- The Python backend (`src/`) MUST NOT mention the SPA, the web UI, animations, the canvas, tooltips, or any frontend rendering concern in code, comments, docstrings, or test docstrings. The HTTP/WS API and the EventTracer event shape are the public contract; describe events as broadcast facts (e.g. "emits a `packet` event"), not in terms of what the UI does with them. The SPA is one subscriber among many possible — tests, future TUIs — and the backend must look the same to all of them.
 - The reverse direction (SPA referring to backend wire shapes by name) is fine and expected — the SPA is the consumer.
 
 ### Commits
@@ -124,11 +112,15 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 
 ## Key Design Decisions & Traps
 
-- **Shell runs from `src/`, everything else from repo root.** The shell entry point uses bare-package imports (`from entities import ...`), so `cd src && python loom.py` is required. Pytest and ruff are configured to run from the repo root (`pyproject.toml`). Do not refactor imports to fix the cwd quirk without first updating both the shell entry and `pyproject.toml`'s `pythonpath`.
+- **Server entry point uses bare-package imports; run from `src/`.** `src/loom.py` imports `from server import run` at call time — the bare-package import style requires `cd src && python loom.py`. Pytest and ruff are configured to run from the repo root (`pyproject.toml`). Do not refactor imports to fix the cwd quirk without first updating both the entry point and `pyproject.toml`'s `pythonpath`.
 
 - **YAML shape: `internet:` → `autonomous_systems:` → `<short_name>:`.** The parser requires a top-level `internet:` key (with optional `name:`, default `loom`) containing a mandatory `autonomous_systems:` mapping. Each AS is keyed by its short name (the dict key *is* the name — there is no nested `name:`), and carries `asn:`, `networks:`, optional `links:`, `routers:`, `hosts:`. `samples/sample.yaml` follows this shape and loads cleanly. Anything that emits topology YAML (the SPA, future tools) must produce the same shape, and `SimState._dump_yaml` (`src/server/state.py`) must stay symmetric with the parser.
 
-- **loom-OSPF: per-origin sequence flooding.** `LinkStateProtocol` (`src/routing/protocol.py`) emits one Hello per interface and one shared `LSA` (re-used across every interface) per refresh cycle, on a single daemon thread per router (`_protocol_loop`). Timers are tunable via `proto.set_timers(hello_interval=, lsa_refresh_interval=)` — defaults 10s / 30s, with `dead = 3 × hello` and `max_age = 2 × refresh` derived by construction. The loop emits initial Hello + LSA at t≈0 (unjittered); subsequent ticks carry per-tick jitter `[0.75·T, 1.25·T]`. Receivers re-flood every accepted LSA out every interface *except* the inbound, deduplicated per-origin in the `LSDB`. SPF recomputes only when an LSA's links actually change (`InstallResult.changed_graph()`); a refresh with identical links is re-flooded but does not recompute.
+- **loom-OSPF: one daemon thread per router drives three independent jittered timers via a `Scheduler` (`src/routing/scheduler.py`).** `_protocol_loop` honours `hello` (default 10s), `lsa_refresh` (30s), and `maxage_check` (same cadence as refresh). Each timer reschedules after firing with per-tick jitter `[0.75·T, 1.25·T]`; the initial Hello + LSA fire at t≈0 (unjittered). `set_timers(hello_interval=, lsa_refresh_interval=)` derives `dead = 3 × hello` and `max_age = 2 × refresh`. On origination the router installs a **permit-all** LSA locally (so private prefixes appear in the local graph) but floods a **policy-filtered** LSA to peers (RFC 1918 dropped by `RFC1918_OUTBOUND`). Receivers re-flood every accepted LSA out every interface *except* the inbound, deduplicated per-origin in the `LSDB`. SPF recomputes only when an LSA's links actually change (`InstallResult.changed_graph()`).
+
+- **NAT: routers keep a per-flow `NATTable` (`entities/nat.py`).** Source-NAT rewrites the source address on egress to public networks and reverses on inbound return, keyed by `(rewritten_src, original_dst, flow_id)`. Each rewrite emits a `nat` event; `nat_table_changed` events carry a snapshot for subscribers. The flow discriminator comes from `payload.flow_key()` so two private hosts behind one NAT router can reach the same public destination concurrently.
+
+- **Routing policy: `routing/policy.py` exposes `PERMIT_ALL` and `RFC1918_OUTBOUND`.** The local LSA uses `PERMIT_ALL` so all directly-connected prefixes (including RFC 1918) appear in the local graph. The outbound (flooded) LSA uses `RFC1918_OUTBOUND`, which denies the three private ranges and permits everything else. Private prefixes therefore route locally but never enter peers' graphs.
 
 - **`Network._interfaces` is keyed by interface IP address, not by `iface.name()`.** Interface names are only unique within a single device (every router happens to call its first interface `eth0`), so keying by name would clobber siblings on the same LAN. The parser/validator enforces IP-address uniqueness within each network, which is what makes the address a safe key. Anything new that joins interfaces to networks must follow this rule.
 
@@ -140,17 +132,15 @@ Commands run from `src/`, so paths like `samples/...` are relative to the repo r
 
 - **Longest-prefix match is linear.** `RoutingTable.match` scans all rules and tracks the largest mask. Fine for the simulator's scale; do not introduce a trie unless profiling says so.
 
-- **`@requires_system` decorator on shell commands.** In `src/shell/shell.py`, the module-level `requires_system` decorator wraps any `do_*` that needs a loaded topology — it short-circuits with `'system not initialized!'` when `self._system is None`. `functools.wraps` preserves docstrings so `cmd.Cmd` still surfaces them in help listings. Add new commands with `@requires_system`; leave bootstrapping commands like `do_read` undecorated.
-
 - **Dijkstra uses lazy deletion, not decrease-key.** `NetworkGraph._shortest_paths` pushes a fresh heap entry on every relaxation and skips stale pops via a `visited` set — O((V+E) log V). Don't reintroduce an in-place decrease-key scan.
 
-- **All user-facing strings and docstrings are in English.** This includes shell `do_*` help strings, terminal command output, and exception messages. The codebase used to mix Spanish (shell help) with English (everything else); that's been normalized.
+- **All user-facing strings and docstrings are in English.** This includes terminal command output and exception messages. The codebase used to mix Spanish with English; that's been normalized.
 
-- **`PauseGate` gates packet propagation and the protocol loop.** `AS` owns one `PauseGate` (`src/entities/clock.py`). `Interface._pkt_loop` and `Network._pkt_loop` call `gate.wait_or_stop()` after each dequeue; `LinkStateProtocol._protocol_loop` waits on it instead of `time.sleep`. `AS.stop()` triggers the stop event, which wakes any blocked workers. New worker threads must follow the same pattern or they won't pause cleanly.
+- **`PauseGate` gates packet propagation and the protocol loop.** `AS` owns one `PauseGate` (`src/entities/clock.py`). `Interface._pkt_loop` and `Network._pkt_loop` call `gate.wait_or_stop()` after each dequeue; `LinkStateProtocol._protocol_loop` polls the gate instead of sleeping. `AS.stop()` triggers the stop event, which wakes any blocked workers. New worker threads must follow the same pattern or they won't pause cleanly.
 
 - **Admin-down is a per-interface `is_up()` flag; the protocol thread never stops.** `Interface.is_up()` governs whether traffic is forwarded and whether the link appears in the router's LSA. Router halt = disable all interfaces + flood a withdrawal LSA (graceful) or just disable interfaces (crash). Resume = re-enable interfaces + re-announce via a fresh LSA. Crash (`POST /devices/{name}/fail`) is identical at rest — it sets `is_up()` to `False` silently; peers detect it only via dead-interval or max-age. Crash vs graceful is a **transition-time fork**, not stored state; down-state is runtime-only and is not serialized to the session YAML.
 
-- **Web SPA uses native ES modules + an EventTarget bus.** `web/state.js` exports a singleton `bus = new EventTarget()`. Cross-component coordination (re-render after mutation, react to sim status changes) flows through bus events: `state:topology-changed`, `state:topology-loaded`, `state:selection-changed`, `sim:status-changed`, `sim:packet`, `sim:routing-table-changed`, `sim:packet-arrived`, `packets:list-changed`, `packets:chatter-badges-changed`, `view:changed`. Synchronous queries and DOM helpers (`canvas.lookupDeviceNode`, `utils.el`, etc.) are direct imports. The rule: state mutations + cross-component re-renders → bus; sync queries + DOM helpers → direct import. Don't reintroduce module-to-module direct render calls.
+- **Web SPA uses native ES modules + an EventTarget bus.** `web/state.js` exports a singleton `bus = new EventTarget()`. Cross-component coordination flows through bus events (representative: `state:topology-changed`, `state:topology-loaded`, `state:selection-changed`, `sim:status-changed`, `sim:packet`, `sim:routing-table-changed`, `sim:packet-arrived`, `sim:nat-table-changed`, `packets:list-changed`, `view:changed`). Synchronous queries and DOM helpers (`canvas.lookupDeviceNode`, `utils.el`, etc.) are direct imports. The rule: state mutations + cross-component re-renders → bus; sync queries + DOM helpers → direct import. Don't reintroduce module-to-module direct render calls.
 
 - **Most fixtures under `test/resources/` are deliberately invalid** (e.g. `invalid_netmask.yaml`, `missing_as.yaml`). Don't "fix" them — they exist to assert the parser rejects them with the right error.
 
