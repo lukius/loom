@@ -17,35 +17,42 @@ here, organized by region.
 ```
 
 Both side panes are resizable: drag the vertical splitters between
-them. The widths persist to `localStorage` (`LAYOUT_KEY = 'loom.layout'`)
-with min/max bounds.
+them. The widths persist across reloads.
 
 ![Three-pane layout: nav, canvas, inspector](../images/05-layout.png)
 
-## Toolbar
+## Header bar
 
-From left to right:
+The strip at the very top of the page holds project-level controls:
 
-| Group | Control | What it does |
-|---|---|---|
-| Project | **Project name** | Editable AS name. Persisted; round-trips to/from YAML. |
-| Project | **New** | Clear the current topology and start from an empty canvas. Asks for confirmation first, and stops the simulation if one is running. |
-| Project | **Import** | Open a picker listing the YAML topologies in `samples/`; click one to load it, or use **Browse local file…** to pick any `.yaml` on your computer. |
-| Project | **Export** | Open the browser's save dialog so you can pick a folder and filename for the current topology. The suggested name is the loaded source filename with a `.session` suffix (e.g. `sample.session.yaml`). |
-| Build | **LAN** (<kbd>N</kbd>) | Add a network rail at the canvas center. Disabled while running. |
-| Build | **Host** (<kbd>H</kbd>) | Add a host. Disabled while running. |
-| Build | **Router** (<kbd>R</kbd>) | Add a router. Disabled while running. |
-| View | **Reset view** (<kbd>F</kbd>) | Fit topology to the visible canvas. |
-| Sim | **Start / Stop** (<kbd>Space</kbd>) | Toggle between `idle` and `running`. Starts: serializes YAML → POST `/topology` → POST `/sim/start`. |
-| Sim | **Pause / Resume** (<kbd>P</kbd>) | Toggle between `running` and `paused`. The label shows pending patch ops while paused. |
-| Sim | **Reset** | Idle-only: discard the session and re-clone from the source YAML. |
-| Sim | **Protocol** | Open the Protocol settings popover (Hello interval and LSA-refresh interval). Enabled while a topology is loaded or running. |
-| Sim | **Packet speed** | Per-hop animation duration in ms (200–5000). Local to the SPA; doesn't talk to the server. |
-| View | **Chatter** | Mute or unmute routing-protocol packet animations. |
-| View | **Packets** | Open the Packets panel listing all packets currently traveling, with a numeric badge on each. Expand a row to see its hop history and any NAT translations along the way. |
-| View | **Costs** | Show or hide link cost labels at each router interface. |
-| View | **Interfaces** | Show or hide interface name + count badges. |
-| Theme | **Theme buttons** | Light / dark / contrast — persisted to `localStorage`. |
+| Control | What it does |
+|---|---|
+| **Project name** | Editable topology name. Persisted; round-trips to/from YAML. |
+| **Save indicator** | Shows `autosaved` during normal operation and `saving…` briefly after a change. |
+| **Theme toggle** | Switch between **Light** and **Dark** — persisted across reloads. |
+| **New** | Clear the current topology and start from an empty canvas. Asks for confirmation first, and stops the simulation if one is running. |
+| **Import** | Open a picker listing the built-in sample topologies; click one to load it, or use **Browse local file…** to pick any `.yaml` on your computer. |
+| **Export** | Open the browser's save dialog so you can pick a folder and filename for the current topology. The suggested name is derived from the file you last loaded — any `.session` suffix is stripped so the name doesn't grow on each round-trip (e.g. a file saved as `sample.session.yaml` and re-exported suggests `sample.yaml`). Falls back to `topology.yaml` when nothing is loaded. |
+
+## Canvas toolbar
+
+The toolbar sits above the canvas. From left to right:
+
+| Control | What it does |
+|---|---|
+| **LAN** (<kbd>N</kbd>) | Add a network rail at the canvas center. Disabled while running. |
+| **Host** (<kbd>H</kbd>) | Add a host. Disabled while running. |
+| **Router** (<kbd>R</kbd>) | Add a router. Disabled while running. |
+| **Fit** (<kbd>F</kbd>) | Fit the topology to the visible canvas. |
+| **Start / Stop** (<kbd>Space</kbd>) | Toggle between idle and running. |
+| **Pause / Resume** (<kbd>P</kbd>) | Toggle between running and paused. The label shows how many pending changes are queued while paused. |
+| **Reset** | Idle-only: discard the session and re-clone from the source YAML. |
+| **Protocol** | Open the Protocol settings popover (Hello interval and LSA-refresh interval). Enabled while a topology is loaded or running. |
+| **Packets [speed] ms** | Sets the per-hop animation duration in milliseconds (200–5000). The on-screen label reads **Packets** with a numeric input and the unit **ms**. |
+| **Chatter** | Mute or unmute routing-protocol packet animations. |
+| **Costs** | Show or hide link cost labels at each router interface. |
+| **Ifaces** | Show or hide interface name and count badges. |
+| **Packets** | Open the Packets panel listing all packets currently traveling, with a numeric badge on each. Expand a row to see its hop history and any NAT translations along the way. |
 
 ![Toolbar showing all controls including the Protocol button](../images/toolbar.png)
 
@@ -75,9 +82,8 @@ Two derived values are shown read-only alongside the inputs:
 - **Max age** — two times the LSA refresh interval. An LSA older than this
   is expired from the link-state database.
 
-Press **Apply** (or <kbd>Enter</kbd> inside either field) to push the new
-values to the running simulation. The change takes effect on the next
-keepalive tick — no restart required.
+Press **Apply** to push the new values to the running simulation. The
+change takes effect on the next protocol timer tick — no restart required.
 
 ![Protocol settings popover with derived Dead interval and Max-age values](../images/protocol-popover.png)
 
@@ -231,7 +237,7 @@ hosts, routers. Click a name to select; right-click for the context
 menu. The same selection model as the canvas; the two stay in sync.
 
 The **Save state** indicator — `autosaved` under normal operation,
-`saving…` for a brief moment after a mutation — sits in the **top
+`saving…` for a brief moment after a mutation — sits in the **header
 bar**, next to the editable project name.
 
 ## Right pane (inspector)
@@ -336,15 +342,54 @@ For the full command set, see [Terminals](terminals.md).
 
 ## Context menu (right-click)
 
+Right-clicking a node on the canvas or in the nav pane opens the context menu.
+
+### On any node
+
 | Item | Behavior |
 |---|---|
-| **Rename** | Inline rename, validated for uniqueness. |
-| **Duplicate** | Clone the node with a new name; useful for routers. |
-| **Delete** | Same as the <kbd>Delete</kbd> shortcut. |
+| **Edit** | Selects the node and focuses the inspector, ready to rename or change properties (equivalent to double-clicking). |
+| **Duplicate** | Clone the node with a new name; useful for routers. Disabled while running. |
+| **Delete** | Remove the node. See [Delete behavior while running](#delete-behavior-while-running) below. |
 
-All three are **disabled** while the sim is running (the sim must be
-paused or idle to mutate topology). The menu is dismissed by clicking
-anywhere outside it or pressing <kbd>Esc</kbd>.
+### On a LAN
+
+| Item | Behavior |
+|---|---|
+| **Add host here** | Create a new host and attach it to this LAN at the cursor position. |
+| **Add router here** | Create a new router and connect it to this LAN at the cursor position. |
+
+### On a host
+
+| Item | Behavior |
+|---|---|
+| **New p2p link…** | Open the link-creation wizard to wire this host directly to another device via a point-to-point link. |
+| **Move to LAN…** | Move this host's interface to a different LAN (submenu lists available LANs). |
+| **Detach from LAN** | Detach this host from its current LAN without deleting it. |
+
+### On a router
+
+| Item | Behavior |
+|---|---|
+| **New p2p link…** | Open the link-creation wizard to wire this router directly to another device via a point-to-point link. |
+| **Connect to LAN…** | Add a new interface on this router connected to an existing LAN (submenu lists LANs not already attached). |
+
+### On the empty canvas
+
+Right-clicking empty space gives shortcuts to create a LAN, host, or router at
+the cursor position, fit the view, or import a topology.
+
+The menu is dismissed by clicking anywhere outside it or pressing <kbd>Esc</kbd>.
+
+### Delete behavior while running
+
+| Node type | While running |
+|---|---|
+| **Host** | Deleted immediately (live edit). |
+| **Router** | Deleted immediately (live edit). |
+| **LAN (unused)** | Deleted immediately (live edit). |
+| **LAN (with attached devices)** | Blocked — detach or delete the devices first. |
+| **Link** | Blocked — stop the simulation first. |
 
 ### Router admin actions (while running)
 
@@ -380,7 +425,7 @@ the interface state changes.
 
 ## Status indicators
 
-- **Save state** (top bar, next to the project name): `autosaved` / `saving…`.
+- **Save state** (header bar, next to the project name): `autosaved` / `saving…`.
 - **Sim state** is implicit in the toolbar — the Start button label
   changes between **Start** / **Stop**, and the Pause label changes
   between **Pause** / **Resume (N edits)**.
