@@ -152,16 +152,7 @@ class SimState:
             # Parse succeeded: atomically move the temp file to the session
             # path (replacing any prior content), then swap the live topology.
             os.replace(tmp_path, self.session_path)
-            with self._lock:
-                old_internet = self._internet
-            # Release _lock before the (potentially blocking) stop() join,
-            # mirroring stop()'s lock discipline.
-            if old_internet is not None:
-                old_internet.stop()
-            with self._lock:
-                self._internet = internet
-                self._as = internet.single_as()
-                self._state = "idle"
+            self._swap_internet(internet)
 
     def load_from_session(self):
         """Parse the session file into an AS. Routers are built but not started.
@@ -181,15 +172,7 @@ class SimState:
             # routing tick fire — emitting packet events on a sim that is
             # still 'idle' — before /sim/start has been called.
             internet = Parser(str(self.session_path)).parse(start_routing=False)
-            with self._lock:
-                old_internet = self._internet
-            # _lock released; _edit_lock still held across the blocking join.
-            if old_internet is not None:
-                old_internet.stop()
-            with self._lock:
-                self._internet = internet
-                self._as = internet.single_as()
-                self._state = "idle"
+            self._swap_internet(internet)
 
     def reset_session(self):
         """Re-clone the source file and reload the topology atomically.
@@ -206,15 +189,27 @@ class SimState:
         with self._edit_lock:
             self._session = _reset_session_file(self._source)
             internet = Parser(str(self._session)).parse(start_routing=False)
-            with self._lock:
-                old_internet = self._internet
-            # _lock released; _edit_lock still held across the blocking join.
-            if old_internet is not None:
-                old_internet.stop()
-            with self._lock:
-                self._internet = internet
-                self._as = internet.single_as()
-                self._state = "idle"
+            self._swap_internet(internet)
+
+    def _swap_internet(self, internet) -> None:
+        """Replace the live Internet/AS under the correct lock discipline.
+
+        Called from load_from_text, load_from_session, and reset_session, all
+        of which already hold _edit_lock.  Snapshots the old Internet under
+        _lock, releases _lock before the blocking stop() join (mirroring
+        stop()'s own discipline), then re-acquires _lock to assign the new
+        state.  Lock ordering is always _edit_lock → _lock; _lock is NEVER
+        held across the join.
+        """
+        with self._lock:
+            old_internet = self._internet
+        # _lock released; _edit_lock still held across the blocking join.
+        if old_internet is not None:
+            old_internet.stop()
+        with self._lock:
+            self._internet = internet
+            self._as = internet.single_as()
+            self._state = "idle"
 
     def start(self):
         """Transition idle -> running. No-op if already running."""
@@ -578,9 +573,7 @@ class SimState:
         as_block["networks"] = {
             n.name(): str(n.address()) for n in self._as.networks().values()
         }
-        # Conventional order (matching the source schema): networks, then
-        # links (if any), then hosts, then routers. `links:` is omitted on
-        # link-free topologies to keep simple sample files clean.
+        # `links:` is omitted on link-free topologies to keep simple files clean.
         if self._as.links():
             as_block["links"] = {
                 lnk.name(): str(lnk.address()) for lnk in self._as.links().values()
