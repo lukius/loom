@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](../es/user-guide/routing-tables.md)
+
 # Routing Tables, Neighbors, and Costs
 
 This guide explains what's in a router's routing table, how to inspect

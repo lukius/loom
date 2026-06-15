@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](README.es.md)
+
 <div align="center">
   <img src="web/favicon.svg" width="80" alt="loom">
 </div>

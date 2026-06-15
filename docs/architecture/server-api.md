@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](../es/architecture/server-api.md)
+
 # Server API
 
 The FastAPI app exposes four REST families and one WebSocket. All routes

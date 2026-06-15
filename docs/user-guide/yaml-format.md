@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](../es/user-guide/yaml-format.md)
+
 # YAML Format
 
 The topology is described in YAML. The same format is used by:

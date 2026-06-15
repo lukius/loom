@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](../es/architecture/web-spa.md)
+
 # Web SPA
 
 The SPA is plain ES modules — no framework, no bundler. The whole client

@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](../es/user-guide/running-simulations.md)
+
 # Running Simulations
 
 Once you've built (or loaded) a topology, the sim has a lifecycle: it

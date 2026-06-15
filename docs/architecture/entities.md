@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](../es/architecture/entities.md)
+
 # Entities
 
 The simulator's domain model lives in `src/entities/`. Every class here is

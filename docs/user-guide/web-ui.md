@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](../es/user-guide/web-ui.md)
+
 # The Web UI
 
 This is a guided tour of the SPA. Every clickable affordance is covered

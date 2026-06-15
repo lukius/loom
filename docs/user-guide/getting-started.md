@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](../es/user-guide/getting-started.md)
+
 # Getting Started
 
 This guide takes you from a fresh clone to a live simulation with a ping

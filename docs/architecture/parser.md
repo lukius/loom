@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](../es/architecture/parser.md)
+
 # Parser & Validator
 
 The YAML loader and the structural validator live in `src/parser/`. They

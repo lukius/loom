@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](../es/architecture/overview.md)
+
 # Architecture Overview
 
 > **Scope:** loom is deliberately L3-only. There is no L2 (MAC/ARP/STP)

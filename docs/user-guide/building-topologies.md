@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](../es/user-guide/building-topologies.md)
+
 # Building Topologies
 
 A `loom` topology is built from four kinds of entities: **networks**

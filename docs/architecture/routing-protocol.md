@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](../es/architecture/routing-protocol.md)
+
 # loom-OSPF — simplified link-state routing
 
 `loom` implements a link-state routing protocol deliberately modelled after

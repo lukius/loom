@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](../es/user-guide/nat-and-private-lans.md)
+
 # NAT and private LANs
 
 A topology can have two kinds of LANs:

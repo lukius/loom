@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](../es/architecture/nat.md)
+
 # NAT design
 
 loom's NAT is a stateful, per-router, source-NAT (a.k.a. **NAPT/PAT** in
@@ -7,7 +9,7 @@ private↔public boundary on the **forwarding path**, not at the receiving
 host.
 
 See also: [routing-protocol.md](routing-protocol.md) (private-prefix
-advertisement filter), [entities.md](entities.md#interface) (the `flow`
+advertisement filter), [entities.md](entities.md#interface-interfacepy) (the `flow`
 field on `packet` events), [web-spa.md](web-spa.md) (`sim:nat` and
 `sim:nat-table-changed` event shapes).
 

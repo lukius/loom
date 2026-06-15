@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](../es/architecture/policy.md)
+
 # Policy framework
 
 loom's route-map / policy mechanism lives in `src/routing/policy.py`. This

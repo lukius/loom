@@ -1,3 +1,5 @@
+> 🌐 **English** · [Español](../es/user-guide/terminals.md)
+
 # Terminals
 
 Every host and router in `loom` has a terminal. The terminal is the way
