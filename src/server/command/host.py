@@ -1,6 +1,6 @@
 import time
 
-from entities import Address
+from entities import Address, UserMessage
 
 
 def _interprobe_wait(interval: float, gate) -> bool:
@@ -52,8 +52,6 @@ def cmd_send(host, args, as_obj=None):
     if len(args) < 2:
         return "syntax: send <dst> <message>"
     dst, msg = args[0], " ".join(args[1:])
-    from entities import UserMessage
-
     dst_addr = _resolve_address(dst, as_obj)
     host.send_message_to(UserMessage(msg), dst_addr)
     return f"sent {len(msg)} bytes to {dst_addr}"

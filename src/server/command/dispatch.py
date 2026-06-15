@@ -2,6 +2,9 @@ import shlex
 
 from entities import Host, Router
 
+from . import host as host_handlers
+from . import router as router_handlers
+
 
 def dispatch(device, cmd_line: str, as_obj=None) -> dict:
     """Dispatch a command string to device-specific handlers.
@@ -17,9 +20,9 @@ def dispatch(device, cmd_line: str, as_obj=None) -> dict:
     name, args = parts[0], parts[1:]
 
     if isinstance(device, Host):
-        from . import host as handlers
+        handlers = host_handlers
     elif isinstance(device, Router):
-        from . import router as handlers
+        handlers = router_handlers
     else:
         return {"ok": False, "output": "unknown device type"}
 

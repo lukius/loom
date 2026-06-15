@@ -9,7 +9,7 @@ router = APIRouter(tags=["ws"])
 async def events(ws: WebSocket):
     await ws.accept()
     bus = ws.app.state.event_bus
-    if bus._loop is None:
+    if not bus.has_loop:
         bus.attach_loop(asyncio.get_running_loop())
     q = bus.subscribe()
     try:

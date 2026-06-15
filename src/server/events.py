@@ -17,6 +17,11 @@ class EventBus:
         self._lock = threading.Lock()
         self._overflow_count = 0
 
+    @property
+    def has_loop(self) -> bool:
+        """Return True if an asyncio event loop has been attached."""
+        return self._loop is not None
+
     def attach_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
 

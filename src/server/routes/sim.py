@@ -5,15 +5,15 @@ from server.state import InvalidStateTransition
 
 router = APIRouter(prefix="/sim", tags=["sim"])
 
+_SIM_STATES = frozenset({"idle", "running", "paused"})
+
 
 def _state(request: Request):
     return request.app.state.sim_state
 
 
 def _emit_sim_state(request: Request, state: str) -> None:
-    bus = request.app.state.event_bus
-    if bus is not None:
-        bus.emit({"kind": "sim_state", "state": state})
+    request.app.state.event_bus.emit({"kind": "sim_state", "state": state})
 
 
 @router.post("/start")
@@ -36,9 +36,6 @@ def pause(request: Request):
         raise HTTPException(409, str(e))
     _emit_sim_state(request, s.state)
     return {"state": s.state}
-
-
-_SIM_STATES = frozenset({"idle", "running", "paused"})
 
 
 @router.post("/resume")
@@ -109,16 +106,11 @@ def set_protocol_config(request: Request, body: dict = Body(...)):
     if hello <= 0 or refresh <= 0:
         raise HTTPException(status_code=400, detail="timers must be positive")
     s = _state(request)
-    # Snapshot the routers list under _lock so a concurrent stop() or
-    # load_from_session() cannot swap _as (and its routers dict) underneath
-    # the iteration, which would cause AttributeError or RuntimeError.
+    # Snapshot routers under _lock (stop() cannot swap _as mid-iteration).
     routers = s.routers_under_lock()
     if not routers and s.as_obj_under_lock() is None:
         raise HTTPException(status_code=409, detail="no system loaded")
-    # Mutating the live protocols is sufficient for persistence: the topology
-    # serializer reads each AS's timers straight off its routers' protocols, so
-    # this change is captured on the next dump/export without a separate
-    # write-through to the AS.
+    # Mutating the live protocols is captured on the next dump without a write-through.
     for r in routers:
         for proto in r.protocols():
             if isinstance(proto, LinkStateProtocol):
