@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from typing import Iterable
 
 from entities.address import NullAddress
+from entities.clock import wait_for_gate
 from entities.event import EventTracer
 
 from .hello import Hello
@@ -104,9 +105,6 @@ class LinkStateProtocol(RoutingProtocol):
     # Canonical ratios from the loom-OSPF spec.
     _DEAD_INTERVAL_RATIO = 3
     _MAX_AGE_RATIO = 2
-    # Poll interval used by _await_gate_running so stop() is noticed within
-    # this many seconds rather than after the full join timeout.
-    _PAUSE_POLL_INTERVAL = 0.1
 
     def set_timers(self, hello_interval: float, lsa_refresh_interval: float):
         """Update protocol timers in one shot.
@@ -524,32 +522,6 @@ class LinkStateProtocol(RoutingProtocol):
         """
         return list(self._router.routing_table().rules())
 
-    def _await_gate_running(self, gate) -> bool:
-        """Block until the gate is RUNNING, or exit is requested.
-
-        Returns True when the loop should proceed (gate resumed) or False
-        when it should exit (gate stopped, or this protocol stopped).
-
-        When the gate is PAUSED, polls every _PAUSE_POLL_INTERVAL seconds
-        and re-checks self._stopped each time.  This ensures stop() is
-        noticed within one poll interval instead of after the full join
-        timeout when the loop is parked on a paused gate.
-
-        When the gate is already RUNNING the underlying event.wait returns
-        immediately, so the running-topology fast path has no added cost.
-        """
-        if gate is None:
-            return True
-        while not self._stopped:
-            running, stopped = gate.wait_or_stop(timeout=self._PAUSE_POLL_INTERVAL)
-            if stopped:
-                return False           # AS gate stopped
-            if running:
-                return True            # gate resumed — proceed
-            # (False, False): timeout expired while still paused — loop and
-            # re-check self._stopped before waiting again.
-        return False                   # protocol.stop() set _stopped
-
     def _schedule_initial_deadlines(self):
         now = time.monotonic()
         self._scheduler.schedule(
@@ -570,7 +542,7 @@ class LinkStateProtocol(RoutingProtocol):
         gate = self._router.gate()
         # Initial tick: hello + LSA at t≈0 (no jitter).
         now = time.monotonic()
-        if not self._await_gate_running(gate):
+        if not wait_for_gate(gate, self._stop_event):
             return
         self._safe_tick_initial(now)
         self._schedule_initial_deadlines()
@@ -582,7 +554,7 @@ class LinkStateProtocol(RoutingProtocol):
             self._wake_event.clear()
             if self._stopped:
                 break
-            if not self._await_gate_running(gate):
+            if not wait_for_gate(gate, self._stop_event):
                 break
             now = time.monotonic()
             for name in self._scheduler.elapsed(now):
