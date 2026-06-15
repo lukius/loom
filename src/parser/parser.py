@@ -76,7 +76,13 @@ class Parser:
         validator = SystemValidator(system)
 
         if 'asn' in system_dict:
-            system.set_asn(system_dict['asn'])
+            asn = system_dict['asn']
+            if isinstance(asn, bool) or not isinstance(asn, int) or asn < 0:
+                self._fail(
+                    f'{short_name}: invalid asn {asn!r}'
+                    ' (must be a non-negative integer)'
+                )
+            system.set_asn(asn)
 
         protocol_config = self._parse_protocol_config(short_name, system_dict)
         if protocol_config:

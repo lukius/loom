@@ -439,6 +439,12 @@ class ParserTest(unittest.TestCase):
             'network_with_host_bits', 'host bits set'
         )
 
+    def test_invalid_asn(self):
+        self._run_parsing_error_test('invalid_asn', 'invalid asn')
+
+    def test_overlapping_subnets(self):
+        self._run_parsing_error_test('overlapping_subnets', 'overlapping subnet')
+
     # ----------------------------------------------------------------- helpers
 
     def _run_parsing_error_test(self, filename, expected_msg):

@@ -6,6 +6,12 @@ from entities import Host, Network, NetworkDevice, Router
 _OCTET_RE = re.compile(r'^\d{1,3}$')
 
 
+def _prefixes_overlap(a, b) -> bool:
+    """Return True if NetworkAddress a and b have a strict prefix-containment
+    overlap (i.e. one prefix contains the other, excluding exact duplicates)."""
+    return a != b and (a.contains(b) or b.contains(a))
+
+
 class ValidationResult:
     """Outcome of a validator run. `ok()` is the predicate; `reason()`
     returns the failure reason (empty string on success)."""
@@ -103,7 +109,36 @@ class NetworkValidator(Validator):
                     return ValidationResult.invalid('network address already exists')
                 # Private CIDRs are allowed to repeat; downstream NAT handles them.
 
+        # Check for prefix containment overlaps against all existing fabrics.
+        for result in self._overlap_checks(net):
+            if not result.ok():
+                return result
+
         return ValidationResult.valid()
+
+    def _overlap_checks(self, net: Network):
+        """Yield ValidationResults for prefix-containment overlaps.
+
+        Exact-duplicate private CIDRs are excluded — they are permitted by the
+        NAT model and already guarded above.  Only strict prefix containment
+        (A ⊂ B or B ⊂ A) is rejected here.
+        """
+        new_addr = net.address()
+        candidates = list(self._system.networks().values()) + list(
+            self._system.links().values()
+        )
+        for existing in candidates:
+            ex_addr = existing.address()
+            if ex_addr == new_addr:
+                # Exact duplicate: handled above (allowed for private, rejected
+                # for public).  Either way, not an overlap-check concern.
+                continue
+            if _prefixes_overlap(new_addr, ex_addr):
+                yield ValidationResult.invalid(
+                    f'overlapping subnet with {existing.name()} ({ex_addr})'
+                )
+                return
+        yield ValidationResult.valid()
 
 
 class LinkValidator(Validator):
@@ -121,6 +156,17 @@ class LinkValidator(Validator):
 
         if name in self._system.links():
             return ValidationResult.invalid('link already exists')
+
+        # Check for prefix-containment overlaps against all existing fabrics.
+        link_addr = link.address()
+        candidates = list(self._system.networks().values()) + list(
+            self._system.links().values()
+        )
+        for existing in candidates:
+            if _prefixes_overlap(link_addr, existing.address()):
+                return ValidationResult.invalid(
+                    f'overlapping subnet with {existing.name()} ({existing.address()})'
+                )
 
         return ValidationResult.valid()
 
