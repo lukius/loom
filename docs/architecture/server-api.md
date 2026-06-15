@@ -1,6 +1,6 @@
 # Server API
 
-The FastAPI app exposes three REST families and one WebSocket. All routes
+The FastAPI app exposes four REST families and one WebSocket. All routes
 live under `src/server/routes/` and share the application state attached
 to `request.app.state`:
 
@@ -52,10 +52,18 @@ Load a new topology, replacing the current one.
 
 **Behavior**
 
-1. Write the body to `session_path` atomically (temp file + rename).
-2. `SimState.load_from_session()` parses it and replaces the AS.
-3. Routers are parsed-started by `Parser`, then stopped to enforce
-   `idle` semantics.
+Parse-then-commit via `SimState.load_from_text()`:
+
+1. Write the YAML to a temporary file in the same directory as the
+   session file.
+2. `Parser(tmp_path).parse(start_routing=False)` validates and builds the
+   AS. On any parse/validation failure the exception propagates, the
+   temporary file is deleted, and the session file is left untouched.
+3. On success, the temporary file is atomically moved to `session_path`
+   (replacing any prior content), and the live AS is swapped in.
+
+Routers are built but not started — `start_routing=False` — so no
+routing events fire until `/sim/start` is called.
 
 **Responses**
 
@@ -69,6 +77,23 @@ Load a new topology, replacing the current one.
   }
   ```
 - `400` `{"detail": "..."}` — invalid YAML or parse/validation failure.
+- `409` `{"detail": "stop the simulation before importing a topology"}` —
+  sim is not `idle`.
+
+---
+
+## `GET /topology/source`
+
+Return the basename of the topology source file (`LOOM_TOPOLOGY` env var).
+
+**Response**
+
+```json
+{ "name": "sample.yaml" }
+```
+
+Consumers may use this as a default filename stem (e.g. for export
+dialogs). The value is the `Path.name` of the source, not a full path.
 
 ---
 
@@ -79,9 +104,8 @@ Drop the session file and re-clone from the source.
 **Behavior**
 
 - Returns `409` if the sim is not `idle` (`"stop the simulation before reset"`).
-- Deletes `<source>.session.yaml` and calls `prepare_session(source)` to
-  re-clone.
-- Reloads the AS from the fresh session.
+- Re-clones the source onto the session path and reloads the AS
+  (`start_routing=False`).
 
 **Response**
 
@@ -89,7 +113,32 @@ Drop the session file and re-clone from the source.
 { "ok": true, "as_name": "..." }
 ```
 
-The SPA wires this to the toolbar's **Reset** button.
+---
+
+## Sample-file routes: `GET /samples`, `GET /samples/{filename}`
+
+Read-only endpoints that enumerate and serve `*.yaml` files from the
+configured samples directory (default `<repo>/samples`, overridable via
+`LOOM_SAMPLES` env var). Session clones (`*.session.yaml`) are filtered out.
+
+### `GET /samples`
+
+```json
+{ "files": ["sample.yaml", "small.yaml"] }
+```
+
+Returns an alphabetically-sorted list of bare filenames. Returns
+`{"files": []}` when the samples directory does not exist or is empty.
+
+### `GET /samples/{filename}`
+
+```json
+{ "yaml": "<full YAML text>" }
+```
+
+Only bare filenames (no `/`, `\`, `.`, or `..`) are accepted; any other
+form returns `400`. A filename that does not exist in the samples
+directory returns `404`.
 
 ---
 
@@ -105,21 +154,25 @@ idle ──/sim/start──► running ──/sim/pause──► paused
 running, paused ─────/sim/stop─────► idle
 ```
 
-All four endpoints return `{"state": <new>}` and emit a
-`{"kind": "sim_state", "state": <new>}` event on the WebSocket.
+`/sim/start`, `/sim/pause`, `/sim/resume`, and `/sim/stop` each return
+`{"state": <new>}` and emit a `{"kind": "sim_state", "state": <new>}`
+event on the WebSocket. `/sim/edit` (below) does not change state and
+does not emit `sim_state`. `/sim/stop` from `idle` is a no-op that
+returns `200 {"state": "idle"}` and emits `sim_state` for consistency.
 
-On a state-machine violation (e.g. pause from `idle`), they return
-`409 Conflict` with the underlying `InvalidStateTransition` message.
+On a state-machine violation (e.g. pause from `idle`), the lifecycle
+endpoints return `409 Conflict` with the underlying
+`InvalidStateTransition` message.
 
 ### `POST /sim/start`
 
-`idle → running`. Resumes the `PauseGate`, starts every router's
-keepalive. Errors `409` if not idle, or if no topology is loaded.
+`idle → running`. Resumes the `PauseGate` and starts every router's
+protocol thread. Errors `409` if not idle or if no topology is loaded.
 
 ### `POST /sim/pause`
 
 `running → paused`. Calls `PauseGate.pause()`. Workers block at their
-next `wait_or_stop`; in-flight frames stay queued.
+next gate wait; in-flight frames stay queued.
 
 ### `POST /sim/resume`
 
@@ -128,6 +181,7 @@ next `wait_or_stop`; in-flight frames stay queued.
 ```json
 { "patch": [
     {"op": "add_network", "name": "lan4", "address": "10.0.0.0/24"},
+    {"op": "add_link",    "name": "lnk1", "address": "10.0.0.0/30"},
     {"op": "add_host",    "name": "h4",   "network": "lan4", "address": "10.0.0.10", "gateway": "10.0.0.1"},
     {"op": "add_router",  "name": "r4",   "interfaces": [
         {"name": "eth0", "network": "lan4", "address": "10.0.0.1", "cost": 5}
@@ -163,6 +217,7 @@ Apply a topology patch to a **running** simulation without pausing.
 ```json
 { "patch": [
     {"op": "add_network", "name": "lan4", "address": "10.0.0.0/24"},
+    {"op": "add_link",    "name": "lnk1", "address": "10.0.0.0/30"},
     {"op": "add_host",    "name": "h4",   "network": "lan4", "address": "10.0.0.10", "gateway": "10.0.0.1"},
     {"op": "add_router",  "name": "r4",   "interfaces": [
         {"name": "eth0", "network": "lan4", "address": "10.0.0.1", "cost": 5}
@@ -203,7 +258,7 @@ On success, a `topology_changed` event is broadcast on the WebSocket (see
 
 Any state → `idle`. Drops the AS entirely. The next `/sim/start` requires
 a fresh `/topology` load (or the existing session if you haven't
-reloaded).
+reloaded). If already `idle`, returns `200` without error.
 
 ### `GET /sim/state`
 
@@ -226,36 +281,40 @@ Change the routing-protocol timers **live** — no restart required.
 - Both `hello_interval` and `lsa_refresh_interval` are required.
 - Both must be positive numbers (int or float, not bool). `400` on
   invalid or non-positive values.
-- Requires `as_obj is not None` (sim must be loaded), else `409`.
+- Requires `as_obj is not None` (sim must be loaded), else `409
+  {"detail": "no system loaded"}`.
 
 Applied via `proto.set_timers(hello_interval=..., lsa_refresh_interval=...)`
-on every router. The change takes effect at the next sleep boundary of each
-router's protocol thread. The updated values are reflected in the next
-`GET /topology` response (see above).
+on every router's `LinkStateProtocol` instance. The change takes effect
+at the next sleep boundary of each router's protocol thread.
+
+**Response**
+
+```json
+{ "ok": true, "hello_interval": 5.0, "lsa_refresh_interval": 15.0 }
+```
+
+The updated values are reflected in the next `GET /topology` response.
 
 ---
 
 ## Device routes: `/devices/{name}/...`
 
-Three endpoints, all device-scoped. Each begins with the standard "look
-up the device or 404" guard:
+Five endpoints, all device-scoped. Each begins with a device lookup
+under `_lock` via `SimState.device_under_lock()` — the `None`-check
+and the `device()` call are atomic, so a concurrent `stop()` cannot
+null `_as` between them:
 
-```python
-s = request.app.state.sim_state
-if s.as_obj is None:
-    raise HTTPException(409, "no topology loaded")
-try:
-    return s.as_obj.device(name)
-except Exception:
-    raise HTTPException(404, f"unknown device: {name}")
-```
+- `409 {"detail": "no topology loaded"}` — `_as is None`.
+- `404 {"detail": "unknown device: <name>"}` — `device(name)` raised
+  `EntityException` (covers both `HostNotFoundException` and
+  `RouterNotFoundException`).
 
-`AS.device(name)` tries host then router; either match works.
+`AS.device(name)` tries hosts then routers; either match works.
 
 ### `POST /devices/{name}/command`
 
-The terminal endpoint. The SPA's terminal popups POST shell-like commands
-here.
+The terminal endpoint. Dispatches shell-like commands to a device.
 
 **Request**
 
@@ -302,7 +361,7 @@ Re-enables all previously halted interfaces and re-announces the router's links 
 
 **`ping <dst> [-W <seconds>] [-c <n>] [-i <seconds>]` (host)**
 
-Sends one `PingRequest` per probe. `-W` sets the per-probe timeout (default 3 s); `-c` sets the probe count (default 1, max 100); `-i` sets the inter-probe interval in seconds (default 1, like real ping; max 60; use `-i 0` for a back-to-back burst). The interval wait goes through the AS `PauseGate`, so it pauses with the simulation and aborts on stop; the default spacing lets a client edit the topology between probes (e.g. disable an interface) and observe later probes routed over the reconverged paths. The endpoint returns only the summary; per-probe lines stream as `ping_result` events. Output summary:
+Sends one `PingRequest` per probe. `-W` sets the per-probe timeout (default 3 s); `-c` sets the probe count (default 1, max 100); `-i` sets the inter-probe interval in seconds (default 1, like real ping; max 60; use `-i 0` for a back-to-back burst). The interval wait goes through the AS `PauseGate`, so it pauses with the simulation and aborts on stop. The endpoint returns only the summary; per-probe lines are broadcast as `ping_result` events. Output summary:
 
 ```
 h2 (100.200.0.20): time=2.34 ms
@@ -316,8 +375,7 @@ h2 (100.200.0.20): time=1.87 ms
 IP is what makes `ping 10.0.0.1` work even if no host has that name.
 
 Unknown commands return `{"ok": false, "output": "unknown command: ..."}`
-with HTTP 200 — failure is in the payload, not the status code, so the
-SPA terminal can render an error line uniformly with successful output.
+with HTTP 200 — failure is in the payload, not the status code.
 
 ### `GET /devices/{name}/interfaces`
 
@@ -377,17 +435,39 @@ fault-injection scenarios — test scripts and future automation.
 ] }
 ```
 
-For hosts, `routing_table` is absent, so this returns `{"rules": []}`.
+For hosts, returns `{"rules": []}`.
 For routers, the rules are dumped as currently held by
 `router.routing_table()`. `next_hop` is `"0.0.0.0"` for directly-
 connected prefixes (`NullAddress` stringifies to that).
+
+### `GET /devices/{name}/nat-table`
+
+```json
+{
+  "entries": [
+    {
+      "rewritten_src": "203.0.113.1",
+      "dst": "100.200.0.20",
+      "flow_id": "3f7e...",
+      "original_src": "10.0.0.10"
+    },
+    ...
+  ]
+}
+```
+
+Returns the current NAT-table snapshot for a router. Entries are ordered
+oldest-first (LRU). For hosts, returns `{"entries": []}`.
+
+Because events on the bus carry only incremental changes, a subscriber
+with no prior event history needs this endpoint to recover the current
+table state.
 
 ---
 
 ## `WS /ws/events`
 
-The event stream. The SPA connects on page load and reconnects with
-exponential backoff (initial 500 ms, max 8 s).
+The event stream.
 
 **Connection lifecycle**
 
@@ -406,16 +486,31 @@ exponential backoff (initial 500 ms, max 8 s).
 ```json
 {
   "kind": "packet",
-  "type": "user_datagram" | "routing_flood" | "ping_request" | "ping_reply" | "unknown",
+  "type": "user_datagram" | "routing_flood" | "ping_request" | "ping_reply" | "hello" | "unknown",
   "payload_id": "0d7c...e9",
   "payload_src": "200.100.0.10",
   "payload_dst": "100.200.0.20",
-  "flow": "100.200.0.20<->200.100.0.10",
+  "flow": "<conversation-uuid>",
   "src":  { "device": "h1", "iface": "iface_h1", "address": "200.100.0.10" },
   "dst":  { "address": "200.100.0.1" },
-  "network": "lan1"
+  "network": "lan1",
+  "payload": { ... }
 }
 ```
+
+`flow` is a UUID string — the conversation key reported by
+`payload.flow_key()`. It is stable across NAT address rewrites and is
+shared between a `PingRequest` and its corresponding `PingReply` (the
+reply echoes the request's id). `payload` is a per-type summary dict:
+
+| `type` | `payload` fields |
+|---|---|
+| `user_datagram` | `{"bytes": <n>, "text": "<body>"}` (text only when payload is a str) |
+| `ping_request` | `{"seq": <n>}` |
+| `ping_reply` | `{"seq": <n>, "request_ts": <float>}` |
+| `hello` | `{"originator": "<router>", "neighbors_heard": ["<r1>", ...]}` |
+| `routing_flood` | `{"seq": <n>, "originator": "<router>", "destinations": [{"prefix": "<cidr>", "cost": <n>}, ...]}` |
+| `unknown` | `{}` |
 
 ```json
 {
@@ -462,18 +557,107 @@ Emitted once per probe from `Host.ping`. `rtt_ms` is `null` on timeout.
 ```
 
 Emitted by `SimState.edit()` after a successful live-edit patch. `ops`
-is the exact list of ops that was applied. Subscribers can use this to
-resync state incrementally; the SPA refetches the full topology on
-receipt.
+is the exact list of ops that was applied.
+
+```json
+{
+  "kind": "neighbor_state_changed",
+  "device": "r1",
+  "interface": "eth0",
+  "peer": "r2",
+  "state": "TWO_WAY",
+  "last_hello_at": 1234567890.123,
+  "peer_acked_at": 1234567890.456
+}
+```
+
+Emitted by `LinkStateProtocol` whenever a neighbor transitions between
+adjacency states (`DOWN`, `INIT`, `TWO_WAY`). `last_hello_at` is the
+monotonic timestamp of the last Hello heard from this peer (or `null`
+before the first Hello); `peer_acked_at` is when the peer last listed
+this router in its own `neighbors_heard` list (or `null` if not yet
+acknowledged).
+
+```json
+{
+  "kind": "lsdb_changed",
+  "device": "r1",
+  "rules": [
+    { "prefix": "200.100.0.0/24", "next_hop": "0.0.0.0", "iface": "eth0" },
+    ...
+  ]
+}
+```
+
+Emitted by `LinkStateProtocol._emit_rule_change_events` whenever the
+link-state graph recomputation produces a new routing table. `rules`
+carries the same shape as `routing_table_changed`. `lsdb_changed` fires
+at the protocol level (one per `LinkStateProtocol`); `routing_table_changed`
+fires immediately after from the same method, at the RIB level.
+
+```json
+{
+  "kind": "nat",
+  "router": "r1",
+  "direction": "outbound",
+  "original_src": "10.0.0.10",
+  "rewritten_src": "203.0.113.1",
+  "dst": "100.200.0.20",
+  "flow_id": "3f7e...",
+  "payload_id": "a1b2..."
+}
+```
+
+```json
+{
+  "kind": "nat",
+  "router": "r1",
+  "direction": "inbound",
+  "rewritten_dst": "203.0.113.1",
+  "original_dst": "10.0.0.10",
+  "src": "100.200.0.20",
+  "flow_id": "3f7e...",
+  "payload_id": "a1b2..."
+}
+```
+
+Emitted once per packet at each NAT rewrite. `direction: "outbound"`
+fires from `Router._apply_source_nat` when a private-source packet
+crosses to a public egress. `direction: "inbound"` fires from
+`Router._handle_inbound_nat` when a return packet's destination is
+rewritten back to the original private address. `flow_id` is
+`payload.flow_key()` — the conversation UUID shared between request and
+reply. `payload_id` identifies this specific `Message` instance.
+
+```json
+{
+  "kind": "nat_table_changed",
+  "device": "r1",
+  "entries": [
+    {
+      "rewritten_src": "203.0.113.1",
+      "dst": "100.200.0.20",
+      "flow_id": "3f7e...",
+      "original_src": "10.0.0.10"
+    },
+    ...
+  ]
+}
+```
+
+Emitted immediately after every outbound NAT rewrite (from
+`Router._apply_source_nat`). `entries` is the full table snapshot in
+LRU order (oldest first). Subscribers that need the current NAT state
+without polling `GET /devices/{name}/nat-table` can maintain a local
+copy by applying each `nat_table_changed` event.
 
 Notes:
 
 - `payload_id` identifies a **single direction** of a flow (a single
   `Message` instance); a `PingRequest` and its `PingReply` carry
   different `payload_id`s.
-- `flow` is the sorted endpoint pair `"min<->max"`; both directions of
-  a ping share the same `flow`. The SPA's `packets.js` uses this to
-  sequence the request animation before the reply.
+- `flow` in `packet` events is a UUID (the payload's own `flow_key()`).
+  Request and reply share the same `flow` value.
 - `src.device` may be `null` if the interface has not yet been attached
   to a device (a brief window during topology load — rare in normal
   usage).
@@ -482,9 +666,30 @@ Notes:
 
 Each subscribed queue is capped at 1000 events. On overflow the **oldest
 event is dropped** and `EventBus.overflow_count` is incremented. There
-is no overflow signal on the wire — a slow client just loses old packet
-animations. The routing-table-changed and sim-state events are emitted
-much less frequently and rarely overflow.
+is no overflow signal on the wire — a slow subscriber simply loses old
+events. Routing-table and sim-state events are emitted much less
+frequently and rarely overflow.
+
+---
+
+## Patch ops reference
+
+The same op set is accepted by `/sim/resume` (body `patch:`) and
+`/sim/edit` (body `patch:`). All ops are validated before any is applied.
+
+| Op | Required fields | Notes |
+|---|---|---|
+| `add_network` | `name`, `address` | `address` is a CIDR (e.g. `"10.0.0.0/24"`) |
+| `add_link` | `name`, `address` | `address` must be `/30` or `/31` |
+| `remove_network` | `name` | Fails with `network_in_use` if any host/router interface is on it |
+| `add_host` | `name`, `address`, exactly one of `network:` or `link:` | Optional `gateway` |
+| `remove_host` | `name` | |
+| `add_router` | `name`, `interfaces` | Each interface entry must carry exactly one of `network:` or `link:` |
+| `remove_router` | `name` | Stops the protocol thread and detaches all interfaces |
+| `update_cost` | `router`, `iface`, `cost` | `cost` must be a positive integer |
+
+`add_host` and `add_router` interface entries each require exactly one of
+`network:` or `link:` — providing both or neither raises `invalid_patch`.
 
 ---
 
