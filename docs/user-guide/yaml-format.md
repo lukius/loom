@@ -279,8 +279,8 @@ Cost is the **transmit-side** metric for a router interface. The
 routing protocol uses these as edge weights in the network graph.
 
 - Type: integer.
-- Range: positive (validated server-side in `update_cost`; the parser
-  also coerces to `int` and rejects non-integer values).
+- Range: positive (validated when you apply the change; the parser
+  also coerces to integer and rejects non-integer values).
 - Default: `1`.
 - Direction: **per interface**, not symmetric. `r1.eth0` cost 10 and
   `r2.eth0` cost 5 (both on `lan1`) means routing decisions favor

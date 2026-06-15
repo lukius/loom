@@ -121,7 +121,7 @@ terminal: clear, Ctrl+L (clear), Ctrl+D (close)
 
 #### `send <dst> <message>`
 
-Send a `UserMessage` from this host to `<dst>`. `<dst>` can be a
+Send a data message from this host to `<dst>`. `<dst>` can be a
 hostname (resolved via the AS host table) or a literal IP.
 
 ```
@@ -132,8 +132,8 @@ send h2 hello
 sent 5 bytes to 100.200.0.20
 ```
 
-Or with quoting (the terminal uses `shlex.split`, so spaces in the
-payload are supported):
+Or with quoting (the terminal uses shell-style quoting, so a
+multi-word message can be wrapped in double quotes):
 
 ```
 send h2 "hello world"
@@ -143,13 +143,12 @@ send h2 "hello world"
 sent 11 bytes to 100.200.0.20
 ```
 
-The destination host receives a `UserMessage` event (visible to event
-subscribers; the SPA doesn't surface a "message received" notification
-by default).
+The destination host receives the message silently — no
+"message received" notification appears in the UI by default.
 
 #### `ping <dst> [-W <seconds>] [-c <count>] [-i <seconds>]`
 
-Send a `PingRequest` and wait for a `PingReply` (default timeout 3 s).
+Send an echo request and wait for a reply (default timeout 3 s).
 
 ```
 ping h3
@@ -184,7 +183,7 @@ ping h2: no route to host: no gateway configured
 — happens when the destination is off-link and the host has no gateway
 configured.
 
-`ping` uses the simulator's `time.monotonic()` clock — RTTs reflect
+`ping` measures round-trip time using a monotonic clock — RTTs reflect
 the actual wall-clock time the simulator took to thread the packet
 through the topology. With a busy simulator (lots of routing chatter
 or many ping flows running in parallel), expect single-digit
@@ -377,8 +376,7 @@ unknown command: foo
 ```
 
 There is no shell-level pipe or redirection — each command is one
-line, one request to `/devices/{name}/command`, one response rendered
-verbatim.
+line, one response rendered verbatim.
 
 ## What's happening under the hood
 

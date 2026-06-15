@@ -140,7 +140,7 @@ Selection is shown by a highlight ring around the node.
 
 ### Private LANs
 
-Networks whose CIDR falls in an RFC1918 range (`10.0.0.0/8`, `172.16.0.0/12`,
+Networks whose CIDR falls in an RFC 1918 private range (`10.0.0.0/8`, `172.16.0.0/12`,
 or `192.168.0.0/16`) render in a **muted neutral tone** instead of the
 default accent color. The same muting applies to the interface labels on
 the router side of those LANs. The visual cue lets you spot the NAT
@@ -268,10 +268,9 @@ Type-specific sections:
 
 For a selected router, the inspector includes both the interface list
 (name · network · address · cost, plus `+ Add interface`) **and** the
-current routing table. The routing table re-fetches via
-`GET /devices/{name}/routes` on selection and re-fetches on every
-`routing_table_changed` event for this device. Columns: prefix, next
-hop, interface.
+current routing table. The routing table refreshes automatically when
+you select the router and whenever a routing update arrives for this
+device. Columns: prefix, next hop, interface.
 
 A directly-connected route shows `0.0.0.0` as the next hop — that's
 the simulator's sentinel value meaning "deliver to the packet's
