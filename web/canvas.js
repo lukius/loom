@@ -35,7 +35,7 @@ export function lookupLinkEdge(name) {
 
 // The edge element for a router interface: for a p2p link it's the link
 // edge path (data-name=fabricName); for a LAN it's the device→network path
-// tagged with data-device/data-iface (set by Task 4).
+// tagged with data-device/data-iface.
 export function lookupInterfaceEdge(device, iface, fabricName, isLink) {
   if (isLink) return lookupLinkEdge(fabricName);
   return document.querySelector(
@@ -1309,7 +1309,6 @@ export function getLinkWizard() { return _wizard; }
 /* ---------- interaction ---------- */
 let drag = null;          // active drag state
 let pan  = null;          // active pan state
-let rclickTimer = null;
 
 export function attachNodeEvents(g, kind, name) {
   g.addEventListener('pointerdown', (e) => {
@@ -1702,9 +1701,9 @@ bus.addEventListener('sim:interface-state-changed', (e) => {
   edge.classList.toggle('down', down);
   // Keep the ✕ midpoint marker in sync with the edge.
   const marker = isLink
-    ? document.querySelector(`#edges-layer .down-x[data-down-link="${CSS.escape(iff.link)}"]`)
+    ? document.querySelector(`#edges-layer .down-x[data-down-link="${cssEscape(iff.link)}"]`)
     : document.querySelector(
-        `#edges-layer .down-x[data-down-device="${CSS.escape(device)}"][data-down-iface="${CSS.escape(iface)}"]`);
+        `#edges-layer .down-x[data-down-device="${cssEscape(device)}"][data-down-iface="${cssEscape(iface)}"]`);
   marker?.classList.toggle('down', down);
 });
 

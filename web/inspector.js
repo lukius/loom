@@ -147,14 +147,11 @@ function renderNeighborSection(device, router) {
       const n = peers[peer];
       counts[n.state] = (counts[n.state] || 0) + 1;
       peerSet.add(peer);
-      // TODO: replace 'recent' with a real "Ns ago" once clock sync is available.
-      const ago = n.last_hello_at != null ? 'last hello recent' : '';
       const stateClass = n.state || 'down';
       const stateLabel = (n.state || 'down').toUpperCase();
       return `<div class="neigh-row">` +
         `<span class="peer">${escapeHtml(peer)}</span>` +
         `<span class="neigh-state ${stateClass}">${stateLabel}</span>` +
-        `<span class="timing">${ago}</span>` +
         `</div>`;
     }).join('');
     return `<div class="neigh-iface-block">` +

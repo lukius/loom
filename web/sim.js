@@ -164,12 +164,6 @@ function _isCompleteValidAdd(op) {
   return true;
 }
 
-/* Returns true when the given add_* op has an incomplete or invalid payload
- * that must NOT be POSTed yet. Inverse of _isCompleteValidAdd. */
-function _isIncompleteAdd(op) {
-  return !_isCompleteValidAdd(op);
-}
-
 /* Route a single mutation op: if the sim is running, POST it live via
  * /sim/edit; if paused, accumulate in the patch buffer as before (reconcile
  * on Resume); if idle, no-op. Callers supply the raw op object — the same
@@ -184,7 +178,7 @@ export async function applyEdit(op) {
   // Defer incomplete adds: keep them local and register in pendingLiveAdds.
   const isAddOp = op.op === 'add_network' || op.op === 'add_link' ||
                   op.op === 'add_host'    || op.op === 'add_router';
-  if (isAddOp && _isIncompleteAdd(op)) {
+  if (isAddOp && !_isCompleteValidAdd(op)) {
     const kind = op.op.replace('add_', '');
     pendingLiveAdds.add(`${kind}:${op.name}`);
     return;
@@ -219,7 +213,7 @@ export async function finalizePendingAdd(kind, name) {
     return;
   }
   const op = { op: `add_${kind}`, name };
-  if (_isIncompleteAdd(op)) return;  // still incomplete — wait for more input
+  if (!_isCompleteValidAdd(op)) return;  // still incomplete — wait for more input
   pendingLiveAdds.delete(key);
   const resolved = reconcilePatch([op]);
   try {
@@ -383,11 +377,6 @@ export const Sim = {
       if (pauseIcon) pauseIcon.setAttribute('href', '#ui-play');
       reset.disabled = true;
     }
-    const lockable = [];  // live-edit unlocks tb-add-net/tb-add-host/tb-add-router while running
-    lockable.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.disabled = (this.state === 'running');
-    });
     const protocol = document.getElementById('tb-protocol');
     if (protocol) protocol.disabled = (this.state === 'idle');
   },
@@ -409,9 +398,9 @@ export const Sim = {
     }
     try {
       if (this.state === 'idle') {
-        // exportYaml/importYaml live in still-inline modules; bridge via bus
-        // until Tasks 7+ extract them. Listeners write the result back into
-        // event.detail.yaml.
+        // exportYaml lives in yaml-io.js; bridge via bus so the sim module
+        // doesn't import the YAML serialiser directly. Listeners write the
+        // result back into event.detail.yaml.
         const req = new CustomEvent('sim:yaml-export-requested', { detail: {} });
         bus.dispatchEvent(req);
         const yaml = req.detail.yaml;

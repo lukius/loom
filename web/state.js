@@ -16,7 +16,7 @@ export const state = {
   /* routers[name] = { interfaces: { ifn: { network, address, cost } OR { link, address, cost } }, x, y }
      — network and link on each interface are mutually exclusive; exactly one must be present */
   routers: {},
-  /* links[name] = { cidr, x, y }  — x,y are the midpoint label's coords (draggable; used by canvas in Task 6) */
+  /* links[name] = { cidr, x, y }  — x,y are the midpoint label's coords (draggable on the canvas) */
   links: {},
   selection: null,        // { kind, name }
   view: { x: 0, y: 0, k: 1 }, // pan x,y and zoom factor

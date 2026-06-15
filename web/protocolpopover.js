@@ -1,4 +1,5 @@
 /* Protocol popover — hello / lsa-refresh inputs, derived dead / max-age. */
+import { toast } from './utils.js';
 
 export function computeDerived({ hello, refresh }) {
   return {
@@ -55,8 +56,8 @@ export function wireProtocolPopover({ onApply }) {
       await onApply({ hello, refresh });
       hide();
     } catch (err) {
-      // Stay open; surface error via toast if available.
-      console.error('protocol-config apply failed:', err);
+      // Stay open; surface the error so the user knows the update did not apply.
+      toast(err.message || String(err), 'error', 'Protocol config');
     }
   });
 

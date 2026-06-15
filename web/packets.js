@@ -41,8 +41,8 @@ bus.addEventListener('sim:router-intercept', (e) => {
   }
 });
 
-// Build a packet badge text element. Used by initial render (T7) and the
-// live chatter toggle (T8) so both stay visually identical.
+// Build a packet badge text element. Used by both the initial render pass and
+// the live chatter toggle so both paths stay visually identical.
 function makePacketBadge(payloadId, label, fillColor) {
   const badge = document.createElementNS('http://www.w3.org/2000/svg', 'text');
   badge.setAttribute('class', 'packet-badge');
