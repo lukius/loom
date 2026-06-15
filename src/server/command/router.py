@@ -45,21 +45,28 @@ def cmd_update_cost(router, args, as_obj=None):
 
 def cmd_neighbors(router, args, as_obj=None):
     """Show directly-connected neighbor routers."""
-    graph = router.protocol()._graph  # noqa: SLF001
-    my_nets = {iface.network().address() for iface in router.interfaces().values()}
+    from entities import Router as _Router  # noqa: PLC0415, I001 — break entities↔server cycle
+
+    seen = set()
     lines = []
-    for node in graph._routers:  # noqa: SLF001
-        if node == router:
-            continue
-        other_nets = {iface.network().address() for iface in node.interfaces().values()}
-        shared = my_nets & other_nets
-        for net_addr in shared:
-            for iface in node.interfaces().values():
-                if iface.network().address() == net_addr:
-                    lines.append(
-                        f"  {node.name():<6} via {iface.network().name():<8} "
-                        f"({iface.address()})  cost={iface.cost()}"
-                    )
+    for iface in router.interfaces().values():
+        fabric = iface.network()
+        for peer_name, peer_device in fabric.devices().items():
+            if not isinstance(peer_device, _Router):
+                continue
+            if peer_device is router:
+                continue
+            for peer_iface in peer_device.interfaces().values():
+                if peer_iface.network() is not fabric:
+                    continue
+                key = (peer_name, fabric.name())
+                if key in seen:
+                    continue
+                seen.add(key)
+                lines.append(
+                    f"  {peer_name:<6} via {fabric.name():<8} "
+                    f"({peer_iface.address()})  cost={peer_iface.cost()}"
+                )
     return "\n".join(lines) if lines else "(no neighbors yet)"
 
 

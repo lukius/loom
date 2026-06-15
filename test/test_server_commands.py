@@ -6,10 +6,11 @@ from fastapi.testclient import TestClient
 
 from entities import Address, Network, NetworkAddress
 from entities.host import Host
+from parser.parser import Parser
 from server.app import create_app
 from server.command.dispatch import dispatch
 from server.command.host import cmd_ping
-from server.command.router import cmd_halt, cmd_ifconfig, cmd_resume
+from server.command.router import cmd_halt, cmd_ifconfig, cmd_neighbors, cmd_resume
 
 SAMPLE = textwrap.dedent("""
 internet:
@@ -472,3 +473,83 @@ def test_unbalanced_quote_dispatch_returns_error_dict():
     assert isinstance(result, dict)
     assert result["ok"] is False
     assert result["output"]  # some error message
+
+
+# ---------------------------------------------------------------------------
+# cmd_neighbors: adjacency must come from topology, not the SPF graph
+# ---------------------------------------------------------------------------
+
+# Ground truth from samples/sample.yaml:
+#   r1 - r2: shared lan1 (200.100.0.0/24) and lan2 (100.200.0.0/24)
+#   r1 - r3: shared lan2 (100.200.0.0/24) and p2p1 (10.0.0.0/30)
+#   r2 - r3: shared lan2 (100.200.0.0/24) and lan3 (150.10.10.0/24)
+# Each router pair shares at least one fabric → all three are mutual neighbors.
+
+_SAMPLE_YAML_PATH = "samples/sample.yaml"
+
+# Expected neighbor sets per router (names only, de-duplicated).
+_EXPECTED_NEIGHBORS = {
+    "r1": {"r2", "r3"},
+    "r2": {"r1", "r3"},
+    "r3": {"r1", "r2"},
+}
+
+
+@pytest.fixture
+def sample_internet(tmp_path):
+    """Load samples/sample.yaml without starting routing (avoids timer threads)."""
+    internet = Parser(_SAMPLE_YAML_PATH).parse(start_routing=False)
+    yield internet
+    internet.stop()
+
+
+def _neighbor_names_from_output(output: str) -> set:
+    """Parse router names from cmd_neighbors output lines.
+
+    Each line produced by cmd_neighbors is:
+        "  <name>   via <fabric>   (<addr>)  cost=<n>"
+    The router name is the first word on each non-empty line.
+    """
+    names = set()
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("("):
+            # first token is the neighbor router name
+            names.add(stripped.split()[0])
+    return names
+
+
+def test_cmd_neighbors_uses_adjacency_not_spf_graph(sample_internet):
+    """cmd_neighbors reports topological adjacency, not SPF-graph membership.
+
+    The SPF graph is empty at t=0 (protocol not yet converged). If cmd_neighbors
+    relied on it, every router would report '(no neighbors yet)'. Adjacency is
+    topology-only — it must be derived from shared fabrics (networks / links),
+    not the protocol state.
+    """
+    as_obj = sample_internet.single_as()
+    for router_name, expected in _EXPECTED_NEIGHBORS.items():
+        router = as_obj.router(router_name)
+        output = cmd_neighbors(router, [], as_obj=as_obj)
+        # Must NOT fall back to the "no neighbors" sentinel
+        assert output != "(no neighbors yet)", (
+            f"{router_name}: got '(no neighbors yet)' — "
+            "cmd_neighbors is still reading the empty SPF graph"
+        )
+        actual = _neighbor_names_from_output(output)
+        assert actual == expected, (
+            f"{router_name}: expected neighbors {expected}, got {actual}\n"
+            f"full output:\n{output}"
+        )
+
+
+def test_cmd_neighbors_no_duplicate_rows(sample_internet):
+    """Each (neighbor, fabric) pair appears exactly once — no duplicates."""
+    as_obj = sample_internet.single_as()
+    for router_name in _EXPECTED_NEIGHBORS:
+        router = as_obj.router(router_name)
+        output = cmd_neighbors(router, [], as_obj=as_obj)
+        lines = [ln for ln in output.splitlines() if ln.strip()]
+        assert len(lines) == len(set(lines)), (
+            f"{router_name}: duplicate rows in cmd_neighbors output:\n{output}"
+        )
