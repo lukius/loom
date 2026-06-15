@@ -62,14 +62,23 @@ route
 prefix               next_hop        iface
 200.100.0.0/24       0.0.0.0         eth0
 100.200.0.0/24       0.0.0.0         eth1
-150.10.10.0/24       0.0.0.0         eth2
-10.0.0.0/30          200.100.0.1     eth0
+150.10.10.0/24       100.200.0.10    eth1
 ```
 
-This is `r2`'s table in the sample topology. The three directly-connected
-LANs show `0.0.0.0` as next hop; the point-to-point link (`10.0.0.0/30`)
-is not directly attached to `r2`, so traffic is forwarded to `r1`
-(`200.100.0.1`) on `eth0` — the cheapest path to the link.
+This is `r2`'s table in the sample topology. `lan1` and `lan2` are
+directly connected (`0.0.0.0`). `lan3` (`150.10.10.0/24`) is forwarded
+to `r3` (`100.200.0.10`) via `eth1` — even though `r2` has its own
+`eth2` on `lan3` (cost 15), the path through `lan2` to `r3` (cost 8 + 5
+= 13) is cheaper. loom computes routes purely from Dijkstra shortest
+paths and does not give directly-connected networks automatic preference,
+so the lower-cost indirect path wins.
+
+The point-to-point link `p2p1` (`10.0.0.0/30`) does not appear in
+`r2`'s table at all: it is a private (RFC 1918) range, and routers do
+not advertise private prefixes to peers, so `r2` never learns a route
+to it. Only `r1` and `r3`, which are directly on `p2p1`, hold a route
+to that prefix.
+
 `0.0.0.0` for next hop means the prefix is directly connected.
 
 ## What `0.0.0.0` means

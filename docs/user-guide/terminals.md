@@ -78,12 +78,13 @@ route
 prefix               next_hop        iface
 200.100.0.0/24       0.0.0.0         eth0
 100.200.0.0/24       0.0.0.0         eth1
-150.10.10.0/24       0.0.0.0         eth2
-10.0.0.0/30          200.100.0.1     eth0
+150.10.10.0/24       100.200.0.10    eth1
 ```
 
 `0.0.0.0` next-hop means the destination is directly connected on the
-listed interface.
+listed interface. `lan3` is reached via `r3` (`100.200.0.10` on `eth1`)
+rather than `r2`'s own `eth2`, because the path through `lan2` to `r3`
+is cheaper (cost 8+5=13) than `r2`'s direct link to `lan3` (cost 15).
 
 On a **host**: show the configured default gateway.
 
