@@ -151,8 +151,8 @@ sequenceDiagram
   participant R2 as Router r2 (LinkStateProtocol)
   participant R2GR as r2's NetworkGraph
 
-  R1KA->>R1: _handle_update()
-  R1->>R1: update_state()  (refresh self edges in graph)
+  R1KA->>R1: _emit_lsa_on_up_interfaces(now)
+  R1->>R1: _refresh_local_lsa()  (refresh self edges in local graph)
   R1->>R1: _rebuild_graph_and_recompute() if graph changed
   R1->>LAN1: For each iface: broadcast RoutingMessage(seq=N)
   LAN1->>R2: deliver frame (broadcast)
@@ -160,7 +160,7 @@ sequenceDiagram
   R2->>R2: LSDB.install() -> per-origin dedup by (origin_router, seq)
   R2->>R2GR: rebuild graph from LSDB if InstallResult.changed_graph()
   R2->>R2: changed? -> _recompute_routing_table() via Dijkstra
-  R2->>R2KA: emit {"kind":"routing_table_changed", "device":"r2", "rules":[...]}
+  Note over R2: emit {"kind":"routing_table_changed", "device":"r2", "rules":[...]}
 ```
 
 The flood is **receiver-side deduplicated** per origin router: `LSDB.install()`
