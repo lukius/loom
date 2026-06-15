@@ -75,11 +75,12 @@ Each of these slots into the existing shape without redesigning it:
   local-preference 200`, `set as-path prepend 65001 65001`, `set
   community 65001:1234`. `PolicyDecision.prefix()` already returns a
   routed prefix object so set-clauses have a place to mutate.
-- **Inbound application.** `LinkStateProtocol._handle_update` only
-  applies the outbound policy today. The receive path
-  (`_update_graph`) has the obvious slot for an inbound policy
-  attribute; BGP will use it for inbound filtering and attribute
-  rewriting on EBGP receive.
+- **Inbound application.** Outbound policy is applied today in
+  `LSA.from_router` (invoked from `_emit_lsa_on_up_interfaces` with
+  `self._outbound_policy`). The receive path — `_handle_incoming_lsa`
+  → `_rebuild_graph_and_recompute` — has the obvious slot for an
+  inbound policy attribute; BGP will use it for inbound filtering and
+  attribute rewriting on EBGP receive.
 - **Communities and AS-path matchers.** `PrefixList` is the only match
   type modelled. `RouteMapRule.match` will become a list of typed match
   clauses (`MatchPrefix`, `MatchCommunity`, `MatchASPath`) when BGP
@@ -137,4 +138,5 @@ needs it, not because Cisco IOS happens to have it.
 | Policy primitives | `src/routing/policy.py` | `PrefixList`, `RouteMapRule`, `RouteMap`, `PolicyDecision` |
 | Default RFC 1918 policy | `src/routing/policy.py` | `RFC1918_OUTBOUND` |
 | Outbound policy wiring | `src/routing/protocol.py` | `LinkStateProtocol.__init__` |
-| Policy application site | `src/routing/protocol.py` | `LinkStateProtocol._handle_update` |
+| Outbound policy application | `src/routing/lsa.py` | `LSA.from_router` (called from `_emit_lsa_on_up_interfaces`) |
+| Receive path | `src/routing/protocol.py` | `_handle_incoming_lsa`, `_rebuild_graph_and_recompute` |
