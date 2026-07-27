@@ -308,7 +308,9 @@ for merge requests and issues.
    glab mr create        # or use the web UI
    ```
 5. Describe **what** the MR does and **why** in the description; reference
-   related issues. Keep MRs focused — one logical change per MR.
+   related issues. Keep MRs focused — one logical change per MR. The
+   [MR description template](.gitlab/merge_request_templates/Default.md)
+   is applied automatically and walks through these sections.
 
 ---
 
