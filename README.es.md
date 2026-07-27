@@ -6,78 +6,74 @@
 
 # loom
 
-Un simulador Python para un **sistema autónomo** IPv4 — hosts, routers,
-redes y links punto a punto interconectados mediante un **protocolo de ruteo
-link-state** — dirigido por una topología YAML y una interfaz web interactiva.
+Un simulador Python para un sistema autónomo IPv4, controlado por una
+interfaz web interactiva y una topología YAML subyacente: hosts, routers,
+redes y links punto a punto interconectados mediante un protocolo de ruteo
+link-state similar a OSPF.
 
-`loom` está construido para la enseñanza y la exploración. Se describe una red en
-YAML (o se dibuja en el canvas), se presiona **Start** y se observa cómo el protocolo
-de ruteo converge, los datagramas saltan entre routers y las tablas de ruteo se
-actualizan en tiempo real. El código fuente es pequeño, con threads y con pocas
-dependencias por diseño.
+`loom` está orientado principalmente a la exploración y la didáctica.
+Las redes se dibujan en la pantalla y, una vez iniciada la simulación, el
+protocolo de ruteo converge en vivo: los datagramas viajan de router en
+router y las tablas de ruteo se actualizan en tiempo real.
 
 ## Alcance
 
-`loom` es deliberadamente solo L3. No hay L2 (sin MAC, sin ARP, sin STP —
-los frames son sobres abstractos) ni L4 (sin TCP/UDP, sin puertos, sin estado
-de transporte). El objetivo es hacer observable la convergencia del ruteo y el
-forwarding, no modelar una pila de red completa. Para trabajo de mayor fidelidad,
-ver [ns-3](https://www.nsnam.org/), [mininet](https://mininet.org/),
+`loom` es deliberadamente un simulador L3. No abarca L2 (los frames son
+contenedores abstractos) ni L4 (omite TCP/UDP, puertos y estado de nivel
+de transporte en general). El objetivo es hacer observable la convergencia
+del ruteo y el forwarding, y no modelar un _stack_ de red completo. Para
+trabajos de mayor alcance, recomendamos ver [ns-3](https://www.nsnam.org/), [mininet](https://mininet.org/),
 [Containerlab](https://containerlab.dev/) o [GNS3](https://www.gns3.com/).
 
 ## Características
 
-- **Simulación IPv4 multirouter** — Hosts, routers, LAN multiacceso y links
-  punto a punto `/30` / `/31`, todo interconectado mediante threads reales por
-  interface y por fabric. Las decisiones de forwarding usan longest-prefix match
-  sobre una tabla de ruteo por router.
-- **Protocolo link-state loom-OSPF** — Flooding con número de secuencia, thread
-  de keepalive por router con intervalos Hello y LSA-refresh configurables
-  (ajustables en vivo desde el popover Protocol de la barra de herramientas),
-  cómputo de camino más corto con Dijkstra que se vuelve a ejecutar solo cuando
-  el grafo realmente cambia.
-- **Desactivación de interface en vivo y halt/crash de router** — Se puede subir
-  o bajar una interface individual (re-flood de LSA graceful), hacer halt de un
-  router (LSA de retiro + vecinos convergen de inmediato), o inyectar un crash
-  silencioso (`POST /devices/{name}/fail`). `ping` admite `-c N` para sondeos
-  repetidos con una línea de resumen.
-- **Interfaz web interactiva** — Arrastrar redes, hosts y routers sobre un canvas
-  SVG; editar interfaces y costos en el panel derecho; hacer doble click en
-  cualquier dispositivo para abrir un terminal con `ping`, `send`, `route`,
-  `ifconfig`, `neighbors`, `update_cost`, `set_gateway`.
+- **Interfaz web interactiva** — Emplazar redes, hosts y routers en un
+  _canvas_ SVG; editar interfaces y costos; hacer doble click en
+  cualquier dispositivo para abrir una terminal con comandos como
+  `ping`, `route` e `ifconfig`.
 - **Ediciones de topología sin reinicio** — Agregar redes, hosts y routers
-  directamente en el canvas mientras la simulación está en ejecución; cada edición
-  se aplica en vivo en cuanto se ingresa una dirección válida. O pausar, acumular
-  un conjunto de cambios y reanudar — las ediciones se acumulan como una lista de
-  patches y se aplican atómicamente.
-- **Animaciones de paquetes** — Datagramas, ping y paquetes del protocolo de ruteo
-  se animan en el canvas mientras fluyen; los controles de la barra de herramientas
-  regulan la velocidad y la visibilidad del chatter.
-- **NAT y LAN privadas** — Source-NAT reescribe las direcciones privadas (RFC 1918)
-  al salir hacia redes públicas, con tablas de reescritura por flujo y traducción
-  inversa en el tráfico de retorno. La política de ruteo mantiene los prefijos
-  privados locales — nunca se anuncian a routers vecinos.
-- **Importación / exportación YAML** — La topología es la fuente de verdad. Se puede
-  arrastrar un archivo YAML al diálogo de importación, copiar el canvas de vuelta,
-  persistir o compartir.
-- **Sin estado externo** — Sin base de datos, sin autenticación, sin llamadas a la
-  red. Todo vive en memoria más un clon de sesión YAML en disco.
+  mientras la simulación está en ejecución, o pausar, acumular un conjunto
+  de cambios y reanudar atómicamente.
+- **Simulación IPv4 multirouter** — Hosts, routers, LANs multiacceso y links
+  punto a punto `/30` / `/31`, todo interconectado mediante threads
+  por interface y por estructura (link/LAN). Las decisiones de forwarding
+  usan matching de prefijo más largo sobre una tabla de ruteo por router.
+- **Protocolo link-state loom-OSPF** — _Flooding_ con número de secuencia,
+  thread de _keepalive_ por router con intervalos Hello y LSA-refresh
+  configurables y cálculo de camino más corto con Dijkstra (que se vuelve
+  a ejecutar solo cuando el grafo cambia).
+- **Desactivación de interfaces en vivo y _halt_/_crash_ de router** — Prender o
+  apagar una interface individual, detener un router o inyectar un
+  _crash_ silencioso, y luego observar en vivo cómo cambia el estado de ruteo
+  de la red.
+- **Animaciones de paquetes** — Los datagramas, pings y paquetes del protocolo de
+  ruteo se animan en la pantalla mientras fluyen, con posibilidad de regular
+  velocidad y visibilidad de los paquetes.
+- **NAT y LANs privadas** — Source-NAT reescribe las direcciones privadas
+  (RFC 1918) al salir hacia redes públicas, con tablas de reescritura
+  por flujo y traducción inversa para el tráfico entrante. La política de
+  ruteo preserva los prefijos privados locales (nunca se anuncian a routers
+  vecinos).
+- **Importación / exportación YAML** — La topología es la fuente de verdad.
+  La web permite importar archivos YAML y exportarlos para reutilizarlos.
+- **Sin estado externo** — Todo vive en memoria, existiendo además en disco
+  un clon YAML de la sesión.
 
 ## Stack tecnológico
 
-| Capa | Tecnología |
-|---|---|
-| Núcleo del simulador | Python 3.11+, threads + queues, `PauseGate` propio |
-| Servidor web | FastAPI + Uvicorn, mount SPA estático, REST + WebSocket |
-| Interfaz web | Módulos ES nativos + SVG (sin framework, sin bundler) |
-| Topología | YAML (PyYAML), con validador estructural |
-| Tests | `pytest` (526+), `pytest-asyncio`, `vitest`, Playwright |
-| Lint / formato | `ruff` |
+| Capa               | Tecnología |
+|--------------------|---|
+| Core del simulador | Python 3.11+, threads + queues |
+| Servidor web       | FastAPI + Uvicorn, mount SPA estático, REST + WebSocket |
+| Interfaz web       | Módulos ES nativos + SVG (sin framework, sin bundler) |
+| Topología          | YAML (PyYAML), con validador estructural |
+| Tests              | `pytest` (526+), `pytest-asyncio`, `vitest`, Playwright |
+| Lint / formato     | `ruff` |
 
-Dependencias externas: ninguna más allá de los cuatro paquetes anteriores. Sin base de
-datos, sin message broker, sin APIs de terceros.
+Sin dependencias de runtime más allá de PyYAML, FastAPI y Uvicorn (el
+resto de la tabla son herramientas de desarrollo).
 
-## Inicio rápido
+## Cómo empezar
 
 **Requisitos previos:** Python 3.11+
 
@@ -93,11 +89,11 @@ cd src
 python loom.py
 ```
 
-Abrir [http://127.0.0.1:8000](http://127.0.0.1:8000). Se verá el canvas precargado con
+Abrir [http://127.0.0.1:8000](http://127.0.0.1:8000). Se verá el _canvas_ precargado con
 la topología de ejemplo incluida (3 hosts, 3 routers, 3 LAN, 1 link punto a punto).
 Presionar **Start** en la barra de herramientas y observar cómo el protocolo de ruteo converge.
 
-### Fuente de la topología
+### Origen de la topología
 
 Por defecto `loom` lee `samples/sample.yaml`. Se puede sobreescribir con
 `LOOM_TOPOLOGY`:
@@ -106,13 +102,13 @@ Por defecto `loom` lee `samples/sample.yaml`. Se puede sobreescribir con
 LOOM_TOPOLOGY=/path/to/topology.yaml python loom.py
 ```
 
-Las ediciones realizadas a través de la interfaz se guardan en `<source>.session.yaml`;
+Las ediciones realizadas a través de la web se guardan en `<source>.session.yaml`;
 el archivo fuente nunca se modifica. Usar el botón **Reset** de la barra de herramientas
 (o `POST /topology/reset`) para borrar la sesión y re-clonar desde el origen.
 
 ### Puerto
 
-El servidor escucha en `127.0.0.1:8000` por defecto. Para sobreescribir:
+El servidor escucha en `127.0.0.1:8000` por defecto. Para modificarlo:
 
 ```bash
 LOOM_PORT=8123 python loom.py
@@ -120,41 +116,41 @@ LOOM_PORT=8123 python loom.py
 
 ## Documentación
 
-El conjunto completo de documentación se encuentra bajo [`docs/`](docs/).
+Toda la documentación se encuentra bajo [`docs/`](docs/).
 
 ### Guía de usuario
 
 Empezar aquí para **usar** el simulador.
 
-| Archivo | Tema |
-|---|---|
-| [`docs/es/user-guide/getting-started.md`](docs/es/user-guide/getting-started.md) | Instalación, ejecutar la interfaz, primer ping |
-| [`docs/es/user-guide/web-ui.md`](docs/es/user-guide/web-ui.md) | Barra de herramientas, canvas, inspector, terminales — recorrido guiado |
-| [`docs/es/user-guide/building-topologies.md`](docs/es/user-guide/building-topologies.md) | Agregar LAN, hosts, routers, links punto a punto |
+| Archivo | Tema                                                                       |
+|---|----------------------------------------------------------------------------|
+| [`docs/es/user-guide/getting-started.md`](docs/es/user-guide/getting-started.md) | Instalación, ejecutar la interfaz, primer ping                             |
+| [`docs/es/user-guide/web-ui.md`](docs/es/user-guide/web-ui.md) | Barra de herramientas, _canvas_, inspector, terminales                     |
+| [`docs/es/user-guide/building-topologies.md`](docs/es/user-guide/building-topologies.md) | Agregar LANs, hosts, routers, links punto a punto                          |
 | [`docs/es/user-guide/running-simulations.md`](docs/es/user-guide/running-simulations.md) | Start / Pause / Resume / Reset, ediciones en pausa, intervalo de keepalive |
-| [`docs/es/user-guide/routing-tables.md`](docs/es/user-guide/routing-tables.md) | Inspección de tablas de ruteo, vecinos, costos |
-| [`docs/es/user-guide/terminals.md`](docs/es/user-guide/terminals.md) | Terminales por dispositivo: `ping`, `send`, `ifconfig`, ... |
-| [`docs/es/user-guide/yaml-format.md`](docs/es/user-guide/yaml-format.md) | Referencia del esquema YAML, flujo de trabajo guardar / reanudar |
-| [`docs/es/user-guide/nat-and-private-lans.md`](docs/es/user-guide/nat-and-private-lans.md) | NAT, LAN privadas, reescritura de dirección de origen |
+| [`docs/es/user-guide/routing-tables.md`](docs/es/user-guide/routing-tables.md) | Inspección de tablas de ruteo, vecinos, costos                             |
+| [`docs/es/user-guide/terminals.md`](docs/es/user-guide/terminals.md) | Terminales por dispositivo: `ping`, `send`, `ifconfig`, ...                |
+| [`docs/es/user-guide/yaml-format.md`](docs/es/user-guide/yaml-format.md) | Referencia del esquema YAML, flujo de trabajo (guardar / reanudar)         |
+| [`docs/es/user-guide/nat-and-private-lans.md`](docs/es/user-guide/nat-and-private-lans.md) | NAT, LANs privadas, reescritura de dirección de origen                     |
 
 ### Arquitectura / Referencia técnica
 
 Empezar aquí para **modificar** el simulador o entender cómo funciona.
 
-| Archivo | Tema |
-|---|---|
-| [`docs/es/architecture/overview.md`](docs/es/architecture/overview.md) | El panorama general — componentes, capas, flujo de datos |
+| Archivo | Tema                                                              |
+|---|-------------------------------------------------------------------|
+| [`docs/es/architecture/overview.md`](docs/es/architecture/overview.md) | El panorama general: componentes, capas, flujo de datos           |
 | [`docs/es/architecture/entities.md`](docs/es/architecture/entities.md) | `AS`, `Router`, `Host`, `Network`, `Link`, `Interface`, `Address` |
-| [`docs/es/architecture/packets.md`](docs/es/architecture/packets.md) | `Frame`, `Datagram`, `Message` (usuario / ruteo / ping) |
-| [`docs/es/architecture/routing-protocol.md`](docs/es/architecture/routing-protocol.md) | Protocolo link-state, flooding, Dijkstra, diagramas de secuencia |
-| [`docs/es/architecture/concurrency.md`](docs/es/architecture/concurrency.md) | Threads, queues, `PauseGate`, ciclo de vida |
-| [`docs/es/architecture/parser.md`](docs/es/architecture/parser.md) | Parser YAML, validadores, caminos de error |
-| [`docs/es/architecture/nat.md`](docs/es/architecture/nat.md) | Source-NAT, tablas de reescritura por flujo, eventos NAT |
-| [`docs/es/architecture/policy.md`](docs/es/architecture/policy.md) | Política de ruteo, filtro de salida RFC 1918 |
-| [`docs/es/architecture/web-spa.md`](docs/es/architecture/web-spa.md) | Mapa de módulos de la SPA y contrato del bus de eventos |
-| [`docs/es/architecture/server-api.md`](docs/es/architecture/server-api.md) | Referencia HTTP + WebSocket |
+| [`docs/es/architecture/packets.md`](docs/es/architecture/packets.md) | `Frame`, `Datagram`, `Message` (usuario / ruteo / ping)           |
+| [`docs/es/architecture/routing-protocol.md`](docs/es/architecture/routing-protocol.md) | Protocolo link-state, flooding, Dijkstra, diagramas de secuencia  |
+| [`docs/es/architecture/concurrency.md`](docs/es/architecture/concurrency.md) | Threads, queues, `PauseGate`, ciclo de vida                       |
+| [`docs/es/architecture/parser.md`](docs/es/architecture/parser.md) | Parser YAML, validadores, flujos de error                         |
+| [`docs/es/architecture/nat.md`](docs/es/architecture/nat.md) | Source-NAT, tablas de reescritura por flujo, eventos NAT          |
+| [`docs/es/architecture/policy.md`](docs/es/architecture/policy.md) | Política de ruteo, filtro de salida RFC 1918                      |
+| [`docs/es/architecture/web-spa.md`](docs/es/architecture/web-spa.md) | Mapa de módulos de la SPA y contrato del bus de eventos           |
+| [`docs/es/architecture/server-api.md`](docs/es/architecture/server-api.md) | Referencia HTTP + WebSocket                                       |
 
-### Otros archivos en la raíz
+### Otros archivos
 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — configuración de desarrollo, flujo de trabajo TDD, proceso de MR
 - [`CHANGELOG.md`](CHANGELOG.md) — historial de versiones
@@ -175,7 +171,7 @@ loom/
 ├── samples/               # sample.yaml — the bundled example topology
 ├── web/                   # SPA: ES modules, styles, favicon, vitest tests
 ├── e2e/                   # Playwright/Chromium smoke suite
-├── docs/                  # User guide + architecture reference (this directory)
+├── docs/                  # User guide + architecture reference
 ├── pyproject.toml         # ruff + pytest config (pythonpath = ["src"], testpaths = ["test"])
 ├── requirements.txt       # Runtime deps (PyYAML, FastAPI, uvicorn)
 ├── requirements-dev.txt   # Dev deps (pytest, pytest-asyncio, ruff, httpx)
@@ -201,31 +197,33 @@ Ver [`CONTRIBUTING.md`](CONTRIBUTING.md) para el flujo de trabajo TDD completo.
 ## Desarrollo asistido por IA
 
 `loom` es accesible para asistentes de IA de manera directa. Dos archivos
-cargan con el trabajo:
+principales:
 
 - **`CLAUDE.md`** — resumen breve de contexto no obvio del proyecto:
   entry points, decisiones de diseño clave, trampas. Deliberadamente bajo las 200 líneas
-  — leer esto primero para evitar los errores comunes.
+  — leer esto primero para evitar errores comunes.
 - **`docs/`** — la referencia detallada. Las páginas de arquitectura
   (`docs/architecture/`) cubren componentes, el protocolo link-state,
   concurrencia, el parser, la API HTTP/WS y el mapa de módulos de la SPA.
-  Las páginas del user guide (`docs/user-guide/`) cubren la interfaz web,
-  los terminales y el formato YAML.
+  Las páginas de la guía de usuario (`docs/user-guide/`) cubren la interfaz web,
+  las terminales y el formato YAML.
 
-Un asistente de IA orientado a `CLAUDE.md` más la página relevante de
-`docs/architecture/` puede planificar y ejecutar la mayoría de los cambios directamente.
+Un asistente de IA apuntado a `CLAUDE.md` más la página relevante de
+`docs/architecture/` debería ser capaz de planificar y ejecutar la mayoría de los
+cambios directamente.
 
-Los contribuidores humanos no necesitan usar ninguna herramienta de IA — todas las
+Los contribuidores humanos no necesitan usar ninguna herramienta de IA; todas las
 convenciones aplican por igual. Ver [CONTRIBUTING.md](CONTRIBUTING.md#ai-assisted-development)
-para las directrices sobre el mantenimiento de `CLAUDE.md` y el conjunto de documentación
+para las directrices sobre el mantenimiento de `CLAUDE.md` y la documentación
 a medida que el proyecto evoluciona.
 
-## Contribuir
+## Cómo contribuir
 
-Este proyecto se desarrolla test-first. Ver [`CONTRIBUTING.md`](CONTRIBUTING.md)
-para la configuración de desarrollo, el ciclo red → verde → refactor, la disciplina
-de documentación, las convenciones de commits y el proceso de merge-request. El proyecto
-está alojado en GitLab — usar `glab` o la interfaz web para los MR.
+Este proyecto sigue una metodología _test-first_. Ver [`CONTRIBUTING.md`](CONTRIBUTING.md)
+para los lineamientos sobre la configuración del ambiente de desarrollo, el ciclo
+rojo → verde → refactor, la disciplina de documentación, las convenciones de
+escritura de commits y el proceso de merge-request. El proyecto está alojado en
+GitLab: usar `glab` o la interfaz web para crear los MRs.
 
 ## Licencia
 

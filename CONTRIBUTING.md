@@ -250,11 +250,9 @@ When you change code:
 
 - **If the change is observable** (behavior, interface, project layout,
   build/run command, YAML schema, wire protocol), update the relevant
-  doc surface in the same commit. Don't leave docs for "later" — they
-  rot in hours.
+  doc surface in the same commit.
 - **If the change is a pure internal refactor** with no observable effect,
-  documentation usually needs no edits. Don't churn the docs for code
-  motion.
+  documentation usually needs no edits.
 - **Update only what's affected.** A change to packet animation does not
   imply a sweep of `docs/architecture/`.
 
@@ -370,11 +368,6 @@ A few pointers that save time on this project specifically:
   shared `PauseGate`, or pause/resume will be broken.
 - **For UI work**, `docs/architecture/web-spa.md` is the module map
   and event-bus contract.
-- **The `docs/superpowers/` directory is gitignored.** It's where the
-  `superpowers:writing-plans` and related skills drop their working
-  files; plans and specs that live there are local artifacts, not
-  project documentation. Lift anything worth keeping into
-  `docs/architecture/` before deleting.
 
 ### Subagent-driven execution for multi-task features
 

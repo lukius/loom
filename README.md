@@ -6,62 +6,57 @@
 
 # loom
 
-A Python simulator for an IPv4 **autonomous system** — hosts, routers,
-networks, and point-to-point links interconnected through a **link-state
-routing protocol** — driven by a YAML topology and an interactive web UI.
+A Python simulator for an IPv4 autonomous system, driven by an interactive
+web UI and a YAML topology under the hood: hosts, routers,
+networks, and point-to-point links interconnected through a link-state
+routing protocol resembling OSPF.
 
-`loom` is built for teaching and exploration. You describe a network in
-YAML (or draw it on the canvas), press **Start**, and watch the routing
-protocol converge, datagrams hop across routers, and routing tables update
-in real time. The codebase is small, threaded, and dependency-light by
-design.
+`loom` is mainly built for teaching and exploration. Networks are drawn
+on the canvas and, once the simulation starts, the routing protocol
+converges live: datagrams hop across routers and routing tables update
+in real time.
 
 ## Scope
 
-`loom` is deliberately L3-only. There is no L2 (no MAC, no ARP, no STP —
-frames are abstract envelopes) and no L4 (no TCP/UDP, no ports, no
-transport state). The goal is to make routing convergence and forwarding
-observable, not to model a full network stack. For richer-fidelity work,
+`loom` is deliberately L3-only. There is no L2 (frames are abstract
+envelopes) and no L4 (no TCP/UDP, no ports, no transport state). The goal
+is to make routing convergence and forwarding observable, not to model a
+full network stack. For richer-fidelity work,
 see [ns-3](https://www.nsnam.org/), [mininet](https://mininet.org/),
 [Containerlab](https://containerlab.dev/), or [GNS3](https://www.gns3.com/).
 
 ## Features
 
+- **Interactive web UI** — Drag networks, hosts, and routers onto an SVG
+  canvas; edit interfaces and costs in the right pane; double-click any
+  device to open a terminal with commands such as `ping`, `route`,
+  and `ifconfig`.
+- **Topology edits without restart** — Add networks, hosts, and routers
+  while the simulation runs, or pause, batch a set of changes, and
+  resume atomically.
 - **Multi-router IPv4 simulation** — Hosts, routers, multi-access LANs,
-  and `/30` / `/31` point-to-point links, all wired through real
-  per-interface and per-fabric threads. Forwarding decisions use
+  and `/30` / `/31` point-to-point links, all wired through
+  per-interface and per-fabric Python threads. Forwarding decisions use
   longest-prefix match on a per-router routing table.
 - **loom-OSPF link-state protocol** — Sequence-numbered flooding, per-router
   keepalive thread with configurable Hello and LSA-refresh intervals
-  (live-tunable from the toolbar's Protocol popover), Dijkstra
-  shortest-path computation that re-runs only when the graph actually
-  changes.
+  (live-tunable) and Dijkstra shortest-path computation that re-runs only
+  when the graph actually changes.
 - **Live interface disable and router halt/crash** — Bring an individual
-  interface up or down (graceful LSA re-flood), halt a router (withdrawal
-  LSA + peers converge immediately), or inject a silent crash
-  (`POST /devices/{name}/fail`). `ping` supports `-c N` for repeated probes
-  with a summary line.
-- **Interactive web UI** — Drag networks, hosts, and routers onto an SVG
-  canvas; edit interfaces and costs in the right pane; double-click any
-  device to open a terminal with `ping`, `send`, `route`, `ifconfig`,
-  `neighbors`, `update_cost`, `set_gateway`.
-- **Topology edits without restart** — Add networks, hosts, and routers
-  directly on the canvas while the simulation is running; each edit is
-  applied live as soon as a valid address is given. Or pause, batch a
-  set of changes, and resume — edits accumulate as a patch list and are
-  applied atomically.
-- **Packet animations** — Datagrams, ping, and routing-protocol packets
+  interface up or down, halt a router or inject a silent crash, then watch
+  the network routing state change live.
+- **Packet animations** — Datagrams, ping and routing-protocol packets
   animate across the canvas as they flow; toolbar toggles control speed
   and chatter visibility.
-- **NAT and private LANs** — Source-NAT rewrites private (RFC 1918)
-  addresses on egress to public networks, with per-flow rewrite tables and
+- **NAT and private LANs** — Source-NAT rewrites private addresses
+  (RFC 1918) on egress to public networks, with per-flow rewrite tables and
   reverse translation on return traffic. Routing policy keeps private
-  prefixes local — they are never advertised to peer routers.
+  prefixes local (they are never advertised to peer routers).
 - **YAML import / export** — The topology is the source of truth. Drop a
   YAML file into the import dialog, copy the canvas back out, persist or
   share.
-- **No external state** — No database, no auth, no network calls.
-  Everything lives in memory plus a single session-YAML clone on disk.
+- **No external state** — Everything lives in memory plus a single
+  session-YAML clone on disk.
 
 ## Tech Stack
 
@@ -74,8 +69,8 @@ see [ns-3](https://www.nsnam.org/), [mininet](https://mininet.org/),
 | Tests | `pytest` (526+), `pytest-asyncio`, `vitest`, Playwright |
 | Lint / format | `ruff` |
 
-External dependencies: none beyond the four packages above. No database,
-no message broker, no third-party APIs.
+No runtime dependencies beyond PyYAML, FastAPI, and Uvicorn (the rest
+of the table is dev tooling).
 
 ## Quick Start
 
@@ -176,7 +171,7 @@ loom/
 ├── samples/               # sample.yaml — the bundled example topology
 ├── web/                   # SPA: ES modules, styles, favicon, vitest tests
 ├── e2e/                   # Playwright/Chromium smoke suite
-├── docs/                  # User guide + architecture reference (this directory)
+├── docs/                  # User guide + architecture reference
 ├── pyproject.toml         # ruff + pytest config (pythonpath = ["src"], testpaths = ["test"])
 ├── requirements.txt       # Runtime deps (PyYAML, FastAPI, uvicorn)
 ├── requirements-dev.txt   # Dev deps (pytest, pytest-asyncio, ruff, httpx)
@@ -206,7 +201,7 @@ carry the load:
 
 - **`CLAUDE.md`** — short cheat sheet of non-obvious project context:
   entry points, key design decisions, traps. Under 200 lines on purpose
-  — read this first to avoid the common footguns.
+  — read this first to avoid common footguns.
 - **`docs/`** — the deep-dive reference. Architecture pages
   (`docs/architecture/`) cover components, the link-state protocol,
   concurrency, the parser, the HTTP/WS API, and the SPA module map.
