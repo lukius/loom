@@ -34,7 +34,7 @@ The strip at the very top of the page holds project-level controls:
 | **Theme toggle** | Switch between **Light** and **Dark** — persisted across reloads. |
 | **New** | Clear the current topology and start from an empty canvas. Asks for confirmation first, and stops the simulation if one is running. |
 | **Import** | Open a picker listing the built-in sample topologies; click one to load it, or use **Browse local file…** to pick any `.yaml` on your computer. |
-| **Export** | Open the browser's save dialog so you can pick a folder and filename for the current topology. The suggested name is derived from the file you last loaded — any `.session` suffix is stripped so the name doesn't grow on each round-trip (e.g. a file saved as `sample.session.yaml` and re-exported suggests `sample.yaml`). Falls back to `topology.yaml` when nothing is loaded. |
+| **Export** | Open the browser's save dialog so you can pick a folder and filename for the current topology. The suggested name is derived from the file you last loaded. Falls back to `topology.yaml` when nothing is loaded. |
 
 ## Canvas toolbar
 
@@ -42,14 +42,14 @@ The toolbar sits above the canvas. From left to right:
 
 | Control | What it does |
 |---|---|
-| **LAN** (<kbd>N</kbd>) | Add a network rail at the canvas center. Disabled while running. |
-| **Host** (<kbd>H</kbd>) | Add a host. Disabled while running. |
-| **Router** (<kbd>R</kbd>) | Add a router. Disabled while running. |
+| **LAN** (<kbd>N</kbd>) | Add a network rail at the canvas center. Available at any time; give it a range while running and it joins the live network. |
+| **Host** (<kbd>H</kbd>) | Add a host. Available at any time, but a host added while running stays unattached until you pause or stop (see below). |
+| **Router** (<kbd>R</kbd>) | Add a router. Same as **Host**: it lands on the canvas, but gains interfaces only once you pause or stop. |
 | **Fit** (<kbd>F</kbd>) | Fit the topology to the visible canvas. |
 | **Start / Stop** (<kbd>Space</kbd>) | Toggle between idle and running. |
 | **Pause / Resume** (<kbd>P</kbd>) | Toggle between running and paused. The label shows how many pending changes are queued while paused. |
 | **Reset** | Idle-only: discard the session and re-clone from the source YAML. |
-| **Protocol** | Open the Protocol settings popover (Hello interval and LSA-refresh interval). Enabled while a topology is loaded or running. |
+| **Protocol** | Open the Protocol settings popover (Hello interval and LSA-refresh interval). Greyed out until you start; usable while running or paused. |
 | **Packets [speed] ms** | Sets the per-hop animation duration in milliseconds (200–5000). The on-screen label reads **Packets** with a numeric input and the unit **ms**. |
 | **Chatter** | Mute or unmute routing-protocol packet animations. |
 | **Costs** | Show or hide link cost labels at each router interface. |
@@ -57,6 +57,16 @@ The toolbar sits above the canvas. From left to right:
 | **Packets** | Open the Packets panel listing all packets currently traveling, with a numeric badge on each. Expand a row to see its hop history and any NAT translations along the way. |
 
 ![Toolbar showing all controls including the Protocol button](../images/toolbar.png)
+
+**What "available while running" means.** Nothing on this toolbar greys
+out once the simulation starts, but the canvas still protects the live
+network from half-finished devices. A LAN or a point-to-point link is
+complete the moment it has a valid range, so it joins the simulation
+immediately. A host or router is not complete until it is attached to
+something — and attaching (dragging onto a LAN, picking a network in the
+inspector, adding an interface) is refused while running: the LAN shows
+a red cue and the node snaps back. Pause or stop, attach it there, and
+the device joins on Resume or the next Start.
 
 ### Starting fresh
 
@@ -69,8 +79,11 @@ on the empty canvas, ready to add your first LAN.
 
 ### Protocol settings
 
-Click **Protocol** in the toolbar to open the Protocol settings popover.
-This controls the two loom-OSPF timing parameters for the running simulation:
+The **Protocol** button stays greyed out until you press Start — the
+timers belong to a live simulation, so there is nothing to tune while
+idle. Once the simulation is running (or paused), click **Protocol** to
+open the settings popover. It controls the two loom-OSPF timing
+parameters:
 
 - **Hello interval** — how often each router sends a Hello to its
   neighbors to declare itself alive (seconds, 1–300).
@@ -158,15 +171,6 @@ See [NAT and private LANs](nat-and-private-lans.md) for how traffic
 actually crosses that boundary and how to inspect the gateway router's
 NAT table.
 
-### Pan and zoom
-
-| Gesture | What |
-|---|---|
-| Drag empty space | Pan |
-| Scroll wheel | Zoom about cursor |
-| **Reset view** button or <kbd>F</kbd> | Fit topology to canvas |
-| **+** / **−** buttons | Discrete zoom about canvas center |
-
 ## Packet animations
 
 Every datagram that traverses a fabric is drawn as a small colored
@@ -224,8 +228,9 @@ Pause the simulation and hover over the packet to see lines like
 `NAT @ r_a: 192.168.1.10 → 198.51.100.1`. Selecting the egress router
 in the inspector opens a NAT table panel listing live entries — each row
 shows the original private source, the rewritten public source, the
-destination, and the flow ID. The table grows as traffic flows; entries
-are bounded by least-recent-use eviction.
+destination, and the flow ID (shortened to fit — hover it for the full
+value). The table grows as traffic flows; entries are bounded by
+least-recent-use eviction.
 
 ![Inspector panel for an egress router, showing one active NAT translation](../images/51-nat-panel.png)
 
@@ -235,8 +240,10 @@ workflow.
 ## Left pane (navigation)
 
 The left pane lists all entities grouped by type — networks, links,
-hosts, routers. Click a name to select; right-click for the context
-menu. The same selection model as the canvas; the two stay in sync.
+hosts, routers. Click a name to select it; the **+** beside a section
+heading adds a new entity of that type. The context menu lives on the
+canvas, not here. Selection is shared with the canvas, so the two panes
+always agree on what's selected.
 
 The **Save state** indicator — `autosaved` under normal operation,
 `saving…` for a brief moment after a mutation — sits in the **header
@@ -261,10 +268,10 @@ Type-specific sections:
 
 | Selection | Extra sections |
 |---|---|
-| Network | (CIDR only) |
+| Network | CIDR, plus an **Orientation** button that flips the rail between horizontal and vertical |
 | Link | (CIDR only) |
 | Host | Fabric type, network/link, IP, default gateway |
-| Router | Interfaces list (one row per interface, expandable) + Routing table |
+| Router | Interfaces list (one row per interface, expandable), Neighbors, Routing table, and — once the router has translated something — a NAT table |
 
 ### Router inspector
 
@@ -288,7 +295,7 @@ peers and adjacencies.
 
 ![Router inspector showing Neighbors panel and collapsible Routing table section](../images/inspector-router.png)
 
-### Neighbors counts
+### Neighbor counts
 
 A fully-converged router shows e.g.
 `(2 peers · 4 adjacencies · 4 TWO_WAY)`; a router still settling or

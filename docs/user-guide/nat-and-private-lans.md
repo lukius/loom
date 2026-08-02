@@ -87,7 +87,10 @@ host.
   cannot reach each other by address — each thinks the other lives on
   its own LAN (same-LAN delivery), but the address isn't there.
 - Routers do not advertise their private prefixes to peers, so the
-  routing protocol stays clean across tenants.
+  routing protocol stays clean across tenants. They do announce that they
+  are *attached* to those LANs and links, which is a different statement:
+  a private network carries traffic bound for somewhere else perfectly
+  well, it simply cannot be named as a destination by anyone not on it.
 
 For the SPA's tooling around NAT (event bus, inspector panel) see
 [web-ui.md](web-ui.md). For the architectural model and design

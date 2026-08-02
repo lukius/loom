@@ -59,12 +59,14 @@ same YAML. The session file is updated either way.
 
 **While running:**
 
-- The **Add LAN / Host / Router** toolbar buttons are enabled — you can
-  add networks, links, hosts, and routers directly on the canvas. Each
-  new entity is applied to the live system as soon as you give it a
-  valid address or CIDR; an incomplete or invalid value simply stays
-  pending until you finish it. Your selection and viewport are preserved
-  when the topology updates.
+- The **Add LAN / Host / Router** toolbar buttons stay enabled. A **LAN
+  or point-to-point link** joins the live system the moment you give it
+  a valid range; an incomplete or invalid value simply stays pending
+  until you finish it. Your selection and viewport are preserved when
+  the topology updates. **Hosts and routers** can be dropped on the
+  canvas too, but they cannot be *attached* while running — the network
+  picker is inert and a drag onto a LAN is refused — so they sit
+  unattached until you pause or stop and wire them up there.
 - **Drag any node or link label** to reposition it on the canvas —
   hosts, routers, networks, and p2p link midpoint labels can all be
   moved freely while the sim runs. Repositioning is purely visual and
@@ -202,8 +204,10 @@ Click **Stop** (or press <kbd>Space</kbd> again). The SPA POSTs to
 
 What survives:
 
-- The **session YAML file** (`<source>.session.yaml`). The next Start
-  will re-read it.
+- The **session file** — the working copy of your topology. The next
+  Start re-reads it. See
+  [YAML format](yaml-format.md#save-and-resume-workflow) for where it
+  lives.
 - The SPA's canvas state. Stop and Start without touching the topology
   and you're right back where you were.
 - The terminals on screen — they continue to refer to a no-longer-
@@ -220,7 +224,7 @@ them to YAML and pushes via `/topology`.
 
 Click **Reset** (only enabled when idle). This:
 
-1. Deletes `<source>.session.yaml`.
+1. Deletes the session file — the working copy of your topology.
 2. Re-clones from the source file (`samples/sample.yaml` by default, or
    whatever `LOOM_TOPOLOGY` points at).
 3. Re-parses the source into a fresh autonomous system.
@@ -259,13 +263,14 @@ visibly chatter on the canvas at roughly one cycle per second.
 | When the server sees it | On next **Start** (whole YAML) | On **Resume** (incremental patch) | On each completed add/change |
 | Validation | Full re-parse on start | Per-op validation on resume | Per-op validation on each commit |
 | If it fails | Start aborts; topology stays unloaded | Resume rejected; patch preserved for editing | Edit rejected; canvas resynced from server |
-| Convergence impact | Routers start from scratch | Existing routing state is preserved; new edges feed in | New edges and devices feed in with zero downtime |
+| Convergence impact | Routers start from scratch | Existing routing state is preserved; new edges feed in | New LANs and links feed in with zero downtime |
 
 If you're prototyping ("does this CIDR work?"), idle edits + Start are
 fine — the parser tells you within seconds. If you're testing
-incremental convergence ("what happens when I bring up r4 *while
-running*?"), you can add it live without pausing — or pause, make
-several related changes at once, and resume atomically.
+incremental convergence ("what happens when I bring up a new LAN *while
+running*?"), add it live without pausing. Anything that involves
+attaching a device — a new router joining an existing LAN — needs a
+pause: make the related changes together and resume atomically.
 
 ## Tips
 
@@ -278,7 +283,9 @@ several related changes at once, and resume atomically.
 - **Use Reset, not Stop+Start, when the session has gotten weird.**
   Stop just unloads the AS; Reset throws the session away and starts
   from the source.
-- **The session file is in the same directory as the source.** If you
-  pointed `LOOM_TOPOLOGY` at `/path/to/lab.yaml`, the session lives at
-  `/path/to/lab.session.yaml`. Both are plain YAML; you can `git
-  diff` them.
+- **The session file lives outside your project.** It is kept in a
+  temporary directory, not next to the source, so your source tree stays
+  clean and a read-only source file still works. Both files are plain
+  YAML and can be diffed — see
+  [YAML format](yaml-format.md#save-and-resume-workflow) for the exact
+  location.

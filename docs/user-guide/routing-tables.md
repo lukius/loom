@@ -81,6 +81,13 @@ not advertise private prefixes to peers, so `r2` never learns a route
 to it. Only `r1` and `r3`, which are directly on `p2p1`, hold a route
 to that prefix.
 
+That withholding is about *destinations*, not about the link itself.
+`r1` and `r3` still announce that they are attached to it, so the link
+takes part in every router's shortest-path calculation and carries
+traffic bound for networks beyond it. A private network — link or LAN —
+is invisible as a place to send packets **to**, never as a path to send
+packets **through**.
+
 `0.0.0.0` for next hop means the prefix is directly connected.
 
 ## What `0.0.0.0` means
@@ -216,20 +223,31 @@ still waiting for a peer to come up.
 
 ## Reading a path
 
-When you `ping h1 → h3` in the sample topology, the routers in the
-path can be inferred from their routing tables:
+When you `ping h3` from `h1` in the sample topology, the routers in the
+path can be read straight off their routing tables:
 
 - `h1` (on `lan1`, gateway `200.100.0.1`) sends the packet to `r1.eth0`.
-- `r1.route` says `150.10.10.0/24 → 10.0.0.2 / eth2` (via the link to
-  `r3`, cheapest path).
+- `r1.route` says `150.10.10.0/24 → 10.0.0.2 / eth2` — across the
+  `p2p1` link, next hop `r3`.
 - `r3.route` says `150.10.10.0/24 → 0.0.0.0 / eth1` (directly
   connected).
 - `r3.eth1` (`150.10.10.10`) delivers to `h3` on `lan3`.
 
+The reply is a separate set of lookups, and it takes a different route.
+`h3`'s gateway is `r2` (`150.10.10.1`), and `r2` has `lan1` directly
+connected, so the reply reaches `h1` without ever touching `p2p1`.
+Forwarding is decided hop by hop and direction by direction — nothing
+ties a reply to the path its request took.
+
+Note that `r1` routes *through* `p2p1` while nobody else holds a route
+*to* `10.0.0.0/30`. Being private keeps the link out of other routers'
+tables as a destination; it does not stop the link from carrying transit
+traffic for the routers on either end.
+
 The packet animation on the canvas follows the same path. If you raise
-`r1.eth2`'s cost to 99, the next ping after re-convergence will route
-through `r2` instead (via the LANs), and the canvas animation will
-visibly switch paths.
+`r1.eth2`'s cost from 5 to 99, the link stops being worth using: after
+re-convergence the next ping leaves `r1` by `eth1` onto `lan2` toward
+`r3` (`100.200.0.10`), and the canvas animation visibly switches paths.
 
 ## Common surprises
 
@@ -246,10 +264,12 @@ depending on the direction (10 from r1's side, 5 from r2's side). The
 Dijkstra search picks the asymmetric cheapest path.
 
 **"Why doesn't my path use the obvious shortest hop?"** Look at all the
-intermediate costs, not just the direct link. The shortest *hop count*
-isn't necessarily the shortest *path cost*. The sample topology has
-this property: `r1 → r3` directly over `p2p1` costs 5+5=10, but
-`r1 → r2 → r3` over `lan1 + lan2` can cost less depending on costs.
+intermediate costs, not just the first one. The shortest *hop count*
+isn't necessarily the shortest *path cost*. `r3` in the sample topology
+reaches `lan1` **not** over its direct link to `r1` — that would cost
+5 (the link) + 10 (`r1`'s interface onto `lan1`) = 15 — but through `r2`
+across `lan3`, at 5 + 5 = 10. The direct link is one hop and still
+loses.
 
 **"My routing table is empty."** Either the simulator hasn't ticked yet
 (give it a moment for the first protocol tick), or the router has no router peers
