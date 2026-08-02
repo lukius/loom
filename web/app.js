@@ -40,6 +40,7 @@ bus.addEventListener('sim:topology-import-requested', (e) => {
   importYaml(e.detail.yaml, {
     preserveView:      !!e.detail.preserveView,
     preserveSelection: !!e.detail.preserveSelection,
+    silent:            !!e.detail.silent,
   });
 });
 
@@ -116,9 +117,12 @@ RuntimeClient.connectEvents(_onEvent);
 // importYaml wraps the yaml-io function, injecting canvas helpers that are
 // unavailable in the yaml-io module (which has no DOM/canvas dependencies).
 // preserveView / preserveSelection are forwarded for live-edit resyncs so the
-// user's viewport and inspector focus survive server-confirmed topology updates.
-function importYaml(text, { preserveView = false, preserveSelection = false } = {}) {
-  const ok = _importYaml(text, { ensurePositions, fitView, renderAll, preserveView, preserveSelection });
+// user's viewport and inspector focus survive server-confirmed topology updates;
+// `silent` keeps those resyncs from announcing an import the user never asked for.
+function importYaml(text, { preserveView = false, preserveSelection = false, silent = false } = {}) {
+  const ok = _importYaml(text, {
+    ensurePositions, fitView, renderAll, preserveView, preserveSelection, silent,
+  });
   if (ok) PacketAnim.DURATION_MS = state.config.packet_duration_ms;
   return ok;
 }

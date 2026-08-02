@@ -445,4 +445,17 @@ internet:
     expect(state.hosts.h1.x).toBe(170);
     expect(state.hosts.h1.y).toBe(300);
   });
+
+  it('announces a user-initiated import with a toast', () => {
+    importYaml(YAML_ONE_NET);
+    expect(document.getElementById('toasts').textContent).toContain('Topology imported');
+  });
+
+  it('stays quiet on a silent import', () => {
+    // Every confirmed live edit resyncs the canvas through importYaml. Saying
+    // "Topology imported" there is wrong — the user added a LAN or deleted
+    // one; nothing was imported.
+    importYaml(YAML_ONE_NET, { silent: true });
+    expect(document.getElementById('toasts').textContent).not.toContain('Topology imported');
+  });
 });

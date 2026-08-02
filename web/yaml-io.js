@@ -149,7 +149,11 @@ export function exportYaml() {
    After populating state, calls ensureLinkPositions() and the canvas
    ensurePositions (imported via the fitView/renderAll path in app.js).
    -------------------------------------------------------------------------- */
-export function importYaml(text, { ensurePositions, fitView, renderAll, preserveView = false, preserveSelection = false } = {}) {
+/* `silent` suppresses the success toast. Confirmed live edits resync the
+   canvas through this same function, and announcing "Topology imported"
+   after the user merely added or deleted a LAN is misleading noise. Parse
+   errors still surface either way. */
+export function importYaml(text, { ensurePositions, fitView, renderAll, preserveView = false, preserveSelection = false, silent = false } = {}) {
   let parsed;
   try { parsed = jsyaml().load(text); } catch (e) {
     toast(e.message || 'Failed to parse YAML', 'error', 'Parse error'); return false;
@@ -323,6 +327,6 @@ export function importYaml(text, { ensurePositions, fitView, renderAll, preserve
   if (!preserveView && fitView) fitView();
   persist();
   if (renderAll) renderAll();
-  toast('Topology imported', 'ok');
+  if (!silent) toast('Topology imported', 'ok');
   return true;
 }

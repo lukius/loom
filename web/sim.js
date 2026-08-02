@@ -194,7 +194,7 @@ export async function applyEdit(op) {
     try {
       const { yaml } = await RuntimeClient.getTopology();
       bus.dispatchEvent(new CustomEvent('sim:topology-import-requested', {
-        detail: { yaml, preserveView: true, preserveSelection: true },
+        detail: { yaml, preserveView: true, preserveSelection: true, silent: true },
       }));
     } catch (_) {}
   }
@@ -223,7 +223,7 @@ export async function finalizePendingAdd(kind, name) {
     try {
       const { yaml } = await RuntimeClient.getTopology();
       bus.dispatchEvent(new CustomEvent('sim:topology-import-requested', {
-        detail: { yaml, preserveView: true, preserveSelection: true },
+        detail: { yaml, preserveView: true, preserveSelection: true, silent: true },
       }));
     } catch (_) {}
   }
@@ -585,7 +585,7 @@ bus.addEventListener('sim:topology-changed', async () => {
   try {
     const { yaml } = await RuntimeClient.getTopology();
     bus.dispatchEvent(new CustomEvent('sim:topology-import-requested', {
-      detail: { yaml, preserveView: true, preserveSelection: true },
+      detail: { yaml, preserveView: true, preserveSelection: true, silent: true },
     }));
   } catch (_) {}
 });
