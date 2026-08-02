@@ -11,6 +11,7 @@ import pytest
 from entities import (
     Address,
     Interface,
+    Link,
     Network,
     NetworkAddress,
     NullAddress,
@@ -1428,6 +1429,88 @@ def test_peer_purges_lsa_on_receipt_of_withdrawal():
     finally:
         system.stop()
         os.unlink(path)
+
+
+def test_dead_neighbor_sweep_recomputes_routing_table():
+    """A neighbor that dies must be routed *around*, not merely marked DOWN.
+
+    The dead-interval sweep purges the dead peer's LSA; the routing table
+    has to be recomputed in the same breath. Otherwise the table keeps
+    pointing at a router that is gone, and because the LSA has already
+    left the LSDB the later max-age path can never trigger the recompute
+    either.
+    """
+    # r1: eth1 → net2 (cost 1, where r2 lives), eth2 → net3 (cost 5, r3).
+    # net4 hangs off both r2 (1+1=2) and r3 (5+1=6), so it starts out
+    # reachable via eth1. With r2 dead, only the eth2 path survives.
+    net2 = Network('lan2', NetworkAddress('200.0.2.0/24'))
+    net3 = Network('lan3', NetworkAddress('200.0.3.0/24'))
+    net4 = Network('lan4', NetworkAddress('200.0.4.0/24'))
+
+    r1 = Router('r1')
+    r1_eth1 = Interface('eth1', net2, Address('200.0.2.1'), cost=1)
+    r1_eth2 = Interface('eth2', net3, Address('200.0.3.1'), cost=5)
+    r1.add_interface(r1_eth1)
+    r1.add_interface(r1_eth2)
+
+    r2 = Router('r2')
+    r2_eth0 = Interface('eth0', net2, Address('200.0.2.2'), cost=1)
+    r2_eth1 = Interface('eth1', net4, Address('200.0.4.1'), cost=1)
+    r2.add_interface(r2_eth0)
+    r2.add_interface(r2_eth1)
+
+    r3 = Router('r3')
+    r3_eth0 = Interface('eth0', net3, Address('200.0.3.2'), cost=5)
+    r3_eth1 = Interface('eth1', net4, Address('200.0.4.2'), cost=1)
+    r3.add_interface(r3_eth0)
+    r3.add_interface(r3_eth1)
+
+    original_send = Interface.send_to
+    Interface.send_to = lambda self, pkt, dst_addr: None
+    try:
+        proto = LinkStateProtocol(r1)
+        # dead = 0.15s so the sweep fires quickly; max_age = 60s so the LSA
+        # expiry path cannot be the thing that saves us.
+        proto.set_timers(hello_interval=0.05, lsa_refresh_interval=30)
+
+        now = time.monotonic()
+        for iface, peer in ((r1_eth1, r2), (r1_eth2, r3)):
+            proto._neighbor_table.record_hello(  # noqa: SLF001
+                iface, peer, peer_listed_us=True,
+                dead_interval=proto._dead_interval, now=now,  # noqa: SLF001
+            )
+
+        msg_r2 = LSA(origin=r2, seq=1)
+        msg_r2.add_link(net2.address(), r2_eth0.cost())
+        msg_r2.add_link(net4.address(), r2_eth1.cost())
+        proto.handle_incoming_message(msg_r2, r1_eth1)
+
+        msg_r3 = LSA(origin=r3, seq=1)
+        msg_r3.add_link(net3.address(), r3_eth0.cost())
+        msg_r3.add_link(net4.address(), r3_eth1.cost())
+        proto.handle_incoming_message(msg_r3, r1_eth2)
+
+        result = r1.routing_table().match(Address('200.0.4.100'))
+        assert result.is_matched()
+        assert result.interface().name() == 'eth1'
+
+        # r2 goes silent; r3 keeps saying hello.
+        time.sleep(0.2)   # past dead_interval (0.15s), far short of max_age
+        proto._neighbor_table.record_hello(  # noqa: SLF001
+            r1_eth2, r3, peer_listed_us=True,
+            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+        )
+
+        proto._run_keepalive_cycle()  # noqa: SLF001
+    finally:
+        Interface.send_to = original_send
+
+    assert r2 not in proto._lsdb.origins()  # noqa: SLF001
+    result = r1.routing_table().match(Address('200.0.4.100'))
+    assert result.is_matched(), 'net4 became unreachable instead of rerouting'
+    assert result.interface().name() == 'eth2', (
+        'routing table still points at the dead neighbor'
+    )
 
 
 def test_set_timers_derives_dead_and_max_age():

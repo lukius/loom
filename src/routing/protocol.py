@@ -302,14 +302,20 @@ class LinkStateProtocol(RoutingProtocol):
 
     def _sweep_dead_and_expired(self, now: float):
         with self._lock:
+            changed = False
             for transition in self._neighbor_table.sweep_transitions(
                 dead_interval=self._dead_interval, now=now,
             ):
                 self._broadcast_neighbor_state_changed(transition)
                 if transition.went_down():
                     self._lsdb.purge(transition.neighbor().peer())
+                # A state change alters which origins are eligible, and a
+                # purge here removes the dead peer's links for good — the
+                # max-age path below can no longer notice it. Recompute now
+                # or the table keeps forwarding through a router that is
+                # gone. Mirrors _handle_incoming_hello's transition branch.
+                changed = True
             expired = self._lsdb.expired_origins(max_age=self._max_age, now=now)
-            changed = False
             for origin in expired:
                 if origin is self._router:
                     continue
