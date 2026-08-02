@@ -256,14 +256,15 @@ export const Inspector = {
     sec.hidden = false;
     const rows = entries.map(e => {
       // Conversation-keyed flow_ids are UUIDs (~36 chars). Show a short
-      // prefix so the column stays single-line at the default pane width;
-      // keep the full id available on hover via `title`.
+      // prefix so the four columns fit the pane at its default width
+      // without the table spilling past the right edge; keep the full id
+      // available on hover via `title`.
       let fidCell;
       if (e.flow_id === null || e.flow_id === undefined) {
         fidCell = '<td>—</td>';
       } else {
         const s = String(e.flow_id);
-        const short = s.length > 10 ? s.slice(0, 8) + '…' : s;
+        const short = s.length > 10 ? s.slice(0, 6) + '…' : s;
         fidCell = `<td title="${escapeHtml(s)}">${escapeHtml(short)}</td>`;
       }
       return `<tr><td>${escapeHtml(e.original_src)}</td><td>${escapeHtml(e.rewritten_src)}</td><td>${escapeHtml(e.dst)}</td>${fidCell}</tr>`;

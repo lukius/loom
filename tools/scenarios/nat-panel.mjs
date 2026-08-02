@@ -25,8 +25,18 @@ if (Sim.state !== 'running') {
 }
 
 // Wait for routing convergence — r_a needs a route to 200.100.0.0/24 before
-// the ping can go through and trigger NAT. Wait longer to ensure full convergence.
-await new Promise(r => setTimeout(r, 1200));
+// the ping can go through and trigger NAT. Poll rather than sleeping a fixed
+// amount: with the default 10 s Hello interval an adjacency can sit in INIT
+// for a full interval, and a fixed wait then captures an empty NAT table.
+const convDeadline = Date.now() + 40000;
+let routed = false;
+while (Date.now() < convDeadline) {
+  const resp = await fetch('/devices/r_a/routes').catch(() => null);
+  const data = resp && resp.ok ? await resp.json().catch(() => null) : null;
+  if (data && (data.rules || []).some(r => r.prefix === '200.100.0.0/24')) { routed = true; break; }
+  await new Promise(r => setTimeout(r, 500));
+}
+if (!routed) throw new Error('nat-panel: r_a never learned a route to 200.100.0.0/24');
 
 // Ping h_a → h_public. The server's command endpoint blocks until the ping
 // completes or times out; on return, r_a's NAT table has an entry.

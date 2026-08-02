@@ -1963,6 +1963,10 @@ details.insp-section[open] > summary {
 }
 details.insp-section > .insp-section-body {
   padding: 8px 10px;
+  /* Tables inside a section have nowrap cells, so a narrowed pane (or an
+     unusually wide value) would push them past the pane edge. Scroll the
+     section body instead of letting content bleed out of the inspector. */
+  overflow-x: auto;
 }
 details.insp-section .summary-hint {
   font-size: 11px;

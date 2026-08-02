@@ -1667,6 +1667,21 @@ describe('Inspector.refreshNAT', () => {
     expect(cell.getAttribute('title')).toBe(fullUuid);
   });
 
+  it('keeps the truncated flow_id short enough for the NAT column to fit the pane', () => {
+    // Four columns of monospace text have to fit the inspector's default
+    // width; an over-long flow-id cell pushes the table past the pane edge.
+    state.natTables['r_a'] = [{
+      original_src: '192.168.1.10',
+      rewritten_src: '200.100.0.1',
+      dst: '200.100.0.10',
+      flow_id: '0123456789abcdef-0123-4567-89ab-cdef01234567',
+    }];
+    Inspector.refreshNAT('r_a');
+    const cell = document.querySelector('#insp-nat tbody tr td:nth-child(4)');
+    // 6 hex chars + the ellipsis — narrower than the "Flow ID" header itself.
+    expect(cell.textContent.length).toBeLessThanOrEqual(7);
+  });
+
   it('renders short flow_ids verbatim (no truncation)', () => {
     state.natTables['r_a'] = [{
       original_src: '192.168.1.10',
