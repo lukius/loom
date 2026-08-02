@@ -322,6 +322,59 @@ def test_packet_event_for_routing_flood_carries_seq_and_destinations():
         os.unlink(path)
 
 
+def test_packet_event_for_routing_flood_carries_attachments():
+    """An LSA advertising a private link carries the attachment even though
+    policy withholds the link's prefix. Without `attachments` in the event
+    payload a subscriber would see an empty advertisement and have no way to
+    tell that the flood said anything at all."""
+    import os
+    import tempfile
+    import textwrap
+    import time
+
+    from entities.event import EventTracer
+    from parser import Parser
+
+    yaml_text = textwrap.dedent("""
+    internet:
+      name: loom
+      autonomous_systems:
+        main:
+          asn: 65000
+          networks:
+            lan_stub: "203.0.113.0/24"
+          links:
+            p2p1: "10.0.0.0/30"
+          routers:
+            r1: {interfaces: {eth0: {link: p2p1, address: "10.0.0.1", cost: 5}}}
+            r2:
+              interfaces:
+                eth0: {link: p2p1, address: "10.0.0.2", cost: 7}
+                eth1: {network: lan_stub, address: "203.0.113.1", cost: 1}
+    """)
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_text)
+        path = f.name
+    try:
+        events = []
+        system = Parser(path).parse().single_as()
+        EventTracer.subscribe(events.append)
+        system.router("r1").protocol()._run_keepalive_cycle()  # noqa: SLF001
+        time.sleep(0.2)
+        flood_events = [
+            e for e in events
+            if e.get("kind") == "packet" and e.get("type") == "routing_flood"
+            and e["payload"]["originator"] == "r1"
+        ]
+        assert flood_events, "expected at least one routing_flood packet event"
+        payload = flood_events[0]["payload"]
+        assert payload["destinations"] == []   # private /30 withheld
+        assert payload["attachments"] == [{"fabric": "p2p1", "cost": 5}]
+        system.stop()
+    finally:
+        os.unlink(path)
+
+
 def test_routing_table_changed_event_fires():
     import os
     import tempfile

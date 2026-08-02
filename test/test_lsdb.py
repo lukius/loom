@@ -1,7 +1,8 @@
 import threading
 
-from entities import Address, Interface, Network, NetworkAddress, Router
+from entities import Address, Interface, Link, Network, NetworkAddress, Router
 from routing import LSA, LSDB, InstallResult
+from routing.policy import RFC1918_OUTBOUND
 
 
 class _PermitAll:
@@ -12,10 +13,22 @@ class _PermitAll:
         return _D()
 
 
+# Routers advertising the same CIDR are meant to be on the same wire, so the
+# Network object is shared across calls. The graph keys fabrics by identity:
+# two Network objects are two LANs however alike their prefixes look.
+_SHARED_NETS: dict = {}
+
+
+def _net_for(cidr: str) -> Network:
+    if cidr not in _SHARED_NETS:
+        _SHARED_NETS[cidr] = Network(f'lan_{cidr}', NetworkAddress(cidr))
+    return _SHARED_NETS[cidr]
+
+
 def _router_with(net_addr_strs, costs, name='rx'):
     r = Router(name)
     for i, (cidr, c) in enumerate(zip(net_addr_strs, costs)):
-        n = Network(f'lan{i}', NetworkAddress(cidr))
+        n = _net_for(cidr)
         ip = NetworkAddress(cidr).octets()
         ip[-1] = 1
         addr = Address('.'.join(str(o) for o in ip))
@@ -185,8 +198,11 @@ def test_build_graph_with_eligible_origin_includes_its_links():
     assert remote in g
     assert NetworkAddress('10.0.1.0/24') in g
     assert NetworkAddress('10.0.2.0/24') in g
-    assert g.weight(remote, NetworkAddress('10.0.1.0/24')) == 1
-    assert g.weight(remote, NetworkAddress('10.0.2.0/24')) == 2
+    # The router's cost lands on its edge into the fabric; the announced
+    # prefix hangs off that fabric as a free destination leaf.
+    assert g.weight(remote, _net_for('10.0.1.0/24')) == 1
+    assert g.weight(remote, _net_for('10.0.2.0/24')) == 2
+    assert g.weight(_net_for('10.0.1.0/24'), NetworkAddress('10.0.1.0/24')) == 0
 
 
 def test_build_graph_uses_pseudonode_model_for_reverse_edges():
@@ -210,11 +226,11 @@ def test_build_graph_uses_pseudonode_model_for_reverse_edges():
     lsdb.install(LSA.from_router(remote, seq=1, policy=_PermitAll()), now=0.0)
     g = lsdb.build_graph(eligible_origins={remote})
 
-    shared = NetworkAddress('10.0.0.0/24')
-    # Outgoing (router → subnet) carries the router's own cost.
+    shared = _net_for('10.0.0.0/24')
+    # Outgoing (router → fabric) carries the router's own cost.
     assert g.weight(local, shared) == 3
     assert g.weight(remote, shared) == 7
-    # Reverse (subnet → router) is free, regardless of which router's
+    # Reverse (fabric → router) is free, regardless of which router's
     # interface cost happened to land there.
     assert g.weight(shared, local) == 0
     assert g.weight(shared, remote) == 0
@@ -298,3 +314,116 @@ def test_originator_refresh_keeps_local_lsa_below_max_age():
 
     # Age of local LSA must be strictly below max_age.
     assert lsdb.age_of(local, now=now) < max_age
+
+
+# ---------- point-to-point adjacencies in the graph ----------
+
+def _p2p_pair(link_cidr='10.0.0.0/30', addrs=('10.0.0.1', '10.0.0.2'),
+              costs=(5, 5)):
+    """local ── p2p link ── remote, with a LAN hanging off each."""
+    link = Link('p2p1', NetworkAddress(link_cidr))
+
+    local = Router('local')
+    local_lan = Network('lan_local', NetworkAddress('200.0.1.0/24'))
+    local_lan_if = Interface('eth0', local_lan, Address('200.0.1.1'), cost=1)
+    local_link_if = Interface('eth1', link, Address(addrs[0]), cost=costs[0])
+    local.add_interface(local_lan_if)
+    local.add_interface(local_link_if)
+    local_lan.add_interface(local_lan_if)
+    link.add_interface(local_link_if)
+
+    remote = Router('remote')
+    remote_lan = Network('lan_remote', NetworkAddress('200.0.2.0/24'))
+    remote_lan_if = Interface('eth0', remote_lan, Address('200.0.2.1'), cost=2)
+    remote_link_if = Interface('eth1', link, Address(addrs[1]), cost=costs[1])
+    remote.add_interface(remote_lan_if)
+    remote.add_interface(remote_link_if)
+    remote_lan.add_interface(remote_lan_if)
+    link.add_interface(remote_link_if)
+
+    return local, remote
+
+
+def test_build_graph_joins_both_ends_of_a_point_to_point_link():
+    """Both routers attach to the link node, each at its own outgoing cost,
+    so a path across the link costs the sender's cost and nothing more."""
+    local, remote = _p2p_pair(costs=(5, 9))
+    link = local.interface('eth1').network()
+    lsdb = LSDB(local)
+    lsdb.install(LSA.from_router(local, seq=1, policy=RFC1918_OUTBOUND), now=0.0)
+    lsdb.install(LSA.from_router(remote, seq=1, policy=RFC1918_OUTBOUND), now=0.0)
+    g = lsdb.build_graph(eligible_origins={remote})
+
+    assert g.weight(local, link) == 5
+    assert g.weight(remote, link) == 9
+    assert g.weight(link, local) == 0
+    assert g.weight(link, remote) == 0
+
+
+def test_build_graph_transits_a_fabric_whose_prefix_is_denied():
+    """The private /30 appears as a transit node but never as a destination:
+    no prefix leaf, yet paths run straight through it."""
+    local, remote = _p2p_pair()
+    link = local.interface('eth1').network()
+    remote_lan = NetworkAddress('200.0.2.0/24')
+    lsdb = LSDB(local)
+    lsdb.install(LSA.from_router(local, seq=1, policy=RFC1918_OUTBOUND), now=0.0)
+    lsdb.install(LSA.from_router(remote, seq=1, policy=RFC1918_OUTBOUND), now=0.0)
+    g = lsdb.build_graph(eligible_origins={remote})
+
+    assert NetworkAddress('10.0.0.0/30') not in g   # not a destination
+    assert link in g                                 # but is a path
+    paths = g.shortest_paths(local)
+    assert paths[remote_lan] == [
+        local, link, remote, remote.interface('eth0').network(), remote_lan,
+    ]
+
+
+def test_build_graph_ignores_attachments_of_ineligible_origins():
+    """An origin we have not verified contributes neither prefixes nor
+    attachments."""
+    local, remote = _p2p_pair()
+    link = local.interface('eth1').network()
+    lsdb = LSDB(local)
+    lsdb.install(LSA.from_router(local, seq=1, policy=RFC1918_OUTBOUND), now=0.0)
+    lsdb.install(LSA.from_router(remote, seq=1, policy=RFC1918_OUTBOUND), now=0.0)
+    g = lsdb.build_graph(eligible_origins=set())
+
+    # local still attaches to its own side of the link, but the unverified
+    # peer contributes nothing — the link leads nowhere.
+    assert g.weight(link, remote) is None
+    assert NetworkAddress('200.0.2.0/24') not in g
+
+
+def test_build_graph_does_not_traverse_a_half_open_link():
+    """A fabric is only traversable while both ends still advertise it.
+
+    Here the remote end has gone down, so it stops announcing the link
+    while the local side still does — routing through it would black-hole.
+    Keying transit on the fabric makes this fall out: with no
+    fabric → remote edge there is simply no path across.
+    """
+    local, remote = _p2p_pair()
+    remote.interface('eth1').disable()   # the far end of the link goes down
+    lsdb = LSDB(local)
+    lsdb.install(LSA.from_router(local, seq=1, policy=RFC1918_OUTBOUND), now=0.0)
+    lsdb.install(LSA.from_router(remote, seq=1, policy=RFC1918_OUTBOUND), now=0.0)
+    g = lsdb.build_graph(eligible_origins={remote})
+
+    link = local.interface('eth1').network()
+    assert g.weight(link, remote) is None
+    # …so the remote LAN is not reachable across the half-open link.
+    assert g.shortest_paths(local)[NetworkAddress('200.0.2.0/24')] is None
+
+
+def test_build_graph_leaves_a_link_dangling_until_the_peer_lsa_arrives():
+    """Before the peer's advertisement arrives the link is attached at one
+    end only, so nothing routes across it."""
+    local, remote = _p2p_pair()
+    link = local.interface('eth1').network()
+    lsdb = LSDB(local)
+    lsdb.install(LSA.from_router(local, seq=1, policy=RFC1918_OUTBOUND), now=0.0)
+    g = lsdb.build_graph(eligible_origins=set())
+
+    assert g.weight(local, link) == 5
+    assert g.weight(link, remote) is None

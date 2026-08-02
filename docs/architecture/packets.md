@@ -173,11 +173,13 @@ class LSA(RoutingMessage):
     def __init__(self, origin, seq, is_withdrawal=False): ...
     def origin(self): return self._origin
     def seq(self): return self._seq
-    def links(self): return dict(self._links)   # NetworkAddress -> cost
-    def add_link(self, prefix, cost): self._links[prefix] = cost
+    def attachments(self): ...                  # fabric -> Attachment(cost, prefix)
+    def add_attachment(self, fabric, cost, prefix=None): ...
+    def links(self): ...                        # NetworkAddress -> cost (announced only)
+    def add_link(self, prefix, cost): ...       # convenience over add_attachment
     def is_withdrawal(self): return self._is_withdrawal
     def is_newer_than(self, other): return self._seq > other.seq()
-    def has_same_links_as(self, other): return self._links == other._links
+    def has_same_links_as(self, other): return self._attachments == other._attachments
 ```
 
 Origination: `LinkStateProtocol._emit_lsa_on_up_interfaces` builds
@@ -290,7 +292,7 @@ metadata:
 | `user_datagram` | `{"bytes": <int>}` always; `"text": <str>` when the body is a string |
 | `ping_request`  | `{"seq": <int>}`                        |
 | `ping_reply`    | `{"seq": <int>, "request_ts": <float>}` |
-| `routing_flood` | `{"seq": <int>, "originator": <str>, "destinations": [{"prefix": <str>, "cost": <int>}, ...]}` |
+| `routing_flood` | `{"seq": <int>, "originator": <str>, "destinations": [{"prefix": <str>, "cost": <int>}, ...], "attachments": [{"fabric": <str>, "cost": <int>}, ...]}` |
 | `hello`         | `{"originator": <str>, "neighbors_heard": [<str>, ...]}` |
 | anything else   | `{}`                                    |
 

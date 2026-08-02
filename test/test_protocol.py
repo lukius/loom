@@ -881,8 +881,8 @@ def test_link_cost_propagates():
 
     r1↔r2 link has cost 5 on r1's side and 9 on r2's side.  r3 bridges r1
     and r2 via two shared LANs at cost 1 each.  After convergence:
-      - r1's graph stores weight 5 from r1 to the link prefix.
-      - r2's graph stores weight 9 from r2 to the link prefix.
+      - r1's graph stores weight 5 from r1 to the link.
+      - r2's graph stores weight 9 from r2 to the link.
       - r1 reaches r2's LAN (10.0.2.0/24) via r3 (eth2) rather than the
         direct link (eth1). Costs use the OSPF pseudonode model
         (subnet→router edges are free):
@@ -921,12 +921,16 @@ def test_link_cost_propagates():
         ) and _r1_routes_lan_r2_via_eth2()), \
             "routers did not converge in time (asymmetric-cost test)"
 
-        # r1's graph: edge r1→link_prefix has cost 5 (r1's own cost).
-        r1_link_cost = r1.protocol()._graph.weight(r1, link_prefix)  # noqa: SLF001
+        # The graph node is the link itself; its prefix hangs off it as a
+        # destination leaf. Each router's own outgoing cost lands on its edge
+        # into the link, so the two directions stay independent.
+        link_fabric = r1.interface("eth1").network()
+        r1_link_cost = r1.protocol()._graph.weight(r1, link_fabric)  # noqa: SLF001
         assert r1_link_cost == 5, f"expected r1→link cost 5, got {r1_link_cost}"
+        assert r1.protocol()._graph.weight(link_fabric, link_prefix) == 0  # noqa: SLF001
 
-        # r2's graph: edge r2→link_prefix has cost 9 (r2's own cost).
-        r2_link_cost = r2.protocol()._graph.weight(r2, link_prefix)  # noqa: SLF001
+        # r2's graph: edge r2→link has cost 9 (r2's own cost).
+        r2_link_cost = r2.protocol()._graph.weight(r2, link_fabric)  # noqa: SLF001
         assert r2_link_cost == 9, f"expected r2→link cost 9, got {r2_link_cost}"
 
         # r1 prefers r3's path (OSPF cost 1+0+1+0+1=3) over the direct
@@ -1429,6 +1433,164 @@ def test_peer_purges_lsa_on_receipt_of_withdrawal():
     finally:
         system.stop()
         os.unlink(path)
+
+
+def test_routes_transit_a_private_lan():
+    """A private LAN forwards traffic for networks beyond it.
+
+    r1 and r2 share `192.168.50.0/24`; r2 also owns a public LAN. Nobody
+    should install a route *to* the private range, but r1 must reach the
+    public LAN *through* it — the LAN is the only path there.
+    """
+    private = Network('lan_priv', NetworkAddress('192.168.50.0/24'))
+    public = Network('lan_pub', NetworkAddress('200.0.3.0/24'))
+
+    r1 = Router('r1')
+    r1_priv = Interface('eth0', private, Address('192.168.50.1'), cost=4)
+    r1.add_interface(r1_priv)
+    private.add_interface(r1_priv)
+
+    r2 = Router('r2')
+    r2_priv = Interface('eth0', private, Address('192.168.50.2'), cost=6)
+    r2_pub = Interface('eth1', public, Address('200.0.3.1'), cost=3)
+    r2.add_interface(r2_priv)
+    r2.add_interface(r2_pub)
+    private.add_interface(r2_priv)
+    public.add_interface(r2_pub)
+
+    original_send = Interface.send_to
+    Interface.send_to = lambda self, pkt, dst_addr: None
+    try:
+        proto = LinkStateProtocol(r1)
+        proto._neighbor_table.record_hello(  # noqa: SLF001
+            r1_priv, r2, peer_listed_us=True,
+            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+        )
+        proto.handle_incoming_message(
+            LSA.from_router(r2, seq=1, policy=RFC1918_OUTBOUND), r1_priv,
+        )
+    finally:
+        Interface.send_to = original_send
+
+    result = r1.routing_table().match(Address('200.0.3.50'))
+    assert result.is_matched(), 'the public LAN behind the private one is unreachable'
+    assert str(result.next_hop()) == '192.168.50.2'
+    assert result.interface().name() == 'eth0'
+
+
+def test_two_private_lans_sharing_a_cidr_stay_distinct():
+    """Duplicate private CIDRs are legal within an AS. Keying the graph by
+    fabric identity keeps them apart — advertising them must not fuse two
+    unrelated LANs into one node and invent a path between their routers."""
+    tenant_a = Network('lan_a', NetworkAddress('192.168.1.0/24'))
+    tenant_b = Network('lan_b', NetworkAddress('192.168.1.0/24'))
+    backbone = Network('lan_bb', NetworkAddress('200.0.9.0/24'))
+
+    r_a = Router('r_a')
+    r_a_priv = Interface('eth0', tenant_a, Address('192.168.1.1'), cost=1)
+    r_a_bb = Interface('eth1', backbone, Address('200.0.9.1'), cost=1)
+    r_a.add_interface(r_a_priv)
+    r_a.add_interface(r_a_bb)
+    tenant_a.add_interface(r_a_priv)
+    backbone.add_interface(r_a_bb)
+
+    r_b = Router('r_b')
+    r_b_priv = Interface('eth0', tenant_b, Address('192.168.1.1'), cost=1)
+    r_b_bb = Interface('eth1', backbone, Address('200.0.9.2'), cost=1)
+    r_b.add_interface(r_b_priv)
+    r_b.add_interface(r_b_bb)
+    tenant_b.add_interface(r_b_priv)
+    backbone.add_interface(r_b_bb)
+
+    original_send = Interface.send_to
+    Interface.send_to = lambda self, pkt, dst_addr: None
+    try:
+        proto = LinkStateProtocol(r_a)
+        proto._neighbor_table.record_hello(  # noqa: SLF001
+            r_a_bb, r_b, peer_listed_us=True,
+            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+        )
+        proto.handle_incoming_message(
+            LSA.from_router(r_b, seq=1, policy=RFC1918_OUTBOUND), r_a_bb,
+        )
+    finally:
+        Interface.send_to = original_send
+
+    # r_a reaches 192.168.1.0/24 on its own LAN, directly — never via r_b.
+    result = r_a.routing_table().match(Address('192.168.1.50'))
+    assert result.is_matched()
+    assert str(result.next_hop()) == '0.0.0.0'
+    assert result.interface().name() == 'eth0'
+
+
+def _p2p_and_lan_topology():
+    """r1 and r3 joined twice: a private /30 link (cheap) and lan2 (dear).
+
+    r1: eth0 → lan2 (cost 15), eth1 → p2p1 10.0.0.0/30 (cost 5)
+    r3: eth0 → lan2 (cost 20), eth1 → lan3 (cost 5), eth2 → p2p1 (cost 5)
+
+    Reaching lan3 from r1 costs 5 + 5 = 10 across the link, against
+    15 + 5 = 20 through lan2.
+    """
+    lan2 = Network('lan2', NetworkAddress('100.200.0.0/24'))
+    lan3 = Network('lan3', NetworkAddress('150.10.10.0/24'))
+    link = Link('p2p1', NetworkAddress('10.0.0.0/30'))
+
+    r1 = Router('r1')
+    r1_lan2 = Interface('eth0', lan2, Address('100.200.0.1'), cost=15)
+    r1_link = Interface('eth1', link, Address('10.0.0.1'), cost=5)
+    r1.add_interface(r1_lan2)
+    r1.add_interface(r1_link)
+    lan2.add_interface(r1_lan2)
+    link.add_interface(r1_link)
+
+    r3 = Router('r3')
+    r3_lan2 = Interface('eth0', lan2, Address('100.200.0.10'), cost=20)
+    r3_lan3 = Interface('eth1', lan3, Address('150.10.10.10'), cost=5)
+    r3_link = Interface('eth2', link, Address('10.0.0.2'), cost=5)
+    r3.add_interface(r3_lan2)
+    r3.add_interface(r3_lan3)
+    r3.add_interface(r3_link)
+    lan2.add_interface(r3_lan2)
+    lan3.add_interface(r3_lan3)
+    link.add_interface(r3_link)
+
+    return r1, r3, r1_link, r3_link
+
+
+def test_routes_transit_a_private_point_to_point_link():
+    """A private /30 carries transit traffic. Its prefix stays out of peers'
+    tables, but the adjacency it represents is usable, so the cheap path
+    across the link wins over the expensive one through the LAN."""
+    r1, r3, r1_link, _ = _p2p_and_lan_topology()
+
+    original_send = Interface.send_to
+    Interface.send_to = lambda self, pkt, dst_addr: None
+    try:
+        proto = LinkStateProtocol(r1)
+        proto._neighbor_table.record_hello(  # noqa: SLF001
+            r1_link, r3, peer_listed_us=True,
+            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+        )
+        proto.handle_incoming_message(
+            LSA.from_router(r3, seq=1, policy=RFC1918_OUTBOUND), r1_link,
+        )
+    finally:
+        Interface.send_to = original_send
+
+    result = r1.routing_table().match(Address('150.10.10.30'))
+    assert result.is_matched()
+    assert str(result.next_hop()) == '10.0.0.2'
+    assert result.interface().name() == 'eth1'
+
+
+def test_private_link_prefix_is_not_advertised_to_peers():
+    """The adjacency travels; the private prefix does not. r3's LSA must not
+    offer 10.0.0.0/30 as a destination."""
+    _, r3, _, _ = _p2p_and_lan_topology()
+    lsa = LSA.from_router(r3, seq=1, policy=RFC1918_OUTBOUND)
+    assert NetworkAddress('10.0.0.0/30') not in lsa.links()
+    assert NetworkAddress('150.10.10.0/24') in lsa.links()
 
 
 def test_dead_neighbor_sweep_recomputes_routing_table():

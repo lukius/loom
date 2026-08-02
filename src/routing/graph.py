@@ -25,6 +25,7 @@ class NetworkGraph:
     def __init__(self):
         self._routers = list()
         self._networks = list()
+        self._fabrics = list()
         self._costs = dict()
 
     def add_router(self, router_name):
@@ -34,10 +35,24 @@ class NetworkGraph:
         self._add_node(router_name)
 
     def add_network(self, prefix):
+        """Register a destination prefix — a leaf that routes are built for."""
         if prefix in self._costs:
             return
         self._networks.append(prefix)
         self._add_node(prefix)
+
+    def add_fabric(self, fabric):
+        """Register a transit node: the LAN or link itself, not its prefix.
+
+        Kept out of `networks()` because a fabric is somewhere traffic passes
+        *through*, not a destination routes are installed for. Two fabrics
+        carrying the same private CIDR are two nodes — identity, not prefix,
+        is what distinguishes them.
+        """
+        if fabric in self._costs:
+            return
+        self._fabrics.append(fabric)
+        self._add_node(fabric)
 
     def _add_node(self, node_id):
         self._costs[node_id] = collections.defaultdict(lambda: None)

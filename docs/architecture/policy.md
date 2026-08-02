@@ -52,6 +52,14 @@ to each prefix the router considers advertising. The default is
 `RFC1918_OUTBOUND` — deny the three RFC 1918 ranges, permit everything
 else. Construction site: `LinkStateProtocol.__init__(router, outbound_policy=None)`.
 
+**The policy governs reachability, not topology.** An LSA advertises one
+*attachment* per fabric the router is on, carrying the fabric, the cost, and
+— only when the policy permits — the fabric's prefix. Denying
+`192.168.0.0/16` means "no peer should install a route to this private
+range", not "this LAN does not exist": the fabric still appears in every
+peer's graph, so traffic transits it normally. See
+[routing-protocol.md](routing-protocol.md#lsa) for the field split.
+
 Data flow:
 
 ```

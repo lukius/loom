@@ -117,20 +117,22 @@ class LSDB:
         graph.add_router(self._local)
         # OSPF pseudonode model: a router's interface cost is OUTGOING
         # only ("sending out of this iface costs N"). The reverse —
-        # arriving at a router from its attached subnet — is free,
+        # arriving at a router from its attached fabric — is free,
         # because the cost was already paid when the sender put the
-        # frame on the wire. Each LSA link therefore contributes two
-        # directed edges: router → subnet at the advertised cost, and
-        # subnet → router at 0.
+        # frame on the wire. Each attachment therefore contributes two
+        # directed edges: router → fabric at the advertised cost, and
+        # fabric → router at 0.
+        #
+        # Transit nodes are the fabrics themselves; announced prefixes hang
+        # off them as leaves. That split is what lets a fabric whose prefix
+        # policy withholds — a private LAN or link — still carry traffic
+        # bound for networks beyond it, while remaining unreachable as a
+        # destination in its own right.
         with self._lock:
             local_entry = self._by_origin.get(self._local)
             if local_entry is not None:
                 lsa, _ = local_entry
-                for prefix, cost in lsa.links().items():
-                    if prefix not in graph:
-                        graph.add_network(prefix)
-                    graph.add_directed_edge(src=self._local, dst=prefix, weight=cost)
-                    graph.add_directed_edge(src=prefix, dst=self._local, weight=0)
+                self._add_lsa_to_graph(graph, self._local, lsa)
 
             for origin, (lsa, _) in self._by_origin.items():
                 if origin is self._local:
@@ -139,9 +141,23 @@ class LSDB:
                     continue
                 if origin not in graph:
                     graph.add_router(origin)
-                for prefix, cost in lsa.links().items():
-                    if prefix not in graph:
-                        graph.add_network(prefix)
-                    graph.add_directed_edge(src=origin, dst=prefix, weight=cost)
-                    graph.add_directed_edge(src=prefix, dst=origin, weight=0)
+                self._add_lsa_to_graph(graph, origin, lsa)
         return graph
+
+    @staticmethod
+    def _add_lsa_to_graph(graph: NetworkGraph, origin, lsa: LSA) -> None:
+        """Contribute one LSA's attachments and announced prefixes to `graph`."""
+        for fabric, attachment in lsa.attachments().items():
+            if fabric not in graph:
+                graph.add_fabric(fabric)
+            graph.add_directed_edge(src=origin, dst=fabric, weight=attachment.cost)
+            graph.add_directed_edge(src=fabric, dst=origin, weight=0)
+            if attachment.prefix is None:
+                continue
+            # An announced prefix is a leaf: reaching the fabric is what
+            # costs, and a destination is never a transit point, so it gets
+            # no outgoing edge back into the graph.
+            prefix = attachment.prefix
+            if prefix not in graph:
+                graph.add_network(prefix)
+            graph.add_directed_edge(src=fabric, dst=prefix, weight=0)

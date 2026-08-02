@@ -60,6 +60,13 @@ def _summarize_payload(payload) -> dict:
                 {"prefix": str(p), "cost": c}
                 for p, c in payload.links().items()
             ],
+            # Attachments travel separately from destinations: a fabric whose
+            # prefix policy withholds still contributes topology, so an LSA
+            # can carry attachments and no destinations at all.
+            "attachments": [
+                {"fabric": fabric.name(), "cost": att.cost}
+                for fabric, att in payload.attachments().items()
+            ],
         }
     return {}
 

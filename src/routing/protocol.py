@@ -434,26 +434,52 @@ class LinkStateProtocol(RoutingProtocol):
             path = paths.get(prefix)
             if path is None or len(path) < 2:
                 continue
-            next_hop_network = path[1]
-            next_hop_address = self._next_hop_address(next_hop_network, path)
-            for _, iface in self._router.interfaces().items():
-                if iface.network().address() == next_hop_network:
-                    routing_table.add_rule(prefix, next_hop_address, iface)
-                    break
+            rule = self._rule_for_path(path)
+            if rule is None:
+                continue
+            next_hop_address, iface = rule
+            routing_table.add_rule(prefix, next_hop_address, iface)
 
-    def _next_hop_address(self, next_hop_network, path):
-        """Resolve the next-hop IP for a path via an intermediate router.
+    def _rule_for_path(self, path):
+        """Resolve (next_hop_address, outgoing_interface) for one SPF path.
 
-        Returns NullAddress when the destination is directly connected
-        (path length <= 2, meaning no intermediate router node), or the
-        IP address of the intermediate router's interface on next_hop_network
-        when a multi-hop path is present.
+        A path alternates router and fabric nodes, so the first hop is always
+        the fabric the packet leaves by. Returns None when that fabric is not
+        one this router is attached to.
+        """
+        first_hop = path[1]
+        local_iface = self._iface_on(first_hop)
+        if local_iface is None:
+            return None
+        return self._next_hop_address(first_hop, path), local_iface
+
+    def _iface_on(self, fabric):
+        """The local interface attached to `fabric`, or None.
+
+        Matched by identity: with duplicate private CIDRs legal inside an AS,
+        comparing prefixes could pick the wrong interface.
+        """
+        for _, iface in self._router.interfaces().items():
+            if iface.network() is fabric:
+                return iface
+        return None
+
+    def _next_hop_address(self, fabric, path):
+        """Resolve the next-hop IP for a path across an intermediate router.
+
+        Returns NullAddress when the destination hangs directly off the first
+        fabric (no intermediate router node on the path), or the address the
+        next router holds on that fabric otherwise.
         """
         if len(path) <= 2:
             return NullAddress
         next_hop_router = path[2]
+        if not hasattr(next_hop_router, 'interfaces'):
+            # The destination prefix itself, hanging off a directly attached
+            # fabric as a leaf — nothing to forward to.
+            return NullAddress
         for _, iface in next_hop_router.interfaces().items():
-            if iface.network().address() == next_hop_network:
+            if iface.network() is fabric:
                 return iface.address()
         return NullAddress
 

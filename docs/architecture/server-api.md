@@ -513,7 +513,7 @@ reply echoes the request's id). `payload` is a per-type summary dict:
 | `ping_request` | `{"seq": <n>}` |
 | `ping_reply` | `{"seq": <n>, "request_ts": <float>}` |
 | `hello` | `{"originator": "<router>", "neighbors_heard": ["<r1>", ...]}` |
-| `routing_flood` | `{"seq": <n>, "originator": "<router>", "destinations": [{"prefix": "<cidr>", "cost": <n>}, ...]}` |
+| `routing_flood` | `{"seq": <n>, "originator": "<router>", "destinations": [{"prefix": "<cidr>", "cost": <n>}, ...], "attachments": [{"fabric": "<name>", "cost": <n>}, ...]}` |
 | `unknown` | `{}` |
 
 ```json

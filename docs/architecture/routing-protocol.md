@@ -54,12 +54,38 @@ Fields:
 |---|---|---|
 | `_origin` | `Router` | The router that originated this advertisement |
 | `_seq` | `int` | Monotonically increasing per-router sequence counter |
-| `_links` | `dict[NetworkAddress, int]` | Prefix → cost for each advertised link |
-| `_is_withdrawal` | `bool` | If `True`, this is a zero-link withdrawal LSA |
+| `_attachments` | `dict[fabric, Attachment]` | Fabric → `(cost, prefix or None)`: one entry per attached LAN or link |
+| `_is_withdrawal` | `bool` | If `True`, this is an empty withdrawal LSA |
+
+**Topology and reachability are separate, deliberately.** An `Attachment`
+says two things at once, and only one of them is negotiable:
+
+- *topology* — "I am attached to this fabric at this cost". Always
+  advertised. This is what places the router in everyone's graph.
+- *reachability* — "and its range is `prefix`". Advertised only when the
+  outbound policy permits, so `prefix` is `None` for an RFC 1918 fabric.
+
+A private LAN or `/30` therefore carries transit traffic while remaining
+unreachable as a destination: peers can compute paths *through* it, but
+nobody installs a route *to* it. An earlier design collapsed the two into a
+single prefix→cost map, which made every private fabric untransitable —
+filtering the prefix deleted the only node that joined the routers on it.
+
+**Attachments key on the fabric, not on its prefix.** Two LANs may legally
+carry the same private CIDR inside one AS (the multi-tenant NAT pattern), so
+prefix-keyed nodes would fuse unrelated LANs into one and invent adjacency
+between routers that share no wire. Identity keeps them apart. The fabric
+object is the simulator's stand-in for OSPF's pseudonode ID — which is the
+DR's interface address, an identifier that is likewise *not* the subnet
+prefix.
+
+`links()` derives the prefix→cost view (announced destinations only) that
+the rest of the protocol and its tests read.
 
 Key methods: `is_newer_than(other)` (seq comparison), `has_same_links_as(other)`
-(link-dict equality), `LSA.withdrawal(router, seq)` (constructor for shutdown
-LSA).
+(equality over attachments — a fabric appearing or leaving counts as a graph
+change even when no announced prefix moved), `LSA.withdrawal(router, seq)`
+(constructor for shutdown LSA).
 
 ### `Hello`
 
@@ -113,8 +139,10 @@ an LSA is an echo of the router's own flood reflected back over another network,
 and installing/re-flooding it would feed the same storm. The local LSA is owned
 exclusively by the refresh/announce path.
 
-`has_same_links_as` is a dict-equality check on the `_links` maps. The LSDB
-uses it to decide whether an accepted LSA actually changed the graph:
+`has_same_links_as` is a dict-equality check over the `_attachments` map — a
+fabric coming or going is a graph change even when no announced prefix moved,
+which is exactly the case for a private LAN or link. The LSDB uses it to
+decide whether an accepted LSA actually changed the graph:
 - Accepted + same links → `InstallResult.accepted(changed_graph=False)` → no
   SPF recompute, no routing-table rebuild. This keeps a steady-state network
   quiet even though every router floods at the refresh interval.
@@ -237,6 +265,24 @@ the same value), changing only one side of a link changes the cost from that
 direction only. Changing v's iface cost from 4 to 6 affects `v → t` (now 6)
 but not `t → v` (still 4). To raise the cost symmetrically, update both
 endpoints.
+
+**Transit nodes are fabrics; destinations are leaves.** Each attachment
+contributes `R → F` at the advertised cost and `F → R` at 0. When the
+attachment also announces a prefix, that prefix joins the graph as a leaf
+under its fabric — `F → P` at 0, with no edge back out, because a
+destination is never something traffic passes through.
+
+The split is what makes a private fabric usable. Its node and both its
+router edges exist regardless of policy, so SPF routes across it; without
+an announced prefix there is simply no leaf to install a route to. Point-to
+-point links and multi-access LANs behave identically here — a `Link` is
+just a fabric whose node happens to have exactly two routers on it.
+
+Bidirectionality falls out of the same structure rather than needing a rule
+of its own: a fabric is traversable only while both ends advertise it. If one
+router's interface goes down it stops advertising the attachment, the
+`F → R` edge disappears, and no path crosses to that router — the black-hole
+OSPF avoids with its explicit reverse-link check in RFC 2328 §16.1.
 
 ### Local-link change propagation
 
