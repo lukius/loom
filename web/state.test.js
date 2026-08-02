@@ -626,6 +626,20 @@ describe('constants', () => {
     expect(SAMPLE.links).toHaveProperty('p2p1');
     expect(SAMPLE.links.p2p1.cidr).toBe('10.0.0.0/30');
   });
+
+  // Without a gateway a host can only reach its own LAN, so the seeded
+  // topology would fail the very first off-LAN ping a new user tries.
+  it('every SAMPLE host has a gateway held by a router on its own LAN', () => {
+    for (const [name, host] of Object.entries(SAMPLE.hosts)) {
+      expect(host.gateway, `${name} has no gateway`).toBeTruthy();
+      const owners = Object.values(SAMPLE.routers).filter(r =>
+        Object.values(r.interfaces || {}).some(
+          iff => iff.network === host.network && iff.address === host.gateway,
+        ),
+      );
+      expect(owners.length, `${name}: gateway ${host.gateway} is not on ${host.network}`).toBe(1);
+    }
+  });
 });
 
 describe('sourceName / defaultExportFilename', () => {

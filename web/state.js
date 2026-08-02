@@ -80,34 +80,39 @@ export const NODE = {
 };
 export const HIT_PAD = { network: { x: 12, top: 12, bottom: 32 }, host: { x: 18, top: 6, bottom: 36 }, router: { x: 18, top: 6, bottom: 38 } };
 
+/* Seed topology for a first visit. Mirrors samples/sample.yaml (same
+   devices, addresses, and costs) so the canvas a new user lands on behaves
+   exactly like the bundled sample — gateways included, or the first off-LAN
+   ping would fail. Coordinates place the p2p link on a clear diagonal so its
+   midpoint label doesn't land on r2 or on r1's own name label. */
 export const SAMPLE = {
   asName: 'test_as',
   asn: 65000,
   links: {
-    p2p1: { cidr: '10.0.0.0/30', x: 920, y: 355 },
+    p2p1: { cidr: '10.0.0.0/30', x: 880, y: 420 },
   },
   networks: {
-    lan1: { cidr: '200.100.0.0/24', x: 460, y: 160 },
-    lan2: { cidr: '100.200.0.0/24', x: 460, y: 360 },
-    lan3: { cidr: '150.10.10.0/24', x: 460, y: 560 },
+    lan1: { cidr: '200.100.0.0/24', x: 470, y: 180 },
+    lan2: { cidr: '100.200.0.0/24', x: 470, y: 380 },
+    lan3: { cidr: '150.10.10.0/24', x: 470, y: 580 },
   },
   hosts: {
-    h1: { network: 'lan1', address: '200.100.0.10', x: 230, y: 160 },
-    h2: { network: 'lan2', address: '100.200.0.20', x: 230, y: 360 },
-    h3: { network: 'lan3', address: '150.10.10.30', x: 230, y: 560 },
+    h1: { network: 'lan1', address: '200.100.0.10', gateway: '200.100.0.1',  x: 300, y: 180 },
+    h2: { network: 'lan2', address: '100.200.0.20', gateway: '100.200.0.2',  x: 300, y: 380 },
+    h3: { network: 'lan3', address: '150.10.10.30', gateway: '150.10.10.1',  x: 300, y: 580 },
   },
   routers: {
-    r1: { x: 720, y: 250, interfaces: {
+    r1: { x: 840, y: 230, interfaces: {
       eth0: { network: 'lan1', address: '200.100.0.1',   cost: 10 },
       eth1: { network: 'lan2', address: '100.200.0.1',   cost: 15 },
       eth2: { link: 'p2p1',   address: '10.0.0.1',       cost: 5  },
     }},
-    r2: { x: 820, y: 360, interfaces: {
+    r2: { x: 650, y: 350, interfaces: {
       eth0: { network: 'lan1', address: '200.100.0.254', cost: 5 },
       eth1: { network: 'lan2', address: '100.200.0.2',   cost: 8 },
       eth2: { network: 'lan3', address: '150.10.10.1',   cost: 15 },
     }},
-    r3: { x: 720, y: 460, interfaces: {
+    r3: { x: 1030, y: 530, interfaces: {
       eth0: { network: 'lan2', address: '100.200.0.10', cost: 20 },
       eth1: { network: 'lan3', address: '150.10.10.10', cost: 5 },
       eth2: { link: 'p2p1',   address: '10.0.0.2',      cost: 5  },
