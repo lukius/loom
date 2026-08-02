@@ -74,6 +74,7 @@ loom/
 - Clean up names, duplication, and structure (**refactor**) with the suite green; re-run after each refactor step.
 - Do not commit code without a covering test, and do not commit a red suite. New parser/validator failure modes belong as YAML fixtures under `test/resources/` referenced from `test_parser.py`.
 - Run `pytest` after every change.
+- **Never dismiss a flake — fix it, whether or not you caused it.** A test that fails intermittently is a defect in its own right: it may be masking a real bug, and it teaches everyone to ignore red. Find the actual race and fix it in the same pass — "it passed on re-run" and "that one was already flaky" are not resolutions.
 
 ### Documentation — keep in sync with code
 - After a code change, check whether `README.md`, this `CLAUDE.md`, the relevant page under `docs/architecture/` or `docs/user-guide/`, or any docstrings on the changed surface are now stale. If so, update them in the same commit — do not leave docs for "later".

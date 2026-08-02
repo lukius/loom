@@ -1,4 +1,21 @@
+import time
+
 from entities.event import EventTracer
+
+
+def _wait_for(condition, timeout=3.0, interval=0.01):
+    """Poll until `condition` holds, or `timeout` elapses.
+
+    Events are produced by worker threads, so a fixed sleep before asserting
+    one arrived is a race the test loses on a loaded machine. Polling returns
+    as soon as the event lands and still bounds the wait.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        time.sleep(interval)
+    return False
 
 
 def test_subscribe_returns_unsubscribe():
@@ -59,7 +76,6 @@ def test_egress_broadcast_fires_for_user_datagram():
     import os
     import tempfile
     import textwrap
-    import time
 
     from entities import UserMessage
     from entities.event import EventTracer
@@ -86,7 +102,9 @@ def test_egress_broadcast_fires_for_user_datagram():
         EventTracer.subscribe(events.append)
         h1, h2 = system.host("h1"), system.host("h2")
         h1.send_message_to(UserMessage("hi"), h2.address())
-        time.sleep(0.2)
+        assert _wait_for(lambda: ("packet", "user_datagram") in [
+            (e.get("kind"), e.get("type")) for e in events
+        ]), "no user_datagram packet event arrived"
         kinds = [(e.get("kind"), e.get("type")) for e in events]
         assert ("packet", "user_datagram") in kinds
         system.stop()
@@ -98,7 +116,6 @@ def test_packet_event_carries_user_message_byte_count():
     import os
     import tempfile
     import textwrap
-    import time
 
     from entities import UserMessage
     from entities.event import EventTracer
@@ -126,12 +143,14 @@ def test_packet_event_carries_user_message_byte_count():
         h1, h2 = system.host("h1"), system.host("h2")
         msg = UserMessage("hello")
         h1.send_message_to(msg, h2.address())
-        time.sleep(0.2)
+        assert _wait_for(lambda: any(
+            e.get("kind") == "packet" and e.get("type") == "user_datagram"
+            for e in events
+        )), "expected at least one user_datagram packet event"
         pkt_events = [
             e for e in events
             if e.get("kind") == "packet" and e.get("type") == "user_datagram"
         ]
-        assert pkt_events, "expected at least one user_datagram packet event"
         assert pkt_events[0]["payload"] == {"bytes": len("hello"), "text": "hello"}
         system.stop()
     finally:
@@ -142,7 +161,6 @@ def test_packet_event_non_string_user_message_omits_text_key():
     import os
     import tempfile
     import textwrap
-    import time
 
     from entities import UserMessage
     from entities.event import EventTracer
@@ -170,12 +188,14 @@ def test_packet_event_non_string_user_message_omits_text_key():
         h1, h2 = system.host("h1"), system.host("h2")
         payload = b"raw bytes"
         h1.send_message_to(UserMessage(payload), h2.address())
-        time.sleep(0.2)
+        assert _wait_for(lambda: any(
+            e.get("kind") == "packet" and e.get("type") == "user_datagram"
+            for e in events
+        )), "expected at least one user_datagram packet event"
         pkt_events = [
             e for e in events
             if e.get("kind") == "packet" and e.get("type") == "user_datagram"
         ]
-        assert pkt_events, "expected at least one user_datagram packet event"
         summary = pkt_events[0]["payload"]
         assert summary == {"bytes": len(payload)}
         assert "text" not in summary
@@ -274,7 +294,6 @@ def test_packet_event_for_routing_flood_carries_seq_and_destinations():
     import os
     import tempfile
     import textwrap
-    import time
 
     from entities.event import EventTracer
     from parser import Parser
@@ -302,12 +321,14 @@ def test_packet_event_for_routing_flood_carries_seq_and_destinations():
         system = Parser(path).parse().single_as()
         EventTracer.subscribe(events.append)
         system.router("r1").protocol()._run_keepalive_cycle()  # noqa: SLF001
-        time.sleep(0.2)
+        assert _wait_for(lambda: any(
+            e.get("kind") == "packet" and e.get("type") == "routing_flood"
+            for e in events
+        )), "expected at least one routing_flood packet event"
         flood_events = [
             e for e in events
             if e.get("kind") == "packet" and e.get("type") == "routing_flood"
         ]
-        assert flood_events, "expected at least one routing_flood packet event"
         payload = flood_events[0]["payload"]
         assert isinstance(payload["seq"], int)
         # `originator` lets downstream subscribers tell an origin emission
@@ -330,7 +351,6 @@ def test_packet_event_for_routing_flood_carries_attachments():
     import os
     import tempfile
     import textwrap
-    import time
 
     from entities.event import EventTracer
     from parser import Parser
@@ -360,13 +380,16 @@ def test_packet_event_for_routing_flood_carries_attachments():
         system = Parser(path).parse().single_as()
         EventTracer.subscribe(events.append)
         system.router("r1").protocol()._run_keepalive_cycle()  # noqa: SLF001
-        time.sleep(0.2)
+        assert _wait_for(lambda: any(
+            e.get("kind") == "packet" and e.get("type") == "routing_flood"
+            and e["payload"]["originator"] == "r1"
+            for e in events
+        )), "expected at least one routing_flood packet event"
         flood_events = [
             e for e in events
             if e.get("kind") == "packet" and e.get("type") == "routing_flood"
             and e["payload"]["originator"] == "r1"
         ]
-        assert flood_events, "expected at least one routing_flood packet event"
         payload = flood_events[0]["payload"]
         assert payload["destinations"] == []   # private /30 withheld
         assert payload["attachments"] == [{"fabric": "p2p1", "cost": 5}]
