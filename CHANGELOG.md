@@ -7,6 +7,30 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- LSAs now advertise *attachments* — the fabric a router sits on, its cost,
+  and the fabric's prefix only when advertisement policy permits.
+  Reachability and topology are no longer the same field, so a private LAN
+  or `/30` link carries transit traffic while staying out of peers' routing
+  tables as a destination. Shortest-path nodes key on the fabric rather
+  than its prefix, which keeps two LANs that share a private CIDR distinct.
+  The `routing_flood` event payload gains an `attachments` list.
+
+### Fixed
+
+- A router whose neighbor died kept forwarding through it: the
+  dead-interval sweep purged the neighbor's LSA without recomputing the
+  routing table, and the purge then made the max-age path a no-op.
+- The sample topology seeded on a first visit carried no host gateways,
+  so the first ping between LANs failed.
+- The NAT table's flow-ID column spilled past the inspector's edge.
+- Confirmed live edits no longer announce "Topology imported".
+
+---
+
 ## [1.0.0] — 2026-07-27
 
 Initial release of **loom** — a Python simulator for an IPv4 autonomous
