@@ -83,6 +83,10 @@ host.
 
 - A private host cannot leave the private LAN unless its gateway
   router has at least one public interface.
+- Translation applies to conversations the private side starts. Ping a
+  private host *from* a public one whose gateway is that same router and
+  the reply comes back untouched, from the host you addressed — a router
+  does not translate between two of its own attached networks.
 - Two private hosts on different private LANs that share the same CIDR
   cannot reach each other by address — each thinks the other lives on
   its own LAN (same-LAN delivery), but the address isn't there.

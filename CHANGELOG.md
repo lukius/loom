@@ -21,6 +21,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Source-NAT applied to the reply leg of conversations opened from the
+  public side, so a ping into a private LAN came back from the router's
+  address, was discarded by the sender, and reported a timeout even
+  though the round trip completed. Translation is now limited to flows
+  the private side starts.
 - A router whose neighbor died kept forwarding through it: the
   dead-interval sweep purged the neighbor's LSA without recomputing the
   routing table, and the purge then made the max-age path a no-op.

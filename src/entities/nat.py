@@ -24,6 +24,11 @@ class NATTable:
     def __init__(self, max_entries: int = 1024):
         self._entries = dict()
         self._order = collections.OrderedDict()
+        # Flows this router has carried *into* private space (public source,
+        # private destination). Their return leg belongs to a conversation
+        # opened from outside and must cross back untranslated — see
+        # note_inbound_flow. Bounded like the entry table.
+        self._inbound_flows = collections.OrderedDict()
         self._lock = threading.Lock()
         self._max = max_entries
 
@@ -43,6 +48,31 @@ class NATTable:
         """Return the original source address for this flow, or None on miss."""
         with self._lock:
             return self._entries.get((rewritten_src, original_dst, flow_id))
+
+    def note_inbound_flow(self, flow_id):
+        """Record that `flow_id` entered private space from the outside.
+
+        Source-NAT belongs to conversations opened from inside. When the
+        public side opens one, translating the reply would deliver it from
+        the router's address instead of the host that was addressed, and the
+        sender would discard it as unrelated. `flow_id=None` payloads carry
+        no conversation identity and are not tracked.
+        """
+        if flow_id is None:
+            return
+        with self._lock:
+            if flow_id in self._inbound_flows:
+                del self._inbound_flows[flow_id]
+            self._inbound_flows[flow_id] = None
+            while len(self._inbound_flows) > self._max:
+                self._inbound_flows.popitem(last=False)
+
+    def is_inbound_flow(self, flow_id) -> bool:
+        """Whether `flow_id` was opened from the public side."""
+        if flow_id is None:
+            return False
+        with self._lock:
+            return flow_id in self._inbound_flows
 
     def snapshot(self):
         """Return entries in LRU order (oldest first, most recent last).

@@ -659,3 +659,88 @@ def test_ping_emits_ping_result_on_timeout():
         os.unlink(path)
     assert len(events) == 1
     assert events[0]["rtt_ms"] is None
+
+
+PUBLIC_AND_PRIVATE_ON_ONE_ROUTER = textwrap.dedent("""
+internet:
+  name: loom
+  autonomous_systems:
+    main:
+      asn: 65000
+      networks:
+        lan_private: "10.0.0.0/12"
+        lan_public: "2.2.8.0/22"
+      hosts:
+        h_inside:
+          network: lan_private
+          address: "10.0.0.11"
+          gateway: "10.0.0.1"
+        h_outside:
+          network: lan_public
+          address: "2.2.8.3"
+          gateway: "2.2.8.1"
+      routers:
+        r1:
+          interfaces:
+            eth0: {network: lan_private, address: "10.0.0.1", cost: 10}
+            eth1: {network: lan_public, address: "2.2.8.1", cost: 10}
+""")
+
+
+def test_ping_into_a_private_lan_from_a_directly_attached_public_lan():
+    """A conversation opened from the public side must not be source-NATed
+    on its way back.
+
+    Both LANs hang off r1, and the pinger's gateway *is* r1 — no real
+    router translates between two of its own attached networks. Rewriting
+    the reply's source makes it arrive from the router instead of the host
+    that was pinged, so the pinger discards it and reports a timeout while
+    the packets visibly flew.
+    """
+    path = _make_topology(PUBLIC_AND_PRIVATE_ON_ONE_ROUTER)
+    system = Parser(path).parse(start_routing=False).single_as()
+    for r in system.routers().values():
+        r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.3)
+        r.start()
+    try:
+        h_inside = system.host("h_inside")
+        h_outside = system.host("h_outside")
+        r1 = system.routers()["r1"]
+        # r1 writes its table on the first protocol tick; ping before that
+        # and the request is dropped for want of a route.
+        assert _wait(lambda: _table_has_prefix(r1, "10.0.0.0/12"), timeout=5.0)
+
+        rtt = h_outside.ping(h_inside.address(), timeout=2.0)
+        assert rtt is not None, "reply never matched the address that was pinged"
+
+        # Nothing was translated, so no mapping should have been recorded.
+        assert r1.nat_table().snapshot() == []
+    finally:
+        system.stop()
+        os.unlink(path)
+
+
+def test_private_host_reaching_out_is_still_natted():
+    """The inside-initiated direction keeps its translation — the fix must
+    not disable NAT wholesale."""
+    path = _make_topology(PUBLIC_AND_PRIVATE_ON_ONE_ROUTER)
+    system = Parser(path).parse(start_routing=False).single_as()
+    for r in system.routers().values():
+        r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.3)
+        r.start()
+    try:
+        h_inside = system.host("h_inside")
+        h_outside = system.host("h_outside")
+        r1 = system.routers()["r1"]
+        assert _wait(lambda: _table_has_prefix(r1, "2.2.8.0/22"), timeout=5.0)
+
+        rtt = h_inside.ping(h_outside.address(), timeout=2.0)
+        assert rtt is not None, "h_inside -> h_outside ping failed"
+
+        entries = r1.nat_table().snapshot()
+        assert len(entries) == 1
+        assert entries[0]["original_src"] == "10.0.0.11"
+        assert entries[0]["rewritten_src"] == "2.2.8.1"
+    finally:
+        system.stop()
+        os.unlink(path)

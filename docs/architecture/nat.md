@@ -49,6 +49,27 @@ If the router has no public interface but the source is private,
 forwarding privately-sourced traffic out a private interface. That
 keeps tenant traffic from leaking onto another tenant's LAN.
 
+### Direction matters: only inside-initiated flows are translated
+
+Source-NAT belongs to conversations the private side opened. When a
+router carries a packet the *other* way — public source, private egress
+— it records the conversation via `NATTable.note_inbound_flow(flow_id)`,
+and `_handle_forwarding` then skips translation for that flow's return
+leg (`NATTable.is_inbound_flow`).
+
+Without that distinction, a ping from a public host to a private one on
+the same router's other LAN comes back rewritten to the router's own
+address. The sender is waiting on a reply from the host it addressed,
+discards the one it gets, and reports a timeout — while the packets
+visibly completed the round trip. The inbound-flow set is bounded and
+LRU-evicted like the translation table, and payloads without a
+`flow_key` (`flow_id=None`) are not tracked, so they keep the plain
+address-class behavior.
+
+The tracking is per-router, so a reply that leaves through a *different*
+NAT router than the request entered is translated as a new outbound
+flow — the same asymmetric-routing caveat real stateful NAT has.
+
 ## Inbound translation (`Router.handle_packet`)
 
 On the reply path the public destination doesn't know the original

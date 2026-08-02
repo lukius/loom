@@ -396,8 +396,14 @@ class Router(NetworkDevice):
             next_hop = packet.destination()
 
         src = packet.source()
-        if src.is_private() and not out_iface.network().address().is_private():
-            self._apply_source_nat(packet, out_iface)
+        egress_is_private = out_iface.network().address().is_private()
+        if not src.is_private() and egress_is_private:
+            # A conversation opened from the public side. Remember it so the
+            # reply is not mistaken for a fresh outbound flow below.
+            self._nat_table.note_inbound_flow(flow_id(packet.payload()))
+        elif src.is_private() and not egress_is_private:
+            if not self._nat_table.is_inbound_flow(flow_id(packet.payload())):
+                self._apply_source_nat(packet, out_iface)
 
         out_iface.send_to(packet, next_hop)
 
