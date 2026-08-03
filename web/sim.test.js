@@ -1104,6 +1104,60 @@ describe('applyEdit', () => {
   });
 });
 
+// ---------- pausing hands deferred adds to the patch queue ----------
+describe('pause: entities added live but never POSTed', () => {
+  beforeEach(() => {
+    Sim.state = 'running';
+    Sim.patch = [];
+    pendingLiveAdds.clear();
+    RuntimeClient._json = vi.fn(async () => ({}));
+  });
+
+  it('queues a deferred add as a patch op when the sim pauses', async () => {
+    // Add a LAN while running but leave the CIDR blank: it lives only in the
+    // SPA, registered as pending. Pausing must hand it to the patch queue —
+    // otherwise the server never learns of it and anything attached to it
+    // fails to resume.
+    state.networks.lan1 = { cidr: '', x: 0, y: 0 };
+    await applyEdit({ op: 'add_network', name: 'lan1' });
+    expect(pendingLiveAdds.has('network:lan1')).toBe(true);
+
+    _onEvent({ kind: 'sim_state', state: 'paused' });
+
+    expect(Sim.patch).toEqual([{ op: 'add_network', name: 'lan1' }]);
+    expect(pendingLiveAdds.has('network:lan1')).toBe(false);
+  });
+
+  it('resumes with the LAN ahead of the host that references it', async () => {
+    // The reported flow: add a LAN while running, pause, attach a host to it,
+    // resume. reconcilePatch fills in the values captured after the pause and
+    // orders fabrics before the devices that sit on them.
+    state.networks.lan1 = { cidr: '', x: 0, y: 0 };
+    await applyEdit({ op: 'add_network', name: 'lan1' });
+
+    _onEvent({ kind: 'sim_state', state: 'paused' });
+
+    state.networks.lan1.cidr = '3.3.3.0/24';
+    state.hosts.h4 = { network: 'lan1', address: '3.3.3.1', x: 0, y: 0 };
+    await applyEdit({ op: 'add_host', name: 'h4', network: 'lan1', address: '3.3.3.1' });
+
+    expect(reconcilePatch(Sim.patch)).toEqual([
+      { op: 'add_network', name: 'lan1', address: '3.3.3.0/24' },
+      { op: 'add_host', name: 'h4', network: 'lan1', address: '3.3.3.1' },
+    ]);
+  });
+
+  it('drops deferred adds when the sim stops instead (next Start re-sends all)', async () => {
+    state.networks.lan1 = { cidr: '', x: 0, y: 0 };
+    await applyEdit({ op: 'add_network', name: 'lan1' });
+
+    _onEvent({ kind: 'sim_state', state: 'idle' });
+
+    expect(pendingLiveAdds.has('network:lan1')).toBe(false);
+    expect(Sim.patch).toEqual([]);
+  });
+});
+
 // ---------- B1: pendingLiveAdds — deferred incomplete adds ----------
 describe('applyEdit (B1): defers incomplete adds while running', () => {
   beforeEach(() => {

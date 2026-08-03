@@ -21,6 +21,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- A LAN or link added while the simulation ran, but left incomplete, was
+  discarded when the simulation paused instead of moving into the pending
+  edits. Attaching a host or router to it and resuming then failed with
+  `network_not_found`.
 - Source-NAT applied to the reply leg of conversations opened from the
   public side, so a ping into a private LAN came back from the router's
   address, was discarded by the sender, and reported a timeout even

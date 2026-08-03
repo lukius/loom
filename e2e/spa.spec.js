@@ -205,6 +205,47 @@ test.describe('loom SPA - smoke', () => {
     expect(errors, errors.join('\n')).toEqual([]);
   });
 
+  test('a LAN added while running, completed while paused, survives Resume', async ({ page, request }) => {
+    // Regression: a LAN added live but left incomplete lived only in the SPA
+    // (deferred until its CIDR was valid). Pausing dropped that deferred add
+    // instead of queueing it, so the server never learned of the LAN and
+    // Resume rejected the whole patch with network_not_found for anything
+    // attached to it.
+    await page.locator('#tb-play').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
+
+    // Add a LAN while running, leaving the CIDR blank.
+    await page.locator('#tb-add-net').click();
+    const cidr = page.locator('#inspector #f-cidr');
+    await expect(cidr).toBeVisible();
+    const lanName = await page.locator('#inspector #f-name').inputValue();
+
+    // Pause, then finish the LAN and hang a host off it.
+    await page.locator('#tb-pause').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/paused/, { timeout: 8000 });
+    await cidr.fill('3.3.3.0/24');
+    await cidr.dispatchEvent('input');
+
+    // Add the host from the toolbar and attach it via the inspector — the
+    // canvas centre is where new nodes land, and in the sample topology that
+    // overlaps r2's hit area.
+    await page.locator('#tb-add-host').click();
+    await page.locator('#inspector #f-fabric-name').selectOption(lanName);
+    const ip = page.locator('#inspector #f-addr');
+    await expect(ip).toBeVisible();
+    await ip.fill('3.3.3.1');
+    await ip.dispatchEvent('change');
+
+    // Resume must apply the LAN before the host that references it.
+    await page.locator('#tb-pause').click();
+    await expect(page.locator('#tb-play')).toHaveClass(/running/, { timeout: 8000 });
+    await expect(page.locator('.toast.error')).toHaveCount(0);
+
+    const topo = await (await request.get('/topology')).json();
+    expect(topo.yaml).toContain('3.3.3.0/24');
+    expect(topo.yaml).toContain('3.3.3.1');
+  });
+
   test('right-click "Add host here" on a LAN while paused: gateway edit + resume ships the host to the server', async ({ page, request }) => {
     // Regression: the right-click "Add host here" used to skip recording an
     // add_host patch op, so the server never learned about the new host. The

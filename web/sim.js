@@ -113,6 +113,30 @@ export function recordPatchOp(op) {
  * finalized (complete cidr/address) or deleted. */
 export const pendingLiveAdds = new Set();
 
+/* A deferred add only exists in the SPA — the server has never heard of it.
+ * When the sim leaves `running` that entity needs a destination, or anything
+ * the user attaches to it afterwards fails to apply:
+ *
+ *   → paused: hand it to the patch queue. Resume reconciles the op against
+ *     current state, and reconcilePatch orders fabrics ahead of the hosts
+ *     and routers that sit on them, so a LAN added live and completed while
+ *     paused arrives before its first host.
+ *   → idle:   drop it. The next Start serializes the whole canvas anyway.
+ */
+export function _drainPendingLiveAdds(status) {
+  if (status === 'paused') {
+    for (const key of pendingLiveAdds) {
+      const sep = key.indexOf(':');
+      recordPatchOp({ op: `add_${key.slice(0, sep)}`, name: key.slice(sep + 1) });
+    }
+  }
+  if (status === 'paused' || status === 'idle') pendingLiveAdds.clear();
+}
+
+// Hooked on the status event rather than the Pause button so a transition the
+// server drives — another client pausing, a state poll — drains too.
+bus.addEventListener('sim:status-changed', (e) => _drainPendingLiveAdds(e.detail.status));
+
 /* Returns true when the given add_* op has a VALID, complete payload that is
  * safe to POST to the server. Gates on VALIDITY (not just non-emptiness):
  * a mid-keystroke value like '1' or '10.0.0.0/' is non-empty but still

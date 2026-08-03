@@ -62,8 +62,9 @@ same YAML. The session file is updated either way.
 - The **Add LAN / Host / Router** toolbar buttons stay enabled. A **LAN
   or point-to-point link** joins the live system the moment you give it
   a valid range; an incomplete or invalid value simply stays pending
-  until you finish it. Your selection and viewport are preserved when
-  the topology updates. **Hosts and routers** can be dropped on the
+  until you finish it — and if you pause before finishing, it carries
+  over into the pending edits and lands on **Resume** instead. Your
+  selection and viewport are preserved when the topology updates. **Hosts and routers** can be dropped on the
   canvas too, but they cannot be *attached* while running — the network
   picker is inert and a drag onto a LAN is refused — so they sit
   unattached until you pause or stop and wire them up there.
