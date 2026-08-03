@@ -2,72 +2,66 @@
 
 # Running Simulations
 
-Once you've built (or loaded) a topology, the sim has a lifecycle: it
+Once you've built (or loaded) a topology, the simulation has a lifecycle: it
 starts, runs, pauses, resumes, and eventually stops. This guide explains
 each transition and what's safe at each step.
 
 ## States
 
 ```
-                  ┌─────────────────────┐
-                  │       idle          │   ← initial state
-                  │  no AS in memory    │
-                  └──────────┬──────────┘
-                             │ Start
-                             ▼
-                  ┌─────────────────────┐
-                  │      running        │
-                  │  threads alive,     │
-                  │  protocol ticking   │
-                  └─────┬───────────┬───┘
-              Pause     │           │   Stop
-                        ▼           ▼
-              ┌──────────────────┐  ┌──────────────────┐
-              │     paused       │  │       idle       │
-              │  threads parked  │  └──────────────────┘
-              │  on PauseGate    │
-              └────────┬─────────┘
-                       │ Resume (with optional patch)
-                       └───►  running
+                  Start                     Pause
+     ┌──────┐  ──────────►  ┌─────────┐  ──────────►  ┌────────┐
+     │ idle │               │ running │               │ paused │
+     └──────┘  ◄──────────  └─────────┘  ◄──────────  └────────┘
+        ▲          Stop                     Resume         │
+        └────────────────────── Stop ──────────────────────┘
 ```
 
-The UI mirrors this state machine — at any moment, the toolbar's
-**Start/Stop** and **Pause/Resume** buttons reflect the server's
-authoritative state, as fed by the WebSocket `sim_state` events.
+- **idle** — nothing is simulated; the canvas is yours to edit freely.
+- **running** — every device is alive and the routing protocol is ticking.
+- **paused** — everything frozen where it stands; your edits queue up and
+  land when you resume.
+
+The toolbar mirrors this: the **Start/Stop** and **Pause/Resume** buttons
+always reflect what the simulation is actually doing, not what you last
+clicked.
 
 ## Start
 
-Click **Start** (or press <kbd>Space</kbd>). The SPA does, in order:
+Click **Start** (or press <kbd>Space</kbd>). What happens, in order:
 
-1. Checks the topology is complete — every LAN and link has a network
-   range, every host is attached to one and has an address, and every
-   router interface has an address. If something's missing, Start is
-   aborted, a plain-English message names what to fix, and the item in
-   question is selected so you can jump straight to it and fill it in.
-2. Serializes the current canvas to YAML.
-3. POSTs to `/topology` — the server validates and constructs a fresh
-   autonomous system. On any validation error, the start is aborted
-   and the toolbar surfaces the error via toast.
-4. POSTs to `/sim/start` — the server starts the simulation and every
-   router's routing protocol.
+1. The canvas is checked for anything unfinished — every LAN and link needs
+   a range, every host a network and an address, every router interface an
+   address. If something is missing, Start is aborted, a plain-English
+   message names what to fix, and the item in question is selected so you
+   can go straight to it.
+2. The finished topology is handed to the simulator, which builds it and
+   brings every device up. If the simulator rejects something the canvas
+   check didn't catch, Start is aborted and the reason appears on screen.
+3. Every router starts its routing protocol, and chatter begins crossing
+   the canvas.
 
 ![Start names what's incomplete and selects it — here a LAN with no range yet](../images/07-start-preflight.png)
 
 If the topology was already loaded (e.g. you stopped and want to start
-again with the same topology), step 1+2 is a no-op overwrite of the
-same YAML. The session file is updated either way.
+again with the same one), the canvas is simply sent again unchanged.
+Either way the **session file** is brought up to date — that's the working
+copy the simulator reads, kept separate from the file you originally
+loaded so your own file is never written to. See
+[YAML format](yaml-format.md#save-and-resume-workflow) for where it lives.
 
 **While running:**
 
-- The **Add LAN / Host / Router** toolbar buttons stay enabled. A **LAN
-  or point-to-point link** joins the live system the moment you give it
-  a valid range; an incomplete or invalid value simply stays pending
-  until you finish it — and if you pause before finishing, it carries
-  over into the pending edits and lands on **Resume** instead. Your
-  selection and viewport are preserved when the topology updates. **Hosts and routers** can be dropped on the
-  canvas too, but they cannot be *attached* while running — the network
-  picker is inert and a drag onto a LAN is refused — so they sit
-  unattached until you pause or stop and wire them up there.
+- **Add LAN / Host / Router** stay enabled. A **LAN or point-to-point
+  link** joins the live network the moment you give it a valid range; an
+  incomplete or invalid value stays pending until you finish it, and if
+  you pause before finishing, it carries over into the pending edits and
+  lands on **Resume** instead. Your selection and viewport survive the
+  update either way.
+- **Hosts and routers** can be dropped on the canvas while running, but
+  they cannot be *attached*: the network picker is inert and a drag onto
+  a LAN is refused. They sit unattached until you pause or stop and wire
+  them up there.
 - **Drag any node or link label** to reposition it on the canvas —
   hosts, routers, networks, and p2p link midpoint labels can all be
   moved freely while the sim runs. Repositioning is purely visual and
@@ -94,6 +88,7 @@ same YAML. The session file is updated either way.
   enter the link — you'll see the packet leave the source and fade out
   instead of reaching the device.
 
+
 ![A halted router and its links render grayed-out while the rest of the topology keeps running](../images/60-router-halted.png)
 
 ![The inspector's per-interface controls: a downed interface offers Enable; the others offer Disable and Fail](../images/61-interface-controls.png)
@@ -106,33 +101,14 @@ times out, wait a moment and try again. (The default Hello interval is
 10 s; lower the **Hello interval** in the **Protocol** popover to 1 s if
 you want neighbors to be discovered faster.)
 
-### Streamed ping output
-
-When you run `ping` from a device terminal while the sim is running,
-each ICMP reply (or timeout) appears in the terminal **as it arrives**,
-one line at a time — you don't wait for all probes to finish before
-seeing results. The final summary still prints at the end. If the
-terminal is closed, results are discarded silently.
-
-With `ping -c N` in a device terminal, the probes animate **one round-trip
-at a time**: each request travels to the destination and its reply comes
-back, then the terminal waits one second (like real `ping`) before
-sending the next probe. You follow them individually instead of seeing
-all `N` dots ride the wire at once.
-
-Because each probe is only sent **after the previous one has finished
-animating**, that pause is a real window to watch traffic **reroute
-live**: while a counted ping runs, disable an interface or halt a router
-on the route during the pause. The next probe is then sent fresh, so once
-the network reconverges it's forwarded along the recomputed route and its
-animation follows that new path — no matter how long the route is. Size
-the pause with `-i <seconds>` (e.g. `-i 2` for more editing time, `-i 0`
-for none). The pause ends when you Stop.
+For how ping output streams into a terminal, and how a counted ping lets
+you watch traffic reroute mid-sequence, see the `ping` command in
+[Terminals](terminals.md).
 
 ## Pause
 
-Click **Pause** (or press <kbd>P</kbd>). The SPA POSTs to `/sim/pause`;
-the server pauses every simulator thread at its next safe point.
+Click **Pause** (or press <kbd>P</kbd>). Every device stops where it
+stands, at the next point where stopping is safe.
 
 Effects, observable in the canvas:
 
@@ -140,7 +116,7 @@ Effects, observable in the canvas:
 - The routing protocol's periodic Hello and LSA messages stop.
 - The **Pause** button becomes **Resume**.
 
-Pause is also the natural pairing with the Packets panel (see [web-ui.md](web-ui.md)) — frozen animations make the badge-to-row mapping easy to read.
+Pause is also the natural pairing with the Packets panel (see [Web UI](web-ui.md)) — frozen animations make the badge-to-row mapping easy to read.
 
 **While paused, you can edit:**
 
@@ -148,60 +124,53 @@ Pause is also the natural pairing with the Packets panel (see [web-ui.md](web-ui
 - Duplicate a LAN, host, router, or link.
 - Delete any of the above.
 - Update an interface cost.
-- Edit names and addresses (with the same uniqueness/validity rules
-  enforced by the validator).
+- Edit names and addresses (the same uniqueness and validity rules apply
+  as anywhere else).
 
-Each mutation appears in the **Resume** button label as a counter:
-*Resume (3 edits)*. These ops accumulate in the SPA's pending-edits
-queue; nothing is applied to the server until you Resume.
+Each change appears in the **Resume** button label as a counter:
+*Resume (3 edits)*. They queue up on the canvas; nothing reaches the
+simulation until you resume.
 
-While paused, you cannot **Start** (already started) or **Stop** the sim
-through the toolbar without first stopping the underlying simulation
-(Stop is allowed from paused, but it discards the queued patch).
+While paused there is no **Start** to press — the simulation is already
+loaded. The main button reads **Stop**, and it works: it tears the
+simulation down and returns you to `idle`. Be aware that it also throws
+away any edits still sitting in the queue.
 
 ## Resume
 
-Click **Resume**. The SPA:
+Click **Resume**. Your queued edits are first squared against the canvas
+as it stands now: each is sent with its current values — a LAN you added
+and then renamed goes out under the new name — and anything you deleted
+in the meantime is dropped.
 
-1. Reconciles the pending-edits queue against the current canvas:
-   `add_*` ops are rewritten with the latest values (so a network you
-   added and then renamed is sent with its current name), and any op
-   whose target was deleted between Pause and Resume is dropped.
-2. POSTs the reconciled patch to `/sim/resume`.
+They are then applied together, all or nothing:
 
-The server validates the entire patch atomically:
+- If a single edit is invalid, **none** of them are applied. The
+  simulation stays paused, a message names the problem, and your queue is
+  kept so you can fix it and resume again.
+- Otherwise every edit lands in order and the simulation carries on from
+  where it left off, keeping the routing state it had already built.
 
-- If any op fails validation, the **whole patch is rejected** with a
-  `400 Bad Request` and a description of the failing op. The sim
-  remains paused; the patch stays in the SPA so you can fix the
-  problem.
-- If validation passes, every op is applied in order, then the gate is
-  resumed and the routing protocol continues from where it left off.
+Messages you may see, and what each one means:
 
-Common patch-validation errors:
-
-| Error | Cause |
+| Message | What happened |
 |---|---|
-| `duplicate_name` | `add_*` with a name that's now taken. |
-| `address_in_use` | `add_host` / `add_router` carries an IP already held by another host or router interface on the same network. |
-| `network_in_use` | `remove_network` for a LAN still attached to a host or router. |
-| `network_not_found` | `add_host` / `add_router` references a non-existent network. |
-| `interface_not_found` | `update_cost` for a router that doesn't have that interface. |
-| `invalid_cost` | Cost is non-numeric or non-positive. |
+| `duplicate_name` | The name is already taken by another entity. |
+| `address_in_use` | Another host or router interface on that network already holds this IP. |
+| `network_in_use` | A LAN you deleted still has a host or router attached to it. |
+| `network_not_found` | A host or router refers to a LAN the simulation doesn't have. |
+| `interface_not_found` | A cost edit names an interface that router doesn't have. |
+| `invalid_cost` | A cost has to be a positive number. |
 
-The reconciliation step is what makes "pause → add → rename → resume"
-feel natural: you don't think about the patch wire format, just the
-final shape you want.
+Squaring the queue against the canvas first is what makes "pause → add →
+rename → resume" feel natural: you think about the shape you want, not
+about the individual edits that got you there.
 
 ## Stop
 
-Click **Stop** (or press <kbd>Space</kbd> again). The SPA POSTs to
-`/sim/stop`; the server tears the simulation down:
-
-- Every network, link, router, and interface receives the stop signal
-  and its worker threads exit cleanly.
-- The simulation is discarded.
-- The state returns to `idle`.
+Click **Stop** (or press <kbd>Space</kbd> again). The simulation is torn
+down: every network, link, router, and interface shuts down in an orderly
+way, the simulation is discarded, and the state returns to `idle`.
 
 What survives:
 
@@ -209,17 +178,16 @@ What survives:
   Start re-reads it. See
   [YAML format](yaml-format.md#save-and-resume-workflow) for where it
   lives.
-- The SPA's canvas state. Stop and Start without touching the topology
+- Everything on the canvas. Stop and Start without touching the topology
   and you're right back where you were.
-- The terminals on screen — they continue to refer to a no-longer-
-  existing simulation. Commands sent to a stopped sim return `409 no
-  topology loaded`. Close and re-open the terminal after Start to get
-  a clean session.
+- The terminals on screen — they still refer to a simulation that no
+  longer exists, so commands typed into them fail with *no topology
+  loaded*. Close and re-open the terminal after the next Start for a
+  clean session.
 
-If you've been editing the canvas while idle (after a stop, but before
-the next start), those edits **are not** on the server yet — they live
-in the SPA's local state and `localStorage`. The next Start serializes
-them to YAML and pushes via `/topology`.
+Edits you make while idle — after a stop, before the next start — exist
+only on the canvas until you press Start, which hands the whole topology
+over at once.
 
 ## Reset
 
@@ -229,11 +197,11 @@ Click **Reset** (only enabled when idle). This:
 2. Re-clones from the source file (`samples/sample.yaml` by default, or
    whatever `LOOM_TOPOLOGY` points at).
 3. Re-parses the source into a fresh autonomous system.
-4. The SPA fetches the new YAML and replaces the canvas.
+4. The canvas is replaced with the freshly loaded topology.
 
 Use Reset when the session has drifted from the source and you want to
-roll back. The source file is **never modified** by the SPA — Reset
-discards only the session clone.
+roll back. Your source file is **never modified** — Reset discards only
+the working copy.
 
 ## Tuning the protocol intervals
 
@@ -260,10 +228,10 @@ visibly chatter on the canvas at roughly one cycle per second.
 
 | Action | Idle (sim not started) | Paused (sim is loaded) | Running |
 |---|---|---|---|
-| Where the edit lives | SPA local state + `localStorage` | SPA local state + pending-edits queue | Applied immediately to the live AS |
-| When the server sees it | On next **Start** (whole YAML) | On **Resume** (incremental patch) | On each completed add/change |
-| Validation | Full re-parse on start | Per-op validation on resume | Per-op validation on each commit |
-| If it fails | Start aborts; topology stays unloaded | Resume rejected; patch preserved for editing | Edit rejected; canvas resynced from server |
+| Where the edit lives | On the canvas, saved in the browser | On the canvas, plus the queue of pending edits | Applied to the running simulation right away |
+| When the simulation sees it | On the next **Start**, with the whole topology | On **Resume**, as a batch | As soon as you complete each one |
+| Checked | Whole topology, on Start | Each edit, on Resume | Each edit, as you complete it |
+| If it fails | Start aborts; nothing is loaded | Resume refused; your queue is kept so you can fix it | The edit is refused and the canvas snaps back to what the simulation has |
 | Convergence impact | Routers start from scratch | Existing routing state is preserved; new edges feed in | New LANs and links feed in with zero downtime |
 
 If you're prototyping ("does this CIDR work?"), idle edits + Start are
@@ -278,9 +246,8 @@ pause: make the related changes together and resume atomically.
 - **Lower the Hello interval when exploring.** The default 10 s is
   realistic but slow for neighbor discovery. Drop it to 1 s while you're
   poking, then restore it when you want a quieter canvas.
-- **Pause before bulk edits.** The patch list batches efficiently; the
-  one server round-trip is cheaper than starting and stopping for each
-  change.
+- **Pause before bulk edits.** Related changes then land together in one
+  go, which is cheaper than starting and stopping for each one.
 - **Use Reset, not Stop+Start, when the session has gotten weird.**
   Stop just unloads the AS; Reset throws the session away and starts
   from the source.

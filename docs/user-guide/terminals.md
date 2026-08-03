@@ -230,6 +230,10 @@ ping h3 -c 8 -i 2
 
 The pause ends immediately if you Stop the sim.
 
+Replies appear one line at a time, as each arrives — you don't wait for
+the whole run to finish before seeing results. Close the terminal
+mid-sequence and the remaining results are discarded silently.
+
 #### `set_gateway <ip>`
 
 Update the host's default gateway.

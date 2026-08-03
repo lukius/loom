@@ -9,6 +9,14 @@
 // Runs in the page context (wrapped in an async IIFE by screenshot.mjs).
 const { Sim, RuntimeClient } = await import('/sim.js');
 await import('/state.js');
+const { PacketAnim } = await import('/packets.js');
+
+// Mute routing chatter for the capture. The subject is the grayed-out node
+// and its links; packet glyphs parked on the neighbouring edges read as
+// traffic flowing through the halted router, which is the opposite of what
+// the image is meant to show.
+PacketAnim.muted = true;
+document.getElementById('tb-chatter').classList.add('chatter-muted');
 
 if (Sim.state !== 'idle') {
   await RuntimeClient.stop().catch(() => {});
@@ -26,4 +34,6 @@ await new Promise(r => setTimeout(r, 800));
 // Halt r1 gracefully — the device_state_changed / interface_state_changed
 // events flow back over the socket and gray r1's node and its links.
 await RuntimeClient.deviceCommand('r1', 'halt');
-await new Promise(r => setTimeout(r, 600));
+// Long enough for the down-state to land and for any glyph that was already
+// in flight when we muted to finish its tween and disappear.
+await new Promise(r => setTimeout(r, 2200));
