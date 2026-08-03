@@ -26,9 +26,8 @@ A receiving router:
    to every known prefix.
 4. Rewrites its routing table from the path output.
 
-The whole cycle is **observable**: each routing-table rebuild emits a
-`routing_table_changed` event, and the SPA's routing-table section
-re-renders almost immediately.
+The whole cycle is **observable**: each routing-table rebuild triggers
+a re-render of the SPA's routing-table section.
 
 ## Inspecting a routing table
 
@@ -71,7 +70,7 @@ This is `r2`'s table in the sample topology. `lan1` and `lan2` are
 directly connected (`0.0.0.0`). `lan3` (`150.10.10.0/24`) is forwarded
 to `r3` (`100.200.0.10`) via `eth1` — even though `r2` has its own
 `eth2` on `lan3` (cost 15), the path through `lan2` to `r3` (cost 8 + 5
-= 13) is cheaper. loom computes routes purely from Dijkstra shortest
+= 13) is cheaper. loom-OSPF computes routes purely from Dijkstra shortest
 paths and does not give directly-connected networks automatic preference,
 so the lower-cost indirect path wins.
 
@@ -87,8 +86,6 @@ takes part in every router's shortest-path calculation and carries
 traffic bound for networks beyond it. A private network — link or LAN —
 is invisible as a place to send packets **to**, never as a path to send
 packets **through**.
-
-`0.0.0.0` for next hop means the prefix is directly connected.
 
 ## What `0.0.0.0` means
 
@@ -249,10 +246,10 @@ The packet animation on the canvas follows the same path. If you raise
 re-convergence the next ping leaves `r1` by `eth1` onto `lan2` toward
 `r3` (`100.200.0.10`), and the canvas animation visibly switches paths.
 
-## Common surprises
+## Troubleshooting
 
-**"My route just appeared and disappeared."** A `routing_table_changed`
-event fires on **every** recompute, including transient intermediate
+**"My route just appeared and disappeared."** The server sends routing
+table update events on **every** recompute, including transient intermediate
 states during convergence. If you watch closely during the first
 rounds of link-state flooding, you can see routes settle in two or three passes —
 the protocol is learning the graph one flood at a time.

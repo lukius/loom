@@ -140,9 +140,8 @@ Open the inspector. The router's **Interfaces** section shows an
 - **Name** — unique within this router (`eth0`, `eth1`, ...).
 - **Network** or **Link** — pick one; never both.
 - **Address** — must be valid for the chosen fabric.
-- **Cost** — the metric the routing protocol uses. Set it explicitly:
-  the default varies depending on how the interface was created.
-  Higher = less preferred. Positive integers.
+- **Cost** — the metric the routing protocol uses. Set it explicitly.
+Higher = less preferred. Positive integers.
 
 You can connect a router to as many LANs and links as you want, as long
 as each interface name is unique within the router and no two router
