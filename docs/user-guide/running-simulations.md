@@ -224,7 +224,7 @@ to 1 s. To make a running simulation re-advertise routes more aggressively:
 lower the **LSA refresh interval**. Dropping either to 1 s makes the protocol
 visibly chatter on the canvas at roughly one cycle per second.
 
-## Edits while idle vs. paused vs. running: a comparison
+## Idle vs. paused vs. running
 
 | Action | Idle (sim not started) | Paused (sim is loaded) | Running |
 |---|---|---|---|

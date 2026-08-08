@@ -103,7 +103,7 @@ When a packet matches a rule whose next hop is `0.0.0.0`:
 When you see `0.0.0.0` in a routing table, you're seeing **direct
 delivery**, not a routing-protocol failure.
 
-## Costs and how they shape paths
+## Costs and paths
 
 Every router interface has a **cost** — a positive integer metric. The
 routing protocol computes Dijkstra shortest paths weighted by these

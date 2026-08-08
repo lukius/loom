@@ -76,7 +76,7 @@ NetworkAddress (prefix)
 
 ---
 
-## What's reserved for the BGP work
+## Reserved for BGP
 
 Each of these slots into the existing shape without redesigning it:
 
@@ -141,7 +141,7 @@ needs it, not because Cisco IOS happens to have it.
 
 ---
 
-## Where to look in the code
+## Where to look
 
 | Concern | File | Symbol |
 |---|---|---|

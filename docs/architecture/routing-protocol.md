@@ -555,7 +555,7 @@ tick is simply the first event after unpausing.
 
 ---
 
-## Where to look in the code
+## Where to look
 
 | Concern | File | Symbol |
 |---|---|---|

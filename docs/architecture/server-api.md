@@ -117,7 +117,7 @@ Drop the session file and re-clone from the source.
 
 ---
 
-## Sample-file routes: `GET /samples`, `GET /samples/{filename}`
+## Sample-file routes
 
 Read-only endpoints that enumerate and serve `*.yaml` files from the
 configured samples directory (default `<repo>/samples`, overridable via

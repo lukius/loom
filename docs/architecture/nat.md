@@ -13,7 +13,7 @@ advertisement filter), [entities.md](entities.md#interface-interfacepy) (the `fl
 field on `packet` events), [web-spa.md](web-spa.md) (`sim:nat` and
 `sim:nat-table-changed` event shapes).
 
-## Why NAT lives in the simulator
+## Why NAT is modeled
 
 The routing protocol filters RFC 1918 prefixes out of every advertised
 LSA, so private LANs are invisible to peer routers. That makes

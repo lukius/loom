@@ -199,7 +199,7 @@ gate/dequeue orderings**:
 
 ---
 
-## Per-worker stop event and stop-before-sentinel ordering
+## Stop-before-sentinel ordering
 
 Every `Interface` and `_FabricBase` owns a **per-worker `_stop_event`**
 (`threading.Event`) alongside the shared `PauseGate`. The two together

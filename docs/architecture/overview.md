@@ -90,7 +90,7 @@ For the sample topology (H=3, R=3, K=3, N=3, L=1): about 19 threads plus
 the asyncio loop. See [`concurrency.md`](concurrency.md#scaling-characteristics)
 for where this curve starts to bite.
 
-## Data Flow: A Host Sends a Message
+## Data flow: sending a message
 
 When `h1` sends a `UserMessage` to `h3` (sample topology), the message
 crosses every layer:

@@ -406,7 +406,7 @@ If you want to see how a typed line reaches the device — or to drive the
 same commands from outside the browser — the wire format is documented in
 [the server API reference](../architecture/server-api.md#post-devicesnamecommand).
 
-## When the sim is idle or stopped
+## After a Stop
 
 Terminals stay open after a Stop, but there is no longer a simulation
 behind them, so any command reports back:
