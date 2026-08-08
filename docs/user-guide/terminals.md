@@ -3,9 +3,9 @@
 # Terminals
 
 Every host and router in `loom` has a terminal. The terminal is the way
-you interact with a single device: ask it what's on its interfaces,
-send a datagram, ping, view its routing table, tweak its costs, or set
-a default gateway.
+you interact with a single device. For example, you may ask a host what's
+on its interfaces or instruct it to ping another device; or you may view
+a router's routing table and tweak its costs, among other actions.
 
 ## Opening and closing a terminal
 
@@ -13,7 +13,7 @@ a default gateway.
   opens with the device's name as its title.
 - **Close.** Click the **X** on the popup, or press <kbd>Ctrl+D</kbd>
   when the prompt is empty.
-- **Multiple terminals.** Open as many as you want. Each is independent.
+- **Multiple terminals.** Open as many as you want. Each one is independent.
 - **Position and size.** Drag the title bar to move; drag the corners
   to resize. Position and size persist per device.
 
@@ -29,13 +29,20 @@ a default gateway.
 | <kbd>↑</kbd> / <kbd>↓</kbd> | Walk command history |
 | <kbd>Tab</kbd> | Command completion (basic) |
 
-The terminal does not eat normal browser shortcuts unless the prompt
+The terminal does not swallow normal browser shortcuts unless the prompt
 has focus, so <kbd>Ctrl+R</kbd> is still page reload.
 
 ## Command set
 
 The available commands depend on whether the terminal is attached to a
 host or to a router. Both kinds share `ifconfig`, `route`, and `help`.
+
+Every example below is taken from the **bundled sample topology** — three
+hosts (`h1`, `h2`, `h3`), three LANs (`lan1`, `lan2`, `lan3`), three
+routers (`r1`, `r2`, `r3`), and the `p2p1` link between `r1` and `r3`. It
+is what the canvas shows on a first visit; see
+[Getting started](getting-started.md) for a picture of it. Load it any
+time from **Import** → `sample.yaml` to follow along.
 
 ### Common to hosts and routers
 
@@ -70,7 +77,8 @@ concept and only matter on routers.
 
 #### `route`
 
-On a **router**: dump the routing table.
+On a **router**: dump the routing table. Here is `r2`'s, once the network
+has settled:
 
 ```
 route
@@ -87,6 +95,13 @@ prefix               next_hop        iface
 listed interface. `lan3` is reached via `r3` (`100.200.0.10` on `eth1`)
 rather than `r2`'s own `eth2`, because the path through `lan2` to `r3`
 is cheaper (cost 8+5=13) than `r2`'s direct link to `lan3` (cost 15).
+[Routing tables](routing-tables.md) covers how to read one in full, and
+shows the same table in the inspector.
+
+Run `route` before the network has settled and every next hop reads
+`0.0.0.0`: a router starts out knowing only what it is directly attached
+to, and learned routes like the one above appear as the advertisements
+come in.
 
 On a **host**: show the configured default gateway.
 
@@ -371,8 +386,7 @@ eth0 up
 
 ## Command not found
 
-Unknown commands echo back with the same `ok: false` envelope as
-errors:
+An unrecognized command reports back and changes nothing:
 
 ```
 foo bar
@@ -385,36 +399,24 @@ unknown command: foo
 There is no shell-level pipe or redirection — each command is one
 line, one response rendered verbatim.
 
-## What's happening under the hood
+Quoting works as in a normal shell, so `send h2 "hello world"` delivers
+one message rather than two words.
 
-Each command sends:
-
-```
-POST /devices/{name}/command
-{ "cmd": "<line>" }
-```
-
-The server parses the line (shell-style quoting), routes it to the
-named device, runs the matching command, and returns:
-
-```json
-{ "ok": true, "output": "..." }
-```
-
-The full per-device command set is in
-[`server-api.md`](../architecture/server-api.md#post-devicesnamecommand).
+If you want to see how a typed line reaches the device — or to drive the
+same commands from outside the browser — the wire format is documented in
+[the server API reference](../architecture/server-api.md#post-devicesnamecommand).
 
 ## When the sim is idle or stopped
 
-Terminals stay open after a Stop, but commands sent to a stopped sim
-return `409 no topology loaded`:
+Terminals stay open after a Stop, but there is no longer a simulation
+behind them, so any command reports back:
 
 ```
 ping h3
 ```
 
 ```
-no topology loaded
+[error] no topology loaded
 ```
 
 Click **Start** and the same command works again — same terminal, same
