@@ -290,7 +290,7 @@ The router inspector also shows a **Neighbors** section listing, per
 interface, every discovered peer and its adjacency state
 (`TWO_WAY`, `INIT`, or `DOWN`). The summary line counts unique peer
 routers, total adjacencies, and a per-state breakdown — see
-[Neighbors counts](#neighbors-counts) below for the difference between
+[Neighbor counts](#neighbor-counts) below for the difference between
 peers and adjacencies.
 
 ![Router inspector showing Neighbors panel and collapsible Routing table section](../images/inspector-router.png)
