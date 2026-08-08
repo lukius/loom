@@ -5,9 +5,9 @@
 The topology is described in YAML. The same format is used by:
 
 - The bundled sample (`samples/sample.yaml`).
-- The SPA's **Import / Export** dialogs.
-- The server's `POST /topology` and the session file it persists
-  internally (see [Save and resume workflow](#save-and-resume-workflow)).
+- The **Import / Export** dialogs.
+- The working copy the simulator keeps for you (see
+  [Save and resume workflow](#save-and-resume-workflow)).
 
 There is exactly one schema. Every consumer goes through the same
 parser.
@@ -17,9 +17,15 @@ parser.
 ```yaml
 internet:
   name: loom              # optional; defaults to 'loom' when absent
+  config:                 # optional; see "Optional config: blocks" below
+    packet_duration_ms: 1800
   autonomous_systems:
     main:
-      asn: 65000          # preserved across round-trips; not yet used for routing (reserved for BGP)
+      asn: 65000          # optional; defaults to 65000
+      config:             # optional; see "Optional config: blocks" below
+        protocol:
+          hello_interval: 10
+          lsa_refresh_interval: 30
       networks:
         lan1: "200.100.0.0/24"
         ...
@@ -54,14 +60,13 @@ they collide with — see [Naming rules](#naming-rules) below.
 > in the header bar — the SPA keeps them in sync. The `loom` default only
 > applies when you hand-write YAML without a `name:` field.
 
-Single-AS topologies put one entry under `autonomous_systems:`,
-conventionally named `main`. Multiple ASes are reserved for the future
-BGP work.
+**A topology holds exactly one autonomous system.** Put a single entry
+under `autonomous_systems:`, conventionally named `main`; more than one
+is rejected.
 
-The `asn:` field is read and preserved across round-trips (Export →
-Import and `GET /topology`) but is not yet used by the link-state
-protocol. It defaults to 65000 when absent. Pick something in the
-private 64512–65535 range; BGP support is future work.
+The `asn:` field is read and preserved across an Export → Import
+round-trip, but nothing in the routing protocol uses it yet. It defaults
+to 65000 when absent.
 
 A minimal valid topology with no devices:
 
@@ -190,15 +195,15 @@ Rules:
 ## Optional `config:` blocks
 
 Two optional `config:` blocks let you persist settings alongside the
-topology. Both are optional — omitting them leaves all defaults in place.
+topology. Omit either one and its defaults apply.
 
 ### Top-level `internet.config`
 
 Placed directly under `internet:`, alongside `name:` and
-`autonomous_systems:`. Any key/value pairs you write here are stored
-and re-emitted verbatim on **Export** and `GET /topology`. The SPA
-currently reads `packet_duration_ms` (packet animation duration in
-milliseconds; default 1800).
+`autonomous_systems:`. Any key/value pairs you write here are stored and
+written back out verbatim on **Export**. Today `packet_duration_ms` is
+the one that has an effect — the packet animation duration in
+milliseconds, default 1800.
 
 ```yaml
 internet:
@@ -228,42 +233,12 @@ autonomous_systems:
 Rules:
 - Both `hello_interval` and `lsa_refresh_interval` must be given
   together — specifying only one is a parse error.
-- Both must be positive numbers (int or float). Booleans are rejected.
+- Both must be positive numbers (int or float).
 - `dead_interval` (3 × hello) and `max_age` (2 × refresh) remain
   derived and are not written to YAML.
 
-### A complete example with config blocks
-
-```yaml
-internet:
-  name: loom
-  config:
-    packet_duration_ms: 2400
-  autonomous_systems:
-    main:
-      asn: 65000
-      config:
-        protocol:
-          hello_interval: 5
-          lsa_refresh_interval: 15
-      networks:
-        lan1: "100.100.100.0/24"
-      routers:
-        r1:
-          interfaces:
-            eth0:
-              network: lan1
-              address: "100.100.100.1"
-              cost: 10
-      hosts:
-        h1:
-          network: lan1
-          address: "100.100.100.10"
-```
-
-The SPA's **Export** always writes both blocks. **Import** restores
-them, so packet duration and protocol timer values persist across
-sessions.
+The SPA's **Export** always writes both blocks, and **Import** restores
+them, so packet duration and protocol timers persist across sessions.
 
 ## Naming rules
 
@@ -273,7 +248,7 @@ sessions.
   name as a router.
 - Names are case-sensitive ASCII; the parser doesn't sanitize them
   beyond YAML's own rules. Avoid spaces.
-- The empty string is technically allowed as a name. Don't.
+- The empty string is technically allowed as a name (not recommended).
 
 ## Costs
 
@@ -307,41 +282,83 @@ that hasn't been declared yet in its own block.
 
 ## A complete example
 
+This is the bundled `samples/sample.yaml`, verbatim — three LANs, one
+point-to-point link, three routers, three hosts:
+
 ```yaml
 internet:
+  name: loom
   autonomous_systems:
     main:
+      asn: 65000
       networks:
-        lan1: "200.100.0.0/24"
-        lan2: "100.200.0.0/24"
-        lan3: "150.10.10.0/24"
+        lan1: 200.100.0.0/24
+        lan2: 100.200.0.0/24
+        lan3: 150.10.10.0/24
       links:
-        p2p1: "10.0.0.0/30"
+        p2p1: 10.0.0.0/30
       hosts:
-        h1: { network: "lan1", address: "200.100.0.10", gateway: "200.100.0.1" }
-        h2: { network: "lan2", address: "100.200.0.20", gateway: "100.200.0.2" }
-        h3: { network: "lan3", address: "150.10.10.30", gateway: "150.10.10.1" }
+        h1:
+          network: lan1
+          address: 200.100.0.10
+          gateway: 200.100.0.1
+        h2:
+          network: lan2
+          address: 100.200.0.20
+          gateway: 100.200.0.2
+        h3:
+          network: lan3
+          address: 150.10.10.30
+          gateway: 150.10.10.1
       routers:
         r1:
           interfaces:
-            eth0: { network: "lan1", address: "200.100.0.1",   cost: 10 }
-            eth1: { network: "lan2", address: "100.200.0.1",   cost: 15 }
-            eth2: { link:    "p2p1", address: "10.0.0.1",       cost: 5  }
+            eth0:
+              network: lan1
+              address: 200.100.0.1
+              cost: 10
+            eth1:
+              network: lan2
+              address: 100.200.0.1
+              cost: 15
+            eth2:
+              link: p2p1
+              address: 10.0.0.1
+              cost: 5
         r2:
           interfaces:
-            eth0: { network: "lan1", address: "200.100.0.254", cost: 5  }
-            eth1: { network: "lan2", address: "100.200.0.2",   cost: 8  }
-            eth2: { network: "lan3", address: "150.10.10.1",   cost: 15 }
+            eth0:
+              network: lan1
+              address: 200.100.0.254
+              cost: 5
+            eth1:
+              network: lan2
+              address: 100.200.0.2
+              cost: 8
+            eth2:
+              network: lan3
+              address: 150.10.10.1
+              cost: 15
         r3:
           interfaces:
-            eth0: { network: "lan2", address: "100.200.0.10",  cost: 20 }
-            eth1: { network: "lan3", address: "150.10.10.10",  cost: 5  }
-            eth2: { link:    "p2p1", address: "10.0.0.2",      cost: 5  }
+            eth0:
+              network: lan2
+              address: 100.200.0.10
+              cost: 20
+            eth1:
+              network: lan3
+              address: 150.10.10.10
+              cost: 5
+            eth2:
+              link: p2p1
+              address: 10.0.0.2
+              cost: 5
 ```
 
-This is the bundled `samples/sample.yaml`. Click **Import** in the SPA
-and pick `sample.yaml` from the list to drop it onto the canvas; click
-**Export** to save it to disk.
+Click **Import** in the SPA and pick `sample.yaml` from the list to drop
+it onto the canvas; click **Export** to save it back to disk. Neither
+`config:` block appears here — both are optional, and the defaults apply
+when they are absent.
 
 ## Save and resume workflow
 
@@ -361,13 +378,13 @@ source directory is fine and your project folder stays clean.
 
 Lifecycle:
 
-| Event | Effect on session file |
+| What you do | Effect on the session file |
 |---|---|
-| First `/topology` call or `/sim/start` | Created (cloned from source) if missing |
-| `/sim/resume` with a patch | Re-serialized to YAML (atomic write) |
-| `POST /topology` | Overwritten with the new YAML |
-| `POST /topology/reset` | Deleted and re-cloned from source |
-| `loom.py` exit | Untouched — persists across runs |
+| Press **Start** for the first time | Created, cloned from the source, if it isn't there yet |
+| **Resume** with pending edits | Rewritten to match the edited topology |
+| **Import** a topology | Overwritten with what you imported |
+| Press **Reset** | Deleted and cloned again from the source |
+| Quit `loom` | Left alone — it is still there next run |
 
 The OS typically wipes `$TMPDIR` on reboot (Linux/macOS mount `/tmp`
 as tmpfs). Set `LOOM_SESSION_DIR` to a stable path if you want session
@@ -408,13 +425,14 @@ and the canvas redraws without surprises.
 
 ### A note about quotation
 
-The bundled `sample.yaml` quotes most strings (`"10.0.0.0/24"`). YAML
-treats `10.0.0.0/24` as a string anyway because of the slash, so the
-quotes are aesthetic; the parser accepts unquoted forms too:
+The bundled `sample.yaml` leaves addresses unquoted. YAML treats
+`10.0.0.0/24` as a string anyway because of the slash, so quoting is
+purely a matter of taste — both forms parse identically:
 
 ```yaml
 networks:
-  lan1: 10.0.0.0/24       # also valid
+  lan1: 10.0.0.0/24       # as in the bundled sample
+  lan2: "10.0.1.0/24"     # equally valid
 ```
 
 Pick one and stick with it.
