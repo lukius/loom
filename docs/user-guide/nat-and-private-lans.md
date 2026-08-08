@@ -21,6 +21,11 @@ interface label on the router is muted to match. Public LANs render in
 the regular accent color. The visual cue marks the NAT boundary at a
 glance.
 
+The examples on this page come from **`multi_tenant_nat.yaml`**, bundled
+alongside `sample.yaml`: two tenant LANs that deliberately share
+`192.168.1.0/24`, each behind its own router, meeting at a public ISP
+LAN. Load it from **Import** → `multi_tenant_nat.yaml` to follow along.
+
 ![Private LANs (lan_tenant_a, lan_tenant_b) render muted; the public lan_isp keeps the accent color](../images/50-private-lan-tone.png)
 
 You can drop two private LANs that share the same CIDR (e.g.
@@ -28,7 +33,7 @@ You can drop two private LANs that share the same CIDR (e.g.
 long as both stay behind their own gateway router. Public LANs may not
 overlap.
 
-## How traffic leaves a private LAN
+## Leaving a private LAN
 
 A host on a private LAN that pings a public destination has its
 **source address rewritten** by its gateway router to the router's
@@ -63,15 +68,14 @@ translation, oldest first:
 
 ![NAT table on r_a after a ping from h_a to h_public — one translation entry, with the private source rewritten to r_a's public address](../images/51-nat-panel.png)
 
-The panel updates the moment the packet animation reaches the router
-(not when the host fires it), so the table state stays in sync with
-what you see on the canvas.
+The panel updates the moment the packet animation reaches the router,
+so the table state stays in sync with what you see on the canvas.
 
 The table is **bounded**: when it fills, the least-recently-used entry
 is evicted. There is no time-based expiry — entries persist as long
 as they're being used.
 
-## Why two pings from the same LAN can both be NATed at once
+## Two hosts, one destination
 
 Each ping gets its own conversation identifier under the hood, so two
 hosts on the same private LAN pinging the same public destination at
@@ -79,7 +83,7 @@ the same time each get their own row in the NAT table. Their replies
 are reverse-translated independently and arrive back at the right
 host.
 
-## Topology rules that keep this honest
+## Topology rules
 
 - A private host cannot leave the private LAN unless its gateway
   router has at least one public interface.
@@ -96,6 +100,6 @@ host.
   a private network carries traffic bound for somewhere else perfectly
   well, it simply cannot be named as a destination by anyone not on it.
 
-For the SPA's tooling around NAT (event bus, inspector panel) see
+For the SPA's tooling around NAT see
 [web-ui.md](web-ui.md). For the architectural model and design
 decisions, see [the NAT architecture page](../architecture/nat.md).
