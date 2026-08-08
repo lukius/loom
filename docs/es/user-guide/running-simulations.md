@@ -2,281 +2,269 @@
 
 # Ejecutar simulaciones
 
-Una vez que se construyó (o cargó) una topología, la simulación tiene un ciclo de vida:
-inicia, corre, se pausa, se retoma y, eventualmente, se detiene. Esta guía explica
-cada transición y qué operaciones son seguras en cada paso.
+Una vez construida (o cargada) una topología, la simulación tiene un ciclo de
+vida: se inicia, corre, se pausa, se reanuda y en algún momento se detiene. Esta
+guía explica cada transición y qué se puede hacer sin riesgo en cada paso.
 
 ## Estados
 
 ```
-                  ┌─────────────────────┐
-                  │       idle          │   ← initial state
-                  │  no AS in memory    │
-                  └──────────┬──────────┘
-                             │ Start
-                             ▼
-                  ┌─────────────────────┐
-                  │      running        │
-                  │  threads alive,     │
-                  │  protocol ticking   │
-                  └─────┬───────────┬───┘
-              Pause     │           │   Stop
-                        ▼           ▼
-              ┌──────────────────┐  ┌──────────────────┐
-              │     paused       │  │       idle       │
-              │  threads parked  │  └──────────────────┘
-              │  on PauseGate    │
-              └────────┬─────────┘
-                       │ Resume (with optional patch)
-                       └───►  running
+                  Start                     Pause
+     ┌──────┐  ──────────►  ┌─────────┐  ──────────►  ┌────────┐
+     │ idle │               │ running │               │ paused │
+     └──────┘  ◄──────────  └─────────┘  ◄──────────  └────────┘
+        ▲          Stop                     Resume         │
+        └────────────────────── Stop ──────────────────────┘
 ```
 
-La UI refleja esta máquina de estados: en cualquier momento, los botones
-**Start/Stop** y **Pause/Resume** de la barra de herramientas reflejan el estado
-autoritativo del servidor, alimentado por los eventos WebSocket `sim_state`.
+- **idle** — no hay nada simulándose y el _canvas_ queda libre para editar.
+- **running** — todos los dispositivos están activos y el protocolo de ruteo
+  está corriendo.
+- **paused** — todo queda congelado donde está, y las ediciones se van
+  encolando hasta reanudar.
+
+La barra de herramientas refleja esto: los botones **Start/Stop** y
+**Pause/Resume** siempre muestran lo que la simulación está haciendo realmente,
+y no lo último que se haya presionado.
 
 ## Start
 
-Hacer click en **Start** (o presionar <kbd>Space</kbd>). La SPA hace, en orden:
+Hacer click en **Start** (o presionar <kbd>Space</kbd>). Lo que ocurre, en
+orden:
 
-1. Verifica que la topología esté completa — que cada LAN y link tenga un rango de
-   red, que cada host esté conectado a una red y tenga una dirección, y que cada
-   interface de router tenga una dirección. Si falta algo, el Start se cancela, un
-   mensaje en inglés indica qué corregir, y el elemento en cuestión queda seleccionado
-   para poder ir directo a completarlo.
-2. Serializa el canvas actual a YAML.
-3. Hace POST a `/topology` — el servidor valida y construye un nuevo sistema autónomo.
-   Ante cualquier error de validación, el inicio se cancela y la barra de herramientas
-   muestra el error mediante un toast.
-4. Hace POST a `/sim/start` — el servidor inicia la simulación y el protocolo de
-   ruteo de cada router.
+1. Se revisa el _canvas_ en busca de elementos incompletos: toda LAN y todo link
+   necesitan un rango, cada host una red y una dirección, y cada interface de
+   router una dirección. Si falta algo, el inicio se cancela, un mensaje en
+   lenguaje llano indica qué corregir y se selecciona el elemento en cuestión
+   para poder ir directo a él.
+2. La topología terminada se entrega al simulador, que la construye y levanta
+   cada dispositivo. Si el simulador rechaza algo que la revisión del _canvas_ no
+   detectó, el inicio se cancela y el motivo aparece en pantalla.
+3. Cada router arranca su protocolo de ruteo y el _chatter_ empieza a cruzar el
+   _canvas_.
 
-![Start indica qué está incompleto y lo selecciona — aquí una LAN sin rango asignado](../../images/07-start-preflight.png)
+![Start indica qué quedó incompleto y lo selecciona; acá, una LAN sin rango](../../images/07-start-preflight.png)
 
-Si la topología ya estaba cargada (por ejemplo, se detuvo la simulación y se quiere
-iniciarla nuevamente con la misma topología), los pasos 1 y 2 son una sobreescritura
-sin efecto del mismo YAML. El archivo de sesión se actualiza de todas formas.
+Si la topología ya estaba cargada (por ejemplo, se detuvo la simulación y se la
+quiere volver a iniciar con la misma), el _canvas_ simplemente se envía otra vez
+sin cambios. En cualquier caso, se actualiza el **archivo de sesión**: esa es la
+copia de trabajo que lee el simulador, mantenida aparte del archivo cargado
+originalmente para que este último nunca se modifique. Ver
+[Formato YAML](yaml-format.md#flujo-de-guardado-y-reanudación) para saber dónde
+vive.
 
-**Mientras la simulación está en ejecución:**
+**Durante la ejecución:**
 
-- Los botones **Add LAN / Host / Router** de la barra de herramientas están habilitados
-  — se pueden agregar redes, links, hosts y routers directamente en el canvas. Cada
-  nueva entidad se aplica al sistema en ejecución en cuanto se le asigna una dirección
-  o CIDR válido; un valor incompleto o inválido simplemente queda pendiente hasta que
-  se complete. La selección y el viewport se preservan cuando se actualiza la topología.
-- **Arrastrar cualquier nodo o etiqueta de link** para reposicionarlo en el canvas —
-  hosts, routers, redes y etiquetas de punto medio de links p2p pueden moverse
-  libremente mientras la simulación corre. El reposicionamiento es puramente visual y
-  no afecta la simulación en ejecución. Las animaciones de paquetes en vuelo siguen a
-  los nodos al moverlos. Si se intenta arrastrar un host o router sobre una red o link
-  *diferente* mientras la simulación corre, se muestra una señal roja bloqueante en el
-  destino y el nodo vuelve a su posición al soltar — para reasignar un dispositivo a
-  una red diferente, hay que detener la simulación primero.
-- Click derecho → **Rename / Duplicate / Delete** en el canvas está bloqueado.
-- Los campos editables del inspector son de solo lectura (la reasignación de
-  dirección de interface y de host/red requiere pausar o detener la simulación primero).
-- El botón **Protocol** está activo — se pueden ajustar los intervalos de Hello y
-  de refresco de LSA en vivo.
-- Click derecho sobre un router → **Halt router (graceful)**, **Crash router**, o
-  **Resume router** para desconectar un router o volver a conectarlo, sin detener la
-  simulación. Un router detenido o caído aparece en gris en el canvas.
-- Seleccionar un router → usar los botones **Disable / Fail / Enable** junto a cada
-  interface en el inspector para controlar interfaces individuales. La arista de una
-  interface caída se convierte en un cable gris sólido con una pequeña ✕ en su punto
-  medio, claramente distinto de un link punto a punto (discontinuo). El tráfico enviado
-  hacia una interface caída se descarta donde entraría al link — se verá el paquete
-  salir del origen y desvanecerse en lugar de llegar al dispositivo.
+- Los botones **LAN**, **Host** y **Router** siguen habilitados. Una **LAN o un
+  link punto a punto** se suman a la red en vivo apenas se les da un rango
+  válido; un valor incompleto o inválido queda pendiente hasta terminarlo, y si
+  se pausa antes de hacerlo, pasa a la cola de ediciones pendientes y se aplica
+  al hacer **Resume**. En ambos casos, la selección y la vista actual se
+  conservan tras la actualización.
+- Los **hosts y routers** se pueden soltar en el _canvas_ durante la ejecución,
+  pero no se los puede *conectar*: el selector de red queda inerte y arrastrarlos
+  sobre una LAN se rechaza. Quedan sueltos hasta pausar o detener la simulación
+  y conectarlos ahí.
+- **Arrastrar cualquier nodo o etiqueta de link** permite reubicarlo en el
+  _canvas_: hosts, routers, redes y las etiquetas del punto medio de los links
+  punto a punto se pueden mover libremente mientras la simulación corre. Es un
+  cambio puramente visual, que no afecta a la simulación en curso. Las
+  animaciones de los paquetes en vuelo acompañan a los nodos al moverlos.
+  Intentar arrastrar un host o un router hacia *otra* red o link durante la
+  ejecución muestra una señal roja de bloqueo sobre el destino y devuelve el
+  nodo a su lugar al soltarlo; para reasignar un dispositivo a otra red hay que
+  detener la simulación primero.
+- Click derecho → **Rename / Duplicate / Delete** está bloqueado en el _canvas_.
+- Los campos editables del inspector quedan de solo lectura (redireccionar una
+  interface o reasignar un host a otra red exige pausar o detener primero).
+- El botón **Protocol** está activo, así que se pueden reajustar en vivo los
+  intervalos de Hello y de refresco de LSA.
+- Click derecho sobre un router → **Halt router (graceful)**, **Crash router** o
+  **Resume router** para dejarlo fuera de línea o traerlo de vuelta sin detener
+  la simulación. Un router detenido o caído se ve atenuado en el _canvas_.
+- Con un router seleccionado, los botones **Disable / Fail / Enable** que
+  aparecen junto a cada interface en el inspector permiten controlarlas
+  individualmente. La arista de una interface caída se convierte en un cable
+  gris sólido con una pequeña ✕ en su punto medio, bien distinguible de un link
+  punto a punto (punteado). El tráfico dirigido a una interface caída se
+  descarta justo donde entraría al link: el paquete sale del origen y se
+  desvanece en lugar de llegar al dispositivo.
 
-![Un router detenido y sus links se muestran en gris mientras el resto de la topología sigue en ejecución](../../images/60-router-halted.png)
+![Un router detenido y sus links se ven atenuados mientras el resto de la topología sigue funcionando](../../images/60-router-halted.png)
 
-![Los controles de interface por router en el inspector: una interface caída ofrece Enable; las demás ofrecen Disable y Fail](../../images/61-interface-controls.png)
+![Los controles por interface del inspector: una interface caída ofrece Enable, y las demás ofrecen Disable y Fail](../../images/61-interface-controls.png)
 
-**Los primeros pings pueden perderse mientras la red converge.** Luego de hacer
-click en Start, hay que darle a los routers unos segundos para intercambiar rutas
-antes de hacer ping. Hasta que todos los routers hayan escuchado a sus vecinos, algunos
-paquetes — especialmente entre hosts en redes diferentes — serán descartados. Si el
-primer ping da timeout, hay que esperar un momento y volver a intentar. (El intervalo
-de Hello por defecto es 10 s; se puede bajar el **Hello interval** en el popover de
-**Protocol** a 1 s si se quiere descubrir vecinos más rápido.)
+**Los primeros pings pueden perderse mientras la red converge.** Después de
+hacer click en Start, conviene darles unos segundos a los routers para que
+intercambien rutas antes de hacer ping. Hasta que todos hayan escuchado a sus
+vecinos, algunos paquetes se van a descartar, sobre todo entre hosts de redes
+distintas. Si el primer ping expira, esperar un momento y volver a intentarlo.
+(El intervalo de Hello por defecto es de 10 s; se puede bajar el **Hello
+interval** a 1 s en la ventana emergente **Protocol** para que los vecinos se
+descubran más rápido).
 
-### Salida de ping en streaming
-
-Cuando se ejecuta `ping` desde el terminal de un dispositivo mientras la simulación
-está en ejecución, cada respuesta ICMP (o timeout) aparece en el terminal **a medida
-que llega**, línea por línea — no hay que esperar a que terminen todas las sondas
-para ver los resultados. El resumen final se imprime igualmente al final. Si el
-terminal está cerrado, los resultados se descartan silenciosamente.
-
-Con `ping -c N` en un terminal de dispositivo, las sondas se animan **de a un
-viaje de ida y vuelta a la vez**: cada solicitud viaja hacia el destino y su respuesta
-regresa, luego el terminal espera un segundo (como el `ping` real) antes de enviar la
-siguiente sonda. Se puede seguir cada una individualmente en lugar de ver todos los
-`N` paquetes recorrer el cable a la vez.
-
-Dado que cada sonda se envía **solo después de que la anterior terminó de animarse**,
-esa pausa es una ventana real para observar **cómo el tráfico se re-rutea en vivo**: mientras
-corre un ping contado, se puede deshabilitar una interface o detener un router en la
-ruta durante la pausa. La siguiente sonda se envía entonces sin estado previo, por lo
-que una vez que la red reconverge se reenvía por la ruta recalculada y su animación
-sigue ese nuevo camino — sin importar cuán larga sea la ruta. El tamaño de la pausa
-se ajusta con `-i <seconds>` (por ejemplo, `-i 2` para más tiempo de edición, `-i 0`
-para ninguna). La pausa termina cuando se hace Stop.
+Para ver cómo la salida de un ping va apareciendo en la terminal, y cómo un ping
+con cuenta permite observar el tráfico rerutearse en medio de la secuencia, ver
+el comando `ping` en [Terminales](terminals.md).
 
 ## Pause
 
-Hacer click en **Pause** (o presionar <kbd>P</kbd>). La SPA hace POST a `/sim/pause`;
-el servidor pausa todos los threads del simulador en su próximo punto seguro.
+Hacer click en **Pause** (o presionar <kbd>P</kbd>). Cada dispositivo se detiene
+donde está, en el siguiente punto en que hacerlo sea seguro.
 
-Efectos observables en el canvas:
+Efectos observables en el _canvas_:
 
-- Las animaciones de paquetes se congelan (los frames en vuelo quedan estacionados en
-  el cable).
-- Los mensajes periódicos de Hello y LSA del protocolo de ruteo se detienen.
-- El botón **Pause** se convierte en **Resume**.
+- Las animaciones de paquetes se congelan (los frames en vuelo quedan detenidos
+  sobre el cable).
+- Los mensajes periódicos Hello y LSA del protocolo de ruteo se detienen.
+- El botón **Pause** pasa a ser **Resume**.
 
-Pause también es el complemento natural del panel Packets (ver [web-ui.md](web-ui.md))
-— las animaciones congeladas facilitan la lectura del mapeo de badge a fila.
+La pausa es además el complemento natural del panel de paquetes (ver
+[Interfaz web](web-ui.md)): con las animaciones congeladas es muy fácil leer la
+correspondencia entre insignias y filas.
 
-**Mientras está pausado, se puede editar:**
+**Durante la pausa se puede editar lo siguiente:**
 
-- Agregar una LAN, host o router.
-- Duplicar una LAN, host, router o link.
+- Agregar una LAN, un host o un router.
+- Duplicar una LAN, un host, un router o un link.
 - Eliminar cualquiera de los anteriores.
 - Actualizar el costo de una interface.
-- Editar nombres y direcciones (con las mismas reglas de unicidad y validez que aplica
-  el validador).
+- Editar nombres y direcciones (con las mismas reglas de unicidad y validez que
+  rigen en cualquier otro momento).
 
-Cada mutación aparece en el botón **Resume** como un contador:
-*Resume (3 edits)*. Estas operaciones se acumulan en la cola de ediciones pendientes
-de la SPA; nada se aplica al servidor hasta que se haga Resume.
+Cada cambio se refleja como un contador en la etiqueta del botón **Resume**:
+*Resume (3 edits)*. Todos se van encolando en el _canvas_, y nada llega a la
+simulación hasta reanudarla.
 
-Mientras está pausado, no se puede hacer **Start** (ya iniciado) ni **Stop** a través
-de la barra de herramientas sin antes detener la simulación subyacente (Stop está
-permitido desde paused, pero descarta el parche en cola).
+Durante la pausa no hay ningún **Start** para presionar, porque la simulación ya
+está cargada. El botón principal dice **Stop**, y funciona: desarma la
+simulación y devuelve todo a `idle`. Hay que tener en cuenta que también
+descarta las ediciones que hubiera pendientes en la cola.
 
 ## Resume
 
-Hacer click en **Resume**. La SPA:
+Hacer click en **Resume**. Las ediciones encoladas primero se cotejan con el
+_canvas_ tal como está en ese momento: cada una se envía con sus valores
+actuales (una LAN agregada y luego renombrada se envía con el nombre nuevo) y se
+descarta todo lo que se haya eliminado mientras tanto.
 
-1. Reconcilia la cola de ediciones pendientes con el canvas actual: las operaciones
-   `add_*` se reescriben con los valores más recientes (así, una red que se agregó y
-   luego se renombró se envía con su nombre actual), y cualquier operación cuyo
-   destino fue eliminado entre Pause y Resume se descarta.
-2. Hace POST del parche reconciliado a `/sim/resume`.
+Después se aplican todas juntas, en un esquema de todo o nada:
 
-El servidor valida el parche completo de forma atómica:
+- Si una sola edición es inválida, **no se aplica ninguna**. La simulación sigue
+  en pausa, un mensaje indica cuál es el problema y la cola se conserva para
+  poder corregirlo y reanudar de nuevo.
+- Si no, todas las ediciones se aplican en orden y la simulación continúa desde
+  donde había quedado, conservando el estado de ruteo que ya tenía construido.
 
-- Si alguna operación falla la validación, **todo el parche es rechazado** con un
-  `400 Bad Request` y una descripción de la operación fallida. La simulación
-  permanece pausada; el parche se mantiene en la SPA para que se pueda corregir el
-  problema.
-- Si la validación pasa, cada operación se aplica en orden, luego se retoma el gate
-  y el protocolo de ruteo continúa desde donde se quedó.
+Estos son los mensajes que pueden aparecer y su significado:
 
-Errores comunes de validación del parche:
-
-| Error | Causa |
+| Mensaje | Qué ocurrió |
 |---|---|
-| `duplicate_name` | `add_*` con un nombre que ya está en uso. |
-| `address_in_use` | `add_host` / `add_router` lleva una IP ya usada por otro host o interface de router en la misma red. |
-| `network_in_use` | `remove_network` para una LAN que aún tiene un host o router conectado. |
-| `network_not_found` | `add_host` / `add_router` referencia una red inexistente. |
-| `interface_not_found` | `update_cost` para un router que no tiene esa interface. |
-| `invalid_cost` | El costo no es numérico o no es positivo. |
+| `duplicate_name` | El nombre ya está tomado por otra entidad. |
+| `address_in_use` | Otra interface de host o router en esa red ya tiene esta IP. |
+| `network_in_use` | Una LAN que se eliminó todavía tiene un host o un router conectado. |
+| `network_not_found` | Un host o un router hace referencia a una LAN que la simulación no tiene. |
+| `interface_not_found` | Una edición de costo nombra una interface que ese router no tiene. |
+| `invalid_cost` | El costo tiene que ser un número positivo. |
 
-El paso de reconciliación es lo que hace que "pausar → agregar → renombrar → retomar"
-se sienta natural: no hay que pensar en el formato del parche, solo en la forma final
-deseada.
+Que la cola se coteje primero contra el _canvas_ es lo que hace que la secuencia
+"pausar → agregar → renombrar → reanudar" se sienta natural: uno piensa en la
+forma que quiere darle a la red, y no en las ediciones individuales que lo
+llevaron hasta ahí.
 
 ## Stop
 
-Hacer click en **Stop** (o presionar <kbd>Space</kbd> nuevamente). La SPA hace POST a
-`/sim/stop`; el servidor desmonta la simulación:
-
-- Cada red, link, router e interface recibe la señal de detención y sus threads
-  trabajadores salen limpiamente.
-- La simulación se descarta.
-- El estado vuelve a `idle`.
+Hacer click en **Stop** (o presionar <kbd>Space</kbd> otra vez). La simulación
+se desarma: cada red, link, router e interface se apaga de manera ordenada, la
+simulación se descarta y el estado vuelve a `idle`.
 
 Qué sobrevive:
 
-- El **archivo YAML de sesión** (`<source>.session.yaml`). El próximo Start lo
-  volverá a leer.
-- El estado del canvas de la SPA. Al hacer Stop y Start sin modificar la topología
-  se vuelve exactamente al mismo punto.
-- Los terminales en pantalla — siguen haciendo referencia a una simulación que ya no
-  existe. Los comandos enviados a una simulación detenida devuelven `409 no
-  topology loaded`. Cerrar y volver a abrir el terminal después de hacer Start da
-  una sesión limpia.
+- El **archivo de sesión**, o sea, la copia de trabajo de la topología. El
+  siguiente Start vuelve a leerlo. Ver
+  [Formato YAML](yaml-format.md#flujo-de-guardado-y-reanudación) para saber
+  dónde vive.
+- Todo lo que está en el _canvas_. Al hacer Stop y luego Start sin tocar la
+  topología, todo queda igual que antes.
+- Las terminales abiertas en pantalla. Como siguen apuntando a una simulación
+  que ya no existe, los comandos que se escriban en ellas fallan con *no
+  topology loaded*. Conviene cerrarlas y volver a abrirlas después del próximo
+  Start para tener una sesión limpia.
 
-Si se estuvo editando el canvas mientras estaba idle (después de un Stop, pero antes
-del próximo Start), esas ediciones **no están** en el servidor aún — viven en el
-estado local de la SPA y en `localStorage`. El próximo Start las serializa a YAML y
-las envía vía `/topology`.
+Las ediciones hechas en `idle` (después de detener y antes del próximo inicio)
+existen únicamente en el _canvas_ hasta presionar Start, que entrega la
+topología entera de una sola vez.
 
 ## Reset
 
-Hacer click en **Reset** (solo habilitado cuando está idle). Esto:
+Hacer click en **Reset** (habilitado solo en `idle`). Esto:
 
-1. Elimina `<source>.session.yaml`.
-2. Vuelve a clonar desde el archivo fuente (`samples/sample.yaml` por defecto, o
-   lo que apunte `LOOM_TOPOLOGY`).
-3. Vuelve a parsear la fuente en un nuevo sistema autónomo.
-4. La SPA obtiene el nuevo YAML y reemplaza el canvas.
+1. Elimina el archivo de sesión, es decir, la copia de trabajo de la topología.
+2. Vuelve a clonar desde el archivo original (`samples/sample.yaml` por defecto,
+   o aquel al que apunte `LOOM_TOPOLOGY`).
+3. Vuelve a parsear ese original para armar un sistema autónomo nuevo.
+4. Reemplaza el _canvas_ con la topología recién cargada.
 
-Usar Reset cuando la sesión divergió de la fuente y se quiere revertir. El archivo
-fuente **nunca es modificado** por la SPA — Reset descarta solo el clon de sesión.
+Conviene usar Reset cuando la sesión se alejó demasiado del original y se quiere
+volver atrás. El archivo original **nunca se modifica**: Reset descarta
+solamente la copia de trabajo.
 
 ## Ajustar los intervalos del protocolo
 
-Hacer click en **Protocol** en la barra de herramientas para abrir el popover de
-configuración del protocolo. Dos campos son ajustables:
+Hacer click en **Protocol** en la barra de herramientas abre la ventana
+emergente de configuración del protocolo, con dos campos ajustables:
 
-- **Hello interval** — con qué frecuencia los routers envían mensajes de
-  descubrimiento de vecinos (por defecto 10 s). Menor = vecinos detectados y
-  declarados activos más rápido; mayor = más silencioso, pero más lento para detectar
-  nuevos vecinos.
-- **LSA refresh interval** — con qué frecuencia los routers re-anuncian su estado
-  de link completo (por defecto 30 s). Menor = las rutas se re-anuncian con más
-  frecuencia, convergencia más rápida ante un cambio; mayor = canvas más silencioso.
+- **Hello interval** — cada cuánto envían los routers sus mensajes de
+  descubrimiento de vecinos (10 s por defecto). Más bajo significa detectar y
+  declarar vivos a los vecinos más rápido; más alto, menos ruido pero más
+  demora en detectar vecinos nuevos.
+- **LSA refresh interval** — cada cuánto vuelven los routers a anunciar su
+  estado de enlace completo (30 s por defecto). Más bajo significa reanuncios
+  más frecuentes y convergencia más rápida ante un cambio; más alto, un _canvas_
+  más tranquilo.
 
-Los cambios se aplican a cada router en el momento en que se hace click en **Apply**.
-El nuevo valor toma efecto en el próximo límite de intervalo de cada router, por lo
-que el retraso máximo es el valor del intervalo *anterior*.
+Los cambios se aplican a todos los routers apenas se hace click en **Apply**. El
+nuevo valor toma efecto en el próximo límite de intervalo de cada router, así
+que la demora máxima es el valor del intervalo *anterior*.
 
-Para acelerar la convergencia inicial al explorar: bajar el **Hello interval** a
-1 s. Para hacer que una simulación en ejecución re-anuncie rutas más agresivamente:
-bajar el **LSA refresh interval**. Bajar cualquiera de los dos a 1 s hace que el
-protocolo sea visiblemente ruidoso en el canvas, a razón de aproximadamente un ciclo
-por segundo.
+Para acelerar la convergencia inicial mientras se explora, conviene bajar el
+**Hello interval** a 1 s. Para que una simulación en ejecución reanuncie rutas
+de manera más agresiva, bajar el **LSA refresh interval**. Llevar cualquiera de
+los dos a 1 s hace que el protocolo genere _chatter_ visible en el _canvas_, a
+razón de aproximadamente un ciclo por segundo.
 
-## Ediciones en idle vs. paused vs. running: comparación
+## Idle, paused y running
 
-| Acción | Idle (simulación no iniciada) | Paused (simulación cargada) | Running |
+| Acción | Idle (simulación sin iniciar) | Paused (simulación cargada) | Running |
 |---|---|---|---|
-| Dónde vive la edición | Estado local de la SPA + `localStorage` | Estado local de la SPA + cola de ediciones pendientes | Se aplica inmediatamente al AS en ejecución |
-| Cuándo lo ve el servidor | En el próximo **Start** (YAML completo) | En **Resume** (parche incremental) | En cada add/change completado |
-| Validación | Re-parseo completo al iniciar | Validación por operación al retomar | Validación por operación en cada commit |
-| Si falla | Start se cancela; la topología queda sin cargar | Resume rechazado; parche preservado para editar | Edición rechazada; canvas resincronizado desde el servidor |
-| Impacto en convergencia | Los routers comienzan desde cero | El estado de ruteo existente se preserva; las nuevas aristas se incorporan | Las nuevas aristas y dispositivos se incorporan sin tiempo de inactividad |
+| Dónde vive la edición | En el _canvas_, guardada en el navegador | En el _canvas_, más la cola de ediciones pendientes | Aplicada de inmediato a la simulación en ejecución |
+| Cuándo la ve la simulación | En el próximo **Start**, junto con toda la topología | Al hacer **Resume**, en lote | Apenas se completa cada una |
+| Qué se valida | Toda la topología, al hacer Start | Cada edición, al hacer Resume | Cada edición, a medida que se completa |
+| Si falla | El inicio se cancela y no se carga nada | Se rechaza el Resume y se conserva la cola para poder corregirla | La edición se rechaza y el _canvas_ vuelve a lo que tiene la simulación |
+| Impacto en la convergencia | Los routers arrancan desde cero | Se preserva el estado de ruteo existente y se incorporan las aristas nuevas | Las LANs y links nuevos se incorporan sin interrupción |
 
-Si se está prototipando ("¿funciona este CIDR?"), las ediciones en idle + Start
-son suficientes — el parser responde en segundos. Si se está probando convergencia
-incremental ("¿qué pasa cuando levanto r4 *mientras corre*?"), se puede agregar en
-vivo sin pausar — o pausar, hacer varios cambios relacionados a la vez y retomar
-atómicamente.
+Para prototipar ("¿funciona este CIDR?"), alcanza con editar en `idle` y
+presionar Start: el parser responde en segundos. Para probar convergencia
+incremental ("¿qué pasa si levanto una LAN nueva *mientras corre*?"), conviene
+agregarla en vivo, sin pausar. Todo lo que implique conectar un dispositivo,
+como un router nuevo sumándose a una LAN existente, requiere pausar: se hacen
+juntos los cambios relacionados y se reanuda de manera atómica.
 
 ## Consejos
 
-- **Bajar el Hello interval al explorar.** El valor por defecto de 10 s es realista
-  pero lento para el descubrimiento de vecinos. Bajarlo a 1 s mientras se explora,
-  luego restaurarlo cuando se quiere un canvas más silencioso.
-- **Pausar antes de ediciones masivas.** La lista de parches se procesa eficientemente;
-  un solo round-trip al servidor es más económico que iniciar y detener la simulación
-  por cada cambio.
-- **Usar Reset, no Stop+Start, cuando la sesión se desordenó.** Stop solo descarga
-  el AS; Reset descarta la sesión y comienza desde la fuente.
-- **El archivo de sesión está en el mismo directorio que la fuente.** Si se apuntó
-  `LOOM_TOPOLOGY` a `/path/to/lab.yaml`, la sesión vive en
-  `/path/to/lab.session.yaml`. Ambos son YAML plano; se puede hacer `git
-  diff` entre ellos.
+- **Bajar el Hello interval mientras se explora.** Los 10 s por defecto son
+  realistas, pero lentos para el descubrimiento de vecinos. Conviene bajarlo a
+  1 s mientras se investiga y restaurarlo después, para tener un _canvas_ más
+  tranquilo.
+- **Pausar antes de una tanda de ediciones.** Así los cambios relacionados se
+  aplican todos juntos, lo que sale más barato que iniciar y detener por cada
+  uno.
+- **Usar Reset, y no Stop+Start, cuando la sesión quedó rara.** Stop apenas
+  descarga el AS, mientras que Reset descarta la sesión y vuelve a empezar desde
+  el archivo original.
+- **El archivo de sesión vive fuera del proyecto.** Se guarda en un directorio
+  temporal y no junto al original, de modo que el árbol de fuentes queda limpio
+  y un archivo original de solo lectura sigue funcionando. Ambos archivos son
+  YAML plano y se pueden comparar con un diff; ver
+  [Formato YAML](yaml-format.md#flujo-de-guardado-y-reanudación) para la
+  ubicación exacta.

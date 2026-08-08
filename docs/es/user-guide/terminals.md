@@ -2,23 +2,24 @@
 
 # Terminales
 
-Cada host y router en `loom` tiene un terminal. El terminal es la forma de
-interactuar con un dispositivo individual: consultar sus interfaces, enviar un
-datagrama, hacer ping, ver su tabla de ruteo, ajustar sus costos o configurar un
-gateway por defecto.
+Cada host y cada router de `loom` tiene su terminal, que es la vía para
+interactuar con un dispositivo en particular. Por ejemplo, se le puede preguntar
+a un host qué tiene en sus interfaces o pedirle que haga ping a otro
+dispositivo; o bien consultar la tabla de ruteo de un router y ajustar sus
+costos, entre otras acciones.
 
-## Abrir y cerrar un terminal
+## Abrir y cerrar una terminal
 
-- **Abrir.** Hacer doble click en cualquier host o router en el canvas. Se abre una
-  ventana emergente con el nombre del dispositivo como título.
-- **Cerrar.** Hacer click en la **X** de la ventana emergente, o presionar
-  <kbd>Ctrl+D</kbd> cuando el prompt esté vacío.
-- **Múltiples terminales.** Se pueden abrir tantos como se quiera. Cada uno es
+- **Abrir.** Hacer doble click en cualquier host o router del _canvas_. Se abre
+  una ventana emergente con el nombre del dispositivo como título.
+- **Cerrar.** Hacer click en la **X** de la ventana, o presionar
+  <kbd>Ctrl+D</kbd> con el prompt vacío.
+- **Varias terminales.** Se pueden abrir tantas como se quiera, y cada una es
   independiente.
-- **Posición y tamaño.** Arrastrar la barra de título para mover; arrastrar las
-  esquinas para redimensionar. La posición y el tamaño se persisten por dispositivo.
+- **Posición y tamaño.** Arrastrar la barra de título para moverla y las
+  esquinas para redimensionarla. Ambas cosas se persisten por dispositivo.
 
-![Dos terminales abiertos simultáneamente](../../images/30-two-terminals.png)
+![Dos terminales abiertas simultáneamente](../../images/30-two-terminals.png)
 
 ## Teclado
 
@@ -26,36 +27,43 @@ gateway por defecto.
 |---|---|
 | <kbd>Enter</kbd> | Enviar el comando escrito |
 | <kbd>Ctrl+L</kbd> | Limpiar el área de salida |
-| <kbd>Ctrl+D</kbd> | Cerrar el terminal (solo cuando el prompt está vacío) |
-| <kbd>↑</kbd> / <kbd>↓</kbd> | Navegar el historial de comandos |
+| <kbd>Ctrl+D</kbd> | Cerrar la terminal (solo con el prompt vacío) |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | Recorrer el historial de comandos |
 | <kbd>Tab</kbd> | Completado de comandos (básico) |
 
-El terminal no captura los atajos normales del navegador a menos que el prompt tenga
-el foco, por lo que <kbd>Ctrl+R</kbd> sigue siendo recargar la página.
+La terminal no se queda con los atajos normales del navegador salvo que el
+prompt tenga el foco, así que <kbd>Ctrl+R</kbd> sigue recargando la página.
 
 ## Conjunto de comandos
 
-Los comandos disponibles dependen de si el terminal está conectado a un host o a un
+Los comandos disponibles dependen de si la terminal pertenece a un host o a un
 router. Ambos tipos comparten `ifconfig`, `route` y `help`.
+
+Todos los ejemplos que siguen están tomados de la **topología de ejemplo
+incluida**: tres hosts (`h1`, `h2`, `h3`), tres LANs (`lan1`, `lan2`, `lan3`),
+tres routers (`r1`, `r2`, `r3`) y el link `p2p1` entre `r1` y `r3`. Es lo que
+muestra el _canvas_ en la primera visita; ver
+[Primeros pasos](getting-started.md) para una imagen. Puede cargarse en
+cualquier momento desde **Import** → `sample.yaml` para seguir los ejemplos.
 
 ### Comunes a hosts y routers
 
 #### `ifconfig`
 
-Mostrar la configuración de interfaces.
+Muestra la configuración de las interfaces.
 
 ```
 ifconfig
 ```
 
-Para un **host** (una interface más un gateway opcional):
+En un **host** (una interface más un gateway opcional):
 
 ```
 iface_h1: addr=200.100.0.10 net=lan1 (200.100.0.0/24) cost=0
   gateway: 200.100.0.1
 ```
 
-Para un **router** (una línea por interface, sin línea de gateway):
+En un **router** (una línea por interface, sin línea de gateway):
 
 ```
 eth0: addr=200.100.0.1 net=lan1 (200.100.0.0/24) cost=10 up
@@ -63,15 +71,16 @@ eth1: addr=100.200.0.1 net=lan2 (100.200.0.0/24) cost=15 up
 eth2: addr=10.0.0.1 net=p2p1 (10.0.0.0/30) cost=5 up
 ```
 
-Cada línea termina con `up` o `down` para reflejar el estado administrativo actual de
-esa interface. Usar `ifconfig <iface> up|down` para cambiarlo.
+Cada línea termina en `up` o `down`, según el estado administrativo actual de
+esa interface. Se cambia con `ifconfig <iface> up|down`.
 
-El costo en la interface de un host siempre es `0` — los costos son un concepto del
-protocolo de ruteo y solo importan en los routers.
+El costo en la interface de un host siempre es `0`: los costos son un concepto
+del protocolo de ruteo y solo tienen sentido en los routers.
 
 #### `route`
 
-En un **router**: mostrar la tabla de ruteo.
+En un **router**, vuelca la tabla de ruteo. Esta es la de `r2`, una vez que la
+red se estabilizó:
 
 ```
 route
@@ -84,12 +93,19 @@ prefix               next_hop        iface
 150.10.10.0/24       100.200.0.10    eth1
 ```
 
-`0.0.0.0` como next-hop significa que el destino está directamente conectado en la
-interface indicada. `lan3` se alcanza vía `r3` (`100.200.0.10` en `eth1`) en lugar
-del propio `eth2` de `r2`, porque el camino por `lan2` hasta `r3` es más barato
-(costo 8+5=13) que el link directo de `r2` a `lan3` (costo 15).
+Un next hop `0.0.0.0` significa que el destino está directamente conectado sobre
+la interface indicada. A `lan3` se llega por `r3` (`100.200.0.10` en `eth1`) y no
+por la propia `eth2` de `r2`, porque el camino que pasa por `lan2` hasta `r3` es
+más barato (costo 8+5=13) que el link directo de `r2` a `lan3` (costo 15).
+[Tablas de ruteo](routing-tables.md) explica en detalle cómo leer una tabla y
+muestra esta misma en el inspector.
 
-En un **host**: mostrar el gateway por defecto configurado.
+Ejecutar `route` antes de que la red se estabilice devuelve `0.0.0.0` en todos
+los next hop: un router arranca conociendo solamente aquello a lo que está
+directamente conectado, y las rutas aprendidas como la de arriba van apareciendo
+a medida que llegan los anuncios.
+
+En un **host**, muestra el gateway por defecto configurado.
 
 ```
 route
@@ -99,7 +115,7 @@ route
 gateway: 200.100.0.1
 ```
 
-Si no hay gateway configurado:
+Si no hay ningún gateway configurado:
 
 ```
 gateway: (none)
@@ -107,7 +123,7 @@ gateway: (none)
 
 #### `help`
 
-Listar los comandos disponibles para este tipo de dispositivo.
+Lista los comandos disponibles según el tipo de dispositivo.
 
 ```
 # host:
@@ -125,8 +141,8 @@ terminal: clear, Ctrl+L (clear), Ctrl+D (close)
 
 #### `send <dst> <message>`
 
-Enviar un mensaje de datos desde este host hacia `<dst>`. `<dst>` puede ser un nombre
-de host (resuelto via la tabla de hosts del AS) o una IP literal.
+Envía un mensaje de datos desde este host hacia `<dst>`, que puede ser un nombre
+de host (resuelto mediante la tabla de hosts del AS) o una IP literal.
 
 ```
 send h2 hello
@@ -136,8 +152,8 @@ send h2 hello
 sent 5 bytes to 100.200.0.20
 ```
 
-O con comillas (el terminal usa comillas estilo shell, por lo que un mensaje de
-varias palabras puede encerrarse entre comillas dobles):
+También admite comillas (la terminal usa el mismo estilo de comillas que una
+shell, así que un mensaje de varias palabras puede ir entre comillas dobles):
 
 ```
 send h2 "hello world"
@@ -147,12 +163,12 @@ send h2 "hello world"
 sent 11 bytes to 100.200.0.20
 ```
 
-El host de destino recibe el mensaje silenciosamente — no aparece ninguna
-notificación de "mensaje recibido" en la UI por defecto.
+El host de destino recibe el mensaje en silencio: por defecto no aparece ninguna
+notificación de "mensaje recibido" en la interfaz web.
 
-#### `ping <dst> [-W <seconds>] [-c <count>] [-i <seconds>]`
+#### `ping <dst> [-W <segundos>] [-c <cantidad>] [-i <segundos>]`
 
-Enviar un echo request y esperar una respuesta (timeout por defecto 3 s).
+Envía un echo request y espera la respuesta (con un timeout por defecto de 3 s).
 
 ```
 ping h3
@@ -164,13 +180,13 @@ seq=0 150.10.10.30: time=12.34 ms
 1 sent, 1 received, 0% loss
 ```
 
-Modificar el timeout:
+Para cambiar el timeout:
 
 ```
 ping h3 -W 0.5
 ```
 
-Si no hay respuesta (ningún host responde el ping):
+Si el destino es inalcanzable (nadie responde el ping):
 
 ```
 seq=0 200.100.0.99: timeout
@@ -184,19 +200,20 @@ Errores:
 ping h2: no route to host: no gateway configured
 ```
 
-— ocurre cuando el destino está fuera del link y el host no tiene gateway configurado.
+Este ocurre cuando el destino está fuera de la red local y el host no tiene
+ningún gateway configurado.
 
-`ping` mide el tiempo de ida y vuelta usando un reloj monotónico — los RTT reflejan
-el tiempo real de reloj de pared que tardó el simulador en rutear el paquete por la
-topología. Con un simulador ocupado (mucho chatter de ruteo o muchos flujos de ping
-corriendo en paralelo), se esperan RTT de un solo dígito en milisegundos en topologías
-pequeñas.
+`ping` mide el tiempo de ida y vuelta con un reloj monótono, así que los RTT
+reflejan el tiempo real que le llevó al simulador hacer pasar el paquete por la
+topología. Con un simulador ocupado (mucho _chatter_ de ruteo o varios flujos de
+ping en paralelo), lo esperable en topologías chicas son RTT de un solo dígito
+en milisegundos.
 
-Usar `-c <count>` para enviar esa cantidad de sondas. El terminal las envía **de a
-una**, esperando a que el viaje de ida y vuelta de cada sonda termine de animarse
-antes de enviar la siguiente, luego pausando un segundo (como el `ping` real) entre
-ellas. Cada línea de respuesta aparece cuando su respuesta regresa en el canvas,
-y al final se imprime una línea de resumen:
+La opción `-c <cantidad>` envía esa cantidad de sondeos. La terminal los manda
+**de a uno**, esperando que termine de animarse la ida y vuelta de cada sondeo
+antes de mandar el siguiente, y haciendo luego una pausa de un segundo entre
+ellos (igual que el `ping` real). Cada línea de respuesta aparece a medida que
+la respuesta vuelve por el _canvas_, y al final se imprime una línea de resumen:
 
 ```
 ping h2 -c 4 -W 1.5
@@ -211,28 +228,33 @@ seq=3 100.200.0.20: time=2.94 ms
 4 sent, 4 received, 0% loss
 ```
 
-![Un ping contado transmite cada respuesta al terminal a medida que llega, luego imprime un resumen](../../images/62-ping-count.png)
+![Un ping con cuenta va mostrando cada respuesta en la terminal a medida que llega, y luego imprime un resumen](../../images/62-ping-count.png)
 
-Dado que la siguiente sonda no se envía hasta que la animación de la anterior terminó,
-esa pausa es una ventana real para cambiar la topología a mitad de secuencia y
-observar el efecto. Deshabilitar una interface (o detener un router) en la ruta
-durante la pausa — la siguiente sonda se envía entonces sin estado previo, por lo que
-una vez que la red reconverge se reenvía por la ruta recalculada y su animación sigue
-ese nuevo camino.
+Como el sondeo siguiente no se envía hasta que terminó la animación del
+anterior, esa pausa es una ventana real para modificar la topología en medio de
+la secuencia y ver el efecto del cambio. Basta con deshabilitar una interface (o
+detener un router) que esté sobre la ruta durante la pausa: el siguiente sondeo
+sale de cero, con lo cual, una vez que la red reconvergió, viaja por la ruta
+recalculada y su animación sigue ese camino nuevo.
 
-Usar `-i <seconds>` para ajustar la pausa — hacerla más larga si se necesita más
-tiempo para editar, o `-i 0` para enviar cada sonda inmediatamente después de que
-la anterior termina (igual de a una, solo sin pausa):
+La opción `-i <segundos>` regula la pausa: conviene alargarla si hace falta más
+tiempo para editar, o usar `-i 0` para enviar cada sondeo apenas termina el
+anterior (siempre de a uno, pero sin pausa):
 
 ```
 ping h3 -c 8 -i 2
 ```
 
-La pausa termina de inmediato si se hace Stop a la simulación.
+La pausa termina de inmediato al detener la simulación.
+
+Las respuestas aparecen de a una, a medida que llegan, así que no hay que
+esperar a que termine toda la corrida para ver resultados. Si se cierra la
+terminal en medio de la secuencia, los resultados restantes se descartan en
+silencio.
 
 #### `set_gateway <ip>`
 
-Actualizar el gateway por defecto del host.
+Actualiza el gateway por defecto del host.
 
 ```
 set_gateway 200.100.0.254
@@ -242,15 +264,16 @@ set_gateway 200.100.0.254
 gateway set to 200.100.0.254
 ```
 
-El nuevo gateway debe estar dentro de la red del host; de lo contrario:
+El nuevo gateway debe estar dentro de la red del host; si no:
 
 ```
 gateway 10.0.0.1 not in host network
 ```
 
-Para hosts en un link `/30` o `/31`, el gateway es la IP del peer y el parser lo
-configura automáticamente. `set_gateway` para esos hosts está permitido pero no tiene
-efecto útil — cambiar el cableado del link si se quiere un peer diferente.
+En los hosts que están sobre un **link** `/30` o `/31`, el gateway es la IP del
+peer y lo configura automáticamente el parser. En esos casos `set_gateway` está
+permitido pero no tiene sentido: si se quiere otro peer, hay que cambiar el
+cableado del link.
 
 ---
 
@@ -258,8 +281,8 @@ efecto útil — cambiar el cableado del link si se quiere un peer diferente.
 
 #### `update_cost <iface> <cost>`
 
-Establecer el costo de una interface. El nuevo valor se propaga en el próximo
-flooding de LSA.
+Fija el costo de una interface. El valor nuevo se propaga en el siguiente
+_flood_ de LSA.
 
 ```
 update_cost eth0 25
@@ -289,7 +312,7 @@ r1: invalid interface eth9
 
 #### `neighbors`
 
-Listar los vecinos directamente conectados del router.
+Lista los routers vecinos directamente conectados.
 
 ```
 neighbors
@@ -302,11 +325,12 @@ neighbors
   r3     via lan3     (150.10.10.10) cost=5
 ```
 
-La vista se construye a partir del grafo local del protocolo del router, por lo que
-solo muestra los vecinos de los que este router *tuvo noticias*. Un nuevo vecino tarda
-hasta un intervalo de Hello en aparecer aquí.
+Esta vista se arma a partir del grafo local del protocolo, de manera que solo
+muestra los vecinos de los que este router *escuchó hablar*. Un vecino nuevo
+puede demorar hasta un intervalo de Hello en aparecer acá.
 
-Si el router no tiene routers peers, o no completó su primer intercambio de Hello:
+Si el router no tiene routers pares, o todavía no completó su primer intercambio
+de Hello:
 
 ```
 (no neighbors yet)
@@ -314,8 +338,9 @@ Si el router no tiene routers peers, o no completó su primer intercambio de Hel
 
 #### `halt`
 
-Desconectar el router de forma controlada: hace flooding de un LSA de retiro para que
-los vecinos lo eliminen de sus grafos de inmediato, luego detiene el forwarding.
+Deja al router fuera de línea de manera ordenada: inunda un LSA de retiro para
+que los vecinos lo saquen de sus grafos de inmediato y después deja de hacer
+forwarding.
 
 ```
 halt
@@ -327,7 +352,8 @@ r1 halted
 
 #### `resume`
 
-Volver a conectar un router detenido. Re-anuncia sus links y retoma el forwarding.
+Vuelve a poner en línea un router detenido. Reanuncia sus links y retoma el
+forwarding.
 
 ```
 resume
@@ -339,9 +365,9 @@ r1 resumed
 
 #### `ifconfig <iface> up|down`
 
-Levantar o bajar una interface individual sin detener todo el router.
-Bajar una interface retira ese link de los anuncios del protocolo de ruteo de forma
-controlada; levantarla de nuevo lo re-anuncia.
+Levanta o baja una única interface, sin detener el router entero. Bajar una
+interface retira ese link de los anuncios del protocolo de ruteo de manera
+ordenada, y volver a levantarla lo reanuncia.
 
 ```
 ifconfig eth0 down
@@ -363,8 +389,7 @@ eth0 up
 
 ## Comando no encontrado
 
-Los comandos desconocidos responden con el mismo envelope `ok: false` que los
-errores:
+Un comando desconocido lo informa y no cambia nada:
 
 ```
 foo bar
@@ -374,40 +399,29 @@ foo bar
 unknown command: foo
 ```
 
-No hay pipe ni redirección a nivel de shell — cada comando es una línea, una respuesta
-renderizada verbatim.
+No hay pipes ni redirecciones al estilo de una shell: cada comando es una línea
+y una respuesta, que se muestra tal cual.
 
-## Qué ocurre internamente
+Las comillas funcionan como en una shell común, así que `send h2 "hello world"`
+entrega un solo mensaje y no dos palabras sueltas.
 
-Cada comando envía:
+Para ver cómo llega al dispositivo una línea escrita en la terminal, o para
+ejecutar los mismos comandos desde afuera del navegador, el formato está
+documentado en
+[la referencia de la API del servidor](../architecture/server-api.md#post-devicesnamecommand).
 
-```
-POST /devices/{name}/command
-{ "cmd": "<line>" }
-```
+## Después de un Stop
 
-El servidor parsea la línea (comillas estilo shell), la enruta al dispositivo
-indicado, ejecuta el comando correspondiente y devuelve:
-
-```json
-{ "ok": true, "output": "..." }
-```
-
-El conjunto completo de comandos por dispositivo está en
-[`server-api.md`](../architecture/server-api.md#post-devicesnamecommand).
-
-## Cuando la simulación está idle o detenida
-
-Los terminales permanecen abiertos luego de un Stop, pero los comandos enviados a
-una simulación detenida devuelven `409 no topology loaded`:
+Las terminales quedan abiertas después de un Stop, pero ya no hay ninguna
+simulación detrás, así que cualquier comando responde:
 
 ```
 ping h3
 ```
 
 ```
-no topology loaded
+[error] no topology loaded
 ```
 
-Hacer click en **Start** y el mismo comando vuelve a funcionar — mismo terminal, misma
-posición de ventana. No hay que reabrir nada.
+Al hacer click en **Start**, el mismo comando vuelve a funcionar: misma
+terminal, misma posición de la ventana. No hace falta reabrir nada.
