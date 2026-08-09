@@ -203,10 +203,13 @@ gets populated in the first place.
 
 ## Data Flow: Routing Convergence
 
-When the simulation starts (or any router boots), `LinkStateProtocol._protocol_loop`
-ticks once immediately, then on independent hello and refresh cadences
-(both live-tunable via the toolbar; see [`routing-protocol.md`](routing-protocol.md)
-for details):
+When the simulation starts (or any router boots),
+`LinkStateProtocol._protocol_loop` ticks once immediately, then drives
+three independent jittered timers: `hello` (10 s), `lsa_refresh` (30 s),
+and `maxage_check` (same cadence as the refresh). Only the first two are
+live-tunable from the toolbar — `dead = 3 × hello` and
+`max_age = 2 × refresh` are derived from them (see
+[`routing-protocol.md`](routing-protocol.md) for details):
 
 ```mermaid
 sequenceDiagram
@@ -246,6 +249,14 @@ tracks the last seen sequence number for each origin and drops messages with
 `seq <= last_seen_seq`. New messages are re-flooded out of **every interface
 except** the one they arrived on.
 
+Convergence in the other direction — a router that stops advertising —
+needs no message at all. That is what the third timer is for:
+`maxage_check` runs `_sweep_dead_and_expired`, which drops neighbors not
+heard from within `dead` and purges LSAs older than `max_age`, recomputing
+if either removed something. A crashed router floods no withdrawal, so
+this sweep is the only thing that retires it from its peers' graphs; a
+graceful halt merely gets there sooner by flooding one.
+
 Routing tables are only recomputed when the graph actually changes — every
 caller guards its `_rebuild_graph_and_recompute()` call on
 `InstallResult.changed_graph()` (`_rebuild_graph_and_recompute` itself
@@ -268,8 +279,9 @@ stateDiagram-v2
   paused --> idle: /sim/stop
 ```
 
-(`/topology` and `/topology/reset` are also accepted while idle and
-leave the state unchanged — see the rules below.)
+(Three endpoints leave the state unchanged and so don't appear above:
+`/topology` and `/topology/reset`, accepted only while idle, and
+`/sim/edit`, accepted only while running.)
 
 Rules enforced by `SimState`:
 
@@ -282,6 +294,11 @@ Rules enforced by `SimState`:
 - **`resume`** applies an optional patch (`add_*` / `remove_*` /
   `update_cost`) atomically — two phases, **validate all → apply all** —
   and re-resumes the gate.
+- **`edit`** applies the same kind of patch to a *running* sim, under the
+  same two phases. It is the only one of the two that emits
+  `topology_changed`: a patch handed to `resume` is applied and persisted
+  but announces nothing, so subscribers learn about it only from the next
+  `GET /topology`.
 - **`stop`** drops the AS entirely and goes back to `idle`. The next
   `start` requires a topology load.
 
@@ -312,6 +329,14 @@ sequenceDiagram
   WS->>SPA: ws.send_json(event)
   SPA->>SPA: bus.dispatchEvent(<br/>'sim:packet' /<br/>'sim:routing-table-changed' /<br/>'sim:status-changed')
 ```
+
+The two halves are joined by a single line in the app's lifespan handler:
+`EventTracer.subscribe(app.state.event_bus.emit)`. The `EventBus` is
+nothing more than one `EventTracer` subscriber, registered at startup and
+unsubscribed at shutdown — which is what lets the simulator core stay
+unaware that a web layer exists. (`sim_state` is the one kind that skips
+this path: the `/sim/*` handlers already run on the loop, so they put it
+straight onto the bus.)
 
 `EventBus` is a thread-safe fan-out: every WebSocket connection has its
 own `asyncio.Queue`, capped at 1000 events. On overflow the **oldest**
@@ -367,7 +392,10 @@ layer cleanly:
 For the deep dives, jump to:
 
 - [`entities.md`](entities.md) — every class in `src/entities/`.
+- [`packets.md`](packets.md) — `Frame`, `Datagram`, and the `Message` family.
 - [`routing-protocol.md`](routing-protocol.md) — flooding + Dijkstra.
+- [`policy.md`](policy.md) — what an LSA advertises, and to whom.
+- [`nat.md`](nat.md) — translation at the private↔public boundary.
 - [`concurrency.md`](concurrency.md) — threads, gates, queues.
 - [`parser.md`](parser.md) — YAML → AS.
 - [`server-api.md`](server-api.md) — HTTP / WS reference.
