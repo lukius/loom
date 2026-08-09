@@ -2,13 +2,13 @@
 
 # Architecture Overview
 
-> **Scope:** loom is deliberately L3-only. There is no L2 (MAC/ARP/STP)
-> and no L4 (TCP/UDP/ports). The simulator exists to make routing
+> **Scope:** loom is deliberately L3-only. There is no L2 (MAC/ARP)
+> and no L4 (TCP/UDP). The simulator exists to make routing
 > convergence and forwarding observable, not to model a full network
 > stack.
 
 `loom` is split into four cooperating layers, each with a clear
-responsibility and a narrow seam to its neighbors.
+responsibility and a narrow API to its neighbors.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -18,46 +18,54 @@ responsibility and a narrow seam to its neighbors.
 │  packets.js · packetstore.js · packetspanel.js · sim.js         │
 │  yaml-io.js · utils.js · (see web-spa.md for the full map)      │
 │                                                                 │
-│  State + cross-component events flow through `bus`              │
+│  State + cross-component events flow through a bus              │
 │  (EventTarget singleton in state.js).                           │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │   HTTP (REST: /sim, /topology,
-                               │             /devices)
-                               │   WebSocket (events from server)
+└──────────────────────────────▲──────────────────────────────────┘
+                               │   HTTP requests down, replies up
+                               │   (REST: /sim, /topology, /devices)
+                               │   WebSocket: events up (server → SPA)
 ┌──────────────────────────────▼──────────────────────────────────┐
 │             FastAPI server (src/server/, async)                 │
 │                                                                 │
-│  routes/    sim.py · topology.py · devices.py · files.py · ws.py │
-│  command/   dispatch.py · host.py · router.py                   │
-│  state.py   SimState (idle/running/paused) — owns the AS        │
-│  events.py  EventBus — bridges worker threads to asyncio        │
-│  persistence.py  source.yaml → source.session.yaml clone        │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │   Python calls (synchronous,
-                               │     cross-thread via PauseGate)
+│  routes/     sim.py · topology.py · devices.py · files.py       │
+│              ws.py                                              │
+│  command/    dispatch.py · host.py · router.py                  │
+│  state.py    SimState (idle/running/paused) — owns the AS       │
+│  events.py   EventBus — bridges worker threads to asyncio       │
+│  persistence.py   session clone of the topology source          │
+└──────────────────────────────▲──────────────────────────────────┘
+                               │   down: Python calls (synchronous,
+                               │         cross-thread via PauseGate)
+                               │   up:   EventTracer events
 ┌──────────────────────────────▼──────────────────────────────────┐
 │        Simulator core (src/entities/, src/routing/, threaded)   │
 │                                                                 │
 │  AS  Router  Host  Network  Link  Interface  Address  Packet    │
-│  PauseGate   EventTracer                                        │
+│  PauseGate   EventTracer   NATTable   RoutingPolicy             │
 │  LinkStateProtocol (loom-OSPF; abstract base: RoutingProtocol)  │
-│  + LSDB → NetworkGraph (Dijkstra)                               │
+│  LSDB → NetworkGraph (Dijkstra)   Scheduler (jittered timers)   │
 │                                                                 │
 │  One daemon thread per Interface, one per Network/Link, one     │
 │  protocol thread per Router. All gate on PauseGate.             │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │   parses, validates
-┌──────────────────────────────▼──────────────────────────────────┐
+└──────────────────────────────▲──────────────────────────────────┘
+                               │   builds the AS object graph
+┌──────────────────────────────┴──────────────────────────────────┐
 │                Parser + Validator (src/parser/)                 │
 │                                                                 │
 │  Parser.parse()  →  AS  (or raises ParsingException)            │
 │  SystemValidator: address, network, link, device, host          │
-└─────────────────────────────────────────────────────────────────┘
-                               ▲
-                               │ reads
-                       samples/sample.yaml
-                       (or LOOM_TOPOLOGY)
+└──────────────────────────────▲──────────────────────────────────┘
+                               │   parses + validates
+                       topology YAML  (session clone of
+                       LOOM_TOPOLOGY — see persistence.py)
 ```
+
+The topology file at the bottom is never the one you edited on disk. The
+server clones `LOOM_TOPOLOGY` (default
+[`samples/sample.yaml`](../../samples/sample.yaml)) into a session copy
+under a temp dir and parses *that*, so live edits and imports never write
+back to the source. See [`server-api.md`](server-api.md) for the session
+path and the reset endpoint.
 
 ## Process / Thread Model
 
@@ -69,11 +77,11 @@ There is one Python process. Inside it:
   thread blocks on it once per loop iteration.
 - Daemon threads created by the simulator core:
 
-  | Owner | Count | Purpose |
-  |---|---|---|
-  | `Interface` | 1 per interface | Drain inbound frames, dispatch to its device |
+  | Owner | Count | Purpose                                              |
+  |---|---|------------------------------------------------------|
+  | `Interface` | 1 per interface | Drain inbound frames, dispatch to its device         |
   | `Network` / `Link` (`_FabricBase`) | 1 per fabric | Drain frames sent into the fabric, dispatch to peers |
-  | `LinkStateProtocol` | 1 per router | Periodic hello/LSA flood + SPF recompute |
+  | `LinkStateProtocol` | 1 per router | Periodic hello/LSA flood + shortest-paths recompute  |
 
 The thread fan-out for a topology with H hosts, R routers, N LANs, L
 links, and an average of K interfaces per router is roughly:
@@ -86,53 +94,108 @@ threads ≈ H                           (one Interface thread per host)
         + 1                           (asyncio loop)
 ```
 
-For the sample topology (H=3, R=3, K=3, N=3, L=1): about 19 threads plus
-the asyncio loop. See [`concurrency.md`](concurrency.md#scaling-characteristics)
-for where this curve starts to bite.
+For the [sample topology](../../samples/sample.yaml) (H=3, R=3, K=3, N=3,
+L=1): about 19 worker threads plus the asyncio loop. See
+[`concurrency.md`](concurrency.md#scaling-characteristics) for an analysis
+on how this scales.
 
 ## Data flow: sending a message
 
-When `h1` sends a `UserMessage` to `h3` (sample topology), the message
-crosses every layer:
+Every example below runs on
+[`samples/sample.yaml`](../../samples/sample.yaml) — three LANs, one
+point-to-point link, three routers, three hosts. Edge labels are the
+router-side interface and its cost:
+
+```mermaid
+graph LR
+  h1["h1<br/>200.100.0.10"]
+  h2["h2<br/>100.200.0.20"]
+  h3["h3<br/>150.10.10.30"]
+  lan1(["lan1<br/>200.100.0.0/24"])
+  lan2(["lan2<br/>100.200.0.0/24"])
+  lan3(["lan3<br/>150.10.10.0/24"])
+  p2p1(["p2p1<br/>10.0.0.0/30"])
+  r1{{"r1"}}
+  r2{{"r2"}}
+  r3{{"r3"}}
+
+  h1 --- lan1
+  h2 --- lan2
+  h3 --- lan3
+  lan1 ---|"eth0 · 10"| r1
+  lan1 ---|"eth0 · 5"| r2
+  lan2 ---|"eth1 · 15"| r1
+  lan2 ---|"eth1 · 8"| r2
+  lan2 ---|"eth0 · 20"| r3
+  lan3 ---|"eth2 · 15"| r2
+  lan3 ---|"eth1 · 5"| r3
+  p2p1 ---|"eth2 · 5"| r1
+  p2p1 ---|"eth2 · 5"| r3
+```
+
+`h1`'s gateway is `r1`, and `h3` sits on `lan3`, which `r1` is not attached
+to — so a `UserMessage` from `h1` to `h3` takes two router hops. Only the
+router→fabric direction costs anything (see
+[`routing-protocol.md`](routing-protocol.md)), so Dijkstra puts the path
+over the point-to-point link at 10 (`r1.eth2` = 5 onto `p2p1`, then
+`r3.eth1` = 5 onto `lan3`) against 20 through `lan2` and 25 through `lan1`.
+`r1` therefore forwards out `eth2`, and the message crosses every layer on
+the way:
 
 ```mermaid
 sequenceDiagram
   participant U as User (UI terminal)
-  participant API as POST /devices/h1/command<br/>(server)
+  participant API as FastAPI server
   participant H1 as Host h1
-  participant IF1 as h1.interface
+  participant IF1 as h1's interface
   participant LAN1 as Network lan1
   participant R1 as Router r1
-  participant LAN2 as Network lan2
+  participant P2P as Link p2p1
+  participant R3 as Router r3
+  participant LAN3 as Network lan3
   participant H3 as Host h3
   participant WS as WebSocket /ws/events
 
-  U->>API: {"cmd": "send h3 hi"}
+  U->>API: POST /devices/h1/command<br/>{"cmd": "send h3 hi"}
   API->>H1: send_message_to(UserMessage("hi"), h3.address)
-  H1->>IF1: send_to(Datagram, dst=gateway)
-  IF1->>WS: EventTracer emit {"kind":"packet", ...}
+  H1->>IF1: send_to(Datagram, dst=gateway 200.100.0.1)
+  IF1->>WS: EventTracer._broadcast({"kind":"packet", ...})
   IF1->>LAN1: Frame -> _in_queue
   LAN1->>R1: _dispatch_unicast(Frame) -> r1.eth0.receive(Frame)
-  R1->>R1: routing_table.match(h3.address)
-  R1->>R1: out_iface = eth1, next_hop = NullAddress -> h3.address
-  R1->>WS: EventTracer emit {"kind":"packet", ...}
-  R1->>LAN2: Frame -> _in_queue
-  LAN2->>H3: _dispatch_unicast(Frame) -> h3.iface.receive(Frame)
+  R1->>R1: _handle_forwarding: routing_table.match(150.10.10.30)
+  R1->>R1: out_iface = eth2, next_hop = 10.0.0.2 (r3)
+  R1->>WS: EventTracer._broadcast({"kind":"packet", ...})
+  R1->>P2P: Frame -> _in_queue
+  P2P->>R3: _dispatch_packet(Frame) -> r3.eth2.receive(Frame)
+  R3->>R3: _handle_forwarding: routing_table.match(150.10.10.30)
+  R3->>R3: out_iface = eth1, next_hop = NullAddress -> h3.address
+  R3->>WS: EventTracer._broadcast({"kind":"packet", ...})
+  R3->>LAN3: Frame -> _in_queue
+  LAN3->>H3: _dispatch_unicast(Frame) -> h3's iface.receive(Frame)
   H3->>H3: dst == iface.address -> _handle_message(UserMessage)
-  H3->>WS: EventTracer.message_received(...)
 ```
 
 Two things to notice:
 
 1. **Every packet event hits the WebSocket**, even when the SPA only cares
-   about a subset. `EventTracer._broadcast` is non-blocking — subscribers
-   exceptions are swallowed and logged so one bad subscriber can't kill
-   the rest.
+   about a subset. Each `send_to` calls `EventTracer._broadcast`, which
+   runs its subscribers inline on the calling worker thread and swallows
+   (and logs) their exceptions, so one bad subscriber can't kill the rest.
+   The `EventBus` subscriber hands the event straight to the asyncio loop,
+   so a slow WebSocket client never stalls a simulator thread.
 2. **The forwarding decision happens entirely inside `Router`**. The
    fabric (`Network`/`Link`) only knows how to dispatch a frame to its
-   peers; it does no routing. `Router._handle_forwarding` runs longest-
-   prefix match against its `RoutingTable`, decrements the TTL, and hands
-   the next frame to the chosen interface.
+   peers; it does no routing. `Router._handle_forwarding` — the self-arrow
+   above — decrements the TTL, runs longest-prefix match against its
+   `RoutingTable`, and hands the next frame to the chosen interface.
+   `NullAddress` as the next hop means "directly connected": the frame
+   goes to the packet's final destination, which is why only the last hop
+   shows it.
+
+Nothing is emitted when `h3` finally consumes the message: delivery is
+reported through `EventTracer.message_received`, a per-message callback
+that does *not* reach the WebSocket (see
+[below](#whats-not-in-this-diagram)).
 
 See [`packets.md`](packets.md) for the packet types, and
 [`routing-protocol.md`](routing-protocol.md) for how the routing table
@@ -154,27 +217,40 @@ sequenceDiagram
   participant R2GR as r2's NetworkGraph
 
   R1KA->>R1: _emit_lsa_on_up_interfaces(now)
-  R1->>R1: _refresh_local_lsa()  (refresh self edges in local graph)
-  R1->>R1: _rebuild_graph_and_recompute() if graph changed
-  R1->>LAN1: For each iface: broadcast RoutingMessage(seq=N)
+  R1->>R1: LSA.from_router(permit-all): current up ifaces + costs
+  R1->>R1: LSDB.install(local LSA)
+  R1->>R1: _rebuild_graph_and_recompute() if changed_graph()
+  R1->>LAN1: For each up iface: broadcast the policy-filtered LSA (seq=N)
   LAN1->>R2: deliver frame (broadcast)
   R2->>R2: handle_incoming_message(msg, iface)
-  R2->>R2: LSDB.install() -> per-origin dedup by (origin_router, seq)
-  R2->>R2GR: rebuild graph from LSDB if InstallResult.changed_graph()
-  R2->>R2: changed? -> _recompute_routing_table() via Dijkstra
+  R2->>R2: _refresh_local_lsa() -> own links current before installing
+  R2->>R2: LSDB.install() -> per-origin dedup on seq
+  R2->>R2: re-flood out every iface except the inbound one
+  R2->>R2GR: _rebuild_graph_and_recompute() if changed_graph()
   Note over R2: emit {"kind":"routing_table_changed", "device":"r2", "rules":[...]}
 ```
+
+`_emit_lsa_on_up_interfaces` rebuilds the local LSA from scratch on every
+tick: it walks the router's interfaces, skips the down ones, and reads
+`iface.cost()` as it goes. So yes — a cost that changed since the last tick
+(or an interface that went up or down) is exactly what makes the freshly
+built LSA differ from the installed one, which is what
+`InstallResult.changed_graph()` reports and what triggers the local SPF
+recompute. A tick that finds nothing changed installs an LSA with a new
+sequence number and recomputes nothing. Cost edits don't wait for the next
+tick either: `local_links_changed()` calls `_emit_lsa_on_up_interfaces`
+immediately and pushes the periodic deadline back.
 
 The flood is **receiver-side deduplicated** per origin router: `LSDB.install()`
 tracks the last seen sequence number for each origin and drops messages with
 `seq <= last_seen_seq`. New messages are re-flooded out of **every interface
 except** the one they arrived on.
 
-Routing tables are only recomputed when the graph actually changes —
-`_rebuild_graph_and_recompute` calls `_recompute_routing_table` only when
-`InstallResult.changed_graph()` is true.
-**Preserve that guard** when editing the protocol; without it routing
-tables churn on every protocol tick.
+Routing tables are only recomputed when the graph actually changes — every
+caller guards its `_rebuild_graph_and_recompute()` call on
+`InstallResult.changed_graph()` (`_rebuild_graph_and_recompute` itself
+always recomputes once entered). **Preserve that guard** when editing the
+protocol; without it routing tables churn on every protocol tick.
 
 ## State Machine: SimState
 
@@ -246,10 +322,13 @@ Event kinds currently emitted:
 
 - `packet` — every frame leaving an interface (`Interface.send_to`)
 - `routing_table_changed` — every recompute (`LinkStateProtocol._recompute_routing_table`)
-- `sim_state` — every state transition (`SimState.start/pause/resume/stop`)
+- `sim_state` — every state transition (emitted by the `/sim/*` route
+  handlers after `SimState` accepts the transition, not by `SimState` itself)
 - `device_state_changed` — router halted or resumed (`Router.halt` / `Router.resume`)
 - `interface_state_changed` — interface brought up or down (`Interface._emit_state`)
-- `lsdb_changed` — LSDB updated with a new LSA (`LinkStateProtocol`); emitted but currently unconsumed by the SPA
+- `lsdb_changed` — the link-state protocol rewrote its view of the routing
+  table (`LinkStateProtocol._emit_rule_change_events`, alongside
+  `routing_table_changed`); emitted but currently unconsumed by the SPA
 - `neighbor_state_changed` — adjacency state changed (`LinkStateProtocol._broadcast_neighbor_state_changed`)
 - `ping_result` — one ICMP echo reply or timeout (`Host.ping`)
 - `topology_changed` — topology mutated via a live edit (`SimState.edit`)
@@ -264,11 +343,24 @@ layer cleanly:
 
 - **`EventTracer.register_message_event`** lets a caller observe a single
   message's lifecycle (`on_sent` / `on_received` / `on_forwarded`) by
-  registering callbacks keyed by message identity. Consumers that want a
-  broadcast stream use the WebSocket event bus instead.
-- **`Host.ping`** does its own thread synchronization: a per-flow
-  `threading.Event` plus a `_pending_pings` dict, woken by the matching
-  `PingReply`. RTT comes back as `time.monotonic() - request_ts`.
+  registering callbacks keyed by message identity. `Host.send_message_to`
+  and `Host._handle_message` call into it via `EventTracer.message_sent` /
+  `message_received`, which fire *only* the callbacks registered for that
+  exact message and broadcast nothing. Today its only consumers are the
+  tests (`test_packet_handling.py`, `test_forwarding.py`), which use it to
+  assert on one message end-to-end without subscribing to the whole event
+  stream; anything wanting a broadcast stream uses the WebSocket event bus
+  instead.
+- **`Host.ping`** does its own thread synchronization: one
+  `threading.Event` per outstanding echo request in a `_pending_pings`
+  dict, woken by the matching `PingReply`. The key is
+  `(destination address, sequence number)`, so a host can have several
+  requests in flight to the same or different destinations and each reply
+  wakes only its own waiter. RTT comes back as
+  `time.monotonic() - request_ts`. Note this is a narrower notion than the
+  "flow" NAT keys on — `NATTable` uses the payload's `flow_key()`, which is
+  stable across a NAT rewrite and shared by a request and its reply (see
+  [`nat.md`](nat.md)).
 - **`Router._handle_forwarding`** does **not** raise on TTL expiry — it
   logs a warning and returns `None`, silently dropping the packet.
 
