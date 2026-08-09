@@ -168,7 +168,8 @@ responsibilities:
    `nat` (outbound) and `nat_table_changed` events. On inbound (public
    destination arriving from a public interface), reverses the rewrite
    using the NAT table; emits `nat` (inbound). See
-   [`packets.md`](packets.md) for the event shapes.
+   [`nat.md`](nat.md) for the translation rules and
+   [`server-api.md`](server-api.md#ws-wsevents) for the event shapes.
 
 3. **Speak the routing protocol.** `_handle_routing_message` iterates
    `self.protocols()` (each a `LinkStateProtocol`) and calls

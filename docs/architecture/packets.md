@@ -82,8 +82,12 @@ class Datagram(Packet):
     def decrement_ttl(self): self._ttl -= 1
 ```
 
-The L3 packet. `src_addr` / `dst_addr` are the **original endpoints**;
-they don't change as the datagram is forwarded.
+The L3 packet. `src_addr` / `dst_addr` are the **end-to-end endpoints**:
+re-framing at each hop leaves them alone, which is the whole point of the
+L2/L3 split above. The one thing that does rewrite them is NAT, via the
+`rewrite_source` / `rewrite_destination` mutators — see
+[`nat.md`](nat.md). That is also why `flow_key()` is keyed on the payload
+rather than on this address pair.
 
 TTL handling lives in `Router._handle_forwarding`:
 
@@ -101,11 +105,10 @@ Two consequences:
 - **TTL-expired packets are dropped silently** (logged via the standard
   logging framework). No ICMP-style notification.
 
-When a route lookup in `_handle_forwarding` fails, the router raises:
-
-- `NoRouteToHostException` — no matching prefix in the routing table.
-- `NoNATEgressException` — the packet's source is private but the router
-  has no public interface to egress through.
+The rest of `_handle_forwarding` — the route lookup, the exceptions it
+raises on a miss, and the `NullAddress` next-hop substitution — is a
+`Router` concern rather than a packet one; see
+[`entities.md`](entities.md#router-routerpy).
 
 ## `Message`
 
@@ -152,14 +155,16 @@ class UserMessage(Message):
         return self._payload
 ```
 
-Created by `Host.send_message_to` and by `cmd_send` in the host terminal.
-The `payload` is a single string token. The terminal uses `shlex.split`,
-so quoting is supported: `send h2 "hello world"` yields a payload of
-`hello world`.
+Constructed by `cmd_send` in the host terminal and handed to
+`Host.send_message_to`, which wraps it in a `Datagram` — the host never
+builds the `UserMessage` itself. The `payload` is everything after the
+destination, joined with single spaces. The terminal splits the command
+line with `shlex.split`, so quoting survives: both `send h2 hello world`
+and `send h2 "hello world"` yield a payload of `hello world`.
 
 ### `RoutingMessage`
 
-`RoutingMessage` is now an abstract base (`src/routing/lsa.py`). Two
+`RoutingMessage` is an abstract base (`src/routing/lsa.py`). Two
 concrete subclasses carry the protocol wire traffic: `LSA` and `Hello`.
 
 #### `LSA`
@@ -182,10 +187,34 @@ class LSA(RoutingMessage):
     def has_same_links_as(self, other): return self._attachments == other._attachments
 ```
 
-Origination: `LinkStateProtocol._emit_lsa_on_up_interfaces` builds
-**one shared `LSA`** per cycle via `LSA.from_router(router, seq,
-policy)`, installs it into the local LSDB, then sends that **same
-object** out every up interface — so all N emissions carry the same `seq`.
+Origination: `LinkStateProtocol._emit_lsa_on_up_interfaces` builds **two
+`LSA`s per cycle from one sequence number** — both via
+`LSA.from_router(router, seq, policy)`, differing only in policy. The
+permit-all one is installed into the local LSDB (so private prefixes
+appear in the local graph); the policy-filtered one is the **single
+object** sent out every up interface, so all N emissions carry the same
+`seq`. See [`policy.md`](policy.md) for the split.
+
+**`seq` is per-origin (one counter per router), not per-interface.**
+Receivers dedup in `LSDB.install`, which keeps the highest sequence number
+ever accepted from each origin and rejects anything with
+`seq <= last_seen_seq`:
+
+- **`seq <= last_seen_seq`** — `InstallResult.rejected()`. The LSA is
+  dropped outright: not installed, **not re-flooded**, no recompute. This
+  is what terminates the flood, since a router receiving the same LSA from
+  two neighbors re-floods only the first copy.
+- **`seq > last_seen_seq`, same links** — accepted and re-flooded (so
+  downstream peers refresh too), but `changed_graph()` is `False`, so no
+  shortest-path recompute.
+- **`seq > last_seen_seq`, different links** — accepted, re-flooded, and
+  `changed_graph()` is `True`, triggering the recompute.
+
+The last-seen sequence number survives the LSA it came from: a withdrawal
+purges the origin's entry but leaves the number behind as a tombstone, so
+duplicate withdrawals and stale re-announcements are still rejected rather
+than looking brand-new. `LSA.is_newer_than` exists as a comparison helper
+but is not what the LSDB dedup path calls.
 
 #### `Hello`
 
@@ -197,13 +226,9 @@ class Hello(RoutingMessage):
 ```
 
 `_emit_hello_on_up_interfaces` builds **one `Hello` per interface**
-(each carries that interface's per-fabric `neighbors_heard` list).
-
-**`seq` is per-origin (one counter per router), not per-interface.**
-Receivers dedup at the LSDB by `(origin_router, seq)` via
-`is_newer_than`. A refresh with the same links is accepted and
-re-flooded (so downstream peers refresh too) but does NOT trigger SPF
-recompute (`InstallResult.changed_graph()` returns `False`).
+(each carries that interface's per-fabric `neighbors_heard` list). Unlike
+`LSA`, a `Hello` carries no sequence number — it is never re-flooded, so
+there is nothing to dedup.
 
 **See [`routing-protocol.md`](routing-protocol.md)** for the full
 flooding rules.
@@ -235,19 +260,26 @@ class PingReply(Message):
         return str(self._request_id)
 ```
 
-The flow:
+The flow — steps 1 and 4 run on the caller's thread while step 3 runs on
+the receiving interface's thread, which is why the handshake needs two
+dicts and an event:
 
 1. `Host.ping(dst, timeout)` allocates `seq = next(self._ping_seq)`,
    registers a `(str(dst), seq) → threading.Event` in `_pending_pings`,
-   sends a `Datagram(payload=PingRequest(seq))`.
+   sends a `Datagram(payload=PingRequest(seq))`, then blocks on
+   `evt.wait(timeout)`.
 2. The destination host's `_handle_message` sees a `PingRequest`, sends
    back a `PingReply(seq, request_ts=msg.sent_at)`.
 3. The originating host's `_handle_message` matches the reply by
    `(str(packet.source()), msg.seq)`, records
    `_ping_results[key] = time.monotonic() - msg.request_ts`, sets the
    event.
-4. The `ping` call wakes from `evt.wait`, pops the event/result and
-   returns the RTT (or `None` on timeout).
+4. `evt.wait` returns and the caller deletes **its own** `key` from both
+   dicts — from `_pending_pings` because the waiter is spent, and from
+   `_ping_results` with a `pop` that reads the RTT and removes it in one
+   step, so neither dict accumulates entries across pings. It returns that
+   RTT. On timeout the same two deletions run and `ping` returns `None`,
+   so a reply that arrives late finds no waiter and is dropped.
 
 **The reply carries the request's `sent_at` value** as `request_ts`.
 That's important: the destination host doesn't keep state per ping; it
@@ -299,60 +331,12 @@ metadata:
 The shape is intentionally free-form — future message types add their own
 keys without coordinating with subscribers.
 
-### `kind: "nat"`
+The `packet` event is the only event `Interface.send_to` emits. Routers
+emit their own kinds as they translate or answer traffic — `nat`,
+`nat_table_changed` and `router_intercept` — and hosts emit `ping_result`
+once per probe. Those are event contracts rather than packet formats:
 
-Emitted by a router on every hop where NAT rewrites the datagram's
-addresses. Two directions:
-
-- **`outbound`** — source NAT on an egress hop. Carries `router`,
-  `direction`, `original_src`, `rewritten_src`, `dst`, `flow_id`, and
-  `payload_id` (the inner message's UUID).
-- **`inbound`** — destination NAT on an ingress hop. Carries `router`,
-  `direction`, `rewritten_dst`, `original_dst`, `src`, `flow_id`, and
-  `payload_id`.
-
-### `kind: "nat_table_changed"`
-
-Emitted by a router after each NAT table registration. Carries `device`
-and `entries` — a list of `{rewritten_src, dst, flow_id, original_src}`
-dicts in LRU order, oldest first.
-
-### `kind: "router_intercept"`
-
-Emitted by a router when it answers a `PingRequest` addressed to one of
-its own interface IPs (via `_reply_to_ping`). Carries `router`,
-`originator` (sender's address), `pinged_address`, `received_on`
-(interface name the request arrived on), `owning_iface` (interface name
-that owns the pinged address, or `None`), and `payload_id` (the reply's
-UUID). See [`server-api.md`](server-api.md) for the full event contract.
-
-### `kind: "ping_result"`
-
-Emitted by a host after each `ping()` call completes (whether the reply
-arrived or timed out). Carries `device` (host name), `dst`, `seq`, and
-`rtt_ms` (`float` on success, `null` on timeout). See
-[`server-api.md`](server-api.md) for the full event contract.
-
-## NAT entry lifetime
-
-NAT entries persist until LRU-evicted at capacity (default 1024 per
-router). There is no time-based expiration and no clearing on inbound
-match. Without a transport layer there is no notion of a "connection" or
-"idle" the simulator could time out against; LRU at the configured cap
-keeps memory bounded while remaining predictable. Restart the simulation
-to clear all entries.
-
-## Flow multiplexing
-
-Concurrent flows from multiple private hosts to the same public
-destination are multiplexed by `nat.flow_id(payload)`, which calls
-`payload.flow_key()` — the same conversation UUID used in `packet`
-events. Because `PingReply` echoes its request's UUID, request and reply
-share the same NAT entry even across NAT rewrites.
-
-Message types without `flow_key` support (arbitrary objects) get
-`flow_id=None` and share a single NAT slot per `(rewritten_src,
-original_dst)`. Since they have no reply, this is harmless. New
-request/reply message subtypes should override `flow_key()` so the NAT
-table can disambiguate concurrent flows correctly — do not rely on a `seq`
-attribute.
+- [`server-api.md`](server-api.md#ws-wsevents) — the wire shape of every
+  event kind, `packet` included.
+- [`nat.md`](nat.md) — when a rewrite happens, how the flow key is
+  derived, and the LRU bound on the table.
