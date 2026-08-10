@@ -2,13 +2,16 @@
 
 # Entities
 
-The simulator's domain model lives in `src/entities/`. Every class here is
-a normal Python object — there is no ORM, no schema, no framework. The
-`AS` instance is the single root that owns everything else.
+The simulator's domain model lives in
+[`src/entities/`](../../src/entities). Every class here is a normal Python
+object — there is no ORM, no schema, no framework. `Internet` is the root:
+it owns the `PauseGate` and the `EventTracer`, and holds one or more `AS`
+instances, each of which owns the devices and fabrics.
 
 ```
 Entity (base.py)
-├── AS                  (system.py)        ── root container
+├── Internet            (system.py)        ── root; owns gate + EventTracer
+├── AS                  (system.py)        ── one autonomous system
 ├── NetworkDevice       (device.py)
 │   ├── Router          (router.py)        ── forwards datagrams
 │   └── Host            (host.py)          ── endpoint; cannot forward
@@ -19,6 +22,7 @@ Entity (base.py)
 
 Address / NetworkAddress (address.py)     ── IPv4 + CIDR primitives
 NullAddress              (constant)        ── "directly connected" sentinel
+NATTable                 (nat.py)          ── per-router flow table (see nat.md)
 ```
 
 The rest of this document walks each class in turn — purpose, key methods,
@@ -45,7 +49,16 @@ extend it with metaclass magic — half the codebase assumes
 
 ## `AS` (`system.py`)
 
-The autonomous system. One per process. Owns:
+An autonomous system. `Internet` (same file) is the actual root container:
+it holds `_ases` keyed by short name, creates the process-wide
+`EventTracer`, and owns the `PauseGate` that `add_as` then shares into
+every AS. The model is multi-AS by construction — the YAML's
+`autonomous_systems:` mapping may carry several — but every consumer today
+(the server, the tests) goes through `Internet.single_as()`, which raises
+unless there is exactly one. That unwrap is explicitly marked as
+transitional for the BGP work.
+
+An `AS` owns:
 
 - `_networks`, `_links`, `_routers`, `_hosts` — dicts keyed by entity
   name.
@@ -187,9 +200,9 @@ responsibilities:
    interfaces up or down (with optional graceful re-announcement).
 
 The `RoutingTable` (defined in the same file) is a list of
-`RoutingRule(prefix, next_hop, interface)` with four operations under a
-single `Lock`: `add_rule`, `clear`, `remove_rule`, `rules()`, and
-**`match`** which does linear longest-prefix-match. Linear is fine for
+`RoutingRule(prefix, next_hop, interface)` with five operations, each
+taking a single `Lock`: `add_rule`, `clear`, `remove_rule`, `rules()`, and
+**`match`**, which does linear longest-prefix-match. Linear is fine for
 the simulator's scale; do not introduce a trie unless profiling says so.
 
 `match` returns a `MatchingResult`. Construct via
@@ -213,16 +226,19 @@ The interesting methods:
 - **`set_gateway(addr)`** — must be inside the host's network, else
   `ValueError`. The terminal's `set_gateway` command routes through here.
 - **`ping(dst_addr, timeout=3.0)`** — synchronous from the caller's view:
-  1. Allocates a per-flow `(dst, seq)` key, registers a
-     `threading.Event`, sends a `PingRequest`.
+  1. Allocates a `(dst, seq)` key — one per outstanding request, not per
+     conversation — registers a `threading.Event`, sends a `PingRequest`.
   2. Calls `evt.wait(timeout)`.
   3. When the matching `PingReply` arrives, `_handle_message` records
      `rtt = time.monotonic() - request_ts` and sets the event.
-  4. Returns the RTT or `None` on timeout.
+  4. Removes the key from both dicts and returns the RTT, or `None` on
+     timeout.
 
-  Per-flow state lives in `_pending_pings` and `_ping_results`, both
-  protected by `_ping_lock`. The `_ping_seq` is an `itertools.count` so
-  sequence numbers monotonically increase across calls.
+  That state lives in `_pending_pings` and `_ping_results`, both protected
+  by `_ping_lock`. The `_ping_seq` is an `itertools.count` so sequence
+  numbers monotonically increase across calls. Note this key is a narrower
+  thing than the NAT table's flow, which is the payload's `flow_key()` —
+  see [`packets.md`](packets.md).
 
 If a host has no gateway and the destination is off-link, `send_message_to`
 and `ping` raise `ValueError("no route to host: no gateway configured")`.
@@ -271,17 +287,17 @@ def send_to(self, datagram: Datagram, dst_addr: Address):
 The event dict includes both a **`payload_id`** (uniquely identifies one
 Message instance — one direction) and a **`flow`** key (the end-to-end
 conversation identifier reported by the payload via `Message.flow_key()`).
-The flow is a **stable conversation UUID** keyed on the payload — not
-on packet sequence numbers and not on the packet's address pair — so it
+The flow is a **stable conversation UUID** keyed on the payload — not on
+packet sequence numbers and not on the packet's address pair — so it
 survives NAT rewrites of src/dst as the packet crosses private↔public
 boundaries. `PingReply` overrides `flow_key` to echo its originating
 `PingRequest`'s id, so a single ping (request + reply, even across NAT)
 reports one flow. The same value is the NAT-table discriminator (see
-`entities/nat.py::flow_id`), so two private hosts with colliding
-sequence numbers each get their own NAT entry.
+[`entities/nat.py::flow_id`](../../src/entities/nat.py)), so two private
+hosts with colliding sequence numbers each get their own NAT entry.
 
-Two fields are derived to keep `Frame.source()` valid for the fabric's
-peer-resolution code:
+Three fields carry the L2/L3 split that the fabrics' peer-resolution code
+depends on:
 
 - `frame.source()` is **always** the interface's own address — the L2
   hop, not the original L3 source.
@@ -291,7 +307,7 @@ peer-resolution code:
 This is why `Network._dispatch_unicast` keys on `dst_addr` (which is the
 L2 next-hop) and `Link._dispatch_packet` keys on "not the source"
 (structural peer resolution, immune to IP collisions across different
-links — see [`link.py:75`](../../src/entities/link.py)).
+links — see [`Link._dispatch_packet`](../../src/entities/link.py)).
 
 ---
 
@@ -308,9 +324,11 @@ Shared base for `Network` and `Link`. Owns:
 
 The `_pkt_loop` is **gate-then-dequeue**: it checks the gate first, then
 attempts a short-timeout dequeue. If the gate was paused between the check
-and the dequeue, the packet is put back so it remains in the queue while
-the sim is paused — no `packet` events are emitted for frames that haven't
-been dispatched yet.
+and the dequeue, the frame is put back, so a pause leaves it sitting in the
+queue rather than in a local variable — nothing is lost and the queue depth
+stays an honest picture of what is in flight. (The `packet` event for that
+frame has already fired: `Interface.send_to` emits at transmit time, well
+before any fabric dequeues it.)
 
 Subclasses must implement `_dispatch_packet(packet)`.
 
@@ -321,7 +339,10 @@ Subclasses must implement `_dispatch_packet(packet)`.
 A multi-access LAN. `_dispatch_packet` looks at the frame's L2
 destination:
 
-- Broadcast address → `_dispatch_broadcast`: deliver to every interface.
+- Broadcast address → `_dispatch_broadcast`: deliver to every attached
+  interface **except the sender's**. A real NIC filters frames whose source
+  is its own address; without that skip a router receives its own LSA flood
+  back, treats it as new, and re-floods it out every other interface.
 - Anything else → `_dispatch_unicast`: look up the interface by IP and
   deliver only there.
 
@@ -415,18 +436,19 @@ Every worker thread in the simulator must use one of these (or both).
 
 Covered in detail in [`packets.md`](packets.md). The short version:
 
-- `Frame` — the L2 envelope (`src_addr`, `dst_addr`, `payload`); lives
-  in `entities/packet.py`.
+- `Frame` — the L2 envelope (`src_addr`, `dst_addr`, `payload`); lives in
+  [`entities/packet.py`](../../src/entities/packet.py).
 - `Datagram` — the L3 packet (TTL=64 by default, decremented per hop);
-  canonical home is `routing/messages.py`, re-exported from
-  `entities/packet.py`.
+  canonical home is [`routing/messages.py`](../../src/routing/messages.py),
+  re-exported from `entities/packet.py`.
 - `Message` — the payload inside the datagram (`entities/packet.py`).
   Subclasses:
   - `UserMessage(payload)` — user-level send.
-  - `RoutingMessage` — abstract base in `routing/lsa.py`; concrete wire
-    types are `LSA(origin, seq, is_withdrawal=False)` (link-state
-    advertisement) and `Hello(originator, neighbors_heard)` (liveness),
-    both in the `routing/` package.
+  - `RoutingMessage` — abstract base in
+    [`routing/lsa.py`](../../src/routing/lsa.py); concrete wire types are
+    `LSA(origin, seq, is_withdrawal=False)` (link-state advertisement) and
+    `Hello(originator, neighbors_heard)` (liveness), both in the `routing/`
+    package.
   - `PingRequest(seq)` / `PingReply(seq, request_ts, request_id=None)` —
     ping pair. `PingReply` exposes `.request_id` and overrides `flow_key()`
     to echo the originating `PingRequest`'s id, so request and reply share
