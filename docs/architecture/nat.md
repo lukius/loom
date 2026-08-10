@@ -121,10 +121,11 @@ flowing through the same router does not race the table.
 ## Cross-reference: visual hint
 
 In the SPA, RFC 1918 LANs render in a muted neutral tone, and the
-router-side iface label on the private side of the boundary is muted
-to match. See [the user-guide page](../user-guide/nat-and-private-lans.md)
-for the user-facing description. The detection logic lives in
-`web/utils.js::isPrivateCidr` and mirrors `entities/address.py::is_private`.
+router-side iface label on the private side of the boundary is muted to
+match. See [the user-guide page](../user-guide/nat-and-private-lans.md) for
+the user-facing description. The detection logic lives in
+[`web/utils.js::isPrivateCidr`](../../web/utils.js) and mirrors
+[`entities/address.py::is_private`](../../src/entities/address.py).
 
 ## Deliberate omissions
 

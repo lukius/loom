@@ -23,9 +23,11 @@
 ```
 
 `Frame`, `Message`, and their user/ping subclasses live in
-`src/entities/packet.py`. `Datagram` lives in `src/routing/messages.py`
-(re-exported from `entities/packet.py` for back-compat). `RoutingMessage`
-is an abstract base in `src/routing/lsa.py` (also re-exported).
+[`src/entities/packet.py`](../../src/entities/packet.py). `Datagram` lives
+in [`src/routing/messages.py`](../../src/routing/messages.py) (re-exported
+from [`entities/packet.py`](../../src/entities/packet.py) for back-compat).
+`RoutingMessage` is an abstract base in
+[`src/routing/lsa.py`](../../src/routing/lsa.py) (also re-exported).
 
 ## `Packet` (base)
 

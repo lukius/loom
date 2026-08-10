@@ -2,9 +2,10 @@
 
 # Policy framework
 
-loom's route-map / policy mechanism lives in `src/routing/policy.py`. This
-document describes what's wired today and what's reserved for the BGP work
-that motivated the design.
+loom's route-map / policy mechanism lives in
+[`src/routing/policy.py`](../../src/routing/policy.py). This document
+describes what's wired today and what's reserved for the BGP work that
+motivated the design.
 
 See also: [routing-protocol.md](routing-protocol.md) (the flood site where
 outbound policy is applied), [nat.md](nat.md) (why private-prefix
@@ -145,8 +146,8 @@ needs it, not because Cisco IOS happens to have it.
 
 | Concern | File | Symbol |
 |---|---|---|
-| Policy primitives | `src/routing/policy.py` | `PrefixList`, `RouteMapRule`, `RouteMap`, `PolicyDecision` |
-| Default RFC 1918 policy | `src/routing/policy.py` | `RFC1918_OUTBOUND` |
-| Outbound policy wiring | `src/routing/protocol.py` | `LinkStateProtocol.__init__` |
-| Outbound policy application | `src/routing/lsa.py` | `LSA.from_router` (called from `_emit_lsa_on_up_interfaces`) |
-| Receive path | `src/routing/protocol.py` | `_handle_incoming_lsa`, `_rebuild_graph_and_recompute` |
+| Policy primitives | [`src/routing/policy.py`](../../src/routing/policy.py) | `PrefixList`, `RouteMapRule`, `RouteMap`, `PolicyDecision` |
+| Default RFC 1918 policy | [`src/routing/policy.py`](../../src/routing/policy.py) | `RFC1918_OUTBOUND` |
+| Outbound policy wiring | [`src/routing/protocol.py`](../../src/routing/protocol.py) | `LinkStateProtocol.__init__` |
+| Outbound policy application | [`src/routing/lsa.py`](../../src/routing/lsa.py) | `LSA.from_router` (called from `_emit_lsa_on_up_interfaces`) |
+| Receive path | [`src/routing/protocol.py`](../../src/routing/protocol.py) | `_handle_incoming_lsa`, `_rebuild_graph_and_recompute` |

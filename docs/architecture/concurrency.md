@@ -48,7 +48,7 @@ public methods drive transitions:
 
 Workers do **not** call `gate.wait_or_stop()` directly. Instead they
 call the module-level `wait_for_gate(gate, stop_event)` helper from
-`entities/clock.py`:
+[`entities/clock.py`](../../src/entities/clock.py):
 
 ```python
 def wait_for_gate(gate, stop_event, poll=_PAUSE_POLL_INTERVAL) -> bool:
@@ -73,10 +73,11 @@ def wait_for_gate(gate, stop_event, poll=_PAUSE_POLL_INTERVAL) -> bool:
     return False                # stop_event was set by caller's stop()
 ```
 
-`wait_for_gate` is the canonical gate primitive for all packet workers
-and for the protocol loop's gate check. `PauseGate.sleep` is not used by
-any worker loop; its sole caller is the ping command's inter-probe wait
-(`server/command/host.py`), which sleeps between probes.
+`wait_for_gate` is the canonical gate primitive for all packet workers and
+for the protocol loop's gate check. `PauseGate.sleep` is not used by any
+worker loop; its sole caller is the ping command's inter-probe wait
+([`server/command/host.py`](../../src/server/command/host.py)), which sleeps
+between probes.
 
 Lifecycle map:
 
@@ -429,8 +430,9 @@ The simulator core uses threads throughout. Each `Interface` and each
 `Network` is conceptually an autonomous moving piece, and `queue.Queue` +
 `threading.Event` gave the right primitives without an event loop.
 
-When the web UI was added, the asyncio loop entered the picture **only
-for the network boundary**. The bridge is `server/events.py`:
+When the web UI was added, the asyncio loop entered the picture **only for
+the network boundary**. The bridge is
+[`server/events.py`](../../src/server/events.py):
 
 ```python
 self._loop.call_soon_threadsafe(self._enqueue, q, event)

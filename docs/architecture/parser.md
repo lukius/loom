@@ -2,9 +2,10 @@
 
 # Parser & Validator
 
-The YAML loader and the structural validator live in `src/parser/`. They
-are the only path from on-disk topology to a live `Internet` instance —
-everything else in the codebase assumes the topology is already well-formed.
+The YAML loader and the structural validator live in
+[`src/parser/`](../../src/parser). They are the only path from on-disk
+topology to a live `Internet` instance — everything else in the codebase
+assumes the topology is already well-formed.
 
 ```
 parser/
@@ -316,27 +317,31 @@ the offending entity name and the underlying reason — e.g.
 The test suite drives `Parser.parse()` against **deliberately invalid
 YAML fixtures** under `test/resources/`:
 
-- `invalid_host_address.yaml`, `invalid_netmask.yaml`,
-  `invalid_router_address.yaml`, ... — assert the matching validator
-  message.
-- `link_three_endpoints.yaml`, `link_one_endpoint.yaml`,
-  `link_no_endpoints.yaml`, `link_too_wide.yaml`, ... — assert
-  link-specific failures.
-- `missing_as.yaml`, `no_networks.yaml` — assert structural
-  failures.
+- [`invalid_host_address.yaml`](../../test/resources/invalid_host_address.yaml),
+  [`invalid_netmask.yaml`](../../test/resources/invalid_netmask.yaml),
+  [`invalid_router_address.yaml`](../../test/resources/invalid_router_address.yaml),
+  ... — assert the matching validator message.
+- [`link_three_endpoints.yaml`](../../test/resources/link_three_endpoints.yaml),
+  [`link_one_endpoint.yaml`](../../test/resources/link_one_endpoint.yaml),
+  [`link_no_endpoints.yaml`](../../test/resources/link_no_endpoints.yaml),
+  [`link_too_wide.yaml`](../../test/resources/link_too_wide.yaml), ... —
+  assert link-specific failures.
+- [`missing_as.yaml`](../../test/resources/missing_as.yaml),
+  [`no_networks.yaml`](../../test/resources/no_networks.yaml) — assert
+  structural failures.
 
-**Most fixtures under `test/resources/` are intentionally broken** —
-they exist to assert the parser rejects them with the right message.
-Don't "fix" them. New parser/validator failure modes belong as
-additional fixtures referenced from `test/test_parser.py`.
+**Most fixtures under `test/resources/` are intentionally broken** — they
+exist to assert the parser rejects them with the right message. Don't "fix"
+them. New parser/validator failure modes belong as additional fixtures
+referenced from [`test/test_parser.py`](../../test/test_parser.py).
 
 ## Where the parser is called
 
 | Caller | What it does next |
 |---|---|
-| `src/server/state.py:load_from_session` | Parses the session file with `start_routing=False` — routers are built but their protocol threads are not started, enforcing `idle` semantics until `/sim/start` is called |
-| `src/server/state.py:load_from_text` | Parses incoming YAML into a temp file; on success atomically replaces the session file and swaps the live topology |
-| `src/server/state.py:reset_session` | Re-clones the source file, then re-parses with `start_routing=False` |
+| [`src/server/state.py:load_from_session`](../../src/server/state.py) | Parses the session file with `start_routing=False` — routers are built but their protocol threads are not started, enforcing `idle` semantics until `/sim/start` is called |
+| [`src/server/state.py:load_from_text`](../../src/server/state.py) | Parses incoming YAML into a temp file; on success atomically replaces the session file and swaps the live topology |
+| [`src/server/state.py:reset_session`](../../src/server/state.py) | Re-clones the source file, then re-parses with `start_routing=False` |
 
 Nothing else parses YAML. `GET /topology` returns re-serialized live
 state via `SimState._dump_yaml()` when a topology is loaded, or the

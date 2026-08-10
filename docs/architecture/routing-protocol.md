@@ -3,11 +3,19 @@
 # loom-OSPF — simplified link-state routing
 
 `loom` implements a link-state routing protocol deliberately modelled after
-OSPF's core mechanics while shedding the protocol machinery that does not make
-sense in a single-area, broadcast-free simulator. The protocol lives in
-`src/routing/`; the core protocol modules are `lsa.py`, `lsdb.py`,
-`hello.py`, `neighbor.py`, `scheduler.py`, and `protocol.py` (the package
-also contains `messages.py`, `graph.py`, `policy.py`, and `exception.py`).
+OSPF's core mechanics while shedding the protocol machinery that does not
+make sense in a single-area, broadcast-free simulator. The protocol lives in
+[`src/routing/`](../../src/routing); the core protocol modules are
+[`lsa.py`](../../src/routing/lsa.py),
+[`lsdb.py`](../../src/routing/lsdb.py),
+[`hello.py`](../../src/routing/hello.py),
+[`neighbor.py`](../../src/routing/neighbor.py),
+[`scheduler.py`](../../src/routing/scheduler.py), and
+[`protocol.py`](../../src/routing/protocol.py) (the package also contains
+[`messages.py`](../../src/routing/messages.py),
+[`graph.py`](../../src/routing/graph.py),
+[`policy.py`](../../src/routing/policy.py), and
+[`exception.py`](../../src/routing/exception.py)).
 
 ---
 
@@ -559,22 +567,22 @@ tick is simply the first event after unpausing.
 
 | Concern | File | Symbol |
 |---|---|---|
-| Wire message types | `src/routing/lsa.py` | `RoutingMessage`, `LSA` |
-| Hello message | `src/routing/hello.py` | `Hello` |
-| Datagram carrier | `src/routing/messages.py` | `Datagram` |
-| LSDB install + purge | `src/routing/lsdb.py` | `LSDB.install`, `LSDB.expired_origins` |
-| LSDB → graph | `src/routing/lsdb.py` | `LSDB.build_graph` |
-| Neighbor state machine | `src/routing/neighbor.py` | `Neighbor.state`, `NeighborTable` |
-| Timer deadlines + jitter | `src/routing/scheduler.py` | `Scheduler` |
-| Protocol loop | `src/routing/protocol.py` | `LinkStateProtocol._protocol_loop` |
-| LSA origination | `src/routing/protocol.py` | `_emit_lsa_on_up_interfaces` |
-| Hello origination | `src/routing/protocol.py` | `_emit_hello_on_up_interfaces` |
-| LSA reception | `src/routing/protocol.py` | `_handle_incoming_lsa` |
-| Hello reception | `src/routing/protocol.py` | `_handle_incoming_hello` |
-| Eligibility filter | `src/routing/protocol.py` | `_rebuild_graph_and_recompute` |
-| SPF + routing table | `src/routing/protocol.py` | `_recompute_routing_table` |
-| Withdrawal flood | `src/routing/protocol.py` | `_flood_withdrawal` |
-| Dijkstra | `src/routing/graph.py` | `NetworkGraph._shortest_paths` |
+| Wire message types | [`src/routing/lsa.py`](../../src/routing/lsa.py) | `RoutingMessage`, `LSA` |
+| Hello message | [`src/routing/hello.py`](../../src/routing/hello.py) | `Hello` |
+| Datagram carrier | [`src/routing/messages.py`](../../src/routing/messages.py) | `Datagram` |
+| LSDB install + purge | [`src/routing/lsdb.py`](../../src/routing/lsdb.py) | `LSDB.install`, `LSDB.expired_origins` |
+| LSDB → graph | [`src/routing/lsdb.py`](../../src/routing/lsdb.py) | `LSDB.build_graph` |
+| Neighbor state machine | [`src/routing/neighbor.py`](../../src/routing/neighbor.py) | `Neighbor.state`, `NeighborTable` |
+| Timer deadlines + jitter | [`src/routing/scheduler.py`](../../src/routing/scheduler.py) | `Scheduler` |
+| Protocol loop | [`src/routing/protocol.py`](../../src/routing/protocol.py) | `LinkStateProtocol._protocol_loop` |
+| LSA origination | [`src/routing/protocol.py`](../../src/routing/protocol.py) | `_emit_lsa_on_up_interfaces` |
+| Hello origination | [`src/routing/protocol.py`](../../src/routing/protocol.py) | `_emit_hello_on_up_interfaces` |
+| LSA reception | [`src/routing/protocol.py`](../../src/routing/protocol.py) | `_handle_incoming_lsa` |
+| Hello reception | [`src/routing/protocol.py`](../../src/routing/protocol.py) | `_handle_incoming_hello` |
+| Eligibility filter | [`src/routing/protocol.py`](../../src/routing/protocol.py) | `_rebuild_graph_and_recompute` |
+| SPF + routing table | [`src/routing/protocol.py`](../../src/routing/protocol.py) | `_recompute_routing_table` |
+| Withdrawal flood | [`src/routing/protocol.py`](../../src/routing/protocol.py) | `_flood_withdrawal` |
+| Dijkstra | [`src/routing/graph.py`](../../src/routing/graph.py) | `NetworkGraph._shortest_paths` |
 
 ---
 

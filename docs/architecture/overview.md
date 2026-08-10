@@ -266,7 +266,7 @@ protocol; without it routing tables churn on every protocol tick.
 ## State Machine: SimState
 
 The web layer adds a lifecycle on top of the simulator core. It lives in
-`src/server/state.py`:
+[`src/server/state.py`](../../src/server/state.py):
 
 ```mermaid
 stateDiagram-v2

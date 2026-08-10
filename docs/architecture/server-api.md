@@ -3,8 +3,8 @@
 # Server API
 
 The FastAPI app exposes four REST families and one WebSocket. All routes
-live under `src/server/routes/` and share the application state attached
-to `request.app.state`:
+live under [`src/server/routes/`](../../src/server/routes) and share the
+application state attached to `request.app.state`:
 
 | Attribute | Type | Lifecycle |
 |---|---|---|
@@ -139,10 +139,10 @@ Returns an alphabetically-sorted list of bare filenames. Returns
 ```
 
 Names containing `/` or `\`, or equal to `""`, `"."`, or `".."` return
-`400`; a `.` inside a name is allowed (so `sample.yaml` loads normally).
-A well-formed name that does not exist in the samples directory returns
-`404`. Note that `GET /samples` lists files with both `.yaml` and `.yml`
-extensions.
+`400`; a `.` inside a name is allowed (so
+[`sample.yaml`](../../samples/sample.yaml) loads normally). A well-formed
+name that does not exist in the samples directory returns `404`. Note that
+`GET /samples` lists files with both `.yaml` and `.yml` extensions.
 
 ---
 
@@ -205,7 +205,7 @@ Patches are applied in **two phases**:
    (rare, since phase 1 validated everything), the patch is partially
    applied — that's a bug class the validator is meant to prevent.
 
-Status code rules (see `routes/sim.py`):
+Status code rules (see [`routes/sim.py`](../../src/server/routes/sim.py)):
 
 - `409` if the sim is not in `paused` state (true state-machine violation).
 - `400` for patch validation errors — these use pseudo-state names
@@ -338,10 +338,11 @@ or
 { "ok": false, "output": "unknown command: foo" }
 ```
 
-Dispatch lives in `server/command/dispatch.py`. The `cmd` field is
-split with `shlex.split`, the first token is the command name, the rest
-are arguments. The handler resolves to `server.command.host` (for hosts)
-or `server.command.router` (for routers) and calls
+Dispatch lives in
+[`server/command/dispatch.py`](../../src/server/command/dispatch.py). The
+`cmd` field is split with `shlex.split`, the first token is the command
+name, the rest are arguments. The handler resolves to `server.command.host`
+(for hosts) or `server.command.router` (for routers) and calls
 `cmd_<name>(device, args, as_obj)`.
 
 Supported commands per device kind:

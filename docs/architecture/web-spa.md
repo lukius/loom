@@ -3,7 +3,7 @@
 # Web SPA
 
 The SPA is plain ES modules — no framework, no bundler. The whole client
-is shipped from `web/` as static assets and loaded by `index.html`.
+is shipped from [`web/`](../../web) as static assets and loaded by `index.html`.
 
 ```
 web/
@@ -34,7 +34,7 @@ inter-module render calls.
 
 ## The event bus
 
-`state.js` exports a singleton:
+[`state.js`](../../web/state.js) exports a singleton:
 
 ```js
 export const bus = new EventTarget();
@@ -43,9 +43,9 @@ export const bus = new EventTarget();
 Every cross-component reaction flows through it. The contract has two
 sides:
 
-- **State mutations + cross-component re-renders → bus.** When `inspector.js`
+- **State mutations + cross-component re-renders → bus.** When [`inspector.js`](../../web/inspector.js)
   renames a device, it mutates `state` and dispatches
-  `state:topology-changed`; `canvas.js` and the inspector both
+  `state:topology-changed`; [`canvas.js`](../../web/canvas.js) and the inspector both
   re-render in response.
 - **Synchronous queries + DOM helpers → direct imports.** `canvas.lookupDeviceNode`,
   `utils.el`, `utils.escapeHtml` are imported directly because they're
@@ -57,7 +57,7 @@ module-to-module direct render calls.
 The SPA is a **consumer** of the backend's broadcast facts. The `sim:*`
 events listed below are translated from backend WS event kinds
 (`interface_state_changed`, `device_state_changed`, `ping_result`, etc.)
-by `sim.js _onEvent`. Naming backend wire shapes inside the SPA is fine
+by [`sim.js _onEvent`](../../web/sim.js). Naming backend wire shapes inside the SPA is fine
 and expected — the SPA is the primary subscriber of those facts.
 
 ### Event kinds
@@ -76,7 +76,7 @@ and expected — the SPA is the primary subscriber of those facts.
 | `sim:nat` | `sim` (from WS) | packet tooltip renderer | A router performed source or destination NAT on a packet. Outbound carries `{router, direction, original_src, rewritten_src, dst, flow_id, payload_id}`; inbound carries `{router, direction, rewritten_dst, original_dst, src, flow_id, payload_id}`. `flow_id` is the conversation UUID (same value as `flow` on the `packet` event, and same value the router's NAT table is keyed on). |
 | `sim:nat-table-changed` | `sim` (from WS) | `inspector` (NAT table panel) | A router's NAT table was mutated. Carries `{device}` in detail; the full snapshot is mirrored into `state.natTables[device]` for the inspector to render. |
 | `sim:neighbor-state-changed` | `state` (`applyNeighborStateChanged`, called from `sim._onEvent`) | `inspector` (Neighbors section re-render) | A router's neighbor adjacency state changed. Detail: `{device, iface, peer, state}`. |
-| `sim:router-intercept` | `sim` (from WS `router_intercept`) | `packets` (tooltip decoration) | A router answered an ICMP echo addressed to one of its own IPs. Detail: the raw WS event. Fired just before the matching reply packet so `packets.js` can cache by `payload_id` and annotate the reply tooltip. |
+| `sim:router-intercept` | `sim` (from WS `router_intercept`) | `packets` (tooltip decoration) | A router answered an ICMP echo addressed to one of its own IPs. Detail: the raw WS event. Fired just before the matching reply packet so [`packets.js`](../../web/packets.js) can cache by `payload_id` and annotate the reply tooltip. |
 | `sim:topology-changed` | `sim` (from WS `topology_changed`) | `sim` (self-listener triggers resync via `sim:topology-import-requested`) | A topology mutation was confirmed by the server. Detail: `{ops}`. Distinct from `state:topology-changed`, which reflects local mutations. |
 | `sim:packet-arrived` | `packets` (animation finish) | `packetstore` | A packet animation completed at its destination device. Detail: `{payloadId, device}`. Drives last-hop promotion in the store. |
 | `packets:list-changed` | `packetstore` (debounced ~50ms) | `packetspanel` | The store's in-flight or recent set mutated. Panel re-renders on receipt. |
@@ -86,9 +86,9 @@ and expected — the SPA is the primary subscriber of those facts.
 | `canvas:terminal-requested` | `canvas` (double-click on a device node) | `terminals` | User double-clicked a device; open or focus its terminal popup. Detail: `{name}`. |
 | `canvas:contextmenu-requested` | `canvas` (right-click on a node or canvas background) | `inspector` | Open the context menu at the pointer position. Detail: `{clientX, clientY, target, world}`. |
 | `canvas:contextmenu-close-requested` | `canvas` (pointerdown on background) | `inspector` | Dismiss the open context menu. |
-| `ui:import-requested` | `inspector` (Import toolbar button) | `app.js` | User clicked Import; `app.js` opens the file-picker dialog. |
-| `sim:yaml-export-requested` | `sim.onPrimary` | `app.js` | Sim needs current YAML to load before starting |
-| `sim:topology-import-requested` | `sim.onReset` | `app.js` | Sim received reset; refresh canvas from server YAML |
+| `ui:import-requested` | `inspector` (Import toolbar button) | [`app.js`](../../web/app.js) | User clicked Import; [`app.js`](../../web/app.js) opens the file-picker dialog. |
+| `sim:yaml-export-requested` | `sim.onPrimary` | [`app.js`](../../web/app.js) | Sim needs current YAML to load before starting |
+| `sim:topology-import-requested` | `sim.onReset` | [`app.js`](../../web/app.js) | Sim received reset; refresh canvas from server YAML |
 | `view:changed` | `canvas` | (none currently — kept for future) | Pan/zoom |
 
 The `sim:yaml-export-requested` event uses a synchronous request/response
@@ -205,7 +205,7 @@ uses for field highlighting:
 - **`isValidNetworkCidr(cidr)`** and **`isValidLinkCidr(cidr)`** for
   fabric CIDRs.
 
-These functions live in `utils.js` and are shared between the inspector's
+These functions live in [`utils.js`](../../web/utils.js) and are shared between the inspector's
 real-time field highlighting and the live-edit commit gate — so "valid
 enough to highlight green" and "valid enough to commit" are the same
 predicate.
@@ -337,7 +337,7 @@ The packet color/icon comes from the `type` field of the event:
 | `ping_reply` | Solid dot with incoming-arrow icon |
 | `unknown` | Solid dot, gray |
 
-Each packet animation also creates a small `<text class="packet-badge">` element sibling to the dot, displaying the numeric id (`#N` for user traffic, `#R*` for routing chatter) assigned by `packetstore.js`. The badge rides with the dot via the same `setPacketAnchor` write-step and is removed on `finish()`. Chatter badges only render when `<body data-chatter-badges="on">` is set, which the panel toggles on chatter-group expand/collapse and signals via `packets:chatter-badges-changed`.
+Each packet animation also creates a small `<text class="packet-badge">` element sibling to the dot, displaying the numeric id (`#N` for user traffic, `#R*` for routing chatter) assigned by [`packetstore.js`](../../web/packetstore.js). The badge rides with the dot via the same `setPacketAnchor` write-step and is removed on `finish()`. Chatter badges only render when `<body data-chatter-badges="on">` is set, which the panel toggles on chatter-group expand/collapse and signals via `packets:chatter-badges-changed`.
 
 ### LSA flooding is sequenced per hop
 
@@ -379,12 +379,12 @@ export const PacketStore = {
 - Chatter rows are keyed by a composite `"payload_id|srcDev|srcIface|network"` string so that N emissions of the same `RoutingMessage` (one per router interface) each get a distinct store row, badge, and hover-halo hit-target. A chatter row leaves the `chatter` map on its `sim:packet-arrived` and doesn't enter `recent`. Its lifetime is owned by the animation: when `PacketAnim` commits to animating an emission it dispatches `packets:chatter-pin`, which cancels the row's fallback timer so a re-flood deferred for several hops (rendering well past a fixed budget) keeps its `#R` id and panel row until it actually arrives. The fallback timer only reclaims rows whose packet never animates (e.g. muted) — a pin that arrives before the row is created is remembered so the timer is never started.
 - Counters reset to 1 on `sim:status-changed → idle`. They persist across pause/resume.
 - While paused, `_scheduleEmit()` is suppressed and chatter TTL deletions are deferred to `_pendingChatterDeletes`; both are flushed on resume so the panel stays frozen during a pause.
-- The NAT cache lives here so both the panel and the `packets.js` tooltip query the same source. `PacketStore.natFor(payloadId)` returns the list (or `[]`).
+- The NAT cache lives here so both the panel and the [`packets.js`](../../web/packets.js) tooltip query the same source. `PacketStore.natFor(payloadId)` returns the list (or `[]`).
 - `PacketStore.idFor(evt)` resolves the numeric id used as the on-canvas badge text.
 
 ## Packets panel (`web/packetspanel.js`)
 
-The panel listing in-flight packets and recent activity. Wires the `tb-packets` toolbar button and mounts the panel inside the `#inspector` slot. When open, sets `data-packets-open` on the inspector host; a CSS rule (`#inspector[data-packets-open] > *:not(#packets-panel) { display: none }`) hides every non-panel child — including children inserted by a later inspector re-render. Because `inspector.js` uses `innerHTML =` to re-render on `state:selection-changed` and `state:topology-changed` (which destroys the `#packets-panel` child), `packetspanel.js` subscribes to those same events and re-appends the panel when it is open. Open/closed state is persisted under `state.ui.packetsPanelOpen`.
+The panel listing in-flight packets and recent activity. Wires the `tb-packets` toolbar button and mounts the panel inside the `#inspector` slot. When open, sets `data-packets-open` on the inspector host; a CSS rule (`#inspector[data-packets-open] > *:not(#packets-panel) { display: none }`) hides every non-panel child — including children inserted by a later inspector re-render. Because `inspector.js` uses `innerHTML =` to re-render on `state:selection-changed` and `state:topology-changed` (which destroys the `#packets-panel` child), [`packetspanel.js`](../../web/packetspanel.js) subscribes to those same events and re-appends the panel when it is open. Open/closed state is persisted under `state.ui.packetsPanelOpen`.
 
 Three sections, rendered from `PacketStore`:
 
@@ -435,7 +435,7 @@ cache is re-derived via `recoverDownState()` (see below).
 
 Because WS events cannot be replayed, a fresh page load or a WS
 reconnect would leave the cache empty and the canvas un-grayed even
-though some devices may be halted or have down interfaces. `sim.js`
+though some devices may be halted or have down interfaces. [`sim.js`](../../web/sim.js)
 exports `recoverDownState()`, which is called fire-and-forget from
 `Sim.refreshState()` whenever the sim is found to be running:
 
@@ -529,7 +529,7 @@ When a `ping` command runs in a device terminal, the backend emits one
 _onEvent` translates each into a `sim:ping-result` bus event
 (`{device, dst, seq, rtt_ms}`).
 
-`terminals.js` subscribes to `sim:ping-result` and appends one text
+[`terminals.js`](../../web/terminals.js) subscribes to `sim:ping-result` and appends one text
 line per result to the **sender's** open terminal output area:
 
 ```
@@ -555,22 +555,22 @@ Exports two functions:
   refreshes the canvas via `hooks` (`ensurePositions`, `fitView`,
   `renderAll`). Used by the **Import** button and by `Sim.onReset`.
 
-The hooks parameter exists because `yaml-io.js` is intentionally
+The hooks parameter exists because [`yaml-io.js`](../../web/yaml-io.js) is intentionally
 DOM-free — it can be unit-tested without happy-dom. The hooks are
-injected by `app.js`.
+injected by [`app.js`](../../web/app.js).
 
 ## Testing (vitest)
 
 Each module has a co-located `*.test.js` exercising its public seams:
 
-- `utils.test.js` — `el`, `escapeHtml`, `toast`.
-- `state.test.js` — persistence, sample loading, mutation events.
-- `sim.test.js` — `RuntimeClient` (mocked fetch + WS), `Sim` state
+- [`utils.test.js`](../../web/utils.test.js) — `el`, `escapeHtml`, `toast`.
+- [`state.test.js`](../../web/state.test.js) — persistence, sample loading, mutation events.
+- [`sim.test.js`](../../web/sim.test.js) — `RuntimeClient` (mocked fetch + WS), `Sim` state
   transitions, `reconcilePatch` edge cases.
-- `canvas.test.js`, `inspector.test.js`, `packets.test.js` — DOM-level
+- [`canvas.test.js`](../../web/canvas.test.js), [`inspector.test.js`](../../web/inspector.test.js), [`packets.test.js`](../../web/packets.test.js) — DOM-level
   tests under happy-dom.
-- `packetstore.test.js` — store lifecycle, hop tracking, FIFO cap, chatter counter, NAT cache, debounced emission (uses `vi.useFakeTimers()` for the debounce check).
-- `packetspanel.test.js` — toolbar toggle + persistence, in-flight rendering, chatter section expand/collapse, recent section, hover halo.
+- [`packetstore.test.js`](../../web/packetstore.test.js) — store lifecycle, hop tracking, FIFO cap, chatter counter, NAT cache, debounced emission (uses `vi.useFakeTimers()` for the debounce check).
+- [`packetspanel.test.js`](../../web/packetspanel.test.js) — toolbar toggle + persistence, in-flight rendering, chatter section expand/collapse, recent section, hover halo.
 
 End-to-end tests under `e2e/spa.spec.js` run against a real Chromium and
 a real FastAPI server (booted by Playwright's `webServer`).
