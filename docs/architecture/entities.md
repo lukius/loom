@@ -440,9 +440,9 @@ Covered in detail in [`packets.md`](packets.md). The short version:
   [`entities/packet.py`](../../src/entities/packet.py).
 - `Datagram` — the L3 packet (TTL=64 by default, decremented per hop);
   canonical home is [`routing/messages.py`](../../src/routing/messages.py),
-  re-exported from `entities/packet.py`.
-- `Message` — the payload inside the datagram (`entities/packet.py`).
-  Subclasses:
+  re-exported from [`entities/packet.py`](../../src/entities/packet.py).
+- `Message` — the payload inside the datagram
+  ([`entities/packet.py`](../../src/entities/packet.py)). Subclasses:
   - `UserMessage(payload)` — user-level send.
   - `RoutingMessage` — abstract base in
     [`routing/lsa.py`](../../src/routing/lsa.py); concrete wire types are

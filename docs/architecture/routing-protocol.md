@@ -50,8 +50,9 @@ What it deliberately does **not** model (see [What's deliberately deferred](#wha
 
 ## Wire protocol
 
-All protocol messages are subclasses of `RoutingMessage` (in `lsa.py`), which
-itself subclasses `entities.packet.Message`. Two concrete message types exist:
+All protocol messages are subclasses of `RoutingMessage` (in
+[`lsa.py`](../../src/routing/lsa.py)), which itself subclasses
+`entities.packet.Message`. Two concrete message types exist:
 
 ### `LSA`
 
@@ -109,11 +110,11 @@ Hellos are **built per-interface** and are not shared across interfaces.
 
 ### `Datagram`
 
-Both LSAs and Hellos are transported inside a `Datagram` (in `messages.py`).
-`Datagram` is a `Packet` (carrier frame), not a `RoutingMessage`; it adds a
-per-emission source and destination address (fabric broadcast). The same `LSA`
-object may be carried by many `Datagram`s — one per outbound interface — without
-mutation.
+Both LSAs and Hellos are transported inside a `Datagram` (in
+[`messages.py`](../../src/routing/messages.py)). `Datagram` is a `Packet`
+(carrier frame), not a `RoutingMessage`; it adds a per-emission source and
+destination address (fabric broadcast). The same `LSA` object may be carried
+by many `Datagram`s — one per outbound interface — without mutation.
 
 ---
 
@@ -310,8 +311,8 @@ cadence rather than a tail of identical periodic floods.
 ### Graph eligibility filter
 
 The eligibility set is computed by `_rebuild_graph_and_recompute` in
-`protocol.py` using a three-state classifier based on the Hello-layer view of
-each origin:
+[`protocol.py`](../../src/routing/protocol.py) using a three-state
+classifier based on the Hello-layer view of each origin:
 
 | Origin classification | Eligibility | Rationale |
 |---|---|---|

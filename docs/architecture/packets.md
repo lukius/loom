@@ -166,8 +166,9 @@ and `send h2 "hello world"` yield a payload of `hello world`.
 
 ### `RoutingMessage`
 
-`RoutingMessage` is an abstract base (`src/routing/lsa.py`). Two
-concrete subclasses carry the protocol wire traffic: `LSA` and `Hello`.
+`RoutingMessage` is an abstract base
+([`src/routing/lsa.py`](../../src/routing/lsa.py)). Two concrete subclasses
+carry the protocol wire traffic: `LSA` and `Hello`.
 
 #### `LSA`
 

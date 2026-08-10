@@ -372,22 +372,22 @@ layer cleanly:
   and `Host._handle_message` call into it via `EventTracer.message_sent` /
   `message_received`, which fire *only* the callbacks registered for that
   exact message and broadcast nothing. Today its only consumers are the
-  tests (`test_packet_handling.py`, `test_forwarding.py`), which use it to
+  tests ([`test_packet_handling.py`](../../test/test_packet_handling.py),
+  [`test_forwarding.py`](../../test/test_forwarding.py)), which use it to
   assert on one message end-to-end without subscribing to the whole event
   stream; anything wanting a broadcast stream uses the WebSocket event bus
   instead.
-- **`Host.ping`** does its own thread synchronization: one
-  `threading.Event` per outstanding echo request in a `_pending_pings`
-  dict, woken by the matching `PingReply`. The key is
-  `(destination address, sequence number)`, so a host can have several
-  requests in flight to the same or different destinations and each reply
-  wakes only its own waiter. RTT comes back as
+- **`Host.ping`** does its own thread synchronization: one `threading.Event`
+  per outstanding echo request in a `_pending_pings` dict, woken by the
+  matching `PingReply`. The key is `(destination address, sequence number)`,
+  so a host can have several requests in flight to the same or different
+  destinations and each reply wakes only its own waiter. RTT comes back as
   `time.monotonic() - request_ts`. Note this is a narrower notion than the
   "flow" NAT keys on — `NATTable` uses the payload's `flow_key()`, which is
   stable across a NAT rewrite and shared by a request and its reply (see
   [`nat.md`](nat.md)).
-- **`Router._handle_forwarding`** does **not** raise on TTL expiry — it
-  logs a warning and returns `None`, silently dropping the packet.
+- **`Router._handle_forwarding`** does **not** raise on TTL expiry — it logs
+  a warning and returns `None`, silently dropping the packet.
 
 For the deep dives, jump to:
 

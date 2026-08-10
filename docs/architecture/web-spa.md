@@ -172,7 +172,7 @@ update lock states.
 
 ## Live topology editing (`applyEdit`)
 
-`inspector.js` routes topology mutations through `applyEdit(op)`, which
+[`inspector.js`](../../web/inspector.js) routes topology mutations through `applyEdit(op)`, which
 behaves differently depending on the current sim state:
 
 - **Running** — `applyEdit` POSTs the op immediately to `POST /sim/edit`
@@ -356,7 +356,7 @@ Two supporting rules keep this honest:
 - **The chatter animation throttle keys on message identity, not just `(device, network)`.** `_chatterAllowed` keys on `"device:network:payload_id"` so a router re-flooding several *distinct* LSAs out one interface in a convergence burst animates each one; only true repeats of the *same* message (the protocol's self-reflood back through the origin iface) are collapsed.
 - **Going idle clears the canvas.** The `sim:status-changed → idle` handler bumps `PacketAnim._gen`, resets the sequencer/throttle maps, and empties `#packet-layer`. The generation bump matters because a multi-phase broadcast fan-out in flight at stop time captures the generation when it starts and aborts its later phases if it changed — otherwise it would spawn fresh clones onto the just-cleared layer and leave them dangling.
 
-The NAT cache previously kept here moved to `packetstore.js` so the tooltip and the panel query the same source.
+The NAT cache previously kept here moved to [`packetstore.js`](../../web/packetstore.js) so the tooltip and the panel query the same source.
 
 ## Packet store (`web/packetstore.js`)
 
@@ -384,12 +384,12 @@ export const PacketStore = {
 
 ## Packets panel (`web/packetspanel.js`)
 
-The panel listing in-flight packets and recent activity. Wires the `tb-packets` toolbar button and mounts the panel inside the `#inspector` slot. When open, sets `data-packets-open` on the inspector host; a CSS rule (`#inspector[data-packets-open] > *:not(#packets-panel) { display: none }`) hides every non-panel child — including children inserted by a later inspector re-render. Because `inspector.js` uses `innerHTML =` to re-render on `state:selection-changed` and `state:topology-changed` (which destroys the `#packets-panel` child), [`packetspanel.js`](../../web/packetspanel.js) subscribes to those same events and re-appends the panel when it is open. Open/closed state is persisted under `state.ui.packetsPanelOpen`.
+The panel listing in-flight packets and recent activity. Wires the `tb-packets` toolbar button and mounts the panel inside the `#inspector` slot. When open, sets `data-packets-open` on the inspector host; a CSS rule (`#inspector[data-packets-open] > *:not(#packets-panel) { display: none }`) hides every non-panel child — including children inserted by a later inspector re-render. Because [`inspector.js`](../../web/inspector.js) uses `innerHTML =` to re-render on `state:selection-changed` and `state:topology-changed` (which destroys the `#packets-panel` child), [`packetspanel.js`](../../web/packetspanel.js) subscribes to those same events and re-appends the panel when it is open. Open/closed state is persisted under `state.ui.packetsPanelOpen`.
 
 Three sections, rendered from `PacketStore`:
 
 - **In flight — user traffic.** One row per `payload_id`. Expand for hop history + NAT lines.
-- **In flight — routing chatter.** Collapsed summary by default. Expanding flips `<body data-chatter-badges="on">` and dispatches `packets:chatter-badges-changed`, so `packets.js` adds `#R*` text labels to chatter dots that are already mid-tween. Collapsing reverses it. Each row in the expanded list represents one logical `RoutingMessage` (one `payload_id`), aggregated across all of its N interface emissions via `PacketStore.visibleChatterGroups()`. The emission count is shown as `×N`. Canvas dots retain their unique composite keys (`payload_id|dev|iface|net`); the group row carries `data-emission-keys` (space-separated list of composite keys) so hover halos every dot belonging to the group.
+- **In flight — routing chatter.** Collapsed summary by default. Expanding flips `<body data-chatter-badges="on">` and dispatches `packets:chatter-badges-changed`, so [`packets.js`](../../web/packets.js) adds `#R*` text labels to chatter dots that are already mid-tween. Collapsing reverses it. Each row in the expanded list represents one logical `RoutingMessage` (one `payload_id`), aggregated across all of its N interface emissions via `PacketStore.visibleChatterGroups()`. The emission count is shown as `×N`. Canvas dots retain their unique composite keys (`payload_id|dev|iface|net`); the group row carries `data-emission-keys` (space-separated list of composite keys) so hover halos every dot belonging to the group.
 - **Recent.** Last ten delivered user-traffic rows, FIFO. Routing chatter is excluded from this section to keep it readable.
 
 Hovering a row adds class `halo` to the corresponding canvas dot (matched by `dot.dataset.payloadId`). For chatter group rows, all emission dots (listed in `data-emission-keys`) are haloed simultaneously.
@@ -400,7 +400,7 @@ The panel re-renders on every `packets:list-changed` event; expensive layout is 
 
 ### The cache
 
-`state.js` maintains two transient fields tracking which routers and
+[`state.js`](../../web/state.js) maintains two transient fields tracking which routers and
 interfaces the backend has reported as non-operational:
 
 ```js
@@ -408,7 +408,7 @@ state.downInterfaces  // { [device]: Set<ifaceName> }
 state.haltedDevices   // { [device]: true }
 ```
 
-These are populated by two functions called directly by `sim.js _onEvent`:
+These are populated by two functions called directly by [`sim.js _onEvent`](../../web/sim.js):
 
 - **`applyInterfaceStateChanged(ev)`** — receives the translated
   `interface_state_changed` WS event (`{device, interface, up}`). Adds
@@ -449,7 +449,7 @@ exports `recoverDownState()`, which is called fire-and-forget from
 Transient errors (device gone, network blip) are silently skipped so a
 single unreachable device doesn't abort the sweep.
 
-`sim.js` also exports `recoverNATState()`, called alongside
+[`sim.js`](../../web/sim.js) also exports `recoverNATState()`, called alongside
 `recoverDownState()` from `Sim.refreshState()`. It iterates every
 router, fetches `GET /devices/{name}/nat-table`, and applies the result
 via `_applyNATTableChange` — the same path used by live `nat_table_changed`
@@ -458,7 +458,7 @@ Per-router fetch errors are silently skipped.
 
 ### Canvas gray-out
 
-`canvas.js` applies a `.down` CSS class to dim halted devices and
+[`canvas.js`](../../web/canvas.js) applies a `.down` CSS class to dim halted devices and
 downed interfaces in two ways:
 
 - **On full render** (`renderCanvas`): `isDeviceHalted` / `isInterfaceDown`
@@ -487,7 +487,7 @@ becomes a faint dashed line.
 ### Context menu (Halt / Crash / Resume)
 
 When the sim is running and the user right-clicks a router node,
-`inspector.js` adds admin actions to the context menu:
+[`inspector.js`](../../web/inspector.js) adds admin actions to the context menu:
 
 - **Halt router (graceful)** — POSTs `halt` via
   `RuntimeClient.deviceCommand(name, 'halt')`, which sends
@@ -572,5 +572,5 @@ Each module has a co-located `*.test.js` exercising its public seams:
 - [`packetstore.test.js`](../../web/packetstore.test.js) — store lifecycle, hop tracking, FIFO cap, chatter counter, NAT cache, debounced emission (uses `vi.useFakeTimers()` for the debounce check).
 - [`packetspanel.test.js`](../../web/packetspanel.test.js) — toolbar toggle + persistence, in-flight rendering, chatter section expand/collapse, recent section, hover halo.
 
-End-to-end tests under `e2e/spa.spec.js` run against a real Chromium and
+End-to-end tests under [`e2e/spa.spec.js`](../../e2e/spa.spec.js) run against a real Chromium and
 a real FastAPI server (booted by Playwright's `webServer`).
