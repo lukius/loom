@@ -31,7 +31,7 @@ Read the current topology as YAML.
 ```
 
 When a topology is loaded (`as_obj is not None`), returns the
-re-serialized live state via `SimState._dump_yaml()` — not the
+re-serialized live state via `SimState._dump_yaml()`: not the
 session file read verbatim. This means any runtime change made via
 `POST /sim/protocol_config` is reflected on the next fetch, because
 `_dump_yaml` reads the protocol timers from the live router objects and
@@ -64,7 +64,7 @@ Parse-then-commit via `SimState.load_from_text()`:
 3. On success, the temporary file is atomically moved to `session_path`
    (replacing any prior content), and the live AS is swapped in.
 
-Routers are built but not started — `start_routing=False` — so no
+Routers are built but not started, `start_routing=False`, so no
 routing events fire until `/sim/start` is called.
 
 **Responses**
@@ -78,8 +78,8 @@ routing events fire until `/sim/start` is called.
     "networks": ["lan1", "lan2", "lan3"]
   }
   ```
-- `400` `{"detail": "..."}` — invalid YAML or parse/validation failure.
-- `409` `{"detail": "stop the simulation before importing a topology"}` —
+- `400` `{"detail": "..."}`, invalid YAML or parse/validation failure.
+- `409` `{"detail": "stop the simulation before importing a topology"}`,
   sim is not `idle`.
 
 ---
@@ -180,7 +180,7 @@ next gate wait; in-flight frames stay queued.
 
 ### `POST /sim/resume`
 
-`paused → running`. Accepts an optional **patch** in the body:
+`paused → running`. Accepts an optional patch in the body:
 
 ```json
 { "patch": [
@@ -197,24 +197,24 @@ next gate wait; in-flight frames stay queued.
 ] }
 ```
 
-Patches are applied in **two phases**:
+Patches are applied in two phases:
 
 1. `_validate_op` is called for every op. Any failure raises `400
-   Bad Request` with the underlying reason — and **no op is applied**.
+   Bad Request` with the underlying reason; no op is applied.
 2. `_apply_op` is called for every op. If a phase-2 failure occurs
    (rare, since phase 1 validated everything), the patch is partially
-   applied — that's a bug class the validator is meant to prevent.
+   applied: that's a bug class the validator is meant to prevent.
 
 Status code rules (see [`routes/sim.py`](../../src/server/routes/sim.py)):
 
 - `409` if the sim is not in `paused` state (true state-machine violation).
-- `400` for patch validation errors — these use pseudo-state names
+- `400` for patch validation errors: these use pseudo-state names
   (`"network_in_use"`, `"duplicate_name"`, etc.) which the dispatcher
   maps to `400`.
 
 ### `POST /sim/edit`
 
-Apply a topology patch to a **running** simulation without pausing.
+Apply a topology patch to a running simulation without pausing.
 
 **Request**
 
@@ -249,10 +249,10 @@ On success, a `topology_changed` event is broadcast on the WebSocket (see
 
 **Status codes**
 
-- `200 {"state": "running"}` — patch applied.
-- `400 {"detail": "..."}` — one or more ops failed validation; no op
+- `200 {"state": "running"}`, patch applied.
+- `400 {"detail": "..."}`, one or more ops failed validation; no op
   was applied.
-- `409 {"detail": "invalid transition: <state> -> edit"}` — sim is not
+- `409 {"detail": "invalid transition: <state> -> edit"}`, sim is not
   in the `running` state (the message follows the standard
   `InvalidStateTransition` format).
 
@@ -274,7 +274,7 @@ reloaded). If already `idle`, returns `200` without error.
 
 ### `POST /sim/protocol_config`
 
-Change the routing-protocol timers **live** — no restart required.
+Change the routing-protocol timers live: no restart required.
 
 **Request**
 
@@ -305,12 +305,12 @@ The updated values are reflected in the next `GET /topology` response.
 ## Device routes: `/devices/{name}/...`
 
 Five endpoints, all device-scoped. Each begins with a device lookup
-under `_lock` via `SimState.device_under_lock()` — the `None`-check
+under `_lock` via `SimState.device_under_lock()`, the `None`-check
 and the `device()` call are atomic, so a concurrent `stop()` cannot
 null `_as` between them:
 
-- `409 {"detail": "no topology loaded"}` — `_as is None`.
-- `404 {"detail": "unknown device: <name>"}` — `device(name)` raised
+- `409 {"detail": "no topology loaded"}`, `_as is None`.
+- `404 {"detail": "unknown device: <name>"}`, `device(name)` raised
   `EntityException` (covers both `HostNotFoundException` and
   `RouterNotFoundException`).
 
@@ -352,19 +352,19 @@ Supported commands per device kind:
 | Host | `ifconfig`, `send <dst> <msg>`, `ping <dst> [-W <seconds>] [-c <n>] [-i <seconds>]`, `route`, `set_gateway <ip>`, `help` |
 | Router | `ifconfig [<iface> up\|down]`, `route`, `update_cost <iface> <cost>`, `neighbors`, `halt`, `resume`, `help` |
 
-**`ifconfig [<iface> up|down]` (router)**
+`ifconfig [<iface> up|down]` (router)
 
 With no arguments, shows all interfaces. With `<iface> up` or `<iface> down`, changes that interface's admin state: bringing it down stops traffic in both directions and triggers a graceful LSA re-flood omitting the link; bringing it back up re-announces the link immediately.
 
-**`halt` (router)**
+`halt` (router)
 
-Gracefully disables all interfaces — floods a withdrawal LSA so peers purge the router immediately — and marks the router as halted. No traffic is forwarded.
+Gracefully disables all interfaces, floods a withdrawal LSA so peers purge the router immediately, and marks the router as halted. No traffic is forwarded.
 
-**`resume` (router)**
+`resume` (router)
 
 Re-enables all previously halted interfaces and re-announces the router's links via a fresh LSA flood. Symmetrical to `halt`.
 
-**`ping <dst> [-W <seconds>] [-c <n>] [-i <seconds>]` (host)**
+`ping <dst> [-W <seconds>] [-c <n>] [-i <seconds>]` (host)
 
 Sends one `PingRequest` per probe. `-W` sets the per-probe timeout (default 3 s); `-c` sets the probe count (default 1, max 100); `-i` sets the inter-probe interval in seconds (default 1, like real ping; max 60; use `-i 0` for a back-to-back burst). The interval wait goes through the AS `PauseGate`, so it pauses with the simulation and aborts on stop. The endpoint returns only the summary; per-probe lines are broadcast as `ping_result` events. Output summary:
 
@@ -380,7 +380,7 @@ h2 (100.200.0.20): time=1.87 ms
 IP is what makes `ping 10.0.0.1` work even if no host has that name.
 
 Unknown commands return `{"ok": false, "output": "unknown command: ..."}`
-with HTTP 200 — failure is in the payload, not the status code.
+with HTTP 200, failure is in the payload, not the status code.
 
 ### `GET /devices/{name}/interfaces`
 
@@ -403,7 +403,7 @@ always `false` and `up` is always `true`.
 
 ### `POST /devices/{name}/fail`
 
-Simulate a crash — silently kills the device without a graceful LSA
+Simulate a crash: silently kills the device without a graceful LSA
 withdrawal. Peers learn the router is gone only via the Hello dead
 interval or LSA max-age expiry.
 
@@ -419,8 +419,8 @@ is failed.
 
 **Error codes**
 
-- `400` — device is a host (hosts cannot be failed).
-- `404` — unknown device name, or unknown interface name on the router.
+- `400`: device is a host (hosts cannot be failed).
+- `404`: unknown device name, or unknown interface name on the router.
 
 **Response**
 
@@ -429,7 +429,7 @@ is failed.
 ```
 
 This endpoint is not exposed as a terminal command. It is intended for
-fault-injection scenarios — test scripts and future automation.
+fault-injection scenarios: test scripts and future automation.
 
 ### `GET /devices/{name}/routes`
 
@@ -474,7 +474,7 @@ table state.
 
 The event stream.
 
-**Connection lifecycle**
+Connection lifecycle
 
 1. Client connects, server `accept()`s.
 2. Server subscribes a fresh `asyncio.Queue` to the `EventBus`.
@@ -503,7 +503,7 @@ The event stream.
 }
 ```
 
-`flow` is a UUID string — the conversation key reported by
+`flow` is a UUID string: the conversation key reported by
 `payload.flow_key()`. It is stable across NAT address rewrites and is
 shared between a `PingRequest` and its corresponding `PingReply` (the
 reply echoes the request's id). `payload` is a per-type summary dict:
@@ -632,7 +632,7 @@ fires from `Router._apply_source_nat` when a private-source packet
 crosses to a public egress. `direction: "inbound"` fires from
 `Router._reverse_inbound_nat` when a return packet's destination is
 rewritten back to the original private address. `flow_id` is
-`payload.flow_key()` — the conversation UUID shared between request and
+`payload.flow_key()`: the conversation UUID shared between request and
 reply. `payload_id` identifies this specific `Message` instance.
 
 ```json
@@ -682,20 +682,20 @@ of the reply `Message` instance.
 
 Notes:
 
-- `payload_id` identifies a **single direction** of a flow (a single
+- `payload_id` identifies a single direction of a flow (a single
   `Message` instance); a `PingRequest` and its `PingReply` carry
   different `payload_id`s.
 - `flow` in `packet` events is a UUID (the payload's own `flow_key()`).
   Request and reply share the same `flow` value.
 - `src.device` may be `null` if the interface has not yet been attached
-  to a device (a brief window during topology load — rare in normal
+  to a device (a brief window during topology load: rare in normal
   usage).
 
-**Overflow behavior**
+Overflow behavior
 
 Each subscribed queue is capped at 1000 events. On overflow the **oldest
 event is dropped** and `EventBus.overflow_count` is incremented. There
-is no overflow signal on the wire — a slow subscriber simply loses old
+is no overflow signal on the wire: a slow subscriber simply loses old
 events. Routing-table and sim-state events are emitted much less
 frequently and rarely overflow.
 
@@ -718,7 +718,7 @@ The same op set is accepted by `/sim/resume` (body `patch:`) and
 | `update_cost` | `router`, `iface`, `cost` | `cost` must be a positive integer |
 
 `add_host` and `add_router` interface entries each require exactly one of
-`network:` or `link:` — providing both or neither raises `invalid_patch`.
+`network:` or `link:`, providing both or neither raises `invalid_patch`.
 
 ---
 
@@ -762,3 +762,23 @@ curl -X POST http://127.0.0.1:8000/sim/edit \
      -H 'Content-Type: application/json' \
      -d '{"patch": [{"op": "update_cost", "router": "r1", "iface": "eth0", "cost": 99}]}'
 ```
+
+---
+
+## Code references
+
+| Concern | File | Symbol |
+|---|---|---|
+| App + lifespan wiring | [`src/server/app.py`](../../src/server/app.py) | `create_app` |
+| Lifecycle controller | [`src/server/state.py`](../../src/server/state.py) | `SimState` |
+| Start / pause / resume / stop | [`src/server/state.py`](../../src/server/state.py) | `SimState.start`, `pause`, `resume`, `stop` |
+| Live topology patching | [`src/server/state.py`](../../src/server/state.py) | `SimState.edit` |
+| Session file handling | [`src/server/persistence.py`](../../src/server/persistence.py) | none |
+| `/sim/*` routes | [`src/server/routes/sim.py`](../../src/server/routes/sim.py) | none |
+| `/topology*` routes | [`src/server/routes/topology.py`](../../src/server/routes/topology.py) | none |
+| `/devices/*` routes | [`src/server/routes/devices.py`](../../src/server/routes/devices.py) | none |
+| `/files/*` routes | [`src/server/routes/files.py`](../../src/server/routes/files.py) | none |
+| `/ws/events` | [`src/server/routes/ws.py`](../../src/server/routes/ws.py) | `events` |
+| Thread → asyncio bridge | [`src/server/events.py`](../../src/server/events.py) | `EventBus.emit` |
+| Terminal command dispatch | [`src/server/command/dispatch.py`](../../src/server/command/dispatch.py) | none |
+| Tests | [`test/test_server_commands.py`](../../test/test_server_commands.py), [`test/test_server_lifecycle.py`](../../test/test_server_lifecycle.py) | none |

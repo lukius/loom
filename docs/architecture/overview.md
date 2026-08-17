@@ -102,7 +102,7 @@ on how this scales.
 ## Data flow: sending a message
 
 Every example below runs on
-[`samples/sample.yaml`](../../samples/sample.yaml) — three LANs, one
+[`samples/sample.yaml`](../../samples/sample.yaml): three LANs, one
 point-to-point link, three routers, three hosts. Edge labels are the
 router-side interface and its cost:
 
@@ -134,7 +134,7 @@ graph LR
 ```
 
 `h1`'s gateway is `r1`, and `h3` sits on `lan3`, which `r1` is not attached
-to — so a `UserMessage` from `h1` to `h3` takes two router hops. Only the
+to, so a `UserMessage` from `h1` to `h3` takes two router hops. Only the
 router→fabric direction costs anything (see
 [`routing-protocol.md`](routing-protocol.md)), so Dijkstra puts the path
 over the point-to-point link at 10 (`r1.eth2` = 5 onto `p2p1`, then
@@ -177,16 +177,16 @@ sequenceDiagram
 
 Two things to notice:
 
-1. **Every packet event hits the WebSocket**, even when the SPA only cares
+1. Every packet event hits the WebSocket, even when the SPA only cares
    about a subset. Each `send_to` calls `EventTracer._broadcast`, which
    runs its subscribers inline on the calling worker thread and swallows
    (and logs) their exceptions, so one bad subscriber can't kill the rest.
    The `EventBus` subscriber hands the event straight to the asyncio loop,
    so a slow WebSocket client never stalls a simulator thread.
-2. **The forwarding decision happens entirely inside `Router`**. The
+2. The forwarding decision happens entirely inside `Router`. The
    fabric (`Network`/`Link`) only knows how to dispatch a frame to its
-   peers; it does no routing. `Router._handle_forwarding` — the self-arrow
-   above — decrements the TTL, runs longest-prefix match against its
+   peers; it does no routing. `Router._handle_forwarding`, the self-arrow
+   above, decrements the TTL, runs longest-prefix match against its
    `RoutingTable`, and hands the next frame to the chosen interface.
    `NullAddress` as the next hop means "directly connected": the frame
    goes to the packet's final destination, which is why only the last hop
@@ -207,7 +207,7 @@ When the simulation starts (or any router boots),
 `LinkStateProtocol._protocol_loop` ticks once immediately, then drives
 three independent jittered timers: `hello` (10 s), `lsa_refresh` (30 s),
 and `maxage_check` (same cadence as the refresh). Only the first two are
-live-tunable from the toolbar — `dead = 3 × hello` and
+live-tunable from the toolbar, `dead = 3 × hello` and
 `max_age = 2 × refresh` are derived from them (see
 [`routing-protocol.md`](routing-protocol.md) for details):
 
@@ -235,7 +235,7 @@ sequenceDiagram
 
 `_emit_lsa_on_up_interfaces` rebuilds the local LSA from scratch on every
 tick: it walks the router's interfaces, skips the down ones, and reads
-`iface.cost()` as it goes. So yes — a cost that changed since the last tick
+`iface.cost()` as it goes. So yes: a cost that changed since the last tick
 (or an interface that went up or down) is exactly what makes the freshly
 built LSA differ from the installed one, which is what
 `InstallResult.changed_graph()` reports and what triggers the local SPF
@@ -244,12 +244,12 @@ sequence number and recomputes nothing. Cost edits don't wait for the next
 tick either: `local_links_changed()` calls `_emit_lsa_on_up_interfaces`
 immediately and pushes the periodic deadline back.
 
-The flood is **receiver-side deduplicated** per origin router: `LSDB.install()`
+The flood is receiver-side deduplicated per origin router: `LSDB.install()`
 tracks the last seen sequence number for each origin and drops messages with
 `seq <= last_seen_seq`. New messages are re-flooded out of **every interface
 except** the one they arrived on.
 
-Convergence in the other direction — a router that stops advertising —
+Convergence in the other direction, a router that stops advertising,
 needs no message at all. That is what the third timer is for:
 `maxage_check` runs `_sweep_dead_and_expired`, which drops neighbors not
 heard from within `dead` and purges LSAs older than `max_age`, recomputing
@@ -257,10 +257,10 @@ if either removed something. A crashed router floods no withdrawal, so
 this sweep is the only thing that retires it from its peers' graphs; a
 graceful halt merely gets there sooner by flooding one.
 
-Routing tables are only recomputed when the graph actually changes — every
+Routing tables are only recomputed when the graph actually changes: every
 caller guards its `_rebuild_graph_and_recompute()` call on
 `InstallResult.changed_graph()` (`_rebuild_graph_and_recompute` itself
-always recomputes once entered). **Preserve that guard** when editing the
+always recomputes once entered). Preserve that guard when editing the
 protocol; without it routing tables churn on every protocol tick.
 
 ## State Machine: SimState
@@ -287,12 +287,12 @@ Rules enforced by `SimState`:
 
 - **`load_from_session`** stops the previous AS (if any) and parses the
   session file with `start_routing=False`, so routers exist but their
-  protocol threads are not started — they wait for `start()`.
+  protocol threads are not started: they wait for `start()`.
 - **`start`** resumes the gate and starts every router's protocol thread.
 - **`pause`** pauses the gate. In-flight frames remain queued; threads
   block on `wait_or_stop`. No frames are lost.
 - **`resume`** applies an optional patch (`add_*` / `remove_*` /
-  `update_cost`) atomically — two phases, **validate all → apply all** —
+  `update_cost`) atomically, two phases, validate all → apply all,
   and re-resumes the gate.
 - **`edit`** applies the same kind of patch to a *running* sim, under the
   same two phases. It is the only one of the two that emits
@@ -308,7 +308,7 @@ does to the worker threads.
 
 ## Event Plumbing
 
-Events flow **out** of the simulator core via the `EventTracer`
+Events flow out of the simulator core via the `EventTracer`
 class-level pub/sub bus:
 
 ```mermaid
@@ -333,33 +333,33 @@ sequenceDiagram
 The two halves are joined by a single line in the app's lifespan handler:
 `EventTracer.subscribe(app.state.event_bus.emit)`. The `EventBus` is
 nothing more than one `EventTracer` subscriber, registered at startup and
-unsubscribed at shutdown — which is what lets the simulator core stay
+unsubscribed at shutdown, which is what lets the simulator core stay
 unaware that a web layer exists. (`sim_state` is the one kind that skips
 this path: the `/sim/*` handlers already run on the loop, so they put it
 straight onto the bus.)
 
 `EventBus` is a thread-safe fan-out: every WebSocket connection has its
-own `asyncio.Queue`, capped at 1000 events. On overflow the **oldest**
+own `asyncio.Queue`, capped at 1000 events. On overflow the oldest
 event is dropped and `overflow_count` increments. The bus is created at
 app startup and shared across the lifespan of the process.
 
 Event kinds currently emitted:
 
-- `packet` — every frame leaving an interface (`Interface.send_to`)
-- `routing_table_changed` — every recompute (`LinkStateProtocol._recompute_routing_table`)
-- `sim_state` — every state transition (emitted by the `/sim/*` route
+- `packet`, every frame leaving an interface (`Interface.send_to`)
+- `routing_table_changed`, every recompute (`LinkStateProtocol._recompute_routing_table`)
+- `sim_state`, every state transition (emitted by the `/sim/*` route
   handlers after `SimState` accepts the transition, not by `SimState` itself)
-- `device_state_changed` — router halted or resumed (`Router.halt` / `Router.resume`)
-- `interface_state_changed` — interface brought up or down (`Interface._emit_state`)
-- `lsdb_changed` — the link-state protocol rewrote its view of the routing
+- `device_state_changed`, router halted or resumed (`Router.halt` / `Router.resume`)
+- `interface_state_changed`, interface brought up or down (`Interface._emit_state`)
+- `lsdb_changed`, the link-state protocol rewrote its view of the routing
   table (`LinkStateProtocol._emit_rule_change_events`, alongside
   `routing_table_changed`); emitted but currently unconsumed by the SPA
-- `neighbor_state_changed` — adjacency state changed (`LinkStateProtocol._broadcast_neighbor_state_changed`)
-- `ping_result` — one ICMP echo reply or timeout (`Host.ping`)
-- `topology_changed` — topology mutated via a live edit (`SimState.edit`)
-- `nat` — a router performed source or destination NAT (`Router._apply_source_nat` / `_reverse_inbound_nat`)
-- `nat_table_changed` — a router's NAT table was mutated (`Router._apply_source_nat`)
-- `router_intercept` — a router answered an ICMP echo addressed to one of its own IPs (`Router._reply_to_ping`)
+- `neighbor_state_changed`, adjacency state changed (`LinkStateProtocol._broadcast_neighbor_state_changed`)
+- `ping_result`, one ICMP echo reply or timeout (`Host.ping`)
+- `topology_changed`, topology mutated via a live edit (`SimState.edit`)
+- `nat`, a router performed source or destination NAT (`Router._apply_source_nat` / `_reverse_inbound_nat`)
+- `nat_table_changed`, a router's NAT table was mutated (`Router._apply_source_nat`)
+- `router_intercept`, a router answered an ICMP echo addressed to one of its own IPs (`Router._reply_to_ping`)
 
 ## What's Not in This Diagram
 
@@ -383,20 +383,20 @@ layer cleanly:
   so a host can have several requests in flight to the same or different
   destinations and each reply wakes only its own waiter. RTT comes back as
   `time.monotonic() - request_ts`. Note this is a narrower notion than the
-  "flow" NAT keys on — `NATTable` uses the payload's `flow_key()`, which is
+  "flow" NAT keys on: `NATTable` uses the payload's `flow_key()`, which is
   stable across a NAT rewrite and shared by a request and its reply (see
   [`nat.md`](nat.md)).
-- **`Router._handle_forwarding`** does **not** raise on TTL expiry — it logs
+- **`Router._handle_forwarding`** does not raise on TTL expiry: it logs
   a warning and returns `None`, silently dropping the packet.
 
 For the deep dives, jump to:
 
-- [`entities.md`](entities.md) — every class in `src/entities/`.
-- [`packets.md`](packets.md) — `Frame`, `Datagram`, and the `Message` family.
-- [`routing-protocol.md`](routing-protocol.md) — flooding + Dijkstra.
-- [`policy.md`](policy.md) — what an LSA advertises, and to whom.
-- [`nat.md`](nat.md) — translation at the private↔public boundary.
-- [`concurrency.md`](concurrency.md) — threads, gates, queues.
-- [`parser.md`](parser.md) — YAML → AS.
-- [`server-api.md`](server-api.md) — HTTP / WS reference.
-- [`web-spa.md`](web-spa.md) — the SPA module map.
+- [`entities.md`](entities.md): every class in `src/entities/`.
+- [`packets.md`](packets.md): `Frame`, `Datagram`, and the `Message` family.
+- [`routing-protocol.md`](routing-protocol.md): flooding + Dijkstra.
+- [`policy.md`](policy.md): what an LSA advertises, and to whom.
+- [`nat.md`](nat.md): translation at the private↔public boundary.
+- [`concurrency.md`](concurrency.md): threads, gates, queues.
+- [`parser.md`](parser.md): YAML → AS.
+- [`server-api.md`](server-api.md): HTTP / WS reference.
+- [`web-spa.md`](web-spa.md): the SPA module map.

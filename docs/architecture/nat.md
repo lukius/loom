@@ -1,11 +1,10 @@
 > 🌐 **English** · [Español](../es/architecture/nat.md)
 
-# NAT design
+# Network Address Translation (NAT)
 
-loom's NAT is a stateful, per-router, source-NAT (a.k.a. **NAPT/PAT** in
-the real world, minus L4 ports — see "Conversation key" below). Every
+loom's NAT is a stateful, per-router, source-NAT. Every
 router carries its own `NATTable`; the translation kicks in at the
-private↔public boundary on the **forwarding path**, not at the receiving
+private↔public boundary on the forwarding path, not at the receiving
 host.
 
 See also: [routing-protocol.md](routing-protocol.md) (private-prefix
@@ -37,10 +36,10 @@ value = original_src
 Two events fire on the EventTracer bus immediately after the table
 mutation:
 
-- `nat` (`direction=outbound`) — carries `{router, original_src,
+- `nat` (`direction=outbound`): carries `{router, original_src,
   rewritten_src, dst, flow_id, payload_id}`. Subscribers receive this
   event for each outbound translation.
-- `nat_table_changed` — carries `{device, entries}` (the full snapshot
+- `nat_table_changed`: carries `{device, entries}` (the full snapshot
   in LRU order). Subscribers receive this event to update their view
   of the NAT table.
 
@@ -52,15 +51,15 @@ keeps tenant traffic from leaking onto another tenant's LAN.
 ### Direction matters: only inside-initiated flows are translated
 
 Source-NAT belongs to conversations the private side opened. When a
-router carries a packet the *other* way — public source, private egress
-— it records the conversation via `NATTable.note_inbound_flow(flow_id)`,
+router carries a packet the *other* way, public source, private egress
+it records the conversation via `NATTable.note_inbound_flow(flow_id)`,
 and `_handle_forwarding` then skips translation for that flow's return
 leg (`NATTable.is_inbound_flow`).
 
 Without that distinction, a ping from a public host to a private one on
 the same router's other LAN comes back rewritten to the router's own
 address. The sender is waiting on a reply from the host it addressed,
-discards the one it gets, and reports a timeout — while the packets
+discards the one it gets, and reports a timeout, even though the packets
 visibly completed the round trip. The inbound-flow set is bounded and
 LRU-evicted like the translation table, and payloads without a
 `flow_key` (`flow_id=None`) are not tracked, so they keep the plain
@@ -68,12 +67,12 @@ address-class behavior.
 
 The tracking is per-router, so a reply that leaves through a *different*
 NAT router than the request entered is translated as a new outbound
-flow — the same asymmetric-routing caveat real stateful NAT has.
+flow: the same asymmetric-routing caveat real stateful NAT has.
 
 ## Inbound translation (`Router.handle_packet`)
 
 On the reply path the public destination doesn't know the original
-private address — it sees and replies to the NAT egress address. When
+private address: it sees and replies to the NAT egress address. When
 a packet arrives whose destination equals one of the router's public
 interface addresses, the router looks up
 `(rewritten_dst, src, flow_id)` in its NAT table. On a hit, it rewrites
@@ -82,7 +81,7 @@ forwarding. On a miss, the packet falls through to `_handle_message`
 (it's actually addressed to the router itself, e.g. a routing message
 broadcast). An `inbound` `nat` event fires on a hit so subscribers can observe the
 reverse-translation. There is no second `nat_table_changed`
-on the reply — the table state doesn't change on inbound lookup.
+on the reply: the table state doesn't change on inbound lookup.
 
 ## The conversation key (`flow_id`)
 
@@ -92,11 +91,11 @@ don't collapse into a single entry. The discriminator is the
 **conversation UUID**, computed as:
 
 - For a `Message` with its own `flow_key()` (the default),
-  `str(self._id)` — a `uuid.uuid4()` assigned at construction time.
-- For a `PingReply`, `str(request_id)` — the originating `PingRequest`'s
+  `str(self._id)`: a `uuid.uuid4()` assigned at construction time.
+- For a `PingReply`, `str(request_id)`: the originating `PingRequest`'s
   UUID, echoed by `Host._handle_message` so the reverse lookup finds the
   forward registration.
-- For arbitrary payloads with no `flow_key`, `None` — a single shared
+- For arbitrary payloads with no `flow_key`, `None`: a single shared
   slot per `(rewritten_src, original_dst)`, fine for fire-and-forget.
 
 This is the *same value* carried as the `flow` field on `packet` events
@@ -108,7 +107,7 @@ on `nat` events. Three distinct concerns, one source of truth.
 `NATTable` is bounded (default 1024 entries). When register would
 exceed capacity, the least-recently-used entry is evicted. A
 `register` of an existing key refreshes its LRU position. There is
-no time-based expiry — entries persist until eviction. Short-lived
+no time-based expiry: entries persist until eviction. Short-lived
 flows (ping) and long-lived ones (a UserMessage stream) compete on the
 same LRU; long sims don't grow the table unboundedly.
 
@@ -129,12 +128,12 @@ the user-facing description. The detection logic lives in
 
 ## Deliberate omissions
 
-`loom`'s NAT models address-translation mechanics — the rewrite, the
+`loom`'s NAT models address-translation mechanics: the rewrite, the
 flow table, and the public/private boundary detection. It deliberately
 omits behaviour whose role is operational rather than conceptual:
 
 - **Time-based ageing.** Real NAT applies per-protocol idle timeouts
-  (TCP much longer than UDP — typical defaults are 24h vs 30s) so
+  (TCP much longer than UDP: typical defaults are 24h vs 30s) so
   that abandoned or half-open flows free their table entries on their
   own. `loom`'s `NATTable` evicts only via LRU at the
   `max_entries` boundary. Ageing is the most operationally consequential
@@ -151,5 +150,22 @@ omits behaviour whose role is operational rather than conceptual:
   for the topologies `loom` targets.
 
 If you need to teach or troubleshoot NAT-ageing behaviour, ns-3 or a
-real router are the right tools — see the
+real router are the right tools: see the
 [scope statement](../user-guide/getting-started.md#scope).
+
+---
+
+## Code references
+
+| Concern | File | Symbol |
+|---|---|---|
+| Per-flow translation table | [`src/entities/nat.py`](../../src/entities/nat.py) | `NATTable` |
+| Register / look up a translation | [`src/entities/nat.py`](../../src/entities/nat.py) | `NATTable.register`, `NATTable.lookup` |
+| Inbound-flow bookkeeping | [`src/entities/nat.py`](../../src/entities/nat.py) | `NATTable.note_inbound_flow`, `is_inbound_flow` |
+| Table snapshot for subscribers | [`src/entities/nat.py`](../../src/entities/nat.py) | `NATTable.snapshot` |
+| Outbound rewrite (egress) | [`src/entities/router.py`](../../src/entities/router.py) | `Router._apply_source_nat` |
+| Inbound reverse (ingress) | [`src/entities/router.py`](../../src/entities/router.py) | `Router._reverse_inbound_nat` |
+| Table accessor | [`src/entities/router.py`](../../src/entities/router.py) | `Router.nat_table` |
+| Flow discriminator | [`src/entities/packet.py`](../../src/entities/packet.py) | `Message.flow_key` |
+| Private-range definitions | [`src/routing/policy.py`](../../src/routing/policy.py) | `RFC1918_OUTBOUND` |
+| Tests | [`test/test_nat.py`](../../test/test_nat.py) | none |

@@ -4,7 +4,7 @@
 
 The simulator's domain model lives in
 [`src/entities/`](../../src/entities). Every class here is a normal Python
-object — there is no ORM, no schema, no framework. `Internet` is the root:
+object: there is no ORM, no schema, no framework. `Internet` is the root:
 it owns the `PauseGate` and the `EventTracer`, and holds one or more `AS`
 instances, each of which owns the devices and fabrics.
 
@@ -25,7 +25,7 @@ NullAddress              (constant)        ── "directly connected" sentinel
 NATTable                 (nat.py)          ── per-router flow table (see nat.md)
 ```
 
-The rest of this document walks each class in turn — purpose, key methods,
+The rest of this document walks each class in turn: purpose, key methods,
 invariants, and the traps you'll hit if you ignore them.
 
 ---
@@ -42,7 +42,7 @@ class Entity:
 ```
 
 The simplest possible base class. Just gives everything a name. Don't
-extend it with metaclass magic — half the codebase assumes
+extend it with metaclass magic: half the codebase assumes
 `obj.name()` is cheap and never raises.
 
 ---
@@ -52,17 +52,17 @@ extend it with metaclass magic — half the codebase assumes
 An autonomous system. `Internet` (same file) is the actual root container:
 it holds `_ases` keyed by short name, creates the process-wide
 `EventTracer`, and owns the `PauseGate` that `add_as` then shares into
-every AS. The model is multi-AS by construction — the YAML's
-`autonomous_systems:` mapping may carry several — but every consumer today
-(the server, the tests) goes through `Internet.single_as()`, which raises
-unless there is exactly one. That unwrap is explicitly marked as
+every AS. The model is multi-AS by construction: the YAML's
+`autonomous_systems:` mapping may carry several. Every consumer today
+(the server, the tests) nonetheless goes through `Internet.single_as()`,
+which raises unless there is exactly one. That unwrap is explicitly marked as
 transitional for the BGP work.
 
 An `AS` owns:
 
-- `_networks`, `_links`, `_routers`, `_hosts` — dicts keyed by entity
+- `_networks`, `_links`, `_routers`, `_hosts`: dicts keyed by entity
   name.
-- `_gate: PauseGate` — the **single** pause gate that every worker thread
+- `_gate: PauseGate`, the single pause gate that every worker thread
   in this AS blocks on.
 
 Lookup methods:
@@ -73,12 +73,12 @@ Lookup methods:
 | `link(name)` | Raises `LinkNotFoundException` |
 | `router(name)` | Raises `RouterNotFoundException` |
 | `host(name)` | Raises `HostNotFoundException` |
-| `device(name)` | Tries `host(name)`, falls back to `router(name)` — used by the API's `/devices/{name}` routes |
+| `device(name)` | Tries `host(name)`, falls back to `router(name)`; used by the API's `/devices/{name}` routes |
 
 Mutation:
 
-- `add_network`, `add_link`, `add_host` — straightforward.
-- `add_router(r)` — also injects `r._as_gate = self._gate` so the router's
+- `add_network`, `add_link`, `add_host`: straightforward.
+- `add_router(r)`: also injects `r._as_gate = self._gate` so the router's
   protocol thread gates on the same `PauseGate` as the rest.
 
 Lifecycle:
@@ -96,7 +96,7 @@ instantiate in a unit test.
 
 `BaseAddress` parses dotted-quad into `self._octets`. `Address` is just
 the host form; `NetworkAddress(address)` parses `"a.b.c.d/M"` and
-**canonicalizes** the octets — the host bits are zeroed at construction:
+**canonicalizes** the octets, the host bits are zeroed at construction:
 
 ```python
 NetworkAddress("10.1.2.3/24")  # canonicalized to 10.1.2.0/24
@@ -104,22 +104,22 @@ NetworkAddress("10.1.2.3/24")  # canonicalized to 10.1.2.0/24
 
 Important methods on `Address`:
 
-- `is_private()` — `True` iff the address falls within an RFC 1918 range
+- `is_private()`: `True` iff the address falls within an RFC 1918 range
   (10/8, 172.16/12, 192.168/16).
 
 Important methods on `NetworkAddress`:
 
-- `mask()` — the prefix length (`int`).
-- `matches(addr)` / `contains(addr)` — `True` iff `addr` is inside this
+- `mask()`: the prefix length (`int`).
+- `matches(addr)` / `contains(addr)`: `True` iff `addr` is inside this
   prefix. (They're identical; both names exist.)
-- `broadcast()` — returns the broadcast `Address`
+- `broadcast()`: returns the broadcast `Address`
   (`NetworkAddress("10.1.2.0/24").broadcast()` → `Address("10.1.2.255")`).
-- `is_private()` — same RFC 1918 test, applied to the network address
+- `is_private()`: same RFC 1918 test, applied to the network address
   itself.
 
-`NullAddress = Address('0.0.0.0')` is a **module-level sentinel** used by
+`NullAddress = Address('0.0.0.0')` is a module-level sentinel used by
 `RoutingTable` to mean "this destination is on a directly connected
-network — deliver to `packet.destination()` itself, no next-hop
+network: deliver to `packet.destination()` itself, no next-hop
 indirection." Don't compare with `is`; the `Address.__eq__` operator
 handles it.
 
@@ -130,7 +130,7 @@ handles it.
 Common base for `Host` and `Router`. Holds `self._interfaces` keyed by
 `iface.name()` (within a device, names like `eth0` are unique).
 
-Key method: **`handle_packet(packet, interface)`** — called by the
+Key method: **`handle_packet(packet, interface)`**, called by the
 `Interface`'s packet loop. It drops packets arriving on an
 admin-down interface, then decides whether the packet is *for me*
 or needs forwarding:
@@ -148,14 +148,14 @@ def handle_packet(self, packet, interface):
         self._handle_forwarding(packet)
 ```
 
-The `own_addresses` set matches the destination against **any** of the
-device's interfaces, not just the one the packet arrived on — this is how
+The `own_addresses` set matches the destination against any of the
+device's interfaces, not just the one the packet arrived on: this is how
 a `PingRequest` addressed to a router's far-side IP lands in
 `_handle_message` rather than being forwarded back toward itself.
 The broadcast-address check lets routing-protocol floods land in
 `_handle_message` instead of being recursively forwarded.
 
-Equality is by `(class, name)` — `Host('h1') != Router('h1')`.
+Equality is by `(class, name)`: `Host('h1') != Router('h1')`.
 
 ---
 
@@ -184,12 +184,12 @@ responsibilities:
    [`nat.md`](nat.md) for the translation rules and
    [`server-api.md`](server-api.md#ws-wsevents) for the event shapes.
 
-3. **Speak the routing protocol.** `_handle_routing_message` iterates
+3. Speak the routing protocol. `_handle_routing_message` iterates
    `self.protocols()` (each a `LinkStateProtocol`) and calls
    `handle_incoming_message`. `PingRequest` addressed to any of the
    router's own interface IPs is answered by `_reply_to_ping`, which
    emits a `router_intercept` event and sends a `PingReply` back.
-   `PingReply` is silently dropped — routers do not initiate pings.
+   `PingReply` is silently dropped: routers do not initiate pings.
 
 4. **Run the protocol.** `start()` and `stop()` iterate `self.protocols()`
    and toggle each protocol's thread. `halt(graceful=True)` floods a
@@ -214,20 +214,21 @@ Accessors `next_hop()` and `interface()` return `None` on a miss.
 
 ## `Host` (`host.py`)
 
-A `NetworkDevice` with **exactly one** `Interface` and an optional
-gateway `Address`. Cannot forward — `_handle_forwarding` raises.
+A `NetworkDevice` with exactly one `Interface` and an optional
+gateway `Address`. Cannot forward: `_handle_forwarding` raises.
 
 The interesting methods:
 
-- **`send_message_to(msg, addr)`** — wraps `msg` in a `Datagram` with
+- **`send_message_to(msg, addr)`**: wraps `msg` in a `Datagram` with
   TTL=64, picks the L2 destination (the destination itself if on the same
   network, otherwise the gateway), pushes to the interface, and emits
   `EventTracer.message_sent`.
-- **`set_gateway(addr)`** — must be inside the host's network, else
+- **`set_gateway(addr)`**: must be inside the host's network, else
   `ValueError`. The terminal's `set_gateway` command routes through here.
-- **`ping(dst_addr, timeout=3.0)`** — synchronous from the caller's view:
-  1. Allocates a `(dst, seq)` key — one per outstanding request, not per
-     conversation — registers a `threading.Event`, sends a `PingRequest`.
+- **`ping(dst_addr, timeout=3.0)`**, synchronous from the caller's view:
+  1. Allocates a `(dst, seq)` key (one per outstanding request, not per
+     conversation), registers a `threading.Event`, and sends a
+     `PingRequest`.
   2. Calls `evt.wait(timeout)`.
   3. When the matching `PingReply` arrives, `_handle_message` records
      `rtt = time.monotonic() - request_ts` and sets the event.
@@ -237,7 +238,7 @@ The interesting methods:
   That state lives in `_pending_pings` and `_ping_results`, both protected
   by `_ping_lock`. The `_ping_seq` is an `itertools.count` so sequence
   numbers monotonically increase across calls. Note this key is a narrower
-  thing than the NAT table's flow, which is the payload's `flow_key()` —
+  thing than the NAT table's flow, which is the payload's `flow_key()`:
   see [`packets.md`](packets.md).
 
 If a host has no gateway and the destination is off-link, `send_message_to`
@@ -252,10 +253,10 @@ or `Link`). It owns:
 
 - `_address`, `_cost`, `_net` (the fabric), `_device` (set later by the
   device).
-- `_in_queue` — frames coming **in** from the fabric.
-- `_out_queue` — frames going **out** to the fabric (set by the fabric on
+- `_in_queue`: frames coming in from the fabric.
+- `_out_queue`: frames going out to the fabric (set by the fabric on
   `add_interface`).
-- `_pkt_thread` — daemon that drains `_in_queue` and dispatches to
+- `_pkt_thread`: daemon that drains `_in_queue` and dispatches to
   `_device.handle_packet`.
 
 Lifecycle on the inbound thread (`_pkt_loop`):
@@ -269,8 +270,8 @@ Lifecycle on the inbound thread (`_pkt_loop`):
    Exceptions are caught and logged so the loop survives bad frames.
 
 `_await_gate_running()` polls `wait_for_gate(self._gate, self._stop_event)`:
-returns `True` to proceed, `False` to exit. This is **dequeue-then-gate** —
-not gate-then-dequeue — so a frame that's already been dequeued is processed
+returns `True` to proceed, `False` to exit. This is **dequeue-then-gate**,
+not gate-then-dequeue, so a frame that's already been dequeued is processed
 when the gate re-opens rather than re-queued.
 
 Lifecycle on the outbound side (`send_to`):
@@ -285,10 +286,10 @@ def send_to(self, datagram: Datagram, dst_addr: Address):
 ```
 
 The event dict includes both a **`payload_id`** (uniquely identifies one
-Message instance — one direction) and a **`flow`** key (the end-to-end
+Message instance: one direction) and a **`flow`** key (the end-to-end
 conversation identifier reported by the payload via `Message.flow_key()`).
-The flow is a **stable conversation UUID** keyed on the payload — not on
-packet sequence numbers and not on the packet's address pair — so it
+The flow is a stable conversation UUID keyed on the payload, not on
+packet sequence numbers and not on the packet's address pair, so it
 survives NAT rewrites of src/dst as the packet crosses private↔public
 boundaries. `PingReply` overrides `flow_key` to echo its originating
 `PingRequest`'s id, so a single ping (request + reply, even across NAT)
@@ -299,7 +300,7 @@ hosts with colliding sequence numbers each get their own NAT entry.
 Three fields carry the L2/L3 split that the fabrics' peer-resolution code
 depends on:
 
-- `frame.source()` is **always** the interface's own address — the L2
+- `frame.source()` is always the interface's own address: the L2
   hop, not the original L3 source.
 - `frame.destination()` is the L2 next-hop, not the L3 destination.
 - `frame.payload() = Datagram` carries the real L3 source / destination.
@@ -307,25 +308,25 @@ depends on:
 This is why `Network._dispatch_unicast` keys on `dst_addr` (which is the
 L2 next-hop) and `Link._dispatch_packet` keys on "not the source"
 (structural peer resolution, immune to IP collisions across different
-links — see [`Link._dispatch_packet`](../../src/entities/link.py)).
+links: see [`Link._dispatch_packet`](../../src/entities/link.py)).
 
 ---
 
-## `_FabricBase` (`_fabric.py`) — private
+## `_FabricBase` (`_fabric.py`), private
 
 Shared base for `Network` and `Link`. Owns:
 
-- `_interfaces` — keyed by **interface IP address**, not by `iface.name()`.
+- `_interfaces`: keyed by interface IP address, not by `iface.name()`.
   Interface names are only unique per-device (`r1.eth0` and `r2.eth0`
   both sit on the same LAN); keying by name would clobber siblings.
-- `_in_queue` — frames arriving from any attached interface's outbound
+- `_in_queue`: frames arriving from any attached interface's outbound
   queue.
-- `_pkt_thread` — daemon that drains and calls `_dispatch_packet`.
+- `_pkt_thread`: daemon that drains and calls `_dispatch_packet`.
 
 The `_pkt_loop` is **gate-then-dequeue**: it checks the gate first, then
 attempts a short-timeout dequeue. If the gate was paused between the check
 and the dequeue, the frame is put back, so a pause leaves it sitting in the
-queue rather than in a local variable — nothing is lost and the queue depth
+queue rather than in a local variable: nothing is lost and the queue depth
 stays an honest picture of what is in flight. (The `packet` event for that
 frame has already fired: `Interface.send_to` emits at transmit time, well
 before any fabric dequeues it.)
@@ -340,13 +341,13 @@ A multi-access LAN. `_dispatch_packet` looks at the frame's L2
 destination:
 
 - Broadcast address → `_dispatch_broadcast`: deliver to every attached
-  interface **except the sender's**. A real NIC filters frames whose source
+  interface except the sender's. A real NIC filters frames whose source
   is its own address; without that skip a router receives its own LSA flood
   back, treats it as new, and re-floods it out every other interface.
 - Anything else → `_dispatch_unicast`: look up the interface by IP and
   deliver only there.
 
-Raises if the address isn't found in `_interfaces` — that's a bug in the
+Raises if the address isn't found in `_interfaces`: that's a bug in the
 sender, not a normal condition.
 
 `devices()` returns `{name: NetworkDevice}` derived from the attached
@@ -356,7 +357,7 @@ interfaces; useful for tools that want "everything on this LAN."
 
 ## `Link` (`link.py`)
 
-A `/30` or `/31` point-to-point fabric — exactly two endpoints. Strict
+A `/30` or `/31` point-to-point fabric: exactly two endpoints. Strict
 construction-time check:
 
 ```python
@@ -367,7 +368,7 @@ if mask not in (30, 31):
 `add_interface` enforces `MAX_ENDPOINTS = 2`, raising
 `TooManyEndpointsException` on the third attempt.
 
-`_dispatch_packet` does **not** look up the destination by address —
+`_dispatch_packet` does not look up the destination by address:
 that would break when two parallel links happen to reuse the same `/30`
 (the address namespace is local to the fabric, not global). Instead it
 walks `_interfaces` and delivers to the one whose `address()` is not
@@ -376,7 +377,7 @@ equal to `frame.source()`. If only one endpoint has been attached yet
 
 `is_valid_host_address(addr)`:
 
-- `/30`: rejects network (`.0`) and broadcast (`.3`) — only `.1` / `.2`
+- `/30`: rejects network (`.0`) and broadcast (`.3`), only `.1` / `.2`
   are usable.
 - `/31`: per RFC 3021, both addresses are valid hosts.
 
@@ -398,15 +399,15 @@ startup) remain active across topology reloads.
 
 It is two things at once:
 
-1. **A typed callback registry** for message lifecycle: register a
+1. A typed callback registry for message lifecycle: register a
    `MessageEvent` keyed by message identity, then any thread can call
    `message_sent`, `message_received`, or `datagram_forwarded` to fire
    the matching callback. Lets a caller observe a single `send` invocation's
    complete lifecycle.
 
-2. **A broadcast pub/sub bus.**
+2. A broadcast pub/sub bus.
    `EventTracer.subscribe(fn)` registers a callback that receives
-   **every** `_broadcast(event_dict)` call. Broadcasts snapshot the
+   every `_broadcast(event_dict)` call. Broadcasts snapshot the
    subscriber list under a brief instance lock, then release it before
    fan-out, so subscribers cannot deadlock the bus. Subscriber exceptions
    are logged and swallowed so one bad subscriber can't kill the rest.
@@ -422,13 +423,13 @@ A two-state gate with three signals: running, paused, stopped. See
 [`concurrency.md`](concurrency.md) for the full lifecycle. The relevant
 contract here:
 
-- `wait_or_stop(timeout=None) → (running, stopped)` — block until
+- `wait_or_stop(timeout=None) → (running, stopped)`: block until
   running, stopped, or timeout.
-- `sleep(duration) → (ticked, stopped)` — sleep, returning early only on
+- `sleep(duration) → (ticked, stopped)`: sleep, returning early only on
   stop.
 
 Every worker thread in the simulator must use one of these (or both).
-`time.sleep` directly is forbidden in workers — it ignores stop and pause.
+`time.sleep` directly is forbidden in workers: it ignores stop and pause.
 
 ---
 
@@ -436,20 +437,20 @@ Every worker thread in the simulator must use one of these (or both).
 
 Covered in detail in [`packets.md`](packets.md). The short version:
 
-- `Frame` — the L2 envelope (`src_addr`, `dst_addr`, `payload`); lives in
+- `Frame`: the L2 envelope (`src_addr`, `dst_addr`, `payload`); lives in
   [`entities/packet.py`](../../src/entities/packet.py).
-- `Datagram` — the L3 packet (TTL=64 by default, decremented per hop);
+- `Datagram`: the L3 packet (TTL=64 by default, decremented per hop);
   canonical home is [`routing/messages.py`](../../src/routing/messages.py),
   re-exported from [`entities/packet.py`](../../src/entities/packet.py).
-- `Message` — the payload inside the datagram
+- `Message`: the payload inside the datagram
   ([`entities/packet.py`](../../src/entities/packet.py)). Subclasses:
-  - `UserMessage(payload)` — user-level send.
-  - `RoutingMessage` — abstract base in
+  - `UserMessage(payload)`, user-level send.
+  - `RoutingMessage`: abstract base in
     [`routing/lsa.py`](../../src/routing/lsa.py); concrete wire types are
     `LSA(origin, seq, is_withdrawal=False)` (link-state advertisement) and
     `Hello(originator, neighbors_heard)` (liveness), both in the `routing/`
     package.
-  - `PingRequest(seq)` / `PingReply(seq, request_ts, request_id=None)` —
+  - `PingRequest(seq)` / `PingReply(seq, request_ts, request_id=None)`:
     ping pair. `PingReply` exposes `.request_id` and overrides `flow_key()`
     to echo the originating `PingRequest`'s id, so request and reply share
     one conversation key.

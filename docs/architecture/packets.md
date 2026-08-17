@@ -53,9 +53,9 @@ frame = Frame(src_addr=self._address, dst_addr=dst_addr, payload=datagram)
 self._out_queue.put(frame)
 ```
 
-- `src_addr` is **always the interface's own address** — the local hop,
+- `src_addr` is always the interface's own address: the local hop,
   not the original sender.
-- `dst_addr` is the L2 next-hop — either the L3 destination (when the
+- `dst_addr` is the L2 next-hop: either the L3 destination (when the
   next hop is "directly connected" via `NullAddress`) or the next-hop
   router's address.
 - `payload` is the `Datagram`, which carries the unchanged L3 endpoints.
@@ -64,9 +64,9 @@ The L2 vs. L3 distinction is what makes routing work: every hop
 re-frames the datagram with new `src_addr`/`dst_addr` but leaves the
 inner `Datagram.source()` / `Datagram.destination()` alone.
 
-`Network._dispatch_unicast` keys delivery on `frame.destination()` — the
-L2 next-hop. `Link._dispatch_packet` uses **structural** peer resolution:
-deliver to the interface whose `address()` is **not** `frame.source()`.
+`Network._dispatch_unicast` keys delivery on `frame.destination()`: the
+L2 next-hop. `Link._dispatch_packet` uses structural peer resolution:
+deliver to the interface whose `address()` is not `frame.source()`.
 That's deliberately not address-based, so two parallel links can reuse
 the same `/30` without cross-talk.
 
@@ -87,7 +87,7 @@ class Datagram(Packet):
 The L3 packet. `src_addr` / `dst_addr` are the **end-to-end endpoints**:
 re-framing at each hop leaves them alone, which is the whole point of the
 L2/L3 split above. The one thing that does rewrite them is NAT, via the
-`rewrite_source` / `rewrite_destination` mutators — see
+`rewrite_source` / `rewrite_destination` mutators: see
 [`nat.md`](nat.md). That is also why `flow_key()` is keyed on the payload
 rather than on this address pair.
 
@@ -102,14 +102,14 @@ if packet.ttl() <= 0:
 
 Two consequences:
 
-- **Hosts do not decrement TTL.** `Host._handle_message` is the terminal
+- Hosts do not decrement TTL. `Host._handle_message` is the terminal
   receiver; TTL is only touched on forwarding hops.
-- **TTL-expired packets are dropped silently** (logged via the standard
+- TTL-expired packets are dropped silently (logged via the standard
   logging framework). No ICMP-style notification.
 
-The rest of `_handle_forwarding` — the route lookup, the exceptions it
-raises on a miss, and the `NullAddress` next-hop substitution — is a
-`Router` concern rather than a packet one; see
+The rest of `_handle_forwarding` (the route lookup, the exceptions it
+raises on a miss, the `NullAddress` next-hop substitution) is a `Router`
+concern rather than a packet one; see
 [`entities.md`](entities.md#router-routerpy).
 
 ## `Message`
@@ -130,7 +130,7 @@ class Message:
 ```
 
 A `Message` is identified by a fresh UUID. Two `Message` instances are
-equal iff they have the same class **and** the same `_id` — important
+equal iff they have the same class and the same `_id`: important
 because `EventTracer.register_message_event` uses the message as a dict
 key, and the routing protocol uses sequence numbers separately from
 message identity.
@@ -158,7 +158,7 @@ class UserMessage(Message):
 ```
 
 Constructed by `cmd_send` in the host terminal and handed to
-`Host.send_message_to`, which wraps it in a `Datagram` — the host never
+`Host.send_message_to`, which wraps it in a `Datagram`: the host never
 builds the `UserMessage` itself. The `payload` is everything after the
 destination, joined with single spaces. The terminal splits the command
 line with `shlex.split`, so quoting survives: both `send h2 hello world`
@@ -191,26 +191,26 @@ class LSA(RoutingMessage):
 ```
 
 Origination: `LinkStateProtocol._emit_lsa_on_up_interfaces` builds **two
-`LSA`s per cycle from one sequence number** — both via
+`LSA`s per cycle from one sequence number**, both via
 `LSA.from_router(router, seq, policy)`, differing only in policy. The
 permit-all one is installed into the local LSDB (so private prefixes
 appear in the local graph); the policy-filtered one is the **single
 object** sent out every up interface, so all N emissions carry the same
 `seq`. See [`policy.md`](policy.md) for the split.
 
-**`seq` is per-origin (one counter per router), not per-interface.**
+`seq` is per-origin (one counter per router), not per-interface.
 Receivers dedup in `LSDB.install`, which keeps the highest sequence number
 ever accepted from each origin and rejects anything with
 `seq <= last_seen_seq`:
 
-- **`seq <= last_seen_seq`** — `InstallResult.rejected()`. The LSA is
-  dropped outright: not installed, **not re-flooded**, no recompute. This
+- **`seq <= last_seen_seq`**: `InstallResult.rejected()`. The LSA is
+  dropped outright: not installed, not re-flooded, no recompute. This
   is what terminates the flood, since a router receiving the same LSA from
   two neighbors re-floods only the first copy.
-- **`seq > last_seen_seq`, same links** — accepted and re-flooded (so
+- `seq > last_seen_seq`, same links: accepted and re-flooded (so
   downstream peers refresh too), but `changed_graph()` is `False`, so no
   shortest-path recompute.
-- **`seq > last_seen_seq`, different links** — accepted, re-flooded, and
+- `seq > last_seen_seq`, different links: accepted, re-flooded, and
   `changed_graph()` is `True`, triggering the recompute.
 
 The last-seen sequence number survives the LSA it came from: a withdrawal
@@ -230,10 +230,10 @@ class Hello(RoutingMessage):
 
 `_emit_hello_on_up_interfaces` builds **one `Hello` per interface**
 (each carries that interface's per-fabric `neighbors_heard` list). Unlike
-`LSA`, a `Hello` carries no sequence number — it is never re-flooded, so
+`LSA`, a `Hello` carries no sequence number: it is never re-flooded, so
 there is nothing to dedup.
 
-**See [`routing-protocol.md`](routing-protocol.md)** for the full
+See [`routing-protocol.md`](routing-protocol.md) for the full
 flooding rules.
 
 ### `PingRequest` and `PingReply`
@@ -263,7 +263,7 @@ class PingReply(Message):
         return str(self._request_id)
 ```
 
-The flow — steps 1 and 4 run on the caller's thread while step 3 runs on
+The flow, steps 1 and 4 run on the caller's thread while step 3 runs on
 the receiving interface's thread, which is why the handshake needs two
 dicts and an event:
 
@@ -277,14 +277,14 @@ dicts and an event:
    `(str(packet.source()), msg.seq)`, records
    `_ping_results[key] = time.monotonic() - msg.request_ts`, sets the
    event.
-4. `evt.wait` returns and the caller deletes **its own** `key` from both
-   dicts — from `_pending_pings` because the waiter is spent, and from
+4. `evt.wait` returns and the caller deletes its own `key` from both
+   dicts: from `_pending_pings` because the waiter is spent, and from
    `_ping_results` with a `pop` that reads the RTT and removes it in one
    step, so neither dict accumulates entries across pings. It returns that
    RTT. On timeout the same two deletions run and `ping` returns `None`,
    so a reply that arrives late finds no waiter and is dropped.
 
-**The reply carries the request's `sent_at` value** as `request_ts`.
+The reply carries the request's `sent_at` value as `request_ts`.
 That's important: the destination host doesn't keep state per ping; it
 echoes the request's timestamp back so the originator can compute RTT
 locally without clock-sync issues.
@@ -312,9 +312,9 @@ Unknown classes get `"unknown"`.
 
 Two correlation ids accompany every packet event:
 
-- `payload_id` = `str(message.id())` — identifies the single direction of
-  a flow. A ping request and its reply have **different** `payload_id`s.
-- `flow` = `payload.flow_key()` — the stable end-to-end conversation UUID.
+- `payload_id` = `str(message.id())`: identifies the single direction of
+  a flow. A ping request and its reply have different `payload_id`s.
+- `flow` = `payload.flow_key()`: the stable end-to-end conversation UUID.
   The ping pair shares the same `flow` (because `PingReply.flow_key()`
   echoes the request's UUID), so subscribers can group both directions.
   This value survives NAT rewrites of `src`/`dst` mid-path.
@@ -331,15 +331,31 @@ metadata:
 | `hello`         | `{"originator": <str>, "neighbors_heard": [<str>, ...]}` |
 | anything else   | `{}`                                    |
 
-The shape is intentionally free-form — future message types add their own
+The shape is intentionally free-form: future message types add their own
 keys without coordinating with subscribers.
 
 The `packet` event is the only event `Interface.send_to` emits. Routers
-emit their own kinds as they translate or answer traffic — `nat`,
-`nat_table_changed` and `router_intercept` — and hosts emit `ping_result`
+emit their own kinds as they translate or answer traffic, `nat`,
+`nat_table_changed` and `router_intercept`, and hosts emit `ping_result`
 once per probe. Those are event contracts rather than packet formats:
 
-- [`server-api.md`](server-api.md#ws-wsevents) — the wire shape of every
+- [`server-api.md`](server-api.md#ws-wsevents): the wire shape of every
   event kind, `packet` included.
-- [`nat.md`](nat.md) — when a rewrite happens, how the flow key is
+- [`nat.md`](nat.md): when a rewrite happens, how the flow key is
   derived, and the LRU bound on the table.
+
+---
+
+## Code references
+
+| Concern | File | Symbol |
+|---|---|---|
+| Carrier + L2 frame | [`src/entities/packet.py`](../../src/entities/packet.py) | `Packet`, `Frame` |
+| Payload base | [`src/entities/packet.py`](../../src/entities/packet.py) | `Message`, `Message.flow_key` |
+| User + ping payloads | [`src/entities/packet.py`](../../src/entities/packet.py) | `UserMessage`, `PingRequest`, `PingReply` |
+| Routing carrier | [`src/routing/messages.py`](../../src/routing/messages.py) | `Datagram` |
+| Routing payloads | [`src/routing/lsa.py`](../../src/routing/lsa.py), [`src/routing/hello.py`](../../src/routing/hello.py) | `RoutingMessage`, `LSA`, `Hello` |
+| Transmit + `packet` event | [`src/entities/interface.py`](../../src/entities/interface.py) | `Interface.send_to`, `_classify`, `_summarize_payload` |
+| Forwarding + TTL | [`src/entities/router.py`](../../src/entities/router.py) | `Router._handle_forwarding` |
+| Terminal delivery | [`src/entities/host.py`](../../src/entities/host.py) | `Host._handle_message`, `Host.ping` |
+| Tests | [`test/test_packet_handling.py`](../../test/test_packet_handling.py), [`test/test_forwarding.py`](../../test/test_forwarding.py) | none |
