@@ -7,3 +7,18 @@ node_modules/
 test-results/
 playwright-report/
 docs/superpowers/
+
+# Local virtualenvs
+.venv/
+.venv*/
+
+# Agent scratch: worktrees and skill caches
+.claude/worktrees/
+.superpowers/
+
+# Ad-hoc probe/debug scripts at the repo root. Leading slash matters:
+# unanchored, these would also swallow src/entities/_fabric.py.
+/_*.mjs
+/_*.py
+/_*.sh
+/_*.md

@@ -1,4 +1,4 @@
-# loom — Documentation
+# loom: Documentation
 
 This directory is the long-form reference for `loom`. It is split into two
 layers; the top-level [`README.md`](../README.md) is the entry point and
@@ -23,10 +23,10 @@ docs/
 │   ├── routing-protocol.md
 │   ├── concurrency.md
 │   ├── nat.md
+│   ├── policy.md
 │   ├── parser.md
 │   └── server-api.md
-├── images/                ← Screenshots and figures referenced by the docs
-└── manual-smoke-test.md   ← Pre-existing manual QA checklist
+└── images/                ← Screenshots and figures referenced by the docs
 ```
 
 ## User Guide
@@ -34,22 +34,22 @@ docs/
 Read these to **use** loom. They assume you have Python 3.11+ installed
 and the repo cloned; no other prerequisites.
 
-1. [Getting started](user-guide/getting-started.md) — Install, run the UI,
+1. [Getting started](user-guide/getting-started.md): Install, run the UI,
    send your first packet.
-2. [Web UI](user-guide/web-ui.md) — Toolbar, canvas, inspector, terminals.
-3. [Building topologies](user-guide/building-topologies.md) — Add LANs,
+2. [Web UI](user-guide/web-ui.md): Toolbar, canvas, inspector, terminals.
+3. [Building topologies](user-guide/building-topologies.md): Add LANs,
    hosts, routers, point-to-point links; address rules.
-4. [Running simulations](user-guide/running-simulations.md) — Start, pause,
+4. [Running simulations](user-guide/running-simulations.md): Start, pause,
    resume, reset; edits while paused; keepalive interval.
-5. [Routing tables](user-guide/routing-tables.md) — Inspecting routes,
+5. [Routing tables](user-guide/routing-tables.md): Inspecting routes,
    neighbors, costs; what convergence looks like.
-6. [Terminals](user-guide/terminals.md) — Per-device commands: `ping`,
+6. [Terminals](user-guide/terminals.md): Per-device commands: `ping`,
    `send`, `ifconfig`, `route`, `update_cost`, `set_gateway`,
    `neighbors`.
-7. [NAT and private LANs](user-guide/nat-and-private-lans.md) — How
+7. [NAT and private LANs](user-guide/nat-and-private-lans.md): How
    traffic crosses the private↔public boundary, inspecting the NAT
    table, overlap rules.
-8. [YAML format](user-guide/yaml-format.md) — Topology schema reference,
+8. [YAML format](user-guide/yaml-format.md): Topology schema reference,
    save / resume workflow.
 
 ## Architecture / Technical Reference
@@ -59,21 +59,23 @@ makes. Reader is assumed to know IPv4 routing fundamentals (subnets, next
 hop, longest prefix, link-state vs. distance vector) at the level of an
 undergraduate networking course.
 
-1. [Overview](architecture/overview.md) — Layers, processes, threads, data
+1. [Overview](architecture/overview.md): Layers, processes, threads, data
    flow.
-2. [Entities](architecture/entities.md) — `AS`, `Router`, `Host`, `Network`,
+2. [Entities](architecture/entities.md): `AS`, `Router`, `Host`, `Network`,
    `Link`, `Interface`, `Address`, `NetworkAddress`.
-3. [Packets](architecture/packets.md) — `Frame`, `Datagram`, `Message` and
+3. [Packets](architecture/packets.md): `Frame`, `Datagram`, `Message` and
    its subclasses (user, routing, ping).
-4. [Routing protocol](architecture/routing-protocol.md) — Link-state
+4. [Routing protocol](architecture/routing-protocol.md): Link-state
    flooding, Dijkstra, the dirty-graph guard, and sequence diagrams.
-5. [Concurrency](architecture/concurrency.md) — Threads, queues,
+5. [Concurrency](architecture/concurrency.md): Threads, queues,
    `PauseGate`, packet lifecycle from `send_to` to delivery.
-6. [NAT](architecture/nat.md) — Source-NAT at the private↔public boundary,
+6. [NAT](architecture/nat.md): Source-NAT at the private↔public boundary,
    the per-router NAT table, the conversation-keyed `flow_id`.
-7. [Parser & validator](architecture/parser.md) — YAML loading, structural
+7. [Policy framework](architecture/policy.md): route maps, the RFC 1918
+   outbound filter, reachability versus topology.
+8. [Parser & validator](architecture/parser.md): YAML loading, structural
    validation, link post-pass.
-8. [Server API](architecture/server-api.md) — REST and WebSocket endpoints.
+9. [Server API](architecture/server-api.md): REST and WebSocket endpoints.
 
 ---
 
