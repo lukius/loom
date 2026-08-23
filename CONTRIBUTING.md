@@ -87,12 +87,12 @@ Before touching anything non-trivial, read these in order:
 | Step | File | Why |
 |---|---|---|
 | 1 | `README.md` | Quick start, feature overview, project layout |
-| 2 | `CLAUDE.md` | Build commands, key design decisions, traps (under 200 lines on purpose) |
+| 2 | `AGENTS.md` | Build commands, key design decisions, traps (under 200 lines on purpose) |
 | 3 | `docs/architecture/overview.md` | Component map and packet/event flow |
 | 4 | `docs/architecture/routing-protocol.md` | The link-state protocol — the heart of the simulator |
 | 5 | `samples/sample.yaml` | The shape of a topology file |
 
-The `CLAUDE.md` file is the project's running list of *non-obvious context*.
+The `AGENTS.md` file is the project's running list of *non-obvious context*.
 If you find a footgun while working on the code, that is the right place to
 record it.
 
@@ -239,7 +239,7 @@ Linting must be clean before opening a merge request.
 
 1. **`README.md`** — the entry point. Quick start, feature overview, and
    pointers to the rest of the documentation.
-2. **`CLAUDE.md`** — non-obvious project context (under 200 lines, by
+2. **`AGENTS.md`** — non-obvious project context (under 200 lines, by
    policy). Decisions, traps, and conventions a fresh reader cannot
    recover from the source.
 3. **`docs/`** — the comprehensive reference, split into
@@ -316,14 +316,14 @@ for merge requests and issues.
 
 ## AI-Assisted Development
 
-`loom` is primarily developed with [Claude Code](https://claude.ai/code),
-but any AI assistant can use `CLAUDE.md` and the `docs/` tree to get
-oriented. Human contributors do not need to use any AI tooling; all
-conventions apply equally.
+`loom` ships an [`AGENTS.md`](AGENTS.md), the cross-agent instruction
+format that coding assistants read to get oriented. Any assistant can
+use it together with the `docs/` tree. Human contributors do not need
+to use any AI tooling; all conventions apply equally.
 
-### CLAUDE.md
+### AGENTS.md
 
-`CLAUDE.md` is the AI context file for this project. Keep it useful:
+`AGENTS.md` is the agent context file for this project. Keep it useful:
 
 - **Under 200 lines.** If it grows past that, something belongs
   elsewhere (probably `docs/architecture/`) or can be cut.
@@ -335,10 +335,13 @@ conventions apply equally.
 - **Update when the trap surface changes.** New gotchas, renamed
   entry points, schema changes, threading-model shifts — those go
   here. Internal refactors that don't change observable behavior
-  usually don't need a `CLAUDE.md` update.
+  usually don't need an `AGENTS.md` update.
 - **Don't duplicate this file.** `CONTRIBUTING.md` is the canonical
-  dev guide; `CLAUDE.md` is the trap cheat sheet. Link between them,
+  dev guide; `AGENTS.md` is the trap cheat sheet. Link between them,
   don't copy.
+- **Keep it the only instruction file.** Assistants that need a
+  differently-named entry point get a pointer file that imports
+  `AGENTS.md`; content never gets copied into one.
 
 ### The doc set
 
@@ -349,16 +352,15 @@ wire format), update the affected page in the same commit. See
 [Documentation Discipline](#documentation-discipline) above for the
 full rule.
 
-The `.claude/` directory holds only local Claude Code settings
-(`settings.local.json` is gitignored). `loom` is small enough that an
-AI assistant reading `CLAUDE.md` plus the relevant architecture page
-can plan and execute most changes directly.
+`loom` is small enough that an AI assistant reading `AGENTS.md` plus
+the relevant architecture page can plan and execute most changes
+directly.
 
-### If you use Claude Code (or a similar agent-style assistant)
+### If you use an agent-style assistant
 
 A few pointers that save time on this project specifically:
 
-- **Always read `CLAUDE.md` first.** It's the shortest path to "what
+- **Always read `AGENTS.md` first.** It's the shortest path to "what
   will trip me up."
 - **For protocol or packet-level work**, also read
   `docs/architecture/routing-protocol.md` and
@@ -369,7 +371,7 @@ A few pointers that save time on this project specifically:
   before adding a new worker — every new thread must gate on the
   shared `PauseGate`, or pause/resume will be broken.
 - **For UI work**, there's no standalone architecture page — the module
-  breakdown lives in `CLAUDE.md`'s project structure and the bus event
+  breakdown lives in `AGENTS.md`'s project structure and the bus event
   names in `web/state.js`.
 
 ### Subagent-driven execution for multi-task features
@@ -377,7 +379,7 @@ A few pointers that save time on this project specifically:
 When a feature is planned as several tasks/commits, `loom` follows a
 fixed per-task dev → reviewer cycle, with a final review and QA pass
 after every task lands. The process is captured in
-[`.claude/process/subagent-driven-execution.md`](.claude/process/subagent-driven-execution.md):
+[`docs/development/subagent-driven-execution.md`](docs/development/subagent-driven-execution.md):
 role profiles (Python / JavaScript / OO design for the developer;
 hands-on network engineering for the reviewer), briefing templates,
 the loop, and decision rules. Reuse the process for any multi-commit
@@ -388,7 +390,7 @@ one-off doc edits.
 
 ## Project Conventions and Traps
 
-The full list lives in `CLAUDE.md`. The most important ones for newcomers:
+The full list lives in `AGENTS.md`. The most important ones for newcomers:
 
 - **`pytest` and `ruff` run from the repo root**, configured via
   `pyproject.toml`'s `pythonpath = ["src"]`.

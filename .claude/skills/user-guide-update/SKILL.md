@@ -77,7 +77,7 @@ If you find yourself reaching for any of those, the content belongs under `docs/
 
 ## Backend-decoupling check
 
-The user guide describes the SPA the user touches. Backend-side code/comments stay SPA-agnostic per CLAUDE.md ("Backend ↔ frontend decoupling"). When you find yourself wanting to mention backend types/wire shapes in a user-guide page, that's a signal the content belongs under `docs/architecture/` instead.
+The user guide describes the SPA the user touches. Backend-side code/comments stay SPA-agnostic per AGENTS.md ("Backend ↔ frontend decoupling"). When you find yourself wanting to mention backend types/wire shapes in a user-guide page, that's a signal the content belongs under `docs/architecture/` instead.
 
 ## Common mistakes
 

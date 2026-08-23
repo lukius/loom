@@ -35,7 +35,7 @@
 
 ## Documentation
 
-- [ ] Affected doc surfaces (`README.md`, `CLAUDE.md`, `docs/`, docstrings) updated in the same commit — or no doc surface affected
+- [ ] Affected doc surfaces (`README.md`, `AGENTS.md`, `docs/`, docstrings) updated in the same commit — or no doc surface affected
 
 ## Screenshots
 

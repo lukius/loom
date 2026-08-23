@@ -106,7 +106,7 @@ When dispatching a reviewer subagent, the prompt MUST include:
 - Explicit review focus areas, in priority order:
   1. **Functional correctness** — does the code do what the task spec says it does?
   2. **Spec consistency** — do the new types / signatures match what the design spec promises?
-  3. **Code quality** — readability, idiom, DRY/YAGNI, project conventions (CLAUDE.md), no over-engineering.
+  3. **Code quality** — readability, idiom, DRY/YAGNI, project conventions (AGENTS.md), no over-engineering.
   4. **Performance** — any obvious O(n²) or hot-path allocations that the spec didn't sanction.
 - Reminder of project guardrails (read-only): backend ↔ SPA decoupling, conventional commits, ruff clean, no debug prints, no commented-out code.
 - Required output structure:

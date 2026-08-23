@@ -153,7 +153,7 @@ Start here if you want to **change** the simulator or understand how it works.
 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): dev setup, TDD workflow, MR process
 - [`CHANGELOG.md`](CHANGELOG.md): release history
-- [`CLAUDE.md`](CLAUDE.md): non-obvious project context for AI assistants and new contributors
+- [`AGENTS.md`](AGENTS.md): non-obvious project context for AI assistants and new contributors
 - [`LICENSE`](LICENSE): MIT
 
 ## Project Structure
@@ -198,21 +198,22 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full TDD workflow.
 `loom` is approachable by AI assistants out of the box. Two files
 carry the load:
 
-- **`CLAUDE.md`**: short cheat sheet of non-obvious project context:
+- **`AGENTS.md`**: short cheat sheet of non-obvious project context:
   entry points, key design decisions, traps. Under 200 lines on purpose;
-  read this first to avoid common pitfalls.
+  read this first to avoid common pitfalls. It follows
+  [AGENTS.md](https://agents.md), the cross-agent instruction format.
 - **`docs/`**: the deep-dive reference. Architecture pages
   (`docs/architecture/`) cover components, the link-state protocol,
   concurrency, the parser, the HTTP/WS API, and the SPA module map.
   User-guide pages (`docs/user-guide/`) cover the web UI, terminals,
   and YAML format.
 
-An AI assistant pointed at `CLAUDE.md` plus the relevant
+An AI assistant pointed at `AGENTS.md` plus the relevant
 `docs/architecture/` page can plan and execute most changes directly.
 
 Human contributors do not need to use any AI tooling. All conventions
 apply equally. See [CONTRIBUTING.md](CONTRIBUTING.md#ai-assisted-development)
-for guidelines on maintaining `CLAUDE.md` and the doc set as the project
+for guidelines on maintaining `AGENTS.md` and the doc set as the project
 evolves.
 
 ## Contributing

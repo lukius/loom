@@ -27,47 +27,49 @@ trabajos de mayor alcance, recomendamos ver [ns-3](https://www.nsnam.org/), [min
 
 ## Características
 
-- **Interfaz web interactiva** — Emplazar redes, hosts y routers en un
-  _canvas_ SVG; editar interfaces y costos; hacer doble click en
-  cualquier dispositivo para abrir una terminal con comandos como
-  `ping`, `route` e `ifconfig`.
-- **Ediciones de topología sin reinicio** — Agregar redes, hosts y routers
+- **Interfaz web interactiva.** Emplazar redes, hosts y routers en un
+  _canvas_ SVG; editar interfaces y costos en el panel derecho; hacer
+  doble click en cualquier dispositivo para abrir una terminal con
+  comandos como `ping`, `route` e `ifconfig`.
+- **Ediciones de topología sin reinicio.** Agregar redes, hosts y routers
   mientras la simulación está en ejecución, o pausar, acumular un conjunto
   de cambios y reanudar atómicamente.
-- **Simulación IPv4 multirouter** — Hosts, routers, LANs multiacceso y links
+- **Simulación IPv4 multirouter.** Hosts, routers, LANs multiacceso y links
   punto a punto `/30` / `/31`, todo interconectado mediante threads
   por interface y por estructura (link/LAN). Las decisiones de forwarding
   usan matching de prefijo más largo sobre una tabla de ruteo por router.
-- **Protocolo link-state loom-OSPF** — _Flooding_ con número de secuencia,
+- **Protocolo link-state loom-OSPF.** _Flooding_ con número de secuencia,
   thread de _keepalive_ por router con intervalos Hello y LSA-refresh
-  configurables y cálculo de camino más corto con Dijkstra (que se vuelve
-  a ejecutar solo cuando el grafo cambia).
-- **Desactivación de interfaces en vivo y _halt_/_crash_ de router** — Prender o
+  configurables (ajustables en vivo) y cálculo de camino más corto con
+  Dijkstra (que se vuelve a ejecutar solo cuando el grafo cambia).
+- **Desactivación de interfaces en vivo y _halt_/_crash_ de router.** Prender o
   apagar una interface individual, detener un router o inyectar un
   _crash_ silencioso, y luego observar en vivo cómo cambia el estado de ruteo
   de la red.
-- **Animaciones de paquetes** — Los datagramas, pings y paquetes del protocolo de
-  ruteo se animan en la pantalla mientras fluyen, con posibilidad de regular
-  velocidad y visibilidad de los paquetes.
-- **NAT y LANs privadas** — Source-NAT reescribe las direcciones privadas
+- **Animaciones de paquetes.** Los datagramas, pings y paquetes del protocolo
+  de ruteo se animan en el _canvas_ mientras fluyen; los controles de la barra
+  de herramientas regulan la velocidad y la visibilidad del tráfico del
+  protocolo de ruteo.
+- **NAT y LANs privadas.** Source-NAT reescribe las direcciones privadas
   (RFC 1918) al salir hacia redes públicas, con tablas de reescritura
   por flujo y traducción inversa para el tráfico entrante. La política de
   ruteo preserva los prefijos privados locales (nunca se anuncian a routers
   vecinos).
-- **Importación / exportación YAML** — La topología es la fuente de verdad.
-  La web permite importar archivos YAML y exportarlos para reutilizarlos.
-- **Sin estado externo** — Todo vive en memoria, existiendo además en disco
+- **Importación / exportación YAML.** La topología es la fuente de verdad:
+  se puede importar un archivo YAML desde el diálogo de importación y
+  exportar el contenido del _canvas_ para persistirlo o compartirlo.
+- **Sin estado externo.** Todo vive en memoria, existiendo además en disco
   un clon YAML de la sesión.
 
 ## Stack tecnológico
 
 | Capa               | Tecnología |
 |--------------------|---|
-| Core del simulador | Python 3.11+, threads + queues |
+| Core del simulador | Python 3.11+, threads + queues, `PauseGate` propio |
 | Servidor web       | FastAPI + Uvicorn, mount SPA estático, REST + WebSocket |
 | Interfaz web       | Módulos ES nativos + SVG (sin framework, sin bundler) |
 | Topología          | YAML (PyYAML), con validador estructural |
-| Tests              | `pytest` (526+), `pytest-asyncio`, `vitest`, Playwright |
+| Tests              | `pytest` (547), `pytest-asyncio`, `vitest` (824), Playwright |
 | Lint / formato     | `ruff` |
 
 Sin dependencias de runtime más allá de PyYAML, FastAPI y Uvicorn (el
@@ -152,10 +154,10 @@ Estos documentos solo están disponibles en inglés.
 
 ### Otros archivos
 
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — configuración de desarrollo, flujo de trabajo TDD, proceso de MR
-- [`CHANGELOG.md`](CHANGELOG.md) — historial de versiones
-- [`CLAUDE.md`](CLAUDE.md) — contexto no obvio del proyecto para asistentes de IA y nuevos contribuidores
-- [`LICENSE`](LICENSE) — MIT
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): configuración de desarrollo, flujo de trabajo TDD, proceso de MR
+- [`CHANGELOG.md`](CHANGELOG.md): historial de versiones
+- [`AGENTS.md`](AGENTS.md): contexto no obvio del proyecto para asistentes de IA y nuevos contribuidores
+- [`LICENSE`](LICENSE): MIT
 
 ## Estructura del proyecto
 
@@ -167,7 +169,7 @@ loom/
 │   ├── routing/           # RoutingProtocol (loom-OSPF link-state) + LSDB → NetworkGraph (Dijkstra)
 │   ├── parser/            # YAML topology loader + SystemValidator
 │   └── server/            # FastAPI app, routes, sim state machine, persistence, command dispatch
-├── test/                  # pytest suite (526+ tests) + invalid YAML fixtures under resources/
+├── test/                  # pytest suite (547 tests) + invalid YAML fixtures under resources/
 ├── samples/               # sample.yaml — the bundled example topology
 ├── web/                   # SPA: ES modules, styles, favicon, vitest tests
 ├── e2e/                   # Playwright/Chromium smoke suite
@@ -199,22 +201,24 @@ Ver [`CONTRIBUTING.md`](CONTRIBUTING.md) para el flujo de trabajo TDD completo.
 `loom` es accesible para asistentes de IA de manera directa. Dos archivos
 principales:
 
-- **`CLAUDE.md`** — resumen breve de contexto no obvio del proyecto:
-  entry points, decisiones de diseño clave, trampas. Deliberadamente bajo las 200 líneas
-  — leer esto primero para evitar errores comunes.
-- **`docs/`** — la referencia detallada. Las páginas de arquitectura
+- **`AGENTS.md`**: resumen breve de contexto no obvio del proyecto:
+  entry points, decisiones de diseño clave, trampas. Deliberadamente bajo
+  las 200 líneas; leer esto primero para evitar errores comunes. Sigue
+  [AGENTS.md](https://agents.md), el formato de instrucciones común a los
+  distintos asistentes.
+- **`docs/`**: la referencia detallada. Las páginas de arquitectura
   (`docs/architecture/`) cubren componentes, el protocolo link-state,
   concurrencia, el parser, la API HTTP/WS y el mapa de módulos de la SPA.
   Las páginas de la guía de usuario (`docs/user-guide/`) cubren la interfaz web,
   las terminales y el formato YAML.
 
-Un asistente de IA apuntado a `CLAUDE.md` más la página relevante de
+Un asistente de IA apuntado a `AGENTS.md` más la página relevante de
 `docs/architecture/` debería ser capaz de planificar y ejecutar la mayoría de los
 cambios directamente.
 
 Los contribuidores humanos no necesitan usar ninguna herramienta de IA; todas las
 convenciones aplican por igual. Ver [CONTRIBUTING.md](CONTRIBUTING.md#ai-assisted-development)
-para las directrices sobre el mantenimiento de `CLAUDE.md` y la documentación
+para las directrices sobre el mantenimiento de `AGENTS.md` y la documentación
 a medida que el proyecto evoluciona.
 
 ## Cómo contribuir

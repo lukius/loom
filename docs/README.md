@@ -1,8 +1,9 @@
 # loom: Documentation
 
-This directory is the long-form reference for `loom`. It is split into two
-layers; the top-level [`README.md`](../README.md) is the entry point and
-links into both.
+This directory is the long-form reference for `loom`. Two layers carry the
+bulk of it, user guide and architecture; the top-level
+[`README.md`](../README.md) is the entry point and links into both. A third
+directory holds development-process notes.
 
 ```
 docs/
@@ -26,6 +27,8 @@ docs/
 │   ├── policy.md
 │   ├── parser.md
 │   └── server-api.md
+├── development/           ← How contributors and agents drive the work
+│   └── subagent-driven-execution.md
 └── images/                ← Screenshots and figures referenced by the docs
 ```
 
@@ -76,6 +79,16 @@ undergraduate networking course.
 8. [Parser & validator](architecture/parser.md): YAML loading, structural
    validation, link post-pass.
 9. [Server API](architecture/server-api.md): REST and WebSocket endpoints.
+
+## Development Process
+
+Read this to **build** loom across several commits. It is process, not
+reference; the day-to-day workflow lives in
+[`CONTRIBUTING.md`](../CONTRIBUTING.md).
+
+1. [Subagent-driven execution](development/subagent-driven-execution.md):
+   the per-task developer → reviewer cycle for multi-commit features,
+   with role profiles, briefing templates, and decision rules.
 
 ---
 
