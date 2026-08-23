@@ -59,10 +59,12 @@ python loom.py
 # open http://127.0.0.1:8000
 ```
 
-The server binds `127.0.0.1:8000` by default. Override with `LOOM_PORT`:
+The server binds `127.0.0.1:8000` by default. Override the port with
+`LOOM_PORT` and the bind address with `LOOM_HOST`:
 
 ```bash
 LOOM_PORT=8123 python loom.py
+LOOM_HOST=0.0.0.0 python loom.py
 ```
 
 ### Topology source

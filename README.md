@@ -106,13 +106,18 @@ Edits made through the UI land in `<source>.session.yaml`; the source file
 is never modified. Use the toolbar's **Reset** button (or
 `POST /topology/reset`) to wipe the session and re-clone from source.
 
-### Port
+### Host and port
 
-The server binds `127.0.0.1:8000` by default. Override:
+The server binds `127.0.0.1:8000` by default. Override either half:
 
 ```bash
 LOOM_PORT=8123 python loom.py
+LOOM_HOST=0.0.0.0 python loom.py
 ```
+
+`LOOM_HOST=0.0.0.0` makes the UI reachable from other machines, which is
+what you want when running loom for a class. It has no authentication, so
+keep it on a trusted network.
 
 ## Documentation
 

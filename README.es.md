@@ -108,13 +108,19 @@ Las ediciones realizadas a través de la web se guardan en `<source>.session.yam
 el archivo fuente nunca se modifica. Usar el botón **Reset** de la barra de herramientas
 (o `POST /topology/reset`) para borrar la sesión y re-clonar desde el origen.
 
-### Puerto
+### Dirección y puerto
 
-El servidor escucha en `127.0.0.1:8000` por defecto. Para modificarlo:
+El servidor escucha en `127.0.0.1:8000` por defecto. Para modificar
+cualquiera de las dos mitades:
 
 ```bash
 LOOM_PORT=8123 python loom.py
+LOOM_HOST=0.0.0.0 python loom.py
 ```
+
+`LOOM_HOST=0.0.0.0` hace que la interfaz sea accesible desde otras
+máquinas, que es lo que se necesita para usar loom en una clase. No tiene
+autenticación, así que conviene limitarlo a una red confiable.
 
 ## Documentación
 
