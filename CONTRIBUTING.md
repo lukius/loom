@@ -356,9 +356,10 @@ changelog section for that version, with the curated source archive from
 
 Two notes:
 
-- The first release only: GHCR packages are created private. Flip the
-  package to public once under the repo's *Packages* settings, or
-  `docker pull` will ask strangers for credentials.
+- The published image inherits the repository's visibility, so on a public
+  repo it is anonymously pullable as soon as the workflow finishes. There
+  is no visibility switch to flip. Verify with
+  `docker pull ghcr.io/lukius/loom:latest` from a logged-out shell.
 - `workflow_dispatch` on the same workflow re-runs a release for an
   existing tag, which is the escape hatch when a publish step fails.
 
