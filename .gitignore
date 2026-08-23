@@ -22,3 +22,6 @@ docs/superpowers/
 /_*.py
 /_*.sh
 /_*.md
+
+# Files pulled out of worktrees before removal (see _cleanup.sh)
+/_rescued/
