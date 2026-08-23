@@ -2,20 +2,19 @@ from typing import List
 
 
 class BaseAddress:
-
     _octets: List[int]
 
     def __init__(self, address: str):
-        parts = address.split('.')
+        parts = address.split(".")
         if len(parts) != 4:
-            raise ValueError(f'invalid IP address: {address!r}')
+            raise ValueError(f"invalid IP address: {address!r}")
         try:
             parsed = [int(p) for p in parts]
         except ValueError:
-            raise ValueError(f'invalid IP address: {address!r}') from None
+            raise ValueError(f"invalid IP address: {address!r}") from None
         for octet in parsed:
             if octet < 0 or octet > 255:
-                raise ValueError(f'invalid IP address: {address!r}')
+                raise ValueError(f"invalid IP address: {address!r}")
         self._octets = parsed
 
     def octets(self) -> list:
@@ -39,9 +38,8 @@ class BaseAddress:
 
 
 class Address(BaseAddress):
-
     def __str__(self) -> str:
-        return '.'.join(map(str, self._octets))
+        return ".".join(map(str, self._octets))
 
     def is_private(self) -> bool:
         """Return True if this address falls within an RFC 1918 private range."""
@@ -55,9 +53,8 @@ class Address(BaseAddress):
 
 
 class NetworkAddress(BaseAddress):
-
     def __init__(self, address: str):
-        address, mask = address.split('/')
+        address, mask = address.split("/")
         super().__init__(address)
         self._mask = int(mask)
         self._canonicalize()
@@ -73,7 +70,7 @@ class NetworkAddress(BaseAddress):
     def _canonicalize(self):
         idx, bits = self._split()
         if bits > 0:
-            self._octets[idx] &= ~self._host_bitmask(bits) & 0xff
+            self._octets[idx] &= ~self._host_bitmask(bits) & 0xFF
             for i in range(idx + 1, 4):
                 self._octets[i] = 0
         else:
@@ -98,15 +95,15 @@ class NetworkAddress(BaseAddress):
         if idx < len(self._octets):
             octets.append(self._octets[idx] | self._host_bitmask(bits))
             for i in range(idx + 1, 4):
-                octets.append(0xff)
-        addr_str = '.'.join(map(str, octets))
+                octets.append(0xFF)
+        addr_str = ".".join(map(str, octets))
         return Address(addr_str)
 
     def _matches(self, octets: List[int]) -> bool:
         idx, bits = self._split()
 
         if idx < len(self._octets):
-            net_bitmask = ~self._host_bitmask(bits) & 0xff
+            net_bitmask = ~self._host_bitmask(bits) & 0xFF
             if octets[idx] & net_bitmask != self._octets[idx] & net_bitmask:
                 return False
 
@@ -121,7 +118,7 @@ class NetworkAddress(BaseAddress):
         return any(p.contains(self) for p in _RFC1918_PREFIXES)
 
     def __str__(self) -> str:
-        return '.'.join(map(str, self._octets)) + f'/{self._mask}'
+        return ".".join(map(str, self._octets)) + f"/{self._mask}"
 
     def _eq_fields(self):
         return (self._octets, self._mask)
@@ -130,11 +127,10 @@ class NetworkAddress(BaseAddress):
         return hash(tuple(self._octets)) ^ self._mask
 
 
-NullAddress = Address('0.0.0.0')
+NullAddress = Address("0.0.0.0")
 
 _RFC1918_PREFIXES = (
-    NetworkAddress('10.0.0.0/8'),
-    NetworkAddress('172.16.0.0/12'),
-    NetworkAddress('192.168.0.0/16'),
+    NetworkAddress("10.0.0.0/8"),
+    NetworkAddress("172.16.0.0/12"),
+    NetworkAddress("192.168.0.0/16"),
 )
-

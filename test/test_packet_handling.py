@@ -19,33 +19,30 @@ from routing import LSA, NoRouteToHostException
 
 
 class PacketHandlingTest(unittest.TestCase):
-
     def setUp(self):
-        net1 = Network('lan1', NetworkAddress('200.200.10.0/24'))
-        net2 = Network('lan2', NetworkAddress('100.100.0.0/24'))
+        net1 = Network("lan1", NetworkAddress("200.200.10.0/24"))
+        net2 = Network("lan2", NetworkAddress("100.100.0.0/24"))
 
-        self.iface1 = Interface('eth0', net1, Address('200.200.10.1'))
-        self.iface2 = Interface('eth1', net2, Address('100.100.0.254'))
-        self.iface3 = Interface('eth2', net2, Address('100.100.0.250'))
+        self.iface1 = Interface("eth0", net1, Address("200.200.10.1"))
+        self.iface2 = Interface("eth1", net2, Address("100.100.0.254"))
+        self.iface3 = Interface("eth2", net2, Address("100.100.0.250"))
 
         net1.add_interface(self.iface1)
         net2.add_interface(self.iface2)
         net2.add_interface(self.iface3)
 
-        self.router = Router('r1')
+        self.router = Router("r1")
         self.router.add_interface(self.iface1)
         self.router.add_interface(self.iface2)
         self.router.add_interface(self.iface3)
 
         self.host = Host(
-            'h1', net1, Address('200.200.10.10'), gw_address=self.iface1.address()
+            "h1", net1, Address("200.200.10.10"), gw_address=self.iface1.address()
         )
 
     def test_msg_host_unicast(self):
         datagram = self._user_msg_datagram(
-            'test msg',
-            src=Address('100.100.10.15'),
-            dst=self.host.address()
+            "test msg", src=Address("100.100.10.15"), dst=self.host.address()
         )
 
         self.received = False
@@ -57,7 +54,7 @@ class PacketHandlingTest(unittest.TestCase):
             datagram.payload(),
             on_sent=lambda *args, **kwargs: self.fail(),
             on_forwarded=lambda *args, **kwargs: self.fail(),
-            on_received=on_received
+            on_received=on_received,
         )
 
         self.host.handle_packet(datagram, self.host.interface())
@@ -65,9 +62,7 @@ class PacketHandlingTest(unittest.TestCase):
 
     def test_msg_host_broadcast(self):
         datagram = self._user_msg_datagram(
-            'test msg',
-            src=Address('100.100.10.15'),
-            dst=Address('200.200.10.255')
+            "test msg", src=Address("100.100.10.15"), dst=Address("200.200.10.255")
         )
 
         self.received = False
@@ -79,7 +74,7 @@ class PacketHandlingTest(unittest.TestCase):
             datagram.payload(),
             on_sent=lambda *args, **kwargs: self.fail(),
             on_forwarded=lambda *args, **kwargs: self.fail(),
-            on_received=on_received
+            on_received=on_received,
         )
 
         self.host.handle_packet(datagram, self.host.interface())
@@ -87,43 +82,39 @@ class PacketHandlingTest(unittest.TestCase):
 
     def test_routing_msg_ignored_by_hosts(self):
         datagram = self._routing_msg_datagram(
-            self.router.interfaces()['eth0'],
-            src=Address('200.200.100.1'),
-            dst=Address('200.200.10.255')
+            self.router.interfaces()["eth0"],
+            src=Address("200.200.100.1"),
+            dst=Address("200.200.10.255"),
         )
 
         _ = EventTracer.register_message_event(
             datagram.payload(),
             on_sent=lambda *args, **kwargs: self.fail(),
             on_forwarded=lambda *args, **kwargs: self.fail(),
-            on_received=lambda *args, **kwargs: self.fail()
+            on_received=lambda *args, **kwargs: self.fail(),
         )
 
         self.host.handle_packet(datagram, self.host.interface())
 
     def test_host_cannot_forward(self):
         datagram = self._user_msg_datagram(
-            'test msg',
-            src=Address('100.100.10.15'),
-            dst=Address('200.100.10.50')
+            "test msg", src=Address("100.100.10.15"), dst=Address("200.100.10.50")
         )
 
         _ = EventTracer.register_message_event(
             datagram.payload(),
             on_sent=lambda *args, **kwargs: self.fail(),
             on_forwarded=lambda *args, **kwargs: self.fail(),
-            on_received=lambda *args, **kwargs: self.fail()
+            on_received=lambda *args, **kwargs: self.fail(),
         )
 
         with self.assertRaises(HostsCannotForwardException) as context:
             self.host.handle_packet(datagram, self.host.interface())
-        self.assertIn('cannot forward datagrams', str(context.exception))
+        self.assertIn("cannot forward datagrams", str(context.exception))
 
     def test_routing_msg_router(self):
         datagram = self._routing_msg_datagram(
-            self.iface3,
-            src=self.iface3.address(),
-            dst=Address('200.200.10.255')
+            self.iface3, src=self.iface3.address(), dst=Address("200.200.10.255")
         )
 
         self.received = False
@@ -135,7 +126,7 @@ class PacketHandlingTest(unittest.TestCase):
             datagram.payload(),
             on_sent=lambda *args, **kwargs: self.fail(),
             on_forwarded=lambda *args, **kwargs: self.fail(),
-            on_received=on_received
+            on_received=on_received,
         )
 
         self.router.handle_packet(datagram, self.iface1)
@@ -143,9 +134,7 @@ class PacketHandlingTest(unittest.TestCase):
 
     def test_forwarding_failure(self):
         datagram = self._user_msg_datagram(
-            'test msg',
-            src=Address('100.100.10.15'),
-            dst=Address('200.100.10.50')
+            "test msg", src=Address("100.100.10.15"), dst=Address("200.100.10.50")
         )
 
         self.forwarded = False
@@ -157,34 +146,30 @@ class PacketHandlingTest(unittest.TestCase):
             datagram.payload(),
             on_sent=lambda *args, **kwargs: self.fail(),
             on_forwarded=on_forwarded,
-            on_received=lambda *args, **kwargs: self.fail()
+            on_received=lambda *args, **kwargs: self.fail(),
         )
 
         with self.assertRaises(NoRouteToHostException) as context:
             self.router.handle_packet(datagram, self.iface1)
-        self.assertIn('no route to host', str(context.exception))
+        self.assertIn("no route to host", str(context.exception))
 
     def test_user_msg_ignored_by_routers(self):
         datagram = self._user_msg_datagram(
-            'test msg',
-            src=Address('100.100.10.15'),
-            dst=self.iface1.address()
+            "test msg", src=Address("100.100.10.15"), dst=self.iface1.address()
         )
 
         _ = EventTracer.register_message_event(
             datagram.payload(),
             on_sent=lambda *args, **kwargs: self.fail(),
             on_forwarded=lambda *args, **kwargs: self.fail(),
-            on_received=lambda *args, **kwargs: self.fail()
+            on_received=lambda *args, **kwargs: self.fail(),
         )
 
         self.router.handle_packet(datagram, self.iface1)
 
     def test_datagram_default_ttl(self):
         datagram = self._user_msg_datagram(
-            'test msg',
-            src=Address('100.100.10.15'),
-            dst=Address('200.200.10.10')
+            "test msg", src=Address("100.100.10.15"), dst=Address("200.200.10.10")
         )
         self.assertEqual(datagram.ttl(), 64)
 
@@ -192,12 +177,10 @@ class PacketHandlingTest(unittest.TestCase):
         self.router.routing_table().add_rule(
             prefix=self.iface2.network().address(),
             next_hop=self.iface2.address(),
-            interface=self.iface2
+            interface=self.iface2,
         )
         datagram = self._user_msg_datagram(
-            'test msg',
-            src=Address('100.100.10.15'),
-            dst=Address('100.100.0.5')
+            "test msg", src=Address("100.100.10.15"), dst=Address("100.100.0.5")
         )
         initial_ttl = datagram.ttl()
         self.router._handle_forwarding(datagram)
@@ -207,13 +190,10 @@ class PacketHandlingTest(unittest.TestCase):
         self.router.routing_table().add_rule(
             prefix=self.iface2.network().address(),
             next_hop=self.iface2.address(),
-            interface=self.iface2
+            interface=self.iface2,
         )
         datagram = self._user_msg_datagram_with_ttl(
-            'test msg',
-            src=Address('100.100.10.15'),
-            dst=Address('100.100.0.5'),
-            ttl=1
+            "test msg", src=Address("100.100.10.15"), dst=Address("100.100.0.5"), ttl=1
         )
 
         forwarded = False
@@ -226,7 +206,7 @@ class PacketHandlingTest(unittest.TestCase):
             datagram.payload(),
             on_sent=lambda *args, **kwargs: None,
             on_forwarded=on_forwarded,
-            on_received=lambda *args, **kwargs: None
+            on_received=lambda *args, **kwargs: None,
         )
 
         with self.assertLogs("entities.router", level="WARNING") as cm:
@@ -258,17 +238,17 @@ class NetworkBroadcastTest(unittest.TestCase):
     """
 
     def _build_lan(self):
-        net = Network('lan', NetworkAddress('10.0.0.0/24'))
-        sender = Interface('eth0', net, Address('10.0.0.1'))
-        peer_a = Interface('eth_a', net, Address('10.0.0.2'))
-        peer_b = Interface('eth_b', net, Address('10.0.0.3'))
+        net = Network("lan", NetworkAddress("10.0.0.0/24"))
+        sender = Interface("eth0", net, Address("10.0.0.1"))
+        peer_a = Interface("eth_a", net, Address("10.0.0.2"))
+        peer_b = Interface("eth_b", net, Address("10.0.0.3"))
         net.add_interface(sender)
         net.add_interface(peer_a)
         net.add_interface(peer_b)
         received_on = []
-        sender.receive = lambda pkt: received_on.append('sender')
-        peer_a.receive = lambda pkt: received_on.append('peer_a')
-        peer_b.receive = lambda pkt: received_on.append('peer_b')
+        sender.receive = lambda pkt: received_on.append("sender")
+        peer_a.receive = lambda pkt: received_on.append("peer_a")
+        peer_b.receive = lambda pkt: received_on.append("peer_b")
         return net, sender, received_on
 
     def _routing_msg_for(self, interface):
@@ -280,9 +260,9 @@ class NetworkBroadcastTest(unittest.TestCase):
         # this loop catches it.
         net, sender, _ = self._build_lan()
         cases = [
-            ('UserMessage',    UserMessage('hello LAN')),
-            ('RoutingMessage', self._routing_msg_for(sender)),
-            ('raw payload',    'opaque-bytes-no-message-type'),
+            ("UserMessage", UserMessage("hello LAN")),
+            ("RoutingMessage", self._routing_msg_for(sender)),
+            ("raw payload", "opaque-bytes-no-message-type"),
         ]
         for label, payload in cases:
             with self.subTest(payload=label):
@@ -293,8 +273,8 @@ class NetworkBroadcastTest(unittest.TestCase):
                     payload=payload,
                 )
                 net2._dispatch_broadcast(frame)
-                self.assertNotIn('sender', received_on)
-                self.assertEqual(sorted(received_on), ['peer_a', 'peer_b'])
+                self.assertNotIn("sender", received_on)
+                self.assertEqual(sorted(received_on), ["peer_a", "peer_b"])
 
     def test_broadcast_from_an_unattached_source_reaches_every_interface(self):
         # If no interface on the LAN claims the source address, nothing is
@@ -303,37 +283,35 @@ class NetworkBroadcastTest(unittest.TestCase):
         # we don't know about yet (mid-attach race, manually injected frames).
         net, _, received_on = self._build_lan()
         frame = Frame(
-            src_addr=Address('10.0.0.99'),  # not on this LAN
+            src_addr=Address("10.0.0.99"),  # not on this LAN
             dst_addr=net.broadcast_address(),
-            payload=UserMessage('from outside'),
+            payload=UserMessage("from outside"),
         )
         net._dispatch_broadcast(frame)
-        self.assertEqual(sorted(received_on), ['peer_a', 'peer_b', 'sender'])
+        self.assertEqual(sorted(received_on), ["peer_a", "peer_b", "sender"])
 
 
 class PacketRewriteTest(unittest.TestCase):
-
     def test_rewrite_source_changes_source_only(self):
-        d = Datagram(Address('192.168.1.10'), Address('8.8.8.8'), payload='x')
-        d.rewrite_source(Address('200.100.0.1'))
-        self.assertEqual(d.source(), Address('200.100.0.1'))
-        self.assertEqual(d.destination(), Address('8.8.8.8'))
+        d = Datagram(Address("192.168.1.10"), Address("8.8.8.8"), payload="x")
+        d.rewrite_source(Address("200.100.0.1"))
+        self.assertEqual(d.source(), Address("200.100.0.1"))
+        self.assertEqual(d.destination(), Address("8.8.8.8"))
 
     def test_rewrite_destination_changes_destination_only(self):
-        d = Datagram(Address('192.168.1.10'), Address('200.100.0.1'), payload='x')
-        d.rewrite_destination(Address('192.168.1.10'))
-        self.assertEqual(d.destination(), Address('192.168.1.10'))
-        self.assertEqual(d.source(), Address('192.168.1.10'))
+        d = Datagram(Address("192.168.1.10"), Address("200.100.0.1"), payload="x")
+        d.rewrite_destination(Address("192.168.1.10"))
+        self.assertEqual(d.destination(), Address("192.168.1.10"))
+        self.assertEqual(d.source(), Address("192.168.1.10"))
 
     def test_rewrite_preserves_payload_identity(self):
         payload = object()
-        d = Datagram(Address('192.168.1.10'), Address('8.8.8.8'), payload)
-        d.rewrite_source(Address('200.100.0.1'))
+        d = Datagram(Address("192.168.1.10"), Address("8.8.8.8"), payload)
+        d.rewrite_source(Address("200.100.0.1"))
         self.assertIs(d.payload(), payload)
 
 
 class InboundNATTest(unittest.TestCase):
-
     def _build_two_iface_router(self, priv, priv_net, pub, pub_net):
         """Build a router with one private and one public interface.
 
@@ -342,11 +320,11 @@ class InboundNATTest(unittest.TestCase):
         called. interface.send_to is replaced with a no-op stub that
         records into router._sent_list.
         """
-        net_priv = Network('lan_priv', NetworkAddress(priv_net))
-        net_pub = Network('lan_pub', NetworkAddress(pub_net))
-        router = Router('r')
-        iface_priv = Interface('eth_priv', net_priv, Address(priv))
-        iface_pub = Interface('eth_pub', net_pub, Address(pub))
+        net_priv = Network("lan_priv", NetworkAddress(priv_net))
+        net_pub = Network("lan_pub", NetworkAddress(pub_net))
+        router = Router("r")
+        iface_priv = Interface("eth_priv", net_priv, Address(priv))
+        iface_pub = Interface("eth_pub", net_pub, Address(pub))
         router.add_interface(iface_priv)
         router.add_interface(iface_pub)
         net_priv.add_interface(iface_priv)
@@ -354,64 +332,76 @@ class InboundNATTest(unittest.TestCase):
 
         table = router.routing_table()
         table.add_rule(
-            prefix=net_priv.address(), next_hop=NullAddress, interface=iface_priv,
+            prefix=net_priv.address(),
+            next_hop=NullAddress,
+            interface=iface_priv,
         )
         table.add_rule(
-            prefix=net_pub.address(), next_hop=NullAddress, interface=iface_pub,
+            prefix=net_pub.address(),
+            next_hop=NullAddress,
+            interface=iface_pub,
         )
 
         router._sent_list = []
+
         def capturing_send(pkt, dst_addr):
             router._sent_list.append((pkt, dst_addr))
+
         iface_priv.send_to = capturing_send
         iface_pub.send_to = capturing_send
         return router
 
     def test_inbound_reply_rewrites_destination_to_original_private(self):
         router = self._build_two_iface_router(
-            priv='192.168.1.1', priv_net='192.168.1.0/24',
-            pub='200.100.0.1', pub_net='200.100.0.0/24',
+            priv="192.168.1.1",
+            priv_net="192.168.1.0/24",
+            pub="200.100.0.1",
+            pub_net="200.100.0.0/24",
         )
         # Use the same payload object for both the registered entry and the
         # inbound reply so the conversation-keyed flow_id matches.
-        payload = UserMessage('hi')
+        payload = UserMessage("hi")
         router.nat_table().register(
-            rewritten_src=Address('200.100.0.1'),
-            original_dst=Address('200.100.0.5'),
+            rewritten_src=Address("200.100.0.1"),
+            original_dst=Address("200.100.0.5"),
             flow_id=flow_id(payload),
-            original_src=Address('192.168.1.10'),
+            original_src=Address("192.168.1.10"),
         )
         reply = Datagram(
-            src_addr=Address('200.100.0.5'),
-            dst_addr=Address('200.100.0.1'),
+            src_addr=Address("200.100.0.5"),
+            dst_addr=Address("200.100.0.1"),
             payload=payload,
         )
-        router.handle_packet(reply, router.interface('eth_pub'))
+        router.handle_packet(reply, router.interface("eth_pub"))
 
         # After reverse-translation + re-entry into _handle_forwarding,
         # the packet should leave on eth_priv addressed to the original host.
         self.assertTrue(len(router._sent_list) >= 1)
         out_pkt, out_dst = router._sent_list[-1]
-        self.assertEqual(out_pkt.destination(), Address('192.168.1.10'))
+        self.assertEqual(out_pkt.destination(), Address("192.168.1.10"))
 
     def test_inbound_to_router_with_no_nat_entry_falls_through(self):
         # No NAT entry registered. Packet addressed to router's public IP
         # must reach _handle_message (we capture by replacing it).
         router = self._build_two_iface_router(
-            priv='192.168.1.1', priv_net='192.168.1.0/24',
-            pub='200.100.0.1', pub_net='200.100.0.0/24',
+            priv="192.168.1.1",
+            priv_net="192.168.1.0/24",
+            pub="200.100.0.1",
+            pub_net="200.100.0.0/24",
         )
         msg_calls = []
+
         def stub_handle_message(msg, iface, packet):
             msg_calls.append((msg, iface, packet))
+
         router._handle_message = stub_handle_message
 
         pkt = Datagram(
-            src_addr=Address('200.100.0.99'),
-            dst_addr=Address('200.100.0.1'),
-            payload=UserMessage('hello'),
+            src_addr=Address("200.100.0.99"),
+            dst_addr=Address("200.100.0.1"),
+            payload=UserMessage("hello"),
         )
-        router.handle_packet(pkt, router.interface('eth_pub'))
+        router.handle_packet(pkt, router.interface("eth_pub"))
         self.assertEqual(len(msg_calls), 1)
 
     def test_inbound_on_private_interface_does_not_trigger_nat(self):
@@ -419,31 +409,35 @@ class InboundNATTest(unittest.TestCase):
         # to match an entry, arrival on a private interface must skip
         # the NAT lookup entirely.
         router = self._build_two_iface_router(
-            priv='192.168.1.1', priv_net='192.168.1.0/24',
-            pub='200.100.0.1', pub_net='200.100.0.0/24',
+            priv="192.168.1.1",
+            priv_net="192.168.1.0/24",
+            pub="200.100.0.1",
+            pub_net="200.100.0.0/24",
         )
         router.nat_table().register(
-            rewritten_src=Address('192.168.1.1'),
-            original_dst=Address('192.168.1.50'),
+            rewritten_src=Address("192.168.1.1"),
+            original_dst=Address("192.168.1.50"),
             flow_id=None,
-            original_src=Address('10.0.0.1'),
+            original_src=Address("10.0.0.1"),
         )
 
         msg_calls = []
+
         def stub_handle_message(msg, iface, packet):
             msg_calls.append((msg, iface, packet))
+
         router._handle_message = stub_handle_message
 
         pkt = Datagram(
-            src_addr=Address('192.168.1.50'),
-            dst_addr=Address('192.168.1.1'),
-            payload=UserMessage('internal'),
+            src_addr=Address("192.168.1.50"),
+            dst_addr=Address("192.168.1.1"),
+            payload=UserMessage("internal"),
         )
-        router.handle_packet(pkt, router.interface('eth_priv'))
+        router.handle_packet(pkt, router.interface("eth_priv"))
 
         # Must NOT have been rewritten. Should have reached _handle_message.
         self.assertEqual(len(msg_calls), 1)
-        self.assertEqual(pkt.destination(), Address('192.168.1.1'))
+        self.assertEqual(pkt.destination(), Address("192.168.1.1"))
 
 
 class DispatchBroadcastConcurrencyTest(unittest.TestCase):
@@ -451,7 +445,7 @@ class DispatchBroadcastConcurrencyTest(unittest.TestCase):
     (interface added during iteration) without raising RuntimeError."""
 
     def test_dispatch_broadcast_tolerates_concurrent_interface_add(self):
-        net = Network('lan', NetworkAddress('10.0.0.0/24'))
+        net = Network("lan", NetworkAddress("10.0.0.0/24"))
 
         class _MutatingIface(Interface):
             def __init__(self, *a, fabric=None, **kw):
@@ -459,24 +453,23 @@ class DispatchBroadcastConcurrencyTest(unittest.TestCase):
                 self._fabric = fabric
 
             def receive(self, datagram):
-                extra = Interface('ethX', self._net, Address('10.0.0.9'))
+                extra = Interface("ethX", self._net, Address("10.0.0.9"))
                 self._fabric._interfaces[extra.address()] = extra
 
-        a = Interface('eth0', net, Address('10.0.0.1'))
-        b = _MutatingIface('eth1', net, Address('10.0.0.2'), fabric=net)
+        a = Interface("eth0", net, Address("10.0.0.1"))
+        b = _MutatingIface("eth1", net, Address("10.0.0.2"), fabric=net)
         net.add_interface(a)
         net.add_interface(b)
         dgram = Datagram(
-            src_addr=Address('10.0.0.5'),
+            src_addr=Address("10.0.0.5"),
             dst_addr=net.broadcast_address(),
-            payload=UserMessage('hi'),
+            payload=UserMessage("hi"),
         )
         # Must not raise "dictionary changed size during iteration".
         net._dispatch_broadcast(dgram)
 
 
 class InboundNATEventTest(unittest.TestCase):
-
     def setUp(self):
         self.events = []
         self._handler = lambda ev: self.events.append(ev)
@@ -488,47 +481,54 @@ class InboundNATEventTest(unittest.TestCase):
 
     def test_inbound_nat_emits_nat_event(self):
         # Mirror InboundNATTest's _build_two_iface_router shape.
-        net_priv = Network('lan_priv', NetworkAddress('192.168.1.0/24'))
-        net_pub = Network('lan_pub', NetworkAddress('200.100.0.0/24'))
-        router = Router('r')
-        iface_priv = Interface('eth_priv', net_priv, Address('192.168.1.1'))
-        iface_pub = Interface('eth_pub', net_pub, Address('200.100.0.1'))
+        net_priv = Network("lan_priv", NetworkAddress("192.168.1.0/24"))
+        net_pub = Network("lan_pub", NetworkAddress("200.100.0.0/24"))
+        router = Router("r")
+        iface_priv = Interface("eth_priv", net_priv, Address("192.168.1.1"))
+        iface_pub = Interface("eth_pub", net_pub, Address("200.100.0.1"))
         router.add_interface(iface_priv)
         router.add_interface(iface_pub)
         net_priv.add_interface(iface_priv)
         net_pub.add_interface(iface_pub)
         router.routing_table().add_rule(
-            prefix=net_priv.address(), next_hop=NullAddress, interface=iface_priv,
+            prefix=net_priv.address(),
+            next_hop=NullAddress,
+            interface=iface_priv,
         )
         router.routing_table().add_rule(
-            prefix=net_pub.address(), next_hop=NullAddress, interface=iface_pub,
+            prefix=net_pub.address(),
+            next_hop=NullAddress,
+            interface=iface_pub,
         )
         iface_priv.send_to = lambda pkt, dst_addr: None
         iface_pub.send_to = lambda pkt, dst_addr: None
 
-        payload = UserMessage('hi')
+        payload = UserMessage("hi")
         router.nat_table().register(
-            rewritten_src=Address('200.100.0.1'),
-            original_dst=Address('200.100.0.5'),
+            rewritten_src=Address("200.100.0.1"),
+            original_dst=Address("200.100.0.5"),
             flow_id=flow_id(payload),
-            original_src=Address('192.168.1.10'),
+            original_src=Address("192.168.1.10"),
         )
 
         reply = Datagram(
-            src_addr=Address('200.100.0.5'),
-            dst_addr=Address('200.100.0.1'),
+            src_addr=Address("200.100.0.5"),
+            dst_addr=Address("200.100.0.1"),
             payload=payload,
         )
-        router.handle_packet(reply, router.interface('eth_pub'))
+        router.handle_packet(reply, router.interface("eth_pub"))
 
-        inbound = [e for e in self.events
-                   if e.get('kind') == 'nat' and e.get('direction') == 'inbound']
+        inbound = [
+            e
+            for e in self.events
+            if e.get("kind") == "nat" and e.get("direction") == "inbound"
+        ]
         self.assertEqual(len(inbound), 1)
         ev = inbound[0]
-        self.assertEqual(ev['rewritten_dst'], '200.100.0.1')
-        self.assertEqual(ev['original_dst'], '192.168.1.10')
-        self.assertEqual(ev['src'], '200.100.0.5')
-        self.assertEqual(ev['router'], router.name())
-        self.assertEqual(ev['flow_id'], flow_id(payload))
-        self.assertIsInstance(ev['payload_id'], str)
-        self.assertTrue(ev['payload_id'])
+        self.assertEqual(ev["rewritten_dst"], "200.100.0.1")
+        self.assertEqual(ev["original_dst"], "192.168.1.10")
+        self.assertEqual(ev["src"], "200.100.0.5")
+        self.assertEqual(ev["router"], router.name())
+        self.assertEqual(ev["flow_id"], flow_id(payload))
+        self.assertIsInstance(ev["payload_id"], str)
+        self.assertTrue(ev["payload_id"])

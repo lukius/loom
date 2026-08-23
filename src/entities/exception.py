@@ -8,37 +8,32 @@ class EntityException(Exception):
 
 
 class HostNotFoundException(EntityException):
-
     def __init__(self, message: str):
-        message = f'host not found: {message}'
+        message = f"host not found: {message}"
         super().__init__(message)
 
 
 class RouterNotFoundException(EntityException):
-
     def __init__(self, message: str):
-        message = f'router not found: {message}'
+        message = f"router not found: {message}"
         super().__init__(message)
 
 
 class NetworkNotFoundException(EntityException):
-
     def __init__(self, message: str):
-        message = f'network not found: {message}'
+        message = f"network not found: {message}"
         super().__init__(message)
 
 
 class LinkNotFoundException(EntityException):
-
     def __init__(self, message: str):
-        message = f'link not found: {message}'
+        message = f"link not found: {message}"
         super().__init__(message)
 
 
 class InvalidInterfaceException(EntityException):
-
     def __init__(self, dev, iface_name):
-        message = f'{dev.name()}: invalid interface {iface_name}'
+        message = f"{dev.name()}: invalid interface {iface_name}"
         super().__init__(message)
 
 
@@ -47,8 +42,8 @@ class TooManyEndpointsException(EntityException):
 
     def __init__(self, link_name, iface):
         message = (
-            f'{link_name}: cannot add interface {iface.name()}'
-            ' — link already has two endpoints'
+            f"{link_name}: cannot add interface {iface.name()}"
+            " — link already has two endpoints"
         )
         super().__init__(message)
 
@@ -69,7 +64,7 @@ class ASNotFoundException(EntityException):
     unknown AS name."""
 
     def __init__(self, message: str):
-        message = f'AS not found: {message}'
+        message = f"AS not found: {message}"
         super().__init__(message)
 
 
@@ -81,7 +76,7 @@ class AddressNotInNetworkException(EntityException):
     """
 
     def __init__(self, address, network_name):
-        message = f'{address} not in {network_name}'
+        message = f"{address} not in {network_name}"
         super().__init__(message)
 
 
@@ -94,5 +89,4 @@ class InterfaceNotReadyException(EntityException):
     """
 
     def __init__(self):
-        super().__init__('interface not ready')
-
+        super().__init__("interface not ready")

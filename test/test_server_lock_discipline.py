@@ -2,6 +2,7 @@
 
 All assertions use threading.Event barriers — no time.sleep-based races.
 """
+
 import shutil
 import textwrap
 import threading
@@ -78,7 +79,7 @@ def test_edit_holds_lock_across_apply(minimal_running, monkeypatch):
     """_lock must be held continuously from state-check through apply+persist."""
     sim = minimal_running
 
-    inside_apply = threading.Event()   # signals thread B: A is inside _apply_patch
+    inside_apply = threading.Event()  # signals thread B: A is inside _apply_patch
     unblock_apply = threading.Event()  # lets thread A's _apply_patch finish
 
     original_apply_patch = sim._apply_patch
@@ -99,11 +100,11 @@ def test_edit_holds_lock_across_apply(minimal_running, monkeypatch):
         # Non-blocking acquire: if _lock is NOT held by A this would succeed.
         acquired = sim._lock.acquire(blocking=True, timeout=0.1)
         if acquired:
-            lock_acquired_mid_apply.set()   # BAD: lock was free during apply
+            lock_acquired_mid_apply.set()  # BAD: lock was free during apply
             sim._lock.release()
         else:
-            lock_free_mid_apply.set()       # GOOD: _lock is properly held
-        unblock_apply.set()                 # let thread A finish
+            lock_free_mid_apply.set()  # GOOD: _lock is properly held
+        unblock_apply.set()  # let thread A finish
 
     patch = [{"op": "add_network", "name": "lanH9", "address": "172.16.10.0/24"}]
 
@@ -230,14 +231,14 @@ def test_load_from_session_serializes_under_edit_lock(minimal_src, monkeypatch):
     """load_from_session() must not proceed while _edit_lock is held by an editor."""
     sim = SimState(minimal_src)
 
-    edit_lock_held = threading.Event()   # background: has acquired _edit_lock
+    edit_lock_held = threading.Event()  # background: has acquired _edit_lock
     edit_lock_release = threading.Event()  # main: tells background to release
-    load_unblocked = threading.Event()   # main: load_from_session returned
+    load_unblocked = threading.Event()  # main: load_from_session returned
 
     def hold_edit_lock():
         with sim._edit_lock:
             edit_lock_held.set()
-            edit_lock_release.wait()   # hold until told to release
+            edit_lock_release.wait()  # hold until told to release
 
     t_holder = threading.Thread(target=hold_edit_lock, daemon=True)
     t_holder.start()
@@ -290,8 +291,8 @@ def test_stop_releases_lock_before_internet_stop(sample_running, monkeypatch):
     sim = sample_running
     internet = sim._internet  # grab before stop() nulls it
 
-    join_started = threading.Event()   # internet.stop() entered
-    allow_join = threading.Event()     # let internet.stop() return
+    join_started = threading.Event()  # internet.stop() entered
+    allow_join = threading.Event()  # let internet.stop() return
 
     original_internet_stop = internet.stop
 
@@ -473,9 +474,7 @@ def test_load_from_session_releases_lock_before_internet_stop(
 # ---------------------------------------------------------------------------
 
 
-def test_reset_session_releases_lock_before_internet_stop(
-    sample_running, monkeypatch
-):
+def test_reset_session_releases_lock_before_internet_stop(sample_running, monkeypatch):
     """reset_session() must release _lock before blocking on internet.stop().
 
     reset_session() follows the same pattern as load_from_session(): snapshot
@@ -562,9 +561,9 @@ def test_start_serializes_under_edit_lock(minimal_src):
     sim = SimState(minimal_src)
     sim.load_from_session()  # _state = "idle", topology ready
 
-    edit_lock_held = threading.Event()    # background: has _edit_lock
+    edit_lock_held = threading.Event()  # background: has _edit_lock
     edit_lock_release = threading.Event()  # main: tells background to release
-    start_unblocked = threading.Event()   # main: start() returned
+    start_unblocked = threading.Event()  # main: start() returned
 
     def hold_edit_lock():
         with sim._edit_lock:

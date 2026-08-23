@@ -59,7 +59,6 @@ class RoutingProtocol(ABC):
 
 
 class LinkStateProtocol(RoutingProtocol):
-
     def __init__(self, router, outbound_policy=None):
         self._router = router
         self._lock = threading.Lock()
@@ -99,7 +98,8 @@ class LinkStateProtocol(RoutingProtocol):
         self._graph = self._lsdb.build_graph(eligible_origins=set())
 
         self._protocol_thread = threading.Thread(
-            target=self._protocol_loop, daemon=True,
+            target=self._protocol_loop,
+            daemon=True,
         )
 
     # Canonical ratios from the loom-OSPF spec.
@@ -125,13 +125,12 @@ class LinkStateProtocol(RoutingProtocol):
         # next loop iteration.
         now = time.monotonic()
         loop_running = (
-            self._protocol_thread is not None
-            and self._protocol_thread.is_alive()
+            self._protocol_thread is not None and self._protocol_thread.is_alive()
         )
         for name, interval in (
-            ('hello', self._hello_interval),
-            ('lsa_refresh', self._lsa_refresh_interval),
-            ('maxage_check', self._maxage_check_interval),
+            ("hello", self._hello_interval),
+            ("lsa_refresh", self._lsa_refresh_interval),
+            ("maxage_check", self._maxage_check_interval),
         ):
             self._reconcile_deadline(name, interval, now, loop_running)
         # Wake a parked protocol loop so it picks up the new cadence promptly
@@ -181,9 +180,10 @@ class LinkStateProtocol(RoutingProtocol):
         self._stopped = False
         self._stop_event.clear()
         if self._protocol_thread is not None and self._protocol_thread.is_alive():
-            return                                    # idempotent on running
+            return  # idempotent on running
         self._protocol_thread = threading.Thread(
-            target=self._protocol_loop, daemon=True,
+            target=self._protocol_loop,
+            daemon=True,
         )
         self._protocol_thread.start()
 
@@ -206,7 +206,9 @@ class LinkStateProtocol(RoutingProtocol):
         for _, iface in self._router.interfaces().items():
             broadcast = iface.network().broadcast_address()
             dgram = Datagram(
-                src_addr=iface.address(), dst_addr=broadcast, payload=lsa,
+                src_addr=iface.address(),
+                dst_addr=broadcast,
+                payload=lsa,
             )
             iface.send_to(dgram, dst_addr=broadcast)
 
@@ -245,7 +247,8 @@ class LinkStateProtocol(RoutingProtocol):
         now = time.monotonic()
         peer_listed_us = self._router in hello.neighbors_heard()
         transition = self._neighbor_table.record_hello(
-            interface, hello.originator(),
+            interface,
+            hello.originator(),
             peer_listed_us=peer_listed_us,
             dead_interval=self._dead_interval,
             now=now,
@@ -261,15 +264,17 @@ class LinkStateProtocol(RoutingProtocol):
 
     def _broadcast_neighbor_state_changed(self, transition):
         n = transition.neighbor()
-        EventTracer._broadcast({
-            "kind": "neighbor_state_changed",
-            "device": self._router.name(),
-            "interface": n.interface().name(),
-            "peer": n.peer().name(),
-            "state": transition.after().value,
-            "last_hello_at": n.last_hello_at(),
-            "peer_acked_at": n.peer_acked_at(),
-        })
+        EventTracer._broadcast(
+            {
+                "kind": "neighbor_state_changed",
+                "device": self._router.name(),
+                "interface": n.interface().name(),
+                "peer": n.peer().name(),
+                "state": transition.after().value,
+                "last_hello_at": n.last_hello_at(),
+                "peer_acked_at": n.peer_acked_at(),
+            }
+        )
 
     def _next_seq(self) -> int:
         with self._seq_lock:
@@ -281,7 +286,9 @@ class LinkStateProtocol(RoutingProtocol):
         # connected networks (including RFC 1918). The outbound policy only
         # controls what is flooded to peers in _run_keepalive_cycle.
         lsa = LSA.from_router(
-            self._router, seq=self._next_seq(), policy=self._local_policy,
+            self._router,
+            seq=self._next_seq(),
+            policy=self._local_policy,
         )
         result = self._lsdb.install(lsa, now=time.monotonic())
         if result.is_accepted() and result.changed_graph():
@@ -304,7 +311,8 @@ class LinkStateProtocol(RoutingProtocol):
         with self._lock:
             changed = False
             for transition in self._neighbor_table.sweep_transitions(
-                dead_interval=self._dead_interval, now=now,
+                dead_interval=self._dead_interval,
+                now=now,
             ):
                 self._broadcast_neighbor_state_changed(transition)
                 if transition.went_down():
@@ -331,11 +339,15 @@ class LinkStateProtocol(RoutingProtocol):
                     continue
                 broadcast = iface.network().broadcast_address()
                 listed = self._neighbor_table.neighbors_heard_on(
-                    iface, dead_interval=self._dead_interval, now=now,
+                    iface,
+                    dead_interval=self._dead_interval,
+                    now=now,
                 )
                 hello = Hello(originator=self._router, neighbors_heard=listed)
                 dgram = Datagram(
-                    src_addr=iface.address(), dst_addr=broadcast, payload=hello,
+                    src_addr=iface.address(),
+                    dst_addr=broadcast,
+                    payload=hello,
                 )
                 iface.send_to(dgram, dst_addr=broadcast)
 
@@ -350,9 +362,9 @@ class LinkStateProtocol(RoutingProtocol):
         self._emit_lsa_on_up_interfaces(now)
         # Reset the periodic refresh deadline so a flurry of edits doesn't
         # produce a tail of identical periodic refreshes right behind us.
-        if self._scheduler.peek_deadline('lsa_refresh') is not None:
+        if self._scheduler.peek_deadline("lsa_refresh") is not None:
             self._scheduler.schedule(
-                'lsa_refresh',
+                "lsa_refresh",
                 base_interval=self._lsa_refresh_interval,
                 fire_at=now + self._lsa_refresh_interval,
             )
@@ -363,21 +375,27 @@ class LinkStateProtocol(RoutingProtocol):
             # Install a permit-all LSA locally so the local graph includes
             # all directly connected networks (including RFC 1918).
             local_lsa = LSA.from_router(
-                self._router, seq=seq, policy=self._local_policy,
+                self._router,
+                seq=seq,
+                policy=self._local_policy,
             )
             local_result = self._lsdb.install(local_lsa, now=now)
             if local_result.is_accepted() and local_result.changed_graph():
                 self._rebuild_graph_and_recompute()
             # Flood with outbound policy: RFC 1918 prefixes omitted.
             flooded_lsa = LSA.from_router(
-                self._router, seq=seq, policy=self._outbound_policy,
+                self._router,
+                seq=seq,
+                policy=self._outbound_policy,
             )
             for _, iface in self._router.interfaces().items():
                 if not iface.is_up():
                     continue
                 broadcast = iface.network().broadcast_address()
                 dgram = Datagram(
-                    src_addr=iface.address(), dst_addr=broadcast, payload=flooded_lsa,
+                    src_addr=iface.address(),
+                    dst_addr=broadcast,
+                    payload=flooded_lsa,
                 )
                 iface.send_to(dgram, dst_addr=broadcast)
 
@@ -388,14 +406,17 @@ class LinkStateProtocol(RoutingProtocol):
                 continue
             broadcast = iface.network().broadcast_address()
             dgram = Datagram(
-                src_addr=iface.address(), dst_addr=broadcast, payload=lsa,
+                src_addr=iface.address(),
+                dst_addr=broadcast,
+                payload=lsa,
             )
             iface.send_to(dgram, dst_addr=broadcast)
 
     def _rebuild_graph_and_recompute(self):
         now = time.monotonic()
         bidi = self._neighbor_table.bidirectional_peers(
-            dead_interval=self._dead_interval, now=now,
+            dead_interval=self._dead_interval,
+            now=now,
         )
         # Eligible origins: direct TWO_WAY neighbors are always trusted. For
         # non-adjacent origins (origins we've never exchanged Hellos with),
@@ -405,7 +426,8 @@ class LinkStateProtocol(RoutingProtocol):
         if bidi:
             seen_direct_peers = {n.peer() for n in self._neighbor_table.all()}
             eligible = {
-                o for o in self._lsdb.origins()
+                o
+                for o in self._lsdb.origins()
                 if o is not self._router and (o in bidi or o not in seen_direct_peers)
             }
         else:
@@ -474,7 +496,7 @@ class LinkStateProtocol(RoutingProtocol):
         if len(path) <= 2:
             return NullAddress
         next_hop_router = path[2]
-        if not hasattr(next_hop_router, 'interfaces'):
+        if not hasattr(next_hop_router, "interfaces"):
             # The destination prefix itself, hanging off a directly attached
             # fabric as a leaf — nothing to forward to.
             return NullAddress
@@ -557,16 +579,18 @@ class LinkStateProtocol(RoutingProtocol):
     def _schedule_initial_deadlines(self):
         now = time.monotonic()
         self._scheduler.schedule(
-            'hello',
+            "hello",
             base_interval=self._hello_interval,
             fire_at=now + self._hello_interval,
         )
         self._scheduler.schedule(
-            'lsa_refresh', base_interval=self._lsa_refresh_interval,
+            "lsa_refresh",
+            base_interval=self._lsa_refresh_interval,
             fire_at=now + self._lsa_refresh_interval,
         )
         self._scheduler.schedule(
-            'maxage_check', base_interval=self._maxage_check_interval,
+            "maxage_check",
+            base_interval=self._maxage_check_interval,
             fire_at=now + self._maxage_check_interval,
         )
 
@@ -601,11 +625,11 @@ class LinkStateProtocol(RoutingProtocol):
 
     def _dispatch(self, name: str, now: float):
         try:
-            if name == 'hello':
+            if name == "hello":
                 self._emit_hello_on_up_interfaces(now)
-            elif name == 'lsa_refresh':
+            elif name == "lsa_refresh":
                 self._emit_lsa_on_up_interfaces(now)
-            elif name == 'maxage_check':
+            elif name == "maxage_check":
                 self._sweep_dead_and_expired(now)
         except Exception:
             _logger.exception("error dispatching protocol tick %r", name)

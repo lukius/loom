@@ -5,7 +5,6 @@ from .exception import GraphConsistencyException
 
 
 class HeapItem:
-
     def __init__(self, weight, data):
         self._weight = weight
         self._data = data
@@ -21,7 +20,6 @@ class HeapItem:
 
 
 class NetworkGraph:
-
     def __init__(self):
         self._routers = list()
         self._networks = list()
@@ -60,7 +58,7 @@ class NetworkGraph:
     def add_edge(self, src, dst, weight):
         if src not in self._costs or dst not in self._costs:
             raise GraphConsistencyException(
-                f'add_edge: missing endpoint(s) src={src} dst={dst}'
+                f"add_edge: missing endpoint(s) src={src} dst={dst}"
             )
 
         self._costs[src][dst] = weight
@@ -76,7 +74,7 @@ class NetworkGraph:
         """
         if src not in self._costs or dst not in self._costs:
             raise GraphConsistencyException(
-                f'add_directed_edge: missing endpoint(s) src={src} dst={dst}'
+                f"add_directed_edge: missing endpoint(s) src={src} dst={dst}"
             )
         self._costs[src][dst] = weight
 
@@ -104,7 +102,7 @@ class NetworkGraph:
 
     def _shortest_paths(self, src):
         if src not in self._costs:
-            raise GraphConsistencyException(f'shortest_paths: missing src {src}')
+            raise GraphConsistencyException(f"shortest_paths: missing src {src}")
 
         costs = list()
         distances = {}

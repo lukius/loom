@@ -81,6 +81,7 @@ def stopped_client(tmp_path, monkeypatch):
 # H10-A: device routes after stop() yield 409, NOT 500
 # ---------------------------------------------------------------------------
 
+
 def test_fail_after_stop_returns_409_not_500(stopped_client):
     """POST /devices/r1/fail with no running topology must return 409, not 500."""
     c = stopped_client
@@ -139,6 +140,7 @@ def test_command_after_stop_returns_409_not_500(stopped_client):
 # null _as before the second read.  This deterministically reproduces the race.
 # ---------------------------------------------------------------------------
 
+
 def test_fail_toctou_stop_races_device_resolve(tmp_path, monkeypatch):
     """stop() nulling _as between the None-check and device() must not 500.
 
@@ -179,9 +181,7 @@ def test_fail_toctou_stop_races_device_resolve(tmp_path, monkeypatch):
                 stop_done.wait(timeout=2.0)
             return val
 
-        with unittest.mock.patch.object(
-            type(sim), "as_obj", property(patched_as_obj)
-        ):
+        with unittest.mock.patch.object(type(sim), "as_obj", property(patched_as_obj)):
             response_holder = []
 
             def call_fail():
@@ -200,9 +200,7 @@ def test_fail_toctou_stop_races_device_resolve(tmp_path, monkeypatch):
             assert not t.is_alive(), "request thread hung"
 
         status = response_holder[0] if response_holder else None
-        assert status in (200, 409), (
-            f"expected 200 or 409 (not 500/None), got {status}"
-        )
+        assert status in (200, 409), f"expected 200 or 409 (not 500/None), got {status}"
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +210,7 @@ def test_fail_toctou_stop_races_device_resolve(tmp_path, monkeypatch):
 # stop() can null _as between the two reads → AttributeError on None → 500.
 # Fix: read as_obj once into a local variable.
 # ---------------------------------------------------------------------------
+
 
 def test_get_state_toctou_stop_races_name_call(tmp_path, monkeypatch):
     """stop() nulling _as between the truthiness check and .name() must not 500.
@@ -244,9 +243,7 @@ def test_get_state_toctou_stop_races_name_call(tmp_path, monkeypatch):
                 stop_done.wait(timeout=2.0)
             return val
 
-        with unittest.mock.patch.object(
-            type(sim), "as_obj", property(patched_as_obj)
-        ):
+        with unittest.mock.patch.object(type(sim), "as_obj", property(patched_as_obj)):
             response_holder = []
             status_holder = []
 
@@ -283,6 +280,7 @@ def test_get_state_toctou_stop_races_name_call(tmp_path, monkeypatch):
 # Fix: snapshot routers under _lock before iterating.
 # ---------------------------------------------------------------------------
 
+
 def test_set_protocol_config_toctou_stop_races_routers_iter(tmp_path, monkeypatch):
     """stop() nulling _as between the as_obj None-check and routers iteration
     must not produce a 500.
@@ -316,9 +314,7 @@ def test_set_protocol_config_toctou_stop_races_routers_iter(tmp_path, monkeypatc
                 stop_done.wait(timeout=2.0)
             return val
 
-        with unittest.mock.patch.object(
-            type(sim), "as_obj", property(patched_as_obj)
-        ):
+        with unittest.mock.patch.object(type(sim), "as_obj", property(patched_as_obj)):
             response_holder = []
 
             def call_protocol_config():
@@ -339,9 +335,7 @@ def test_set_protocol_config_toctou_stop_races_routers_iter(tmp_path, monkeypatc
             assert not t.is_alive(), "request thread hung"
 
         status = response_holder[0] if response_holder else None
-        assert status in (200, 409), (
-            f"expected 200 or 409 (not 500), got {status}"
-        )
+        assert status in (200, 409), f"expected 200 or 409 (not 500), got {status}"
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +345,7 @@ def test_set_protocol_config_toctou_stop_races_routers_iter(tmp_path, monkeypatc
 # _as between the check and `with s._lock: _dump_yaml()` → 500 in _dump_yaml.
 # Fix: do both the None-check and _dump_yaml inside a single _lock acquisition.
 # ---------------------------------------------------------------------------
+
 
 def test_get_topology_toctou_stop_races_dump(tmp_path, monkeypatch):
     """stop() nulling _as between the None-check and _dump_yaml must not 500.
@@ -384,9 +379,7 @@ def test_get_topology_toctou_stop_races_dump(tmp_path, monkeypatch):
                 stop_done.wait(timeout=2.0)
             return val
 
-        with unittest.mock.patch.object(
-            type(sim), "as_obj", property(patched_as_obj)
-        ):
+        with unittest.mock.patch.object(type(sim), "as_obj", property(patched_as_obj)):
             response_holder = []
             resp_holder = []
 

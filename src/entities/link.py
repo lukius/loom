@@ -43,7 +43,7 @@ class Link(_FabricBase):
         if not self._address.matches(address):
             return False
         if self._address.mask() == 30:
-            network_addr = Address(str(self._address).split('/')[0])
+            network_addr = Address(str(self._address).split("/")[0])
             if address == network_addr or address == self._address.broadcast():
                 return False
         return True

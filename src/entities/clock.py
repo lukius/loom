@@ -7,8 +7,11 @@ import threading
 _PAUSE_POLL_INTERVAL = 0.1
 
 
-def wait_for_gate(gate: "PauseGate | None", stop_event: threading.Event,
-                  poll: float = _PAUSE_POLL_INTERVAL) -> bool:
+def wait_for_gate(
+    gate: "PauseGate | None",
+    stop_event: threading.Event,
+    poll: float = _PAUSE_POLL_INTERVAL,
+) -> bool:
     """Block until the gate is RUNNING, or until the caller's stop event fires.
 
     Returns:
@@ -25,11 +28,11 @@ def wait_for_gate(gate: "PauseGate | None", stop_event: threading.Event,
     while not stop_event.is_set():
         running, stopped = gate.wait_or_stop(timeout=poll)
         if stopped:
-            return False        # AS gate stopped
+            return False  # AS gate stopped
         if running:
-            return True         # gate resumed — proceed
+            return True  # gate resumed — proceed
         # (False, False): timeout while paused — re-check stop_event
-    return False                # stop_event was set by caller's stop()
+    return False  # stop_event was set by caller's stop()
 
 
 class PauseGate:

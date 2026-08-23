@@ -12,7 +12,7 @@ from entities.interface import Interface
 def fresh_event_tracer():
     EventTracer.set_current(EventTracer())
     yield
-    EventTracer.set_current(None)   # next test re-initialises lazily via current()
+    EventTracer.set_current(None)  # next test re-initialises lazily via current()
 
 
 @pytest.fixture

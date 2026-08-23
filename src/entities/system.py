@@ -14,7 +14,6 @@ from .router import Router
 
 
 class AS(Entity):
-
     def __init__(self, name, gate=None):
         super().__init__(name)
         self._networks = dict()
@@ -115,7 +114,7 @@ class Internet(Entity):
     lands, `Internet` will also own the inter-AS link registry.
     """
 
-    def __init__(self, name='loom'):
+    def __init__(self, name="loom"):
         super().__init__(name)
         self._ases = dict()
         self._config = dict()
@@ -143,13 +142,13 @@ class Internet(Entity):
     def ases(self) -> dict:
         return self._ases
 
-    def autonomous_system(self, name: str) -> 'AS':
+    def autonomous_system(self, name: str) -> "AS":
         if name not in self._ases:
             raise ASNotFoundException(name)
         return self._ases[name]
 
     def add_as(self, as_) -> None:
-        as_._gate = self._gate     # AS shares the Internet's gate
+        as_._gate = self._gate  # AS shares the Internet's gate
         self._ases[as_.name()] = as_
 
     # BGP-FOLLOWUP: remove this single-AS unwrap once the codebase supports
@@ -164,9 +163,7 @@ class Internet(Entity):
         """
         ases = list(self._ases.values())
         if len(ases) != 1:
-            raise ValueError(
-                f'single_as() requires exactly one AS, found {len(ases)}'
-            )
+            raise ValueError(f"single_as() requires exactly one AS, found {len(ases)}")
         return ases[0]
 
     def stop(self):

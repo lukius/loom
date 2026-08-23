@@ -149,6 +149,7 @@ def test_packet_event_carries_flow_and_payload_id(tmp_path, monkeypatch):
         c.post("/topology", json={"yaml": yaml_text})
         c.post("/sim/start")
         import time as _t
+
         _t.sleep(0.4)  # let routing converge
         with c.websocket_connect("/ws/events") as ws:
             c.post("/devices/h1/command", json={"cmd": "ping h2 -W 1.0"})
@@ -159,7 +160,8 @@ def test_packet_event_carries_flow_and_payload_id(tmp_path, monkeypatch):
                 except Exception:
                     break
                 if evt.get("kind") == "packet" and evt.get("type") in (
-                    "ping_request", "ping_reply",
+                    "ping_request",
+                    "ping_reply",
                 ):
                     packets.append(evt)
                 if any(p["type"] == "ping_reply" for p in packets):

@@ -110,9 +110,7 @@ def test_reroute_after_interface_disable():
         # Step 1: Wait for full convergence — every router must have every prefix.
         assert _wait(
             lambda: all(
-                _table_has_prefix(r, p)
-                for r in [r1, r2, r3]
-                for p in _ALL_PREFIXES
+                _table_has_prefix(r, p) for r in [r1, r2, r3] for p in _ALL_PREFIXES
             ),
             timeout=5.0,
         ), "routers did not converge on all prefixes before disable"
@@ -125,8 +123,7 @@ def test_reroute_after_interface_disable():
 
         # R1 should prefer the direct link (eth0) — cost 2 vs 11 via R2.
         assert before_iface == "eth0", (
-            f"expected r1 to use direct link (eth0) before disable, "
-            f"got {before_iface}"
+            f"expected r1 to use direct link (eth0) before disable, got {before_iface}"
         )
 
         # Step 3: Gracefully disable R1's direct-link interface.
@@ -154,9 +151,7 @@ def test_reroute_after_interface_disable():
         # The next-hop must also have changed (R1 now routes via R2's address).
         before_nh = str(before_result.next_hop())
         after_nh = str(after_result.next_hop())
-        assert after_nh != before_nh, (
-            f"next-hop did not change: still {after_nh}"
-        )
+        assert after_nh != before_nh, f"next-hop did not change: still {after_nh}"
 
     finally:
         system.stop()

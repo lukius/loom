@@ -83,10 +83,10 @@ class NATTable:
         with self._lock:
             return [
                 {
-                    'rewritten_src': str(rewritten),
-                    'dst': str(dst),
-                    'flow_id': fid,
-                    'original_src': str(self._entries[(rewritten, dst, fid)]),
+                    "rewritten_src": str(rewritten),
+                    "dst": str(dst),
+                    "flow_id": fid,
+                    "original_src": str(self._entries[(rewritten, dst, fid)]),
                 }
                 for (rewritten, dst, fid) in self._order
             ]
@@ -106,7 +106,7 @@ def flow_id(payload):
     Payloads without a `flow_key` (arbitrary objects) get flow_id=None
     and share a single NAT slot per (rewritten_src, original_dst).
     """
-    flow_key = getattr(payload, 'flow_key', None)
+    flow_key = getattr(payload, "flow_key", None)
     if flow_key is None:
         return None
     return flow_key() if callable(flow_key) else flow_key

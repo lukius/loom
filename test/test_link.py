@@ -3,6 +3,7 @@
 Note: Frame uses .source() / .destination() (inherited from Packet),
 not .src_addr().  All dispatch assertions use that API.
 """
+
 import time
 import unittest
 
@@ -20,6 +21,7 @@ from entities.packet import Datagram, Frame, UserMessage
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _wait(condition, timeout=2.0, interval=0.01):
     """Poll *condition* until it returns True or *timeout* elapses."""
@@ -40,6 +42,7 @@ def _make_frame(src_addr, dst_addr):
 # ---------------------------------------------------------------------------
 # Test cases
 # ---------------------------------------------------------------------------
+
 
 class LinkConstructionTest(unittest.TestCase):
     """Test 1 — basic construction and attribute accessors."""
@@ -415,7 +418,7 @@ class LinkIterationConcurrencyTest(unittest.TestCase):
         receive() is called, so the mutation does not affect the iteration.
         """
         link = Link("p2p", NetworkAddress("10.0.0.0/30"))
-        net  = Network("dummy", NetworkAddress("10.0.0.0/30"))
+        net = Network("dummy", NetworkAddress("10.0.0.0/30"))
 
         class _MutatingIface(Interface):
             def __init__(self, *a, fabric=None, **kw):
@@ -451,10 +454,10 @@ class LinkIterationConcurrencyTest(unittest.TestCase):
         deterministically."""
         d = {1: "a", 2: "b"}
         it = iter(d.values())
-        next(it)       # consume first entry
-        d[3] = "c"    # mutate — simulates concurrent add_interface
+        next(it)  # consume first entry
+        d[3] = "c"  # mutate — simulates concurrent add_interface
         with self.assertRaises(RuntimeError):
-            next(it)   # raises: dict changed size during iteration
+            next(it)  # raises: dict changed size during iteration
 
     def test_list_snapshot_is_immune_to_concurrent_insert(self):
         """Proves the fix: list(d.values()) takes a GIL-atomic C-level
@@ -462,7 +465,7 @@ class LinkIterationConcurrencyTest(unittest.TestCase):
         arrives after the snapshot does not affect the iteration."""
         d = {1: "a", 2: "b"}
         snapshot = list(d.values())
-        d[3] = "c"    # mutate after snapshot
+        d[3] = "c"  # mutate after snapshot
         result = list(snapshot)
         self.assertEqual(len(result), 2)  # snapshot sees only 2 items
 

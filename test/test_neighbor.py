@@ -3,12 +3,12 @@ from routing import Neighbor, NeighborState, NeighborTable, NeighborTransition
 
 
 def _iface():
-    net = Network('lan', NetworkAddress('10.0.0.0/24'))
-    return Interface('eth0', net, Address('10.0.0.1'), cost=1)
+    net = Network("lan", NetworkAddress("10.0.0.0/24"))
+    return Interface("eth0", net, Address("10.0.0.1"), cost=1)
 
 
 def _peer():
-    return Router('peer')
+    return Router("peer")
 
 
 def test_neighbor_state_starts_down():
@@ -64,6 +64,7 @@ def test_neighbor_peer_interface_accessors():
 
 # ---------- NeighborTransition ----------
 
+
 def test_transition_carries_before_after_and_neighbor():
     iface = _iface()
     peer = _peer()
@@ -86,6 +87,7 @@ def test_transition_went_down_predicate():
 
 
 # ---------- NeighborTable.record_hello ----------
+
 
 def test_record_hello_creates_neighbor_and_returns_transition_down_to_init():
     tbl = NeighborTable()
@@ -120,12 +122,13 @@ def test_record_hello_init_to_two_way_transition():
 
 # ---------- NeighborTable.neighbors_heard_on ----------
 
+
 def test_neighbors_heard_on_returns_init_and_two_way_excludes_down():
     tbl = NeighborTable()
     iface = _iface()
-    p1 = Router('p1')
-    p2 = Router('p2')
-    p3 = Router('p3')
+    p1 = Router("p1")
+    p2 = Router("p2")
+    p3 = Router("p3")
     tbl.record_hello(iface, p1, peer_listed_us=True, dead_interval=30.0, now=1.0)
     tbl.record_hello(iface, p2, peer_listed_us=False, dead_interval=30.0, now=1.0)
     # p3: heard at the same time as p1/p2 — all expire at now=100
@@ -138,23 +141,25 @@ def test_neighbors_heard_on_returns_init_and_two_way_excludes_down():
 
 # ---------- NeighborTable.bidirectional_peers ----------
 
+
 def test_bidirectional_peers_returns_only_two_way_across_any_iface():
     tbl = NeighborTable()
     iface1 = _iface()
-    net2 = Network('lan2', NetworkAddress('10.0.1.0/24'))
-    iface2 = Interface('eth1', net2, Address('10.0.1.1'), cost=1)
-    p1 = Router('p1')
-    p2 = Router('p2')
-    p3 = Router('p3')
+    net2 = Network("lan2", NetworkAddress("10.0.1.0/24"))
+    iface2 = Interface("eth1", net2, Address("10.0.1.1"), cost=1)
+    p1 = Router("p1")
+    p2 = Router("p2")
+    p3 = Router("p3")
     tbl.record_hello(iface1, p1, peer_listed_us=True, dead_interval=30.0, now=1.0)
     tbl.record_hello(iface2, p2, peer_listed_us=False, dead_interval=30.0, now=1.0)
     tbl.record_hello(iface1, p3, peer_listed_us=True, dead_interval=30.0, now=1.0)
     bi = tbl.bidirectional_peers(dead_interval=30.0, now=2.0)
     assert p1 in bi and p3 in bi
-    assert p2 not in bi   # only INIT
+    assert p2 not in bi  # only INIT
 
 
 # ---------- NeighborTable.sweep_transitions ----------
+
 
 def test_sweep_transitions_reports_dead_interval_expiry():
     tbl = NeighborTable()
@@ -180,11 +185,12 @@ def test_sweep_transitions_emits_each_transition_only_once():
 
 # ---------- NeighborTable.on_interface / .all ----------
 
+
 def test_on_interface_lists_all_states_for_that_iface():
     tbl = NeighborTable()
     iface = _iface()
-    p1 = Router('p1')
-    p2 = Router('p2')
+    p1 = Router("p1")
+    p2 = Router("p2")
     tbl.record_hello(iface, p1, peer_listed_us=True, dead_interval=30.0, now=1.0)
     tbl.record_hello(iface, p2, peer_listed_us=False, dead_interval=30.0, now=1.0)
     ns = tbl.on_interface(iface)
@@ -194,10 +200,10 @@ def test_on_interface_lists_all_states_for_that_iface():
 def test_all_returns_every_neighbor_across_ifaces():
     tbl = NeighborTable()
     iface1 = _iface()
-    net2 = Network('lan2', NetworkAddress('10.0.1.0/24'))
-    iface2 = Interface('eth1', net2, Address('10.0.1.1'), cost=1)
-    p1 = Router('p1')
-    p2 = Router('p2')
+    net2 = Network("lan2", NetworkAddress("10.0.1.0/24"))
+    iface2 = Interface("eth1", net2, Address("10.0.1.1"), cost=1)
+    p1 = Router("p1")
+    p2 = Router("p2")
     tbl.record_hello(iface1, p1, peer_listed_us=True, dead_interval=30.0, now=1.0)
     tbl.record_hello(iface2, p2, peer_listed_us=True, dead_interval=30.0, now=1.0)
     assert len(tbl.all()) == 2
@@ -208,9 +214,9 @@ def test_multi_peer_per_iface_each_tracked_independently():
     under the same interface key; one going DOWN doesn't affect others."""
     tbl = NeighborTable()
     iface = _iface()
-    p1 = Router('p1')
-    p2 = Router('p2')
-    p3 = Router('p3')
+    p1 = Router("p1")
+    p2 = Router("p2")
+    p3 = Router("p3")
     tbl.record_hello(iface, p1, peer_listed_us=True, dead_interval=30.0, now=1.0)
     tbl.record_hello(iface, p2, peer_listed_us=True, dead_interval=30.0, now=1.0)
     tbl.record_hello(iface, p3, peer_listed_us=True, dead_interval=30.0, now=1.0)

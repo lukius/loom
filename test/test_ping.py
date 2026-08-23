@@ -240,10 +240,13 @@ def test_ping_host_behind_p2p_slash30_link():
         r1 = system.router("r1")
         r2 = system.router("r2")
         # Wait for full routing convergence before pinging.
-        assert _wait(lambda: (
-            _table_has_prefix(r1, "200.100.2.0/24")
-            and _table_has_prefix(r2, "200.100.1.0/24")
-        ), timeout=5.0), "routers did not converge before ping (/30)"
+        assert _wait(
+            lambda: (
+                _table_has_prefix(r1, "200.100.2.0/24")
+                and _table_has_prefix(r2, "200.100.1.0/24")
+            ),
+            timeout=5.0,
+        ), "routers did not converge before ping (/30)"
         rtt = h1.ping(h2.address(), timeout=3.0)
         assert rtt is not None, "ping across /30 link returned None (timeout)"
         assert rtt < 1.0
@@ -265,10 +268,13 @@ def test_ping_host_behind_p2p_slash31_link():
         r1 = system.router("r1")
         r2 = system.router("r2")
         # Wait for full routing convergence before pinging.
-        assert _wait(lambda: (
-            _table_has_prefix(r1, "200.100.2.0/24")
-            and _table_has_prefix(r2, "200.100.1.0/24")
-        ), timeout=5.0), "routers did not converge before ping (/31)"
+        assert _wait(
+            lambda: (
+                _table_has_prefix(r1, "200.100.2.0/24")
+                and _table_has_prefix(r2, "200.100.1.0/24")
+            ),
+            timeout=5.0,
+        ), "routers did not converge before ping (/31)"
         rtt = h1.ping(h2.address(), timeout=3.0)
         assert rtt is not None, "ping across /31 link returned None (timeout)"
         assert rtt < 1.0
@@ -368,10 +374,12 @@ def test_multi_tenant_nat_e2e():
         # private LANs are not.)
         r_a = system.routers()["r_a"]
         r_b = system.routers()["r_b"]
-        assert _wait(lambda: _table_has_prefix(r_a, "200.100.0.0/24"), timeout=10.0), \
+        assert _wait(lambda: _table_has_prefix(r_a, "200.100.0.0/24"), timeout=10.0), (
             "r_a did not converge on public LAN"
-        assert _wait(lambda: _table_has_prefix(r_b, "200.100.0.0/24"), timeout=10.0), \
+        )
+        assert _wait(lambda: _table_has_prefix(r_b, "200.100.0.0/24"), timeout=10.0), (
             "r_b did not converge on public LAN"
+        )
 
         # Tenant A reaches the public host (NAT'd by r_a).
         rtt_a = h_a.ping(h_pub.address(), timeout=2.0)
@@ -423,7 +431,8 @@ def test_nat_ping_packet_events_share_one_flow():
 
         ping_kinds = ("ping_request", "ping_reply")
         ping_packet_events = [
-            e for e in events
+            e
+            for e in events
             if e.get("kind") == "packet" and e.get("type") in ping_kinds
         ]
         assert len(ping_packet_events) >= 6, (
@@ -433,8 +442,7 @@ def test_nat_ping_packet_events_share_one_flow():
         flows = {e.get("flow") for e in ping_packet_events}
         # jitter-audit: all hops of one ping share one flow ID (logical property)
         assert len(flows) == 1, (
-            f"all hops of one ping should share a flow; "
-            f"got {len(flows)} flows: {flows}"
+            f"all hops of one ping should share a flow; got {len(flows)} flows: {flows}"
         )
     finally:
         system.stop()
@@ -490,8 +498,8 @@ def test_two_private_hosts_keep_distinct_nat_entries_for_same_destination():
         assert rtt_x is not None, "h_x → h_pub ping failed"
         assert rtt_y is not None, "h_y → h_pub ping failed"
         snap = r_nat.nat_table().snapshot()
-        original_srcs = {e['original_src'] for e in snap}
-        assert original_srcs == {'192.168.1.10', '192.168.1.20'}, (
+        original_srcs = {e["original_src"] for e in snap}
+        assert original_srcs == {"192.168.1.10", "192.168.1.20"}, (
             f"NAT table should hold one entry per private host; got: {snap}"
         )
     finally:

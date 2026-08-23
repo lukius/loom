@@ -8,6 +8,7 @@ Subpaths are intentionally not registered: `/samples/{name}` only accepts
 a bare filename, so a request like `/samples/../etc/passwd` falls through
 to a 404 rather than walking the filesystem.
 """
+
 from fastapi import APIRouter, HTTPException, Request
 
 router = APIRouter(tags=["files"])
@@ -23,7 +24,8 @@ def list_samples(request: Request):
     if not base.is_dir():
         return {"files": []}
     files = sorted(
-        p.name for p in base.iterdir()
+        p.name
+        for p in base.iterdir()
         if p.is_file()
         and p.suffix in (".yaml", ".yml")
         and not p.name.endswith(".session.yaml")

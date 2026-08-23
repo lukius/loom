@@ -16,7 +16,6 @@ _logger = logging.getLogger(__name__)
 
 
 class RoutingRule:
-
     _address: NetworkAddress
     _next_hop: Address
     _interface: Interface
@@ -48,7 +47,7 @@ class MatchingResult:
     """
 
     @classmethod
-    def matched(cls, next_hop, interface) -> 'MatchingResult':
+    def matched(cls, next_hop, interface) -> "MatchingResult":
         result = cls.__new__(cls)
         result._matched = True
         result._next_hop = next_hop
@@ -56,7 +55,7 @@ class MatchingResult:
         return result
 
     @classmethod
-    def not_matched(cls) -> 'MatchingResult':
+    def not_matched(cls) -> "MatchingResult":
         result = cls.__new__(cls)
         result._matched = False
         result._next_hop = None
@@ -74,7 +73,6 @@ class MatchingResult:
 
 
 class RoutingTable:
-
     _rules: List[RoutingRule]
 
     def __init__(self):
@@ -127,7 +125,6 @@ class RoutingTable:
 
 
 class Router(NetworkDevice):
-
     def __init__(self, name):
         super().__init__(name)
         self._routing_table = RoutingTable()
@@ -143,6 +140,7 @@ class Router(NetworkDevice):
         # this module before routing/__init__.py finishes binding LinkStateProtocol.
         # Importing at call time ensures both packages are fully loaded.
         from routing import LinkStateProtocol  # noqa: PLC0415
+
         # BGP-FOLLOWUP: today LinkStateProtocol writes rules directly into
         # self._routing_table via _recompute_routing_table. When BGP becomes the
         # second protocol, introduce a RIB-level merge that walks
@@ -219,7 +217,7 @@ class Router(NetworkDevice):
         """
         if graceful:
             for proto in self._protocols:
-                proto.withdraw()           # flood while interfaces still up
+                proto.withdraw()  # flood while interfaces still up
         for iface in self._interfaces.values():
             iface.disable()
         self._halted = True
@@ -300,16 +298,18 @@ class Router(NetworkDevice):
             return False
         payload = packet.payload()
         payload_id = _payload_id(payload)
-        EventTracer._broadcast({
-            'kind': 'nat',
-            'router': self.name(),
-            'direction': 'inbound',
-            'rewritten_dst': str(dst),
-            'original_dst': str(original_dst),
-            'src': str(packet.source()),
-            'flow_id': fid,
-            'payload_id': payload_id,
-        })
+        EventTracer._broadcast(
+            {
+                "kind": "nat",
+                "router": self.name(),
+                "direction": "inbound",
+                "rewritten_dst": str(dst),
+                "original_dst": str(original_dst),
+                "src": str(packet.source()),
+                "flow_id": fid,
+                "payload_id": payload_id,
+            }
+        )
         packet.rewrite_destination(original_dst)
         self._handle_forwarding(packet)
         return True
@@ -342,30 +342,39 @@ class Router(NetworkDevice):
         if next_hop == NullAddress:
             next_hop = originator
         reply = PingReply(
-            seq=msg.seq, request_ts=msg.sent_at, request_id=msg.id(),
+            seq=msg.seq,
+            request_ts=msg.sent_at,
+            request_id=msg.id(),
         )
         # Source address of the reply is the IP the sender pinged — the
         # interface whose address matched, not the receiving interface.
         reply_dgram = Datagram(
-            src_addr=packet.destination(), dst_addr=originator, payload=reply,
+            src_addr=packet.destination(),
+            dst_addr=originator,
+            payload=reply,
         )
         # Identify which of our interfaces owned the address that was pinged
         # — usually NOT the one the packet came in on (that's the whole reason
         # this branch fires through the cross-interface "for me" check).
         owning_iface = next(
-            (n for n, iff in self._interfaces.items()
-             if iff.address() == packet.destination()),
+            (
+                n
+                for n, iff in self._interfaces.items()
+                if iff.address() == packet.destination()
+            ),
             None,
         )
-        EventTracer._broadcast({
-            'kind': 'router_intercept',
-            'router': self.name(),
-            'originator': str(originator),
-            'pinged_address': str(packet.destination()),
-            'received_on': interface.name(),
-            'owning_iface': owning_iface,
-            'payload_id': str(reply.id()),
-        })
+        EventTracer._broadcast(
+            {
+                "kind": "router_intercept",
+                "router": self.name(),
+                "originator": str(originator),
+                "pinged_address": str(packet.destination()),
+                "received_on": interface.name(),
+                "owning_iface": owning_iface,
+                "payload_id": str(reply.id()),
+            }
+        )
         out_iface.send_to(reply_dgram, dst_addr=next_hop)
 
     def _handle_routing_message(self, msg: RoutingMessage, interface: Interface):
@@ -385,10 +394,10 @@ class Router(NetworkDevice):
         if not result.is_matched():
             if packet.source().is_private() and not self._has_public_interface():
                 raise NoNATEgressException(
-                    f'router {self.name()} has no public interface '
-                    f'for private source {packet.source()}'
+                    f"router {self.name()} has no public interface "
+                    f"for private source {packet.source()}"
                 )
-            raise NoRouteToHostException(f'no route to host {dest}')
+            raise NoRouteToHostException(f"no route to host {dest}")
 
         out_iface = result.interface()
         next_hop = result.next_hop()
@@ -421,26 +430,32 @@ class Router(NetworkDevice):
         rewritten_src = out_iface.address()
         fid = flow_id(packet.payload())
         self._nat_table.register(
-            rewritten_src, packet.destination(),
-            flow_id=fid, original_src=original_src,
+            rewritten_src,
+            packet.destination(),
+            flow_id=fid,
+            original_src=original_src,
         )
         packet.rewrite_source(rewritten_src)
         payload_id = _payload_id(packet.payload())
-        EventTracer._broadcast({
-            'kind': 'nat',
-            'router': self.name(),
-            'direction': 'outbound',
-            'original_src': str(original_src),
-            'rewritten_src': str(rewritten_src),
-            'dst': str(packet.destination()),
-            'flow_id': fid,
-            'payload_id': payload_id,
-        })
-        EventTracer._broadcast({
-            'kind': 'nat_table_changed',
-            'device': self.name(),
-            'entries': self._nat_table.snapshot(),
-        })
+        EventTracer._broadcast(
+            {
+                "kind": "nat",
+                "router": self.name(),
+                "direction": "outbound",
+                "original_src": str(original_src),
+                "rewritten_src": str(rewritten_src),
+                "dst": str(packet.destination()),
+                "flow_id": fid,
+                "payload_id": payload_id,
+            }
+        )
+        EventTracer._broadcast(
+            {
+                "kind": "nat_table_changed",
+                "device": self.name(),
+                "entries": self._nat_table.snapshot(),
+            }
+        )
 
     def _has_public_interface(self):
         return any(

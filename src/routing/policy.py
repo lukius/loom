@@ -16,8 +16,8 @@ from entities.address import NetworkAddress
 
 
 class _Action(Enum):
-    PERMIT = 'permit'
-    DENY = 'deny'
+    PERMIT = "permit"
+    DENY = "deny"
 
 
 class PrefixList:
@@ -45,11 +45,11 @@ class PolicyDecision:
     """
 
     @classmethod
-    def permit(cls, prefix) -> 'PolicyDecision':
+    def permit(cls, prefix) -> "PolicyDecision":
         return cls(_Action.PERMIT, prefix)
 
     @classmethod
-    def deny(cls, prefix) -> 'PolicyDecision':
+    def deny(cls, prefix) -> "PolicyDecision":
         return cls(_Action.DENY, prefix)
 
     def __init__(self, action: _Action, prefix):
@@ -76,7 +76,7 @@ class RouteMapRule:
     """
 
     def __init__(self, match: PrefixList, action: str):
-        if action not in ('permit', 'deny'):
+        if action not in ("permit", "deny"):
             raise ValueError(f"action must be 'permit' or 'deny', got {action!r}")
         self._match = match
         self._action = _Action(action)
@@ -99,8 +99,8 @@ class RouteMap:
     `deny`).
     """
 
-    def __init__(self, rules: List[RouteMapRule], default: str = 'permit'):
-        if default not in ('permit', 'deny'):
+    def __init__(self, rules: List[RouteMapRule], default: str = "permit"):
+        if default not in ("permit", "deny"):
             raise ValueError(f"default must be 'permit' or 'deny', got {default!r}")
         self._rules = list(rules)
         self._default = _Action(default)
@@ -119,7 +119,7 @@ class RouteMap:
 
 # ---- Default policies ----
 
-PERMIT_ALL = RouteMap(rules=[], default='permit')
+PERMIT_ALL = RouteMap(rules=[], default="permit")
 """Permit-all route-map: no match rules, default action is permit.
 
 Used as the local-LSA policy so all directly-connected networks
@@ -127,15 +127,19 @@ Used as the local-LSA policy so all directly-connected networks
 """
 
 RFC1918_OUTBOUND = RouteMap(
-    rules=[RouteMapRule(
-        match=PrefixList([
-            NetworkAddress('10.0.0.0/8'),
-            NetworkAddress('172.16.0.0/12'),
-            NetworkAddress('192.168.0.0/16'),
-        ]),
-        action='deny',
-    )],
-    default='permit',
+    rules=[
+        RouteMapRule(
+            match=PrefixList(
+                [
+                    NetworkAddress("10.0.0.0/8"),
+                    NetworkAddress("172.16.0.0/12"),
+                    NetworkAddress("192.168.0.0/16"),
+                ]
+            ),
+            action="deny",
+        )
+    ],
+    default="permit",
 )
 """Default outbound route-map for LinkStateProtocol: deny RFC 1918,
 permit everything else. Replaces the hard-coded

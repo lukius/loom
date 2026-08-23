@@ -3,7 +3,6 @@ import uuid
 
 
 class Packet:
-
     def __init__(self, src_addr, dst_addr, payload):
         self._src_addr = src_addr
         self._dst_addr = dst_addr
@@ -64,7 +63,6 @@ class Message:
 
 
 class UserMessage(Message):
-
     def __init__(self, payload):
         super().__init__()
         self._payload = payload
@@ -80,10 +78,12 @@ class PingRequest(Message):
         self._sent_at = _time.monotonic()
 
     @property
-    def seq(self) -> int: return self._seq
+    def seq(self) -> int:
+        return self._seq
 
     @property
-    def sent_at(self) -> float: return self._sent_at
+    def sent_at(self) -> float:
+        return self._sent_at
 
 
 class PingReply(Message):
@@ -96,13 +96,16 @@ class PingReply(Message):
         self._request_id = request_id
 
     @property
-    def seq(self) -> int: return self._seq
+    def seq(self) -> int:
+        return self._seq
 
     @property
-    def request_ts(self) -> float: return self._request_ts
+    def request_ts(self) -> float:
+        return self._request_ts
 
     @property
-    def request_id(self): return self._request_id
+    def request_id(self):
+        return self._request_id
 
     def flow_key(self) -> str:
         if self._request_id is None:

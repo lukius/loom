@@ -604,9 +604,7 @@ class SimState:
         }
         if self._internet is not None and self._internet.config():
             internet_block["config"] = dict(self._internet.config())
-        internet_block["autonomous_systems"] = {
-            self._as.name(): self._build_as_block()
-        }
+        internet_block["autonomous_systems"] = {self._as.name(): self._build_as_block()}
         return yaml.safe_dump({"internet": internet_block}, sort_keys=False)
 
     def stop(self):

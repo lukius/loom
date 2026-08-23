@@ -27,14 +27,14 @@ from routing.policy import RFC1918_OUTBOUND
 def test_one_cycle_emits_single_lsa_with_uniform_seq_across_interfaces():
     """A router with N interfaces emits N datagrams in one cycle, all
     carrying the same LSA object with the same seq."""
-    net1 = Network('lan1', NetworkAddress('200.0.10.0/24'))
-    net2 = Network('lan2', NetworkAddress('200.0.20.0/24'))
-    net3 = Network('lan3', NetworkAddress('200.0.30.0/24'))
+    net1 = Network("lan1", NetworkAddress("200.0.10.0/24"))
+    net2 = Network("lan2", NetworkAddress("200.0.20.0/24"))
+    net3 = Network("lan3", NetworkAddress("200.0.30.0/24"))
 
-    r = Router('r1')
-    i1 = Interface('eth0', net1, Address('200.0.10.1'), cost=1)
-    i2 = Interface('eth1', net2, Address('200.0.20.1'), cost=1)
-    i3 = Interface('eth2', net3, Address('200.0.30.1'), cost=1)
+    r = Router("r1")
+    i1 = Interface("eth0", net1, Address("200.0.10.1"), cost=1)
+    i2 = Interface("eth1", net2, Address("200.0.20.1"), cost=1)
+    i3 = Interface("eth2", net3, Address("200.0.30.1"), cost=1)
     r.add_interface(i1)
     r.add_interface(i2)
     r.add_interface(i3)
@@ -184,9 +184,7 @@ def test_stop_then_start_resumes_periodic_ticks():
             time.sleep(2.0)  # expect ~5 hellos per router at 0.4s interval
             for name in system.routers():
                 count = tick_counts.get(name, 0)
-                assert count >= 3, (
-                    f"{name} ticked only {count} times after restart"
-                )
+                assert count >= 3, f"{name} ticked only {count} times after restart"
         finally:
             system.stop()
             os.unlink(path)
@@ -231,7 +229,6 @@ def test_initial_broadcast_propagates_before_keepalive_interval():
 
 
 class MockThread(object):
-
     def start(self, *args, **kwargs):
         pass
 
@@ -240,7 +237,6 @@ class MockThread(object):
 
 
 class ProtocolTest(unittest.TestCase):
-
     def setUp(self):
         self._queue = queue.Queue()
 
@@ -248,8 +244,8 @@ class ProtocolTest(unittest.TestCase):
         threading.Thread = lambda *args, **kwargs: MockThread()
 
         self._interface_send_to = Interface.send_to
-        Interface.send_to = (
-            lambda _self, pkt, dst_addr: self._queue.put((pkt, dst_addr))
+        Interface.send_to = lambda _self, pkt, dst_addr: self._queue.put(
+            (pkt, dst_addr)
         )
 
     def tearDown(self):
@@ -257,12 +253,12 @@ class ProtocolTest(unittest.TestCase):
         Interface.send_to = self._interface_send_to
 
     def test_message_update(self):
-        net1 = Network('lan1', NetworkAddress('200.200.10.0/24'))
-        net2 = Network('lan2', NetworkAddress('100.100.0.0/24'))
+        net1 = Network("lan1", NetworkAddress("200.200.10.0/24"))
+        net2 = Network("lan2", NetworkAddress("100.100.0.0/24"))
 
-        router = Router('r1')
-        iface1 = Interface('eth0', net1, Address('200.200.10.1'), cost=10)
-        iface2 = Interface('eth1', net2, Address('100.100.0.254'), cost=20)
+        router = Router("r1")
+        iface1 = Interface("eth0", net1, Address("200.200.10.1"), cost=10)
+        iface2 = Interface("eth1", net2, Address("100.100.0.254"), cost=20)
         router.add_interface(iface1)
         router.add_interface(iface2)
 
@@ -282,9 +278,9 @@ class ProtocolTest(unittest.TestCase):
                 break
 
         self.assertIsNotNone(datagram)
-        self.assertEqual(dst_addr, '200.200.10.255')
-        self.assertEqual(datagram.source(), '200.200.10.1')
-        self.assertEqual(datagram.destination(), '200.200.10.255')
+        self.assertEqual(dst_addr, "200.200.10.255")
+        self.assertEqual(datagram.source(), "200.200.10.1")
+        self.assertEqual(datagram.destination(), "200.200.10.255")
 
         msg = datagram.payload()
         self.assertIsInstance(msg, LSA)
@@ -303,21 +299,21 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(cost, 20)
 
     def test_flooding_on_incoming_message(self):
-        net1 = Network('lan1', NetworkAddress('200.200.10.0/24'))
-        net2 = Network('lan2', NetworkAddress('100.100.0.0/24'))
-        net3 = Network('lan3', NetworkAddress('10.10.10.0/24'))
+        net1 = Network("lan1", NetworkAddress("200.200.10.0/24"))
+        net2 = Network("lan2", NetworkAddress("100.100.0.0/24"))
+        net3 = Network("lan3", NetworkAddress("10.10.10.0/24"))
 
-        r1 = Router('r1')
-        iface1 = Interface('eth0', net1, Address('200.200.10.1'), cost=10)
-        iface2 = Interface('eth1', net2, Address('100.100.0.254'), cost=20)
-        iface3 = Interface('eth2', net3, Address('10.10.10.2'), cost=1)
+        r1 = Router("r1")
+        iface1 = Interface("eth0", net1, Address("200.200.10.1"), cost=10)
+        iface2 = Interface("eth1", net2, Address("100.100.0.254"), cost=20)
+        iface3 = Interface("eth2", net3, Address("10.10.10.2"), cost=1)
         r1.add_interface(iface1)
         r1.add_interface(iface2)
         r1.add_interface(iface3)
 
-        r2 = Router('r2')
-        iface4 = Interface('eth0', net2, Address('100.100.0.1'), cost=15)
-        iface5 = Interface('eth1', net3, Address('10.10.10.1'), cost=5)
+        r2 = Router("r2")
+        iface4 = Interface("eth0", net2, Address("100.100.0.1"), cost=15)
+        iface5 = Interface("eth1", net3, Address("10.10.10.1"), cost=5)
         r2.add_interface(iface4)
         r2.add_interface(iface5)
 
@@ -353,41 +349,44 @@ class ProtocolTest(unittest.TestCase):
             self._queue.get(timeout=0.1)
 
     def test_routing_table_update_on_incoming_message(self):
-        system = Parser('test/resources/several_networks.yaml').parse().single_as()
+        system = Parser("test/resources/several_networks.yaml").parse().single_as()
         routers = system.routers()
-        r1 = routers['r1']
-        r2 = routers['r2']
-        r3 = routers['r3']
-        r4 = routers['r4']
+        r1 = routers["r1"]
+        r2 = routers["r2"]
+        r3 = routers["r3"]
+        r4 = routers["r4"]
 
         networks = system.networks()
-        lan1 = networks['lan1']
-        lan2 = networks['lan2']
-        lan3 = networks['lan3']
-        lan4 = networks['lan4']
-        lan5 = networks['lan5']
-        lan6 = networks['lan6']
+        lan1 = networks["lan1"]
+        lan2 = networks["lan2"]
+        lan3 = networks["lan3"]
+        lan4 = networks["lan4"]
+        lan5 = networks["lan5"]
+        lan6 = networks["lan6"]
 
         hosts = system.hosts()
-        h1 = hosts['h1']
-        h2 = hosts['h2']
-        h3 = hosts['h3']
-        h4 = hosts['h4']
-        h5 = hosts['h5']
-        h6 = hosts['h6']
+        h1 = hosts["h1"]
+        h2 = hosts["h2"]
+        h3 = hosts["h3"]
+        h4 = hosts["h4"]
+        h5 = hosts["h5"]
+        h6 = hosts["h6"]
 
-        r3_eth0 = r3.interface('eth0')
-        r3_eth1 = r3.interface('eth1')
+        r3_eth0 = r3.interface("eth0")
+        r3_eth1 = r3.interface("eth1")
         msg = LSA(origin=r3, seq=1)
         msg.add_link(lan4.address(), r3_eth0.cost())
         msg.add_link(lan5.address(), r3_eth1.cost())
 
         proto = LinkStateProtocol(r1)
-        r1_eth1 = r1.interface('eth1')
+        r1_eth1 = r1.interface("eth1")
         # Seed TWO_WAY adjacency so r3's LSA is eligible for the graph.
         proto._neighbor_table.record_hello(  # noqa: SLF001
-            r1_eth1, r3, peer_listed_us=True,
-            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+            r1_eth1,
+            r3,
+            peer_listed_us=True,
+            dead_interval=proto._dead_interval,
+            now=time.monotonic(),  # noqa: SLF001
         )
 
         # First message from r3; new connectivity to lan5
@@ -398,64 +397,67 @@ class ProtocolTest(unittest.TestCase):
         result = r1_table.match(h5.address())
         self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), r3_eth0.address())
-        self.assertEqual(result.interface().name(), 'eth1')
+        self.assertEqual(result.interface().name(), "eth1")
 
         result = r1_table.match(h1.address())
         self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), NullAddress)
-        self.assertEqual(result.interface().name(), 'eth0')
+        self.assertEqual(result.interface().name(), "eth0")
 
         result = r1_table.match(h4.address())
         self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), NullAddress)
-        self.assertEqual(result.interface().name(), 'eth1')
+        self.assertEqual(result.interface().name(), "eth1")
 
         for unreachable_host in [h2, h3, h6]:
             result = r1_table.match(unreachable_host.address())
             self.assertFalse(result.is_matched())
 
         # Second message from r2; new connectivity to lan2 and lan3
-        r2_eth0 = r2.interface('eth0')
-        r2_eth1 = r2.interface('eth1')
-        r2_eth2 = r2.interface('eth2')
+        r2_eth0 = r2.interface("eth0")
+        r2_eth1 = r2.interface("eth1")
+        r2_eth2 = r2.interface("eth2")
         msg = LSA(origin=r2, seq=1)
         msg.add_link(lan2.address(), r2_eth0.cost())
         msg.add_link(lan1.address(), r2_eth1.cost())
         msg.add_link(lan3.address(), r2_eth2.cost())
 
-        r1_eth0 = r1.interface('eth0')
+        r1_eth0 = r1.interface("eth0")
         # Seed TWO_WAY adjacency so r2's LSA is eligible for the graph.
         proto._neighbor_table.record_hello(  # noqa: SLF001
-            r1_eth0, r2, peer_listed_us=True,
-            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+            r1_eth0,
+            r2,
+            peer_listed_us=True,
+            dead_interval=proto._dead_interval,
+            now=time.monotonic(),  # noqa: SLF001
         )
         proto.handle_incoming_message(msg, r1_eth0)
 
         result = r1_table.match(h2.address())
         self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), r2_eth1.address())
-        self.assertEqual(result.interface().name(), 'eth0')
+        self.assertEqual(result.interface().name(), "eth0")
 
         result = r1_table.match(h3.address())
         self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), r2_eth1.address())
-        self.assertEqual(result.interface().name(), 'eth0')
+        self.assertEqual(result.interface().name(), "eth0")
 
         # No routing changes for h1, h4 and h5 addresses
         result = r1_table.match(h5.address())
         self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), r3_eth0.address())
-        self.assertEqual(result.interface().name(), 'eth1')
+        self.assertEqual(result.interface().name(), "eth1")
 
         result = r1_table.match(h1.address())
         self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), NullAddress)
-        self.assertEqual(result.interface().name(), 'eth0')
+        self.assertEqual(result.interface().name(), "eth0")
 
         result = r1_table.match(h4.address())
         self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), NullAddress)
-        self.assertEqual(result.interface().name(), 'eth1')
+        self.assertEqual(result.interface().name(), "eth1")
 
         for unreachable_host in [h6]:
             result = r1_table.match(unreachable_host.address())
@@ -463,9 +465,9 @@ class ProtocolTest(unittest.TestCase):
 
         # Third message from r4; new connectivity to lan6 and routing improvements
         # to some hosts
-        r4_eth0 = r4.interface('eth0')
-        r4_eth1 = r4.interface('eth1')
-        r4_eth2 = r4.interface('eth2')
+        r4_eth0 = r4.interface("eth0")
+        r4_eth1 = r4.interface("eth1")
+        r4_eth2 = r4.interface("eth2")
         msg = LSA(origin=r4, seq=1)
         msg.add_link(lan5.address(), r4_eth0.cost())
         msg.add_link(lan6.address(), r4_eth1.cost())
@@ -473,8 +475,11 @@ class ProtocolTest(unittest.TestCase):
 
         # Seed TWO_WAY adjacency so r4's LSA is eligible for the graph.
         proto._neighbor_table.record_hello(  # noqa: SLF001
-            r1_eth1, r4, peer_listed_us=True,
-            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+            r1_eth1,
+            r4,
+            peer_listed_us=True,
+            dead_interval=proto._dead_interval,
+            now=time.monotonic(),  # noqa: SLF001
         )
         proto.handle_incoming_message(msg, r1_eth1)
 
@@ -482,60 +487,60 @@ class ProtocolTest(unittest.TestCase):
         result = r1_table.match(h5.address())
         self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), r3_eth0.address())
-        self.assertEqual(result.interface().name(), 'eth1')
+        self.assertEqual(result.interface().name(), "eth1")
 
         result = r1_table.match(h1.address())
         self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), NullAddress)
-        self.assertEqual(result.interface().name(), 'eth0')
+        self.assertEqual(result.interface().name(), "eth0")
 
         result = r1_table.match(h4.address())
         self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), NullAddress)
-        self.assertEqual(result.interface().name(), 'eth1')
+        self.assertEqual(result.interface().name(), "eth1")
 
         # h2 is now better reached through r1.eth1 via r3
         result = r1_table.match(h2.address())
         self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), r3_eth0.address())
-        self.assertEqual(result.interface().name(), 'eth1')
+        self.assertEqual(result.interface().name(), "eth1")
 
         # Same for h3
         result = r1_table.match(h3.address())
         self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), r3_eth0.address())
-        self.assertEqual(result.interface().name(), 'eth1')
+        self.assertEqual(result.interface().name(), "eth1")
 
         # New connectivity to h6
         result = r1_table.match(h6.address())
         self.assertTrue(result.is_matched())
         self.assertEqual(result.next_hop(), r3_eth0.address())
-        self.assertEqual(result.interface().name(), 'eth1')
+        self.assertEqual(result.interface().name(), "eth1")
 
     def test_local_cost_change_recomputes_routing_table(self):
         # r1: eth1->net2 (cost 1), eth2->net3 (cost 5).
         # r2: net2<->net4 (costs 1,1); r3: net3<->net4 (costs 5,1).
         # Initially net4 cheapest via eth1->r2 (1+1=2 vs 5+1=6).
         # After eth1 cost rises to 100 the eth2->r3 path wins.
-        net2 = Network('lan2', NetworkAddress('10.0.2.0/24'))
-        net3 = Network('lan3', NetworkAddress('10.0.3.0/24'))
-        net4 = Network('lan4', NetworkAddress('10.0.4.0/24'))
+        net2 = Network("lan2", NetworkAddress("10.0.2.0/24"))
+        net3 = Network("lan3", NetworkAddress("10.0.3.0/24"))
+        net4 = Network("lan4", NetworkAddress("10.0.4.0/24"))
 
-        r1 = Router('r1')
-        r1_eth1 = Interface('eth1', net2, Address('10.0.2.1'), cost=1)
-        r1_eth2 = Interface('eth2', net3, Address('10.0.3.1'), cost=5)
+        r1 = Router("r1")
+        r1_eth1 = Interface("eth1", net2, Address("10.0.2.1"), cost=1)
+        r1_eth2 = Interface("eth2", net3, Address("10.0.3.1"), cost=5)
         r1.add_interface(r1_eth1)
         r1.add_interface(r1_eth2)
 
-        r2 = Router('r2')
-        r2_eth0 = Interface('eth0', net2, Address('10.0.2.2'), cost=1)
-        r2_eth1 = Interface('eth1', net4, Address('10.0.4.1'), cost=1)
+        r2 = Router("r2")
+        r2_eth0 = Interface("eth0", net2, Address("10.0.2.2"), cost=1)
+        r2_eth1 = Interface("eth1", net4, Address("10.0.4.1"), cost=1)
         r2.add_interface(r2_eth0)
         r2.add_interface(r2_eth1)
 
-        r3 = Router('r3')
-        r3_eth0 = Interface('eth0', net3, Address('10.0.3.2'), cost=5)
-        r3_eth1 = Interface('eth1', net4, Address('10.0.4.2'), cost=1)
+        r3 = Router("r3")
+        r3_eth0 = Interface("eth0", net3, Address("10.0.3.2"), cost=5)
+        r3_eth1 = Interface("eth1", net4, Address("10.0.4.2"), cost=1)
         r3.add_interface(r3_eth0)
         r3.add_interface(r3_eth1)
 
@@ -543,12 +548,18 @@ class ProtocolTest(unittest.TestCase):
 
         # Seed TWO_WAY adjacencies so r2 and r3 LSAs are eligible for the graph.
         proto._neighbor_table.record_hello(  # noqa: SLF001
-            r1_eth1, r2, peer_listed_us=True,
-            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+            r1_eth1,
+            r2,
+            peer_listed_us=True,
+            dead_interval=proto._dead_interval,
+            now=time.monotonic(),  # noqa: SLF001
         )
         proto._neighbor_table.record_hello(  # noqa: SLF001
-            r1_eth2, r3, peer_listed_us=True,
-            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+            r1_eth2,
+            r3,
+            peer_listed_us=True,
+            dead_interval=proto._dead_interval,
+            now=time.monotonic(),  # noqa: SLF001
         )
 
         msg_r2 = LSA(origin=r2, seq=1)
@@ -561,17 +572,17 @@ class ProtocolTest(unittest.TestCase):
         msg_r3.add_link(net4.address(), r3_eth1.cost())
         proto.handle_incoming_message(msg_r3, r1_eth2)
 
-        result = r1.routing_table().match(Address('10.0.4.100'))
+        result = r1.routing_table().match(Address("10.0.4.100"))
         self.assertTrue(result.is_matched())
-        self.assertEqual(result.interface().name(), 'eth1')
+        self.assertEqual(result.interface().name(), "eth1")
 
         r1_eth1.set_cost(100)
 
         proto._run_keepalive_cycle()
 
-        result = r1.routing_table().match(Address('10.0.4.100'))
+        result = r1.routing_table().match(Address("10.0.4.100"))
         self.assertTrue(result.is_matched())
-        self.assertEqual(result.interface().name(), 'eth2')
+        self.assertEqual(result.interface().name(), "eth2")
 
     def test_update_interface_triggers_immediate_lsa_and_recompute(self):
         # Same triangle as the previous test, but exercises the public
@@ -583,37 +594,43 @@ class ProtocolTest(unittest.TestCase):
         # the next periodic refresh tick. Public addresses so the
         # default RFC1918_OUTBOUND policy doesn't strip them from the
         # flooded LSA — we want to assert the cost reaches peers.
-        net2 = Network('lan2', NetworkAddress('200.0.2.0/24'))
-        net3 = Network('lan3', NetworkAddress('200.0.3.0/24'))
-        net4 = Network('lan4', NetworkAddress('200.0.4.0/24'))
+        net2 = Network("lan2", NetworkAddress("200.0.2.0/24"))
+        net3 = Network("lan3", NetworkAddress("200.0.3.0/24"))
+        net4 = Network("lan4", NetworkAddress("200.0.4.0/24"))
 
-        r1 = Router('r1')
-        r1_eth1 = Interface('eth1', net2, Address('200.0.2.1'), cost=1)
-        r1_eth2 = Interface('eth2', net3, Address('200.0.3.1'), cost=5)
+        r1 = Router("r1")
+        r1_eth1 = Interface("eth1", net2, Address("200.0.2.1"), cost=1)
+        r1_eth2 = Interface("eth2", net3, Address("200.0.3.1"), cost=5)
         r1.add_interface(r1_eth1)
         r1.add_interface(r1_eth2)
 
-        r2 = Router('r2')
-        r2_eth0 = Interface('eth0', net2, Address('200.0.2.2'), cost=1)
-        r2_eth1 = Interface('eth1', net4, Address('200.0.4.1'), cost=1)
+        r2 = Router("r2")
+        r2_eth0 = Interface("eth0", net2, Address("200.0.2.2"), cost=1)
+        r2_eth1 = Interface("eth1", net4, Address("200.0.4.1"), cost=1)
         r2.add_interface(r2_eth0)
         r2.add_interface(r2_eth1)
 
-        r3 = Router('r3')
-        r3_eth0 = Interface('eth0', net3, Address('200.0.3.2'), cost=5)
-        r3_eth1 = Interface('eth1', net4, Address('200.0.4.2'), cost=1)
+        r3 = Router("r3")
+        r3_eth0 = Interface("eth0", net3, Address("200.0.3.2"), cost=5)
+        r3_eth1 = Interface("eth1", net4, Address("200.0.4.2"), cost=1)
         r3.add_interface(r3_eth0)
         r3.add_interface(r3_eth1)
 
         proto = r1.protocol()
 
         proto._neighbor_table.record_hello(  # noqa: SLF001
-            r1_eth1, r2, peer_listed_us=True,
-            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+            r1_eth1,
+            r2,
+            peer_listed_us=True,
+            dead_interval=proto._dead_interval,
+            now=time.monotonic(),  # noqa: SLF001
         )
         proto._neighbor_table.record_hello(  # noqa: SLF001
-            r1_eth2, r3, peer_listed_us=True,
-            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+            r1_eth2,
+            r3,
+            peer_listed_us=True,
+            dead_interval=proto._dead_interval,
+            now=time.monotonic(),  # noqa: SLF001
         )
 
         msg_r2 = LSA(origin=r2, seq=1)
@@ -627,9 +644,9 @@ class ProtocolTest(unittest.TestCase):
         proto.handle_incoming_message(msg_r3, r1_eth2)
 
         # Pre-condition: net4 best reached via eth1 (1+1=2).
-        result = r1.routing_table().match(Address('200.0.4.100'))
+        result = r1.routing_table().match(Address("200.0.4.100"))
         self.assertTrue(result.is_matched())
-        self.assertEqual(result.interface().name(), 'eth1')
+        self.assertEqual(result.interface().name(), "eth1")
 
         # Capture flooded LSAs (no real network plumbing here, so we
         # intercept send_to to verify a fresh LSA was emitted).
@@ -640,7 +657,7 @@ class ProtocolTest(unittest.TestCase):
         )
         try:
             # Use the public API the server invokes.
-            r1.update_interface('eth1', 100)
+            r1.update_interface("eth1", 100)
         finally:
             Interface.send_to = original_send
 
@@ -651,9 +668,9 @@ class ProtocolTest(unittest.TestCase):
 
         # 2. Routing table must already point at the new shortest path
         #    (eth2 via r3, 5+1=6 vs the old 100+1=101).
-        result = r1.routing_table().match(Address('200.0.4.100'))
+        result = r1.routing_table().match(Address("200.0.4.100"))
         self.assertTrue(result.is_matched())
-        self.assertEqual(result.interface().name(), 'eth2')
+        self.assertEqual(result.interface().name(), "eth2")
 
         # 3. A fresh LSA must have been flooded out every interface so
         #    peers can converge too.
@@ -770,17 +787,21 @@ def test_two_routers_one_link_converge():
         r2 = system.routers()["r2"]
 
         # Wait for full convergence on both sides.
-        assert _wait(lambda: (
-            _table_has_prefix(r1, "200.0.0.0/30")
-            and _table_has_prefix(r1, "200.0.1.0/24")
-            and _table_has_prefix(r1, "200.0.2.0/24")
-        )), "r1 did not converge in time"
+        assert _wait(
+            lambda: (
+                _table_has_prefix(r1, "200.0.0.0/30")
+                and _table_has_prefix(r1, "200.0.1.0/24")
+                and _table_has_prefix(r1, "200.0.2.0/24")
+            )
+        ), "r1 did not converge in time"
 
-        assert _wait(lambda: (
-            _table_has_prefix(r2, "200.0.0.0/30")
-            and _table_has_prefix(r2, "200.0.2.0/24")
-            and _table_has_prefix(r2, "200.0.1.0/24")
-        )), "r2 did not converge in time"
+        assert _wait(
+            lambda: (
+                _table_has_prefix(r2, "200.0.0.0/30")
+                and _table_has_prefix(r2, "200.0.2.0/24")
+                and _table_has_prefix(r2, "200.0.1.0/24")
+            )
+        ), "r2 did not converge in time"
 
         # r1: link prefix and own LAN are directly connected (NullAddress).
         r1_link = r1.routing_table().match(Address("200.0.0.1"))
@@ -830,17 +851,21 @@ def test_link_slash31_converge():
         r1 = system.routers()["r1"]
         r2 = system.routers()["r2"]
 
-        assert _wait(lambda: (
-            _table_has_prefix(r1, "200.0.0.0/31")
-            and _table_has_prefix(r1, "200.0.1.0/24")
-            and _table_has_prefix(r1, "200.0.2.0/24")
-        )), "r1 did not converge in time (/31)"
+        assert _wait(
+            lambda: (
+                _table_has_prefix(r1, "200.0.0.0/31")
+                and _table_has_prefix(r1, "200.0.1.0/24")
+                and _table_has_prefix(r1, "200.0.2.0/24")
+            )
+        ), "r1 did not converge in time (/31)"
 
-        assert _wait(lambda: (
-            _table_has_prefix(r2, "200.0.0.0/31")
-            and _table_has_prefix(r2, "200.0.2.0/24")
-            and _table_has_prefix(r2, "200.0.1.0/24")
-        )), "r2 did not converge in time (/31)"
+        assert _wait(
+            lambda: (
+                _table_has_prefix(r2, "200.0.0.0/31")
+                and _table_has_prefix(r2, "200.0.2.0/24")
+                and _table_has_prefix(r2, "200.0.1.0/24")
+            )
+        ), "r2 did not converge in time (/31)"
 
         # r1's own LAN is directly connected.
         r1_own = r1.routing_table().match(Address("200.0.1.100"))
@@ -913,13 +938,22 @@ def test_link_cost_propagates():
         # prefix presence is not enough — the route may temporarily point at
         # eth1 (direct link, OSPF cost 5+0+1=6) before r3's LSAs arrive and
         # cause Dijkstra to prefer the cheaper path via r3 (cost 1+0+1+0+1=3).
-        assert _wait(lambda: all(
-            _table_has_prefix(r, p)
-            for r in [r1, r2, r3]
-            for p in ["200.0.1.0/24", "200.0.2.0/24", "200.0.0.0/30",
-                      "200.0.10.0/24", "200.0.20.0/24"]
-        ) and _r1_routes_lan_r2_via_eth2()), \
-            "routers did not converge in time (asymmetric-cost test)"
+        assert _wait(
+            lambda: (
+                all(
+                    _table_has_prefix(r, p)
+                    for r in [r1, r2, r3]
+                    for p in [
+                        "200.0.1.0/24",
+                        "200.0.2.0/24",
+                        "200.0.0.0/30",
+                        "200.0.10.0/24",
+                        "200.0.20.0/24",
+                    ]
+                )
+                and _r1_routes_lan_r2_via_eth2()
+            )
+        ), "routers did not converge in time (asymmetric-cost test)"
 
         # The graph node is the link itself; its prefix hangs off it as a
         # destination leaf. Each router's own outgoing cost lands on its edge
@@ -990,10 +1024,12 @@ def test_keepalive_cycle_omits_private_prefixes_from_outbound_message():
         captured: list[LSA] = []
 
         original_send = Interface.send_to
+
         def capturing_send(self, pkt, dst_addr):
             if isinstance(pkt.payload(), LSA):
                 captured.append(pkt.payload())
             return original_send(self, pkt, dst_addr)
+
         Interface.send_to = capturing_send
         try:
             r1.protocol()._run_keepalive_cycle()  # noqa: SLF001
@@ -1006,10 +1042,10 @@ def test_keepalive_cycle_omits_private_prefixes_from_outbound_message():
         )
         for msg in captured:
             prefixes = list(msg.links().keys())
-            assert NetworkAddress('200.100.0.0/24') in prefixes, (
+            assert NetworkAddress("200.100.0.0/24") in prefixes, (
                 f"public prefix should be advertised, got {prefixes}"
             )
-            assert NetworkAddress('192.168.1.0/24') not in prefixes, (
+            assert NetworkAddress("192.168.1.0/24") not in prefixes, (
                 f"private prefix should NOT be advertised, got {prefixes}"
             )
     finally:
@@ -1060,12 +1096,12 @@ def test_receiver_graph_never_learns_private_prefix():
         # Wait for r2 to converge on what r1 advertises.
         # r2 should know the p2p /30 (public) but never the private LAN.
         assert _wait(
-            lambda: NetworkAddress('200.100.0.0/30') in r2.protocol()._graph,  # noqa: SLF001
+            lambda: NetworkAddress("200.100.0.0/30") in r2.protocol()._graph,  # noqa: SLF001
             timeout=5.0,
         ), "r2 did not converge on the public p2p prefix"
 
         # The private prefix should never appear in r2's graph.
-        assert NetworkAddress('10.0.0.0/24') not in r2.protocol()._graph, (  # noqa: SLF001
+        assert NetworkAddress("10.0.0.0/24") not in r2.protocol()._graph, (  # noqa: SLF001
             "r2 must not learn the private prefix from r1"
         )
     finally:
@@ -1111,49 +1147,55 @@ def test_three_router_convergence_with_per_origin_seq():
         r.protocol().set_timers(hello_interval=0.1, lsa_refresh_interval=0.3)
         r.start()
     try:
-        assert _wait(lambda: all(
-            _table_has_prefix(r, p)
-            for r in system.routers().values()
-            for p in ["200.0.1.0/24", "200.0.2.0/24",
-                      "200.0.3.0/24", "200.0.4.0/24"]
-        ), timeout=5.0), "three-router topology did not converge in time"
+        assert _wait(
+            lambda: all(
+                _table_has_prefix(r, p)
+                for r in system.routers().values()
+                for p in [
+                    "200.0.1.0/24",
+                    "200.0.2.0/24",
+                    "200.0.3.0/24",
+                    "200.0.4.0/24",
+                ]
+            ),
+            timeout=5.0,
+        ), "three-router topology did not converge in time"
     finally:
         system.stop()
         os.unlink(path)
 
 
 class OutboundPolicyTest(unittest.TestCase):
-
     def test_outbound_policy_default_filters_rfc1918(self):
         """The default outbound policy denies RFC 1918 prefixes — same
         behaviour as the previous hard-coded `if is_private: continue`.
         This pins the policy framework's RFC1918_OUTBOUND default."""
-        d = RFC1918_OUTBOUND.apply(NetworkAddress('10.0.0.0/24'))
+        d = RFC1918_OUTBOUND.apply(NetworkAddress("10.0.0.0/24"))
         self.assertTrue(d.is_denied())
-        d = RFC1918_OUTBOUND.apply(NetworkAddress('172.16.0.0/24'))
+        d = RFC1918_OUTBOUND.apply(NetworkAddress("172.16.0.0/24"))
         self.assertTrue(d.is_denied())
-        d = RFC1918_OUTBOUND.apply(NetworkAddress('192.168.0.0/24'))
+        d = RFC1918_OUTBOUND.apply(NetworkAddress("192.168.0.0/24"))
         self.assertTrue(d.is_denied())
-        d = RFC1918_OUTBOUND.apply(NetworkAddress('200.0.0.0/24'))
+        d = RFC1918_OUTBOUND.apply(NetworkAddress("200.0.0.0/24"))
         self.assertTrue(d.is_permitted())
 
     def test_outbound_policy_override_permits_private_prefixes(self):
         """A LinkStateProtocol with a permit-all outbound policy doesn't
         filter — the policy attribute really drives advertisement
         decisions, not a hard-coded check."""
-        r = Router('r1')
-        permit_all = RouteMap(rules=[], default='permit')
+        r = Router("r1")
+        permit_all = RouteMap(rules=[], default="permit")
         proto = LinkStateProtocol(r, outbound_policy=permit_all)
         # Confirm the protocol holds the override, not the default.
         self.assertIs(proto._outbound_policy, permit_all)
 
 
 def test_hello_emitted_on_every_interface_each_cycle():
-    net1 = Network('lan1', NetworkAddress('200.0.10.0/24'))
-    net2 = Network('lan2', NetworkAddress('200.0.20.0/24'))
-    r = Router('r1')
-    r.add_interface(Interface('eth0', net1, Address('200.0.10.1'), cost=1))
-    r.add_interface(Interface('eth1', net2, Address('200.0.20.1'), cost=1))
+    net1 = Network("lan1", NetworkAddress("200.0.10.0/24"))
+    net2 = Network("lan2", NetworkAddress("200.0.20.0/24"))
+    r = Router("r1")
+    r.add_interface(Interface("eth0", net1, Address("200.0.10.1"), cost=1))
+    r.add_interface(Interface("eth1", net2, Address("200.0.20.1"), cost=1))
 
     sent = []
     original_send = Interface.send_to
@@ -1202,9 +1244,11 @@ def test_two_router_convergence_reaches_two_way():
 
         def both_two_way():
             r1_bidi = r1.protocol()._neighbor_table.bidirectional_peers(  # noqa: SLF001
-                dead_interval=r1.protocol()._dead_interval, now=time.monotonic())  # noqa: SLF001
+                dead_interval=r1.protocol()._dead_interval, now=time.monotonic()
+            )  # noqa: SLF001
             r2_bidi = r2.protocol()._neighbor_table.bidirectional_peers(  # noqa: SLF001
-                dead_interval=r2.protocol()._dead_interval, now=time.monotonic())  # noqa: SLF001
+                dead_interval=r2.protocol()._dead_interval, now=time.monotonic()
+            )  # noqa: SLF001
             return r2 in r1_bidi and r1 in r2_bidi
 
         assert _wait(both_two_way, timeout=5.0), "did not reach TWO_WAY in time"
@@ -1216,15 +1260,15 @@ def test_two_router_convergence_reaches_two_way():
 def test_build_graph_excludes_lsas_from_non_two_way_peers():
     """Pin the eligibility filter: receive r2's LSA but with no
     Hello-driven adjacency, r2's links must not appear in r1's graph."""
-    net1 = Network('lan1', NetworkAddress('200.0.1.0/24'))
-    net2 = Network('lan2', NetworkAddress('200.0.2.0/24'))
-    r1 = Router('r1')
-    r1_eth0 = Interface('eth0', net1, Address('200.0.1.1'), cost=1)
+    net1 = Network("lan1", NetworkAddress("200.0.1.0/24"))
+    net2 = Network("lan2", NetworkAddress("200.0.2.0/24"))
+    r1 = Router("r1")
+    r1_eth0 = Interface("eth0", net1, Address("200.0.1.1"), cost=1)
     r1.add_interface(r1_eth0)
-    r1.add_interface(Interface('eth1', net2, Address('200.0.2.1'), cost=1))
+    r1.add_interface(Interface("eth1", net2, Address("200.0.2.1"), cost=1))
 
-    r2 = Router('r2')
-    r2_eth0 = Interface('eth0', net2, Address('200.0.2.2'), cost=1)
+    r2 = Router("r2")
+    r2_eth0 = Interface("eth0", net2, Address("200.0.2.2"), cost=1)
     r2.add_interface(r2_eth0)
 
     original_send = Interface.send_to
@@ -1233,7 +1277,7 @@ def test_build_graph_excludes_lsas_from_non_two_way_peers():
         proto = LinkStateProtocol(r1)
         lsa_from_r2 = LSA(origin=r2, seq=1)
         lsa_from_r2.add_link(net2.address(), 1)
-        proto.handle_incoming_message(lsa_from_r2, r1.interface('eth1'))
+        proto.handle_incoming_message(lsa_from_r2, r1.interface("eth1"))
     finally:
         Interface.send_to = original_send
 
@@ -1342,8 +1386,12 @@ def test_silent_router_lsa_purged_after_max_age():
         r2 = system.routers()["r2"]
         # Wait for convergence.
         assert _wait(
-            lambda: r2 in r1.protocol()._neighbor_table.bidirectional_peers(  # noqa: SLF001
-                dead_interval=r1.protocol()._dead_interval, now=time.monotonic()),  # noqa: SLF001
+            lambda: (
+                r2
+                in r1.protocol()._neighbor_table.bidirectional_peers(  # noqa: SLF001
+                    dead_interval=r1.protocol()._dead_interval, now=time.monotonic()
+                )
+            ),  # noqa: SLF001
             timeout=3.0,
         )
         # Now stop r2 silently (no withdrawal — kill the thread directly).
@@ -1363,11 +1411,11 @@ def test_protocol_stop_floods_withdrawal_lsa_on_every_interface():
     """When LinkStateProtocol.stop() is called, the router floods a
     withdrawal LSA (is_withdrawal()=True) out every interface before
     the keepalive thread joins."""
-    net1 = Network('lan1', NetworkAddress('200.0.10.0/24'))
-    net2 = Network('lan2', NetworkAddress('200.0.20.0/24'))
-    r = Router('r1')
-    r.add_interface(Interface('eth0', net1, Address('200.0.10.1'), cost=1))
-    r.add_interface(Interface('eth1', net2, Address('200.0.20.1'), cost=1))
+    net1 = Network("lan1", NetworkAddress("200.0.10.0/24"))
+    net2 = Network("lan2", NetworkAddress("200.0.20.0/24"))
+    r = Router("r1")
+    r.add_interface(Interface("eth0", net1, Address("200.0.10.1"), cost=1))
+    r.add_interface(Interface("eth1", net2, Address("200.0.20.1"), cost=1))
 
     sent = []
     original_send = Interface.send_to
@@ -1379,7 +1427,8 @@ def test_protocol_stop_floods_withdrawal_lsa_on_every_interface():
         Interface.send_to = original_send
 
     withdrawals = [
-        p.payload() for p in sent
+        p.payload()
+        for p in sent
         if isinstance(p.payload(), LSA) and p.payload().is_withdrawal()
     ]
     # jitter-audit: proto.stop() sends withdrawals synchronously; count == N interfaces
@@ -1442,17 +1491,17 @@ def test_routes_transit_a_private_lan():
     should install a route *to* the private range, but r1 must reach the
     public LAN *through* it — the LAN is the only path there.
     """
-    private = Network('lan_priv', NetworkAddress('192.168.50.0/24'))
-    public = Network('lan_pub', NetworkAddress('200.0.3.0/24'))
+    private = Network("lan_priv", NetworkAddress("192.168.50.0/24"))
+    public = Network("lan_pub", NetworkAddress("200.0.3.0/24"))
 
-    r1 = Router('r1')
-    r1_priv = Interface('eth0', private, Address('192.168.50.1'), cost=4)
+    r1 = Router("r1")
+    r1_priv = Interface("eth0", private, Address("192.168.50.1"), cost=4)
     r1.add_interface(r1_priv)
     private.add_interface(r1_priv)
 
-    r2 = Router('r2')
-    r2_priv = Interface('eth0', private, Address('192.168.50.2'), cost=6)
-    r2_pub = Interface('eth1', public, Address('200.0.3.1'), cost=3)
+    r2 = Router("r2")
+    r2_priv = Interface("eth0", private, Address("192.168.50.2"), cost=6)
+    r2_pub = Interface("eth1", public, Address("200.0.3.1"), cost=3)
     r2.add_interface(r2_priv)
     r2.add_interface(r2_pub)
     private.add_interface(r2_priv)
@@ -1463,40 +1512,44 @@ def test_routes_transit_a_private_lan():
     try:
         proto = LinkStateProtocol(r1)
         proto._neighbor_table.record_hello(  # noqa: SLF001
-            r1_priv, r2, peer_listed_us=True,
-            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+            r1_priv,
+            r2,
+            peer_listed_us=True,
+            dead_interval=proto._dead_interval,
+            now=time.monotonic(),  # noqa: SLF001
         )
         proto.handle_incoming_message(
-            LSA.from_router(r2, seq=1, policy=RFC1918_OUTBOUND), r1_priv,
+            LSA.from_router(r2, seq=1, policy=RFC1918_OUTBOUND),
+            r1_priv,
         )
     finally:
         Interface.send_to = original_send
 
-    result = r1.routing_table().match(Address('200.0.3.50'))
-    assert result.is_matched(), 'the public LAN behind the private one is unreachable'
-    assert str(result.next_hop()) == '192.168.50.2'
-    assert result.interface().name() == 'eth0'
+    result = r1.routing_table().match(Address("200.0.3.50"))
+    assert result.is_matched(), "the public LAN behind the private one is unreachable"
+    assert str(result.next_hop()) == "192.168.50.2"
+    assert result.interface().name() == "eth0"
 
 
 def test_two_private_lans_sharing_a_cidr_stay_distinct():
     """Duplicate private CIDRs are legal within an AS. Keying the graph by
     fabric identity keeps them apart — advertising them must not fuse two
     unrelated LANs into one node and invent a path between their routers."""
-    tenant_a = Network('lan_a', NetworkAddress('192.168.1.0/24'))
-    tenant_b = Network('lan_b', NetworkAddress('192.168.1.0/24'))
-    backbone = Network('lan_bb', NetworkAddress('200.0.9.0/24'))
+    tenant_a = Network("lan_a", NetworkAddress("192.168.1.0/24"))
+    tenant_b = Network("lan_b", NetworkAddress("192.168.1.0/24"))
+    backbone = Network("lan_bb", NetworkAddress("200.0.9.0/24"))
 
-    r_a = Router('r_a')
-    r_a_priv = Interface('eth0', tenant_a, Address('192.168.1.1'), cost=1)
-    r_a_bb = Interface('eth1', backbone, Address('200.0.9.1'), cost=1)
+    r_a = Router("r_a")
+    r_a_priv = Interface("eth0", tenant_a, Address("192.168.1.1"), cost=1)
+    r_a_bb = Interface("eth1", backbone, Address("200.0.9.1"), cost=1)
     r_a.add_interface(r_a_priv)
     r_a.add_interface(r_a_bb)
     tenant_a.add_interface(r_a_priv)
     backbone.add_interface(r_a_bb)
 
-    r_b = Router('r_b')
-    r_b_priv = Interface('eth0', tenant_b, Address('192.168.1.1'), cost=1)
-    r_b_bb = Interface('eth1', backbone, Address('200.0.9.2'), cost=1)
+    r_b = Router("r_b")
+    r_b_priv = Interface("eth0", tenant_b, Address("192.168.1.1"), cost=1)
+    r_b_bb = Interface("eth1", backbone, Address("200.0.9.2"), cost=1)
     r_b.add_interface(r_b_priv)
     r_b.add_interface(r_b_bb)
     tenant_b.add_interface(r_b_priv)
@@ -1507,20 +1560,24 @@ def test_two_private_lans_sharing_a_cidr_stay_distinct():
     try:
         proto = LinkStateProtocol(r_a)
         proto._neighbor_table.record_hello(  # noqa: SLF001
-            r_a_bb, r_b, peer_listed_us=True,
-            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+            r_a_bb,
+            r_b,
+            peer_listed_us=True,
+            dead_interval=proto._dead_interval,
+            now=time.monotonic(),  # noqa: SLF001
         )
         proto.handle_incoming_message(
-            LSA.from_router(r_b, seq=1, policy=RFC1918_OUTBOUND), r_a_bb,
+            LSA.from_router(r_b, seq=1, policy=RFC1918_OUTBOUND),
+            r_a_bb,
         )
     finally:
         Interface.send_to = original_send
 
     # r_a reaches 192.168.1.0/24 on its own LAN, directly — never via r_b.
-    result = r_a.routing_table().match(Address('192.168.1.50'))
+    result = r_a.routing_table().match(Address("192.168.1.50"))
     assert result.is_matched()
-    assert str(result.next_hop()) == '0.0.0.0'
-    assert result.interface().name() == 'eth0'
+    assert str(result.next_hop()) == "0.0.0.0"
+    assert result.interface().name() == "eth0"
 
 
 def _p2p_and_lan_topology():
@@ -1532,22 +1589,22 @@ def _p2p_and_lan_topology():
     Reaching lan3 from r1 costs 5 + 5 = 10 across the link, against
     15 + 5 = 20 through lan2.
     """
-    lan2 = Network('lan2', NetworkAddress('100.200.0.0/24'))
-    lan3 = Network('lan3', NetworkAddress('150.10.10.0/24'))
-    link = Link('p2p1', NetworkAddress('10.0.0.0/30'))
+    lan2 = Network("lan2", NetworkAddress("100.200.0.0/24"))
+    lan3 = Network("lan3", NetworkAddress("150.10.10.0/24"))
+    link = Link("p2p1", NetworkAddress("10.0.0.0/30"))
 
-    r1 = Router('r1')
-    r1_lan2 = Interface('eth0', lan2, Address('100.200.0.1'), cost=15)
-    r1_link = Interface('eth1', link, Address('10.0.0.1'), cost=5)
+    r1 = Router("r1")
+    r1_lan2 = Interface("eth0", lan2, Address("100.200.0.1"), cost=15)
+    r1_link = Interface("eth1", link, Address("10.0.0.1"), cost=5)
     r1.add_interface(r1_lan2)
     r1.add_interface(r1_link)
     lan2.add_interface(r1_lan2)
     link.add_interface(r1_link)
 
-    r3 = Router('r3')
-    r3_lan2 = Interface('eth0', lan2, Address('100.200.0.10'), cost=20)
-    r3_lan3 = Interface('eth1', lan3, Address('150.10.10.10'), cost=5)
-    r3_link = Interface('eth2', link, Address('10.0.0.2'), cost=5)
+    r3 = Router("r3")
+    r3_lan2 = Interface("eth0", lan2, Address("100.200.0.10"), cost=20)
+    r3_lan3 = Interface("eth1", lan3, Address("150.10.10.10"), cost=5)
+    r3_link = Interface("eth2", link, Address("10.0.0.2"), cost=5)
     r3.add_interface(r3_lan2)
     r3.add_interface(r3_lan3)
     r3.add_interface(r3_link)
@@ -1569,19 +1626,23 @@ def test_routes_transit_a_private_point_to_point_link():
     try:
         proto = LinkStateProtocol(r1)
         proto._neighbor_table.record_hello(  # noqa: SLF001
-            r1_link, r3, peer_listed_us=True,
-            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+            r1_link,
+            r3,
+            peer_listed_us=True,
+            dead_interval=proto._dead_interval,
+            now=time.monotonic(),  # noqa: SLF001
         )
         proto.handle_incoming_message(
-            LSA.from_router(r3, seq=1, policy=RFC1918_OUTBOUND), r1_link,
+            LSA.from_router(r3, seq=1, policy=RFC1918_OUTBOUND),
+            r1_link,
         )
     finally:
         Interface.send_to = original_send
 
-    result = r1.routing_table().match(Address('150.10.10.30'))
+    result = r1.routing_table().match(Address("150.10.10.30"))
     assert result.is_matched()
-    assert str(result.next_hop()) == '10.0.0.2'
-    assert result.interface().name() == 'eth1'
+    assert str(result.next_hop()) == "10.0.0.2"
+    assert result.interface().name() == "eth1"
 
 
 def test_private_link_prefix_is_not_advertised_to_peers():
@@ -1589,8 +1650,8 @@ def test_private_link_prefix_is_not_advertised_to_peers():
     offer 10.0.0.0/30 as a destination."""
     _, r3, _, _ = _p2p_and_lan_topology()
     lsa = LSA.from_router(r3, seq=1, policy=RFC1918_OUTBOUND)
-    assert NetworkAddress('10.0.0.0/30') not in lsa.links()
-    assert NetworkAddress('150.10.10.0/24') in lsa.links()
+    assert NetworkAddress("10.0.0.0/30") not in lsa.links()
+    assert NetworkAddress("150.10.10.0/24") in lsa.links()
 
 
 def test_dead_neighbor_sweep_recomputes_routing_table():
@@ -1605,25 +1666,25 @@ def test_dead_neighbor_sweep_recomputes_routing_table():
     # r1: eth1 → net2 (cost 1, where r2 lives), eth2 → net3 (cost 5, r3).
     # net4 hangs off both r2 (1+1=2) and r3 (5+1=6), so it starts out
     # reachable via eth1. With r2 dead, only the eth2 path survives.
-    net2 = Network('lan2', NetworkAddress('200.0.2.0/24'))
-    net3 = Network('lan3', NetworkAddress('200.0.3.0/24'))
-    net4 = Network('lan4', NetworkAddress('200.0.4.0/24'))
+    net2 = Network("lan2", NetworkAddress("200.0.2.0/24"))
+    net3 = Network("lan3", NetworkAddress("200.0.3.0/24"))
+    net4 = Network("lan4", NetworkAddress("200.0.4.0/24"))
 
-    r1 = Router('r1')
-    r1_eth1 = Interface('eth1', net2, Address('200.0.2.1'), cost=1)
-    r1_eth2 = Interface('eth2', net3, Address('200.0.3.1'), cost=5)
+    r1 = Router("r1")
+    r1_eth1 = Interface("eth1", net2, Address("200.0.2.1"), cost=1)
+    r1_eth2 = Interface("eth2", net3, Address("200.0.3.1"), cost=5)
     r1.add_interface(r1_eth1)
     r1.add_interface(r1_eth2)
 
-    r2 = Router('r2')
-    r2_eth0 = Interface('eth0', net2, Address('200.0.2.2'), cost=1)
-    r2_eth1 = Interface('eth1', net4, Address('200.0.4.1'), cost=1)
+    r2 = Router("r2")
+    r2_eth0 = Interface("eth0", net2, Address("200.0.2.2"), cost=1)
+    r2_eth1 = Interface("eth1", net4, Address("200.0.4.1"), cost=1)
     r2.add_interface(r2_eth0)
     r2.add_interface(r2_eth1)
 
-    r3 = Router('r3')
-    r3_eth0 = Interface('eth0', net3, Address('200.0.3.2'), cost=5)
-    r3_eth1 = Interface('eth1', net4, Address('200.0.4.2'), cost=1)
+    r3 = Router("r3")
+    r3_eth0 = Interface("eth0", net3, Address("200.0.3.2"), cost=5)
+    r3_eth1 = Interface("eth1", net4, Address("200.0.4.2"), cost=1)
     r3.add_interface(r3_eth0)
     r3.add_interface(r3_eth1)
 
@@ -1638,8 +1699,11 @@ def test_dead_neighbor_sweep_recomputes_routing_table():
         now = time.monotonic()
         for iface, peer in ((r1_eth1, r2), (r1_eth2, r3)):
             proto._neighbor_table.record_hello(  # noqa: SLF001
-                iface, peer, peer_listed_us=True,
-                dead_interval=proto._dead_interval, now=now,  # noqa: SLF001
+                iface,
+                peer,
+                peer_listed_us=True,
+                dead_interval=proto._dead_interval,
+                now=now,  # noqa: SLF001
             )
 
         msg_r2 = LSA(origin=r2, seq=1)
@@ -1652,15 +1716,18 @@ def test_dead_neighbor_sweep_recomputes_routing_table():
         msg_r3.add_link(net4.address(), r3_eth1.cost())
         proto.handle_incoming_message(msg_r3, r1_eth2)
 
-        result = r1.routing_table().match(Address('200.0.4.100'))
+        result = r1.routing_table().match(Address("200.0.4.100"))
         assert result.is_matched()
-        assert result.interface().name() == 'eth1'
+        assert result.interface().name() == "eth1"
 
         # r2 goes silent; r3 keeps saying hello.
-        time.sleep(0.2)   # past dead_interval (0.15s), far short of max_age
+        time.sleep(0.2)  # past dead_interval (0.15s), far short of max_age
         proto._neighbor_table.record_hello(  # noqa: SLF001
-            r1_eth2, r3, peer_listed_us=True,
-            dead_interval=proto._dead_interval, now=time.monotonic(),  # noqa: SLF001
+            r1_eth2,
+            r3,
+            peer_listed_us=True,
+            dead_interval=proto._dead_interval,
+            now=time.monotonic(),  # noqa: SLF001
         )
 
         proto._run_keepalive_cycle()  # noqa: SLF001
@@ -1668,25 +1735,25 @@ def test_dead_neighbor_sweep_recomputes_routing_table():
         Interface.send_to = original_send
 
     assert r2 not in proto._lsdb.origins()  # noqa: SLF001
-    result = r1.routing_table().match(Address('200.0.4.100'))
-    assert result.is_matched(), 'net4 became unreachable instead of rerouting'
-    assert result.interface().name() == 'eth2', (
-        'routing table still points at the dead neighbor'
+    result = r1.routing_table().match(Address("200.0.4.100"))
+    assert result.is_matched(), "net4 became unreachable instead of rerouting"
+    assert result.interface().name() == "eth2", (
+        "routing table still points at the dead neighbor"
     )
 
 
 def test_set_timers_derives_dead_and_max_age():
-    r = Router('r1')
+    r = Router("r1")
     proto = LinkStateProtocol(r)
     proto.set_timers(hello_interval=5, lsa_refresh_interval=15)
-    assert proto._hello_interval == 5    # noqa: SLF001
-    assert proto._dead_interval == 15    # 3 * hello  # noqa: SLF001
+    assert proto._hello_interval == 5  # noqa: SLF001
+    assert proto._dead_interval == 15  # 3 * hello  # noqa: SLF001
     assert proto._lsa_refresh_interval == 15  # noqa: SLF001
-    assert proto._max_age == 30          # 2 * refresh  # noqa: SLF001
+    assert proto._max_age == 30  # 2 * refresh  # noqa: SLF001
 
 
 def test_set_timers_rejects_non_positive():
-    r = Router('r1')
+    r = Router("r1")
     proto = LinkStateProtocol(r)
     with pytest.raises(ValueError):
         proto.set_timers(hello_interval=0, lsa_refresh_interval=10)
@@ -1698,14 +1765,14 @@ def test_set_timers_invariant_max_age_must_exceed_refresh():
     """The derived max_age (2 * refresh) is always > refresh, so this
     invariant is satisfied by construction. Pin it via direct
     attribute assignment to catch future regressions."""
-    r = Router('r1')
+    r = Router("r1")
     proto = LinkStateProtocol(r)
     proto.set_timers(hello_interval=5, lsa_refresh_interval=15)
     assert proto._max_age > proto._lsa_refresh_interval  # noqa: SLF001
 
 
 def test_set_timers_invariant_dead_must_exceed_hello():
-    r = Router('r1')
+    r = Router("r1")
     proto = LinkStateProtocol(r)
     proto.set_timers(hello_interval=5, lsa_refresh_interval=15)
     assert proto._dead_interval > proto._hello_interval  # noqa: SLF001
@@ -1741,16 +1808,16 @@ def test_protocol_loop_dispatches_three_independent_timers():
                 eth0: {link: p2p, address: "200.0.0.2", cost: 1}
                 eth1: {network: lan_r2, address: "200.0.2.1", cost: 1}
     """)
-    counts = {'hello': 0, 'lsa': 0}
+    counts = {"hello": 0, "lsa": 0}
 
     original_send = Interface.send_to
 
     def counting_send(self, pkt, dst_addr):
         payload = pkt.payload()
         if isinstance(payload, Hello):
-            counts['hello'] += 1
+            counts["hello"] += 1
         elif isinstance(payload, LSA) and not payload.is_withdrawal():
-            counts['lsa'] += 1
+            counts["lsa"] += 1
         return original_send(self, pkt, dst_addr)
 
     Interface.send_to = counting_send
@@ -1767,9 +1834,9 @@ def test_protocol_loop_dispatches_three_independent_timers():
         # Two routers * (hello at 0.1s ≈ 10 per router) → ~20 hellos total.
         # Two routers * (refresh at 0.5s ≈ 2 per router) → ~4 LSAs total.
         # Allow wide tolerance for thread scheduling.
-        assert counts['hello'] >= 10, counts
-        assert counts['lsa'] >= 2, counts
-        assert counts['hello'] > counts['lsa']  # cadence ordering preserved
+        assert counts["hello"] >= 10, counts
+        assert counts["lsa"] >= 2, counts
+        assert counts["hello"] > counts["lsa"]  # cadence ordering preserved
     finally:
         Interface.send_to = original_send
         if system is not None:
@@ -1778,13 +1845,13 @@ def test_protocol_loop_dispatches_three_independent_timers():
 
 
 def test_set_timers_live_updates_scheduler_cadence():
-    r = Router('r1')
+    r = Router("r1")
     proto = LinkStateProtocol(r)
     proto._schedule_initial_deadlines()  # noqa: SLF001
     proto.set_timers(hello_interval=5, lsa_refresh_interval=15)
     # The scheduler's recorded base intervals should now reflect the new values.
-    assert proto._scheduler._intervals['hello'] == 5  # noqa: SLF001
-    assert proto._scheduler._intervals['lsa_refresh'] == 15  # noqa: SLF001
+    assert proto._scheduler._intervals["hello"] == 5  # noqa: SLF001
+    assert proto._scheduler._intervals["lsa_refresh"] == 15  # noqa: SLF001
 
 
 def _router_two_ifaces_for_emit():
@@ -1811,7 +1878,7 @@ def test_emit_skips_down_interfaces():
     )
     try:
         proto._emit_hello_on_up_interfaces(time.monotonic())  # noqa: SLF001
-        proto._emit_lsa_on_up_interfaces(time.monotonic())    # noqa: SLF001
+        proto._emit_lsa_on_up_interfaces(time.monotonic())  # noqa: SLF001
     finally:
         unsub()
     ifaces_used = {e["src"]["iface"] for e in sent}
@@ -1902,7 +1969,7 @@ def test_set_timers_wakes_parked_loop_to_apply_new_cadence():
 
 
 def test_timer_getters_return_current_values():
-    proto = Router('r1').protocol()
+    proto = Router("r1").protocol()
     proto.set_timers(hello_interval=7, lsa_refresh_interval=21)
     assert proto.hello_interval() == 7.0
     assert proto.lsa_refresh_interval() == 21.0
@@ -1911,6 +1978,7 @@ def test_timer_getters_return_current_values():
 # ---------------------------------------------------------------------------
 # H1: re-added router must not be black-holed by a stale LSDB tombstone
 # ---------------------------------------------------------------------------
+
 
 def test_readded_router_not_blackholed_by_tombstone():
     """Re-adding a same-named router after a graceful withdrawal must not be
@@ -1931,16 +1999,16 @@ def test_readded_router_not_blackholed_by_tombstone():
     prior tombstone value.
     """
     # --- build minimal two-router topology (no live threads) ---
-    net_shared = Network('lan_shared', NetworkAddress('200.0.0.0/24'))
-    net_behind_r2 = Network('lan_r2', NetworkAddress('200.0.2.0/24'))
+    net_shared = Network("lan_shared", NetworkAddress("200.0.0.0/24"))
+    net_behind_r2 = Network("lan_r2", NetworkAddress("200.0.2.0/24"))
 
-    r1 = Router('r1')
-    r1_eth0 = Interface('eth0', net_shared, Address('200.0.0.1'), cost=1)
+    r1 = Router("r1")
+    r1_eth0 = Interface("eth0", net_shared, Address("200.0.0.1"), cost=1)
     r1.add_interface(r1_eth0)
 
-    r2_orig = Router('r2')
-    r2_orig_eth0 = Interface('eth0', net_shared, Address('200.0.0.2'), cost=1)
-    r2_orig_eth1 = Interface('eth1', net_behind_r2, Address('200.0.2.1'), cost=1)
+    r2_orig = Router("r2")
+    r2_orig_eth0 = Interface("eth0", net_shared, Address("200.0.0.2"), cost=1)
+    r2_orig_eth1 = Interface("eth1", net_behind_r2, Address("200.0.2.1"), cost=1)
     r2_orig.add_interface(r2_orig_eth0)
     r2_orig.add_interface(r2_orig_eth1)
 
@@ -1953,8 +2021,11 @@ def test_readded_router_not_blackholed_by_tombstone():
 
         # Seed a TWO_WAY adjacency so r2's LSAs are eligible for the graph.
         proto_r1._neighbor_table.record_hello(  # noqa: SLF001
-            r1_eth0, r2_orig, peer_listed_us=True,
-            dead_interval=proto_r1._dead_interval, now=time.monotonic(),  # noqa: SLF001
+            r1_eth0,
+            r2_orig,
+            peer_listed_us=True,
+            dead_interval=proto_r1._dead_interval,
+            now=time.monotonic(),  # noqa: SLF001
         )
 
         # Step 1: r2_orig emits several LSAs; r1 installs all of them,
@@ -1963,12 +2034,12 @@ def test_readded_router_not_blackholed_by_tombstone():
         tombstone_seq = 13
         for seq in range(1, tombstone_seq + 1):
             lsa = LSA(origin=r2_orig, seq=seq)
-            lsa.add_link(net_shared.address(), 1)    # shared link (r2's side)
+            lsa.add_link(net_shared.address(), 1)  # shared link (r2's side)
             lsa.add_link(net_behind_r2.address(), 1)  # r2's own LAN
             proto_r1.handle_incoming_message(lsa, r1_eth0)
 
         # r1 must have a route to 200.0.2.0/24 via r2_orig.
-        assert _table_has_prefix(r1, '200.0.2.0/24'), (
+        assert _table_has_prefix(r1, "200.0.2.0/24"), (
             "pre-condition: r1 should have a route to lan_r2 via r2_orig"
         )
 
@@ -1977,7 +2048,7 @@ def test_readded_router_not_blackholed_by_tombstone():
         proto_r1.handle_incoming_message(withdrawal, r1_eth0)
 
         # The route behind r2_orig must now be gone.
-        assert not _table_has_prefix(r1, '200.0.2.0/24'), (
+        assert not _table_has_prefix(r1, "200.0.2.0/24"), (
             "post-withdrawal: r1 must not have a route to lan_r2"
         )
         # The tombstone is now at tombstone_seq + 1.
@@ -1988,9 +2059,9 @@ def test_readded_router_not_blackholed_by_tombstone():
 
         # Step 3: a fresh protocol instance for a NEW Router("r2") — same name,
         # different Python object.  This simulates the re-add patch op.
-        r2_new = Router('r2')
-        r2_new_eth0 = Interface('eth0', net_shared, Address('200.0.0.2'), cost=1)
-        r2_new_eth1 = Interface('eth1', net_behind_r2, Address('200.0.2.1'), cost=1)
+        r2_new = Router("r2")
+        r2_new_eth0 = Interface("eth0", net_shared, Address("200.0.0.2"), cost=1)
+        r2_new_eth1 = Interface("eth1", net_behind_r2, Address("200.0.2.1"), cost=1)
         r2_new.add_interface(r2_new_eth0)
         r2_new.add_interface(r2_new_eth1)
 
@@ -2013,8 +2084,11 @@ def test_readded_router_not_blackholed_by_tombstone():
         # Verify end-to-end: r1 must accept the fresh LSA and reinstall the route.
         # Re-seed adjacency for the new router object.
         proto_r1._neighbor_table.record_hello(  # noqa: SLF001
-            r1_eth0, r2_new, peer_listed_us=True,
-            dead_interval=proto_r1._dead_interval, now=time.monotonic(),  # noqa: SLF001
+            r1_eth0,
+            r2_new,
+            peer_listed_us=True,
+            dead_interval=proto_r1._dead_interval,
+            now=time.monotonic(),  # noqa: SLF001
         )
         fresh_lsa = LSA(origin=r2_new, seq=first_seq)
         fresh_lsa.add_link(net_shared.address(), 1)
@@ -2031,6 +2105,7 @@ def test_readded_router_not_blackholed_by_tombstone():
 # ---------------------------------------------------------------------------
 # H4 (item 1): _next_seq must be thread-safe under concurrent callers
 # ---------------------------------------------------------------------------
+
 
 def test_next_seq_unique_and_strictly_increasing_under_concurrency():
     """Hammer _next_seq from many threads simultaneously and verify that
@@ -2080,6 +2155,7 @@ def test_next_seq_unique_and_strictly_increasing_under_concurrency():
 # H4: protocol.stop() must return promptly when the loop is parked on a
 # paused PauseGate (finding H4)
 # ---------------------------------------------------------------------------
+
 
 def _make_router_with_gate():
     """Return (router, gate) with a single interface, router NOT started."""

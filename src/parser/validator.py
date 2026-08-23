@@ -3,7 +3,7 @@ from collections import defaultdict
 
 from entities import Host, Network, NetworkDevice, Router
 
-_OCTET_RE = re.compile(r'^\d{1,3}$')
+_OCTET_RE = re.compile(r"^\d{1,3}$")
 
 
 def _prefixes_overlap(a, b) -> bool:
@@ -24,14 +24,14 @@ class ValidationResult:
     returns the failure reason (empty string on success)."""
 
     @classmethod
-    def valid(cls) -> 'ValidationResult':
+    def valid(cls) -> "ValidationResult":
         result = cls.__new__(cls)
         result._ok = True
-        result._reason = ''
+        result._reason = ""
         return result
 
     @classmethod
-    def invalid(cls, reason: str) -> 'ValidationResult':
+    def invalid(cls, reason: str) -> "ValidationResult":
         result = cls.__new__(cls)
         result._ok = False
         result._reason = reason
@@ -45,7 +45,6 @@ class ValidationResult:
 
 
 class SystemValidator:
-
     def __init__(self, system):
         self._addr_validator = AddressValidator(system)
         self._net_validator = NetworkValidator(system)
@@ -70,7 +69,6 @@ class SystemValidator:
 
 
 class Validator:
-
     def __init__(self, system):
         self._system = system
 
@@ -79,10 +77,9 @@ class Validator:
 
 
 class AddressValidator(Validator):
-
     def validate(self, address: str) -> ValidationResult:
-        octets = address.split('.')
-        msg = f'invalid address {address}'
+        octets = address.split(".")
+        msg = f"invalid address {address}"
         if len(octets) != 4:
             return ValidationResult.invalid(msg)
 
@@ -93,7 +90,7 @@ class AddressValidator(Validator):
             # int() cannot raise ValueError here, so no try/except is needed.
             if not _OCTET_RE.match(octet):
                 return ValidationResult.invalid(msg)
-            if len(octet) > 1 and octet[0] == '0':
+            if len(octet) > 1 and octet[0] == "0":
                 return ValidationResult.invalid(msg)
             if int(octet) > 255:
                 return ValidationResult.invalid(msg)
@@ -102,15 +99,14 @@ class AddressValidator(Validator):
 
 
 class NetworkValidator(Validator):
-
     def validate(self, net: Network) -> ValidationResult:
         for _, sys_net in self._system.networks().items():
             if sys_net.name() == net.name():
-                return ValidationResult.invalid('network already exists')
+                return ValidationResult.invalid("network already exists")
 
             if sys_net.address() == net.address():
                 if not net.address().is_private():
-                    return ValidationResult.invalid('network address already exists')
+                    return ValidationResult.invalid("network address already exists")
                 # Private CIDRs are allowed to repeat; downstream NAT handles them.
 
         # Check for prefix containment overlaps against all existing fabrics.
@@ -140,27 +136,26 @@ class NetworkValidator(Validator):
                 continue
             if _prefixes_overlap(new_addr, ex_addr):
                 yield ValidationResult.invalid(
-                    f'overlapping subnet with {existing.name()} ({ex_addr})'
+                    f"overlapping subnet with {existing.name()} ({ex_addr})"
                 )
                 return
         yield ValidationResult.valid()
 
 
 class LinkValidator(Validator):
-
     def validate(self, link) -> ValidationResult:
         mask = link.address().mask()
         if mask not in (30, 31):
             return ValidationResult.invalid(
-                f'link CIDR must be /30 or /31, got /{mask}'
+                f"link CIDR must be /30 or /31, got /{mask}"
             )
 
         name = link.name()
         if name in self._system.networks():
-            return ValidationResult.invalid('already exists as a network')
+            return ValidationResult.invalid("already exists as a network")
 
         if name in self._system.links():
-            return ValidationResult.invalid('link already exists')
+            return ValidationResult.invalid("link already exists")
 
         # Check for prefix-containment overlaps against all existing fabrics.
         link_addr = link.address()
@@ -170,14 +165,13 @@ class LinkValidator(Validator):
         for existing in candidates:
             if _prefixes_overlap(link_addr, existing.address()):
                 return ValidationResult.invalid(
-                    f'overlapping subnet with {existing.name()} ({existing.address()})'
+                    f"overlapping subnet with {existing.name()} ({existing.address()})"
                 )
 
         return ValidationResult.valid()
 
 
 class DeviceValidator(Validator):
-
     def validate(self, device: NetworkDevice) -> ValidationResult:
         addrs_by_net = defaultdict(lambda: set())
 
@@ -188,12 +182,12 @@ class DeviceValidator(Validator):
             valid = net.is_valid_host_address(addr)
             if not valid:
                 return ValidationResult.invalid(
-                    f'invalid address for network {net.name()}'
+                    f"invalid address for network {net.name()}"
                 )
 
             if self._addr_already_used(addrs_by_net, iface):
                 return ValidationResult.invalid(
-                    f'address already in use by {iface.name()}'
+                    f"address already in use by {iface.name()}"
                 )
 
             addrs_by_net[iface.network().name()].add(iface.address())
@@ -202,13 +196,13 @@ class DeviceValidator(Validator):
             for iface in other.interfaces().values():
                 if self._addr_already_used(addrs_by_net, iface):
                     return ValidationResult.invalid(
-                        f'address already in use by {other.name()}'
+                        f"address already in use by {other.name()}"
                     )
 
         for host in self._system.hosts().values():
             if self._addr_already_used(addrs_by_net, host):
                 return ValidationResult.invalid(
-                    f'address already in use by {host.name()}'
+                    f"address already in use by {host.name()}"
                 )
 
         return ValidationResult.valid()
@@ -220,7 +214,6 @@ class DeviceValidator(Validator):
 
 
 class HostValidator(DeviceValidator):
-
     def validate(self, host: Host) -> ValidationResult:
         result = super().validate(host)
         if not result.ok():
@@ -229,6 +222,6 @@ class HostValidator(DeviceValidator):
         network = host.network()
         gw_address = host.gateway()
         if gw_address is not None and not network.contains_address(gw_address):
-            return ValidationResult.invalid('gateway address not in host network')
+            return ValidationResult.invalid("gateway address not in host network")
 
         return ValidationResult.valid()

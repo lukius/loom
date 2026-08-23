@@ -4,9 +4,9 @@ from typing import Optional
 
 
 class NeighborState(Enum):
-    DOWN = 'down'
-    INIT = 'init'
-    TWO_WAY = 'two_way'
+    DOWN = "down"
+    INIT = "init"
+    TWO_WAY = "two_way"
 
 
 class Neighbor:
@@ -75,23 +75,25 @@ class NeighborTransition:
         return self._after
 
     def went_down(self) -> bool:
-        return (self._after is NeighborState.DOWN
-                and self._before is not NeighborState.DOWN)
+        return (
+            self._after is NeighborState.DOWN and self._before is not NeighborState.DOWN
+        )
 
 
 class NeighborTable:
     """Per-router neighbor catalogue. Hides (interface, peer) keying."""
 
     def __init__(self):
-        self._neighbors: dict = {}        # (iface_name, peer) -> Neighbor
-        self._last_state: dict = {}       # (iface_name, peer) -> NeighborState
+        self._neighbors: dict = {}  # (iface_name, peer) -> Neighbor
+        self._last_state: dict = {}  # (iface_name, peer) -> NeighborState
         self._lock = threading.Lock()
 
     def _key(self, interface, peer):
         return (interface.name(), peer)
 
-    def record_hello(self, interface, peer, peer_listed_us: bool,
-                     dead_interval: float, now: float):
+    def record_hello(
+        self, interface, peer, peer_listed_us: bool, dead_interval: float, now: float
+    ):
         with self._lock:
             key = self._key(interface, peer)
             neighbor = self._neighbors.get(key)
@@ -122,7 +124,8 @@ class NeighborTable:
     def bidirectional_peers(self, dead_interval: float, now: float):
         with self._lock:
             return {
-                peer for (iface_name, peer), n in self._neighbors.items()
+                peer
+                for (iface_name, peer), n in self._neighbors.items()
                 if n.state(dead_interval, now) is NeighborState.TWO_WAY
             }
 
@@ -148,10 +151,7 @@ class NeighborTable:
         silently absorbed into a stale TWO_WAY record.
         """
         with self._lock:
-            stale = [
-                key for key in self._neighbors
-                if key[0] == interface.name()
-            ]
+            stale = [key for key in self._neighbors if key[0] == interface.name()]
             for key in stale:
                 self._neighbors.pop(key, None)
                 self._last_state.pop(key, None)
@@ -159,7 +159,8 @@ class NeighborTable:
     def on_interface(self, interface):
         with self._lock:
             return [
-                n for (iface_name, _), n in self._neighbors.items()
+                n
+                for (iface_name, _), n in self._neighbors.items()
                 if iface_name == interface.name()
             ]
 

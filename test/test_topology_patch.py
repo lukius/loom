@@ -33,6 +33,7 @@ def running_sim_state(tmp_path):
     yield sim
     sim.stop()
 
+
 SAMPLE = textwrap.dedent("""
 internet:
   name: loom
@@ -544,6 +545,7 @@ def test_update_cost_invalid_value_returns_400(tmp_path, monkeypatch):
 # Task 4 — removals must detach interfaces from fabrics
 # ---------------------------------------------------------------------------
 
+
 def test_remove_host_detaches_from_fabric(sim_state_loaded):
     sim = sim_state_loaded
     host = next(iter(sim.as_obj.hosts().values()))
@@ -587,11 +589,13 @@ def test_edit_validation_failure_applies_nothing(running_sim_state):
     sim = running_sim_state
     before = set(sim.as_obj.networks().keys())
     with pytest.raises(InvalidStateTransition):
-        sim.edit([
-            {"op": "add_network", "name": "lanZ", "address": "172.16.9.0/24"},
-            # duplicate name — validator must reject before any apply
-            {"op": "add_network", "name": "lanZ", "address": "172.16.9.0/24"},
-        ])
+        sim.edit(
+            [
+                {"op": "add_network", "name": "lanZ", "address": "172.16.9.0/24"},
+                # duplicate name — validator must reject before any apply
+                {"op": "add_network", "name": "lanZ", "address": "172.16.9.0/24"},
+            ]
+        )
     assert set(sim.as_obj.networks().keys()) == before  # atomic: nothing applied
 
 
@@ -645,6 +649,7 @@ def test_edit_after_stop_is_rejected(running_sim_state):
 # pattern used in test_admin_down.py.
 # ---------------------------------------------------------------------------
 
+
 def _wait_condition(condition, timeout=5.0, interval=0.02):
     """Poll *condition* until True or *timeout* elapses; return True if met."""
     deadline = time.monotonic() + timeout
@@ -674,18 +679,28 @@ def test_live_add_router_converges_and_remove_withdraws(running_sim_state):
     r_new_lan2_addr = "100.200.0.200"
 
     # -- Step 1: add rNew while the sim is running ---------------------------
-    sim.edit([
-        {
-            "op": "add_router",
-            "name": "rNew",
-            "interfaces": [
-                {"name": "eth0", "network": "lan1",
-                 "address": r_new_lan1_addr, "cost": 1},
-                {"name": "eth1", "network": "lan2",
-                 "address": r_new_lan2_addr, "cost": 1},
-            ],
-        }
-    ])
+    sim.edit(
+        [
+            {
+                "op": "add_router",
+                "name": "rNew",
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "network": "lan1",
+                        "address": r_new_lan1_addr,
+                        "cost": 1,
+                    },
+                    {
+                        "name": "eth1",
+                        "network": "lan2",
+                        "address": r_new_lan2_addr,
+                        "cost": 1,
+                    },
+                ],
+            }
+        ]
+    )
 
     assert "rNew" in sim.as_obj.routers(), "rNew should be in AS after add_router"
     r_new = sim.as_obj.routers()["rNew"]

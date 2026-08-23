@@ -15,7 +15,6 @@ class Event:
 
 
 class MessageEvent(Event):
-
     def __init__(self, message, on_sent=None, on_received=None, on_forwarded=None):
         self._message = message
         self._on_sent = on_sent or (lambda *a, **kw: None)
@@ -51,7 +50,7 @@ class EventTracer:
     startup) remain active across topology reloads.
     """
 
-    _current: 'EventTracer | None' = None
+    _current: "EventTracer | None" = None
     _current_lock = Lock()
 
     def __init__(self):
@@ -63,7 +62,7 @@ class EventTracer:
     # ---- class-level API (delegates to current) ----
 
     @classmethod
-    def set_current(cls, tracer: 'EventTracer') -> None:
+    def set_current(cls, tracer: "EventTracer") -> None:
         """Make `tracer` the current process-wide tracer.
 
         Subscribers registered on the previous current tracer are
@@ -91,7 +90,7 @@ class EventTracer:
                     tracer._subscribers.append(fn)
 
     @classmethod
-    def current(cls) -> 'EventTracer':
+    def current(cls) -> "EventTracer":
         with cls._current_lock:
             if cls._current is None:
                 cls._current = EventTracer()

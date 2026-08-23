@@ -13,11 +13,10 @@ PING_TIMEOUT_S = 3.0
 
 
 class Host(NetworkDevice):
-
     def __init__(self, name, net, address, gw_address=None, gate=None):
         super().__init__(name)
 
-        iface_name = f'iface_{name}'
+        iface_name = f"iface_{name}"
         self._interface = Interface(iface_name, net, address, gate=gate)
         self.add_interface(self._interface)
 
@@ -99,7 +98,9 @@ class Host(NetworkDevice):
         if isinstance(msg, PingRequest):
             originator = packet.source()
             reply = PingReply(
-                seq=msg.seq, request_ts=msg.sent_at, request_id=msg.id(),
+                seq=msg.seq,
+                request_ts=msg.sent_at,
+                request_id=msg.id(),
             )
             datagram = Datagram(
                 src_addr=self.address(), dst_addr=originator, payload=reply
@@ -124,4 +125,4 @@ class Host(NetworkDevice):
             return EventTracer.message_received(src=self.address(), msg=msg)
 
     def _handle_forwarding(self, packet):
-        raise HostsCannotForwardException(f'{self._name}: cannot forward datagrams')
+        raise HostsCannotForwardException(f"{self._name}: cannot forward datagrams")

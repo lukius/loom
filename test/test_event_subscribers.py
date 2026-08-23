@@ -102,9 +102,12 @@ def test_egress_broadcast_fires_for_user_datagram():
         EventTracer.subscribe(events.append)
         h1, h2 = system.host("h1"), system.host("h2")
         h1.send_message_to(UserMessage("hi"), h2.address())
-        assert _wait_for(lambda: ("packet", "user_datagram") in [
-            (e.get("kind"), e.get("type")) for e in events
-        ]), "no user_datagram packet event arrived"
+        assert _wait_for(
+            lambda: (
+                ("packet", "user_datagram")
+                in [(e.get("kind"), e.get("type")) for e in events]
+            )
+        ), "no user_datagram packet event arrived"
         kinds = [(e.get("kind"), e.get("type")) for e in events]
         assert ("packet", "user_datagram") in kinds
         system.stop()
@@ -143,12 +146,15 @@ def test_packet_event_carries_user_message_byte_count():
         h1, h2 = system.host("h1"), system.host("h2")
         msg = UserMessage("hello")
         h1.send_message_to(msg, h2.address())
-        assert _wait_for(lambda: any(
-            e.get("kind") == "packet" and e.get("type") == "user_datagram"
-            for e in events
-        )), "expected at least one user_datagram packet event"
+        assert _wait_for(
+            lambda: any(
+                e.get("kind") == "packet" and e.get("type") == "user_datagram"
+                for e in events
+            )
+        ), "expected at least one user_datagram packet event"
         pkt_events = [
-            e for e in events
+            e
+            for e in events
             if e.get("kind") == "packet" and e.get("type") == "user_datagram"
         ]
         assert pkt_events[0]["payload"] == {"bytes": len("hello"), "text": "hello"}
@@ -188,12 +194,15 @@ def test_packet_event_non_string_user_message_omits_text_key():
         h1, h2 = system.host("h1"), system.host("h2")
         payload = b"raw bytes"
         h1.send_message_to(UserMessage(payload), h2.address())
-        assert _wait_for(lambda: any(
-            e.get("kind") == "packet" and e.get("type") == "user_datagram"
-            for e in events
-        )), "expected at least one user_datagram packet event"
+        assert _wait_for(
+            lambda: any(
+                e.get("kind") == "packet" and e.get("type") == "user_datagram"
+                for e in events
+            )
+        ), "expected at least one user_datagram packet event"
         pkt_events = [
-            e for e in events
+            e
+            for e in events
             if e.get("kind") == "packet" and e.get("type") == "user_datagram"
         ]
         summary = pkt_events[0]["payload"]
@@ -236,7 +245,8 @@ def test_packet_event_carries_ping_request_seq():
         h1.ping(h2.address(), timeout=1.0)
         time.sleep(0.1)
         req_events = [
-            e for e in events
+            e
+            for e in events
             if e.get("kind") == "packet" and e.get("type") == "ping_request"
         ]
         assert req_events, "expected at least one ping_request packet event"
@@ -278,7 +288,8 @@ def test_packet_event_carries_ping_reply_seq_and_request_ts():
         h1.ping(h2.address(), timeout=1.0)
         time.sleep(0.1)
         reply_events = [
-            e for e in events
+            e
+            for e in events
             if e.get("kind") == "packet" and e.get("type") == "ping_reply"
         ]
         assert reply_events, "expected at least one ping_reply packet event"
@@ -321,12 +332,15 @@ def test_packet_event_for_routing_flood_carries_seq_and_destinations():
         system = Parser(path).parse().single_as()
         EventTracer.subscribe(events.append)
         system.router("r1").protocol()._run_keepalive_cycle()  # noqa: SLF001
-        assert _wait_for(lambda: any(
-            e.get("kind") == "packet" and e.get("type") == "routing_flood"
-            for e in events
-        )), "expected at least one routing_flood packet event"
+        assert _wait_for(
+            lambda: any(
+                e.get("kind") == "packet" and e.get("type") == "routing_flood"
+                for e in events
+            )
+        ), "expected at least one routing_flood packet event"
         flood_events = [
-            e for e in events
+            e
+            for e in events
             if e.get("kind") == "packet" and e.get("type") == "routing_flood"
         ]
         payload = flood_events[0]["payload"]
@@ -380,18 +394,23 @@ def test_packet_event_for_routing_flood_carries_attachments():
         system = Parser(path).parse().single_as()
         EventTracer.subscribe(events.append)
         system.router("r1").protocol()._run_keepalive_cycle()  # noqa: SLF001
-        assert _wait_for(lambda: any(
-            e.get("kind") == "packet" and e.get("type") == "routing_flood"
-            and e["payload"]["originator"] == "r1"
-            for e in events
-        )), "expected at least one routing_flood packet event"
+        assert _wait_for(
+            lambda: any(
+                e.get("kind") == "packet"
+                and e.get("type") == "routing_flood"
+                and e["payload"]["originator"] == "r1"
+                for e in events
+            )
+        ), "expected at least one routing_flood packet event"
         flood_events = [
-            e for e in events
-            if e.get("kind") == "packet" and e.get("type") == "routing_flood"
+            e
+            for e in events
+            if e.get("kind") == "packet"
+            and e.get("type") == "routing_flood"
             and e["payload"]["originator"] == "r1"
         ]
         payload = flood_events[0]["payload"]
-        assert payload["destinations"] == []   # private /30 withheld
+        assert payload["destinations"] == []  # private /30 withheld
         assert payload["attachments"] == [{"fabric": "p2p1", "cost": 5}]
         system.stop()
     finally:
@@ -574,4 +593,6 @@ def test_event_registry_is_bounded():
         fresh_msg, on_forwarded=lambda *a, **kw: fired.append(True)
     )
     tracer.datagram_forwarded_instance("src", "dst", _FakeDatagram())
-    assert fired, "on_forwarded callback for a fresh event was not called after eviction"  # noqa: E501
+    assert fired, (
+        "on_forwarded callback for a fresh event was not called after eviction"
+    )  # noqa: E501

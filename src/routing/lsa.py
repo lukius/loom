@@ -35,7 +35,7 @@ class LSA(RoutingMessage):
     """
 
     @classmethod
-    def from_router(cls, router, seq: int, policy) -> 'LSA':
+    def from_router(cls, router, seq: int, policy) -> "LSA":
         lsa = cls(origin=router, seq=seq)
         for _, iface in router.interfaces().items():
             if not iface.is_up():
@@ -47,7 +47,7 @@ class LSA(RoutingMessage):
         return lsa
 
     @classmethod
-    def withdrawal(cls, router, seq: int) -> 'LSA':
+    def withdrawal(cls, router, seq: int) -> "LSA":
         return cls(origin=router, seq=seq, is_withdrawal=True)
 
     def __init__(self, origin, seq: int, is_withdrawal: bool = False):
@@ -96,10 +96,10 @@ class LSA(RoutingMessage):
             if att.prefix is not None
         }
 
-    def is_newer_than(self, other: 'LSA') -> bool:
+    def is_newer_than(self, other: "LSA") -> bool:
         return self._seq > other.seq()
 
-    def has_same_links_as(self, other: 'LSA') -> bool:
+    def has_same_links_as(self, other: "LSA") -> bool:
         """Whether this LSA describes the same graph contribution as `other`.
 
         Compares attachments, so a fabric appearing or going away counts as a

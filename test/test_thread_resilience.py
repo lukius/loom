@@ -122,8 +122,7 @@ class NetworkThreadResilienceTest(unittest.TestCase):
 
 
 class RoutingProtocolThreadResilienceTest(unittest.TestCase):
-    """RoutingProtocol._protocol_loop must survive exceptions from dispatched actions.
-    """
+    """RoutingProtocol._protocol_loop survives exceptions from dispatched actions."""
 
     def setUp(self):
         self._net = Network("lan", NetworkAddress("10.0.0.0/24"))
@@ -186,7 +185,7 @@ def _collect_as_threads(autonomous_system):
             threads.append(iface._pkt_thread)
         if isinstance(device, Router):
             for proto in device.protocols():
-                pt = getattr(proto, '_protocol_thread', None)
+                pt = getattr(proto, "_protocol_thread", None)
                 if pt is not None:
                     threads.append(pt)
     return threads
@@ -270,6 +269,7 @@ class StopJoinsAllThreadsTest(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # T6b — stop() is responsive while the worker is parked on a paused gate
 # ---------------------------------------------------------------------------
+
 
 class InterfaceStopResponsiveWhilePausedTest(unittest.TestCase):
     """Interface.stop() must return quickly even if the gate is paused and the

@@ -57,8 +57,7 @@ def _summarize_payload(payload) -> dict:
             "seq": payload.seq(),
             "originator": payload.origin().name(),
             "destinations": [
-                {"prefix": str(p), "cost": c}
-                for p, c in payload.links().items()
+                {"prefix": str(p), "cost": c} for p, c in payload.links().items()
             ],
             # Attachments travel separately from destinations: a fabric whose
             # prefix policy withholds still contributes topology, so an LSA
@@ -72,7 +71,6 @@ def _summarize_payload(payload) -> dict:
 
 
 class Interface(Entity):
-
     def __init__(self, name, network, address, cost=0, gate=None):
         super().__init__(name)
         self._net = network

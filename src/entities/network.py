@@ -5,7 +5,6 @@ from .exception import AddressNotInNetworkException
 
 
 class Network(_FabricBase):
-
     def __init__(self, name, address, gate=None):
         super().__init__(name=name, gate=gate)
         self._address = address
@@ -30,7 +29,7 @@ class Network(_FabricBase):
         """
         if not self._address.matches(address):
             return False
-        network_addr = Address(str(self._address).split('/')[0])
+        network_addr = Address(str(self._address).split("/")[0])
         if address == network_addr or address == self._address.broadcast():
             return False
         return True

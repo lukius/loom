@@ -3,7 +3,6 @@ from .exception import InvalidInterfaceException
 
 
 class NetworkDevice(Entity):
-
     def __init__(self, name):
         super().__init__(name)
         self._interfaces = dict()
@@ -48,14 +47,13 @@ class NetworkDevice(Entity):
         raise NotImplementedError
 
     def __eq__(self, other):
-        return (self.__class__ == other.__class__ and
-                self.name() == other.name())
+        return self.__class__ == other.__class__ and self.name() == other.name()
 
     def __hash__(self):
         return hash(self.name()) ^ hash(self.__class__)
 
     def __str__(self):
-        return f'{self.__class__.__name__} {self.name()}'
+        return f"{self.__class__.__name__} {self.name()}"
 
     def __repr__(self):
         return str(self)

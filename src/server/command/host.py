@@ -18,7 +18,7 @@ def _interprobe_wait(interval: float, gate) -> bool:
     _ticked, stopped = gate.sleep(interval)
     if stopped:
         return False
-    _running, stopped = gate.wait_or_stop()   # block here while paused
+    _running, stopped = gate.wait_or_stop()  # block here while paused
     return not stopped
 
 
@@ -65,26 +65,26 @@ def cmd_ping(host, args, as_obj=None):
     syntax = "syntax: ping <dst> [-W <seconds>] [-c <count>] [-i <seconds>]"
     timeout = 3.0
     count = 1
-    interval = 1.0   # like real ping: probes are 1 s apart unless -i overrides
+    interval = 1.0  # like real ping: probes are 1 s apart unless -i overrides
     args = list(args)
     if "-W" in args:
         i = args.index("-W")
         timeout = float(args[i + 1])
-        args = args[:i] + args[i + 2:]
+        args = args[:i] + args[i + 2 :]
     if "-c" in args:
         i = args.index("-c")
         try:
             count = int(args[i + 1])
         except (IndexError, ValueError):
             return syntax
-        args = args[:i] + args[i + 2:]
+        args = args[:i] + args[i + 2 :]
     if "-i" in args:
         i = args.index("-i")
         try:
             interval = float(args[i + 1])
         except (IndexError, ValueError):
             return syntax
-        args = args[:i] + args[i + 2:]
+        args = args[:i] + args[i + 2 :]
     if count <= 0:
         return "count must be positive"
     if count > 100:

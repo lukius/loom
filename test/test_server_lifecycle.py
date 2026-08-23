@@ -52,7 +52,9 @@ def test_session_reset_reclones(source_yaml, tmp_path, monkeypatch):
 
 
 def test_session_path_lives_in_LOOM_SESSION_DIR_not_alongside_source(
-    source_yaml, tmp_path, monkeypatch,
+    source_yaml,
+    tmp_path,
+    monkeypatch,
 ):
     # Sessions used to land next to the source file; they now live in a
     # dedicated tmp dir so the source tree stays clean and the OS can wipe
@@ -210,7 +212,8 @@ def test_load_from_session_emits_no_packet_events(tmp_path):
         # Give any keepalive thread that snuck through a chance to tick.
         time.sleep(0.2)
         leaked = [
-            e for e in events
+            e
+            for e in events
             if e.get("kind") == "packet" and e.get("network") in own_networks
         ]
         assert leaked == [], f"load_from_session() leaked packet events: {leaked}"
@@ -269,10 +272,14 @@ def test_persisted_yaml_preserves_links_for_round_trip(tmp_path):
         f"links section missing or wrong: {as_.get('links')!r}"
     )
     assert as_["routers"]["r1"]["interfaces"]["eth1"] == {
-        "link": "p2p", "address": "10.1.0.1", "cost": 1,
+        "link": "p2p",
+        "address": "10.1.0.1",
+        "cost": 1,
     }, "link-attached router interface must use `link:` key, not `network:`"
     assert as_["routers"]["r2"]["interfaces"]["eth0"] == {
-        "link": "p2p", "address": "10.1.0.2", "cost": 1,
+        "link": "p2p",
+        "address": "10.1.0.2",
+        "cost": 1,
     }
 
     # Round-trip parse: feed the persisted YAML into a fresh SimState.
@@ -377,8 +384,12 @@ def idle_client(tmp_path, monkeypatch):
 
 def test_sim_edit_applies_live(running_client):
     client, sim = running_client
-    resp = client.post("/sim/edit", json={"patch": [
-        {"op": "add_network", "name": "lanE", "address": "172.16.7.0/24"}]})
+    resp = client.post(
+        "/sim/edit",
+        json={
+            "patch": [{"op": "add_network", "name": "lanE", "address": "172.16.7.0/24"}]
+        },
+    )
     assert resp.status_code == 200
     assert resp.json()["state"] == "running"
     assert "lanE" in sim.as_obj.networks()
@@ -392,8 +403,12 @@ def test_sim_edit_bad_patch_is_400(running_client):
 
 def test_sim_edit_when_idle_is_409(idle_client):
     client, sim = idle_client
-    resp = client.post("/sim/edit", json={"patch": [
-        {"op": "add_network", "name": "lanE", "address": "172.16.7.0/24"}]})
+    resp = client.post(
+        "/sim/edit",
+        json={
+            "patch": [{"op": "add_network", "name": "lanE", "address": "172.16.7.0/24"}]
+        },
+    )
     assert resp.status_code == 409
 
 

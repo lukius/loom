@@ -16,12 +16,14 @@ def test_pause_blocks_until_resume():
     gate.pause()
 
     result = []
+
     def worker():
         result.append(gate.wait_or_stop(timeout=1.0))
+
     t = threading.Thread(target=worker, daemon=True)
     t.start()
     time.sleep(0.05)
-    assert not result          # still blocked
+    assert not result  # still blocked
     gate.resume()
     t.join(timeout=0.5)
     assert result == [(True, False)]
@@ -32,8 +34,10 @@ def test_stop_wakes_paused_gate():
     gate.pause()
 
     result = []
+
     def worker():
         result.append(gate.wait_or_stop())
+
     t = threading.Thread(target=worker, daemon=True)
     t.start()
     time.sleep(0.05)
@@ -87,6 +91,7 @@ def test_wait_or_stop_timeout_returns_false_when_paused():
 
 def test_as_owns_a_gate():
     from entities import AS
+
     system = AS("demo")
     gate = system.gate()
     assert gate.is_running()
@@ -94,6 +99,7 @@ def test_as_owns_a_gate():
 
 def test_as_stop_releases_workers():
     from entities import AS
+
     system = AS("demo")
     gate = system.gate()
     gate.pause()
@@ -140,7 +146,9 @@ def test_paused_interface_does_not_dispatch():
         # The frame is enqueued but the network's _pkt_loop is gated.
         # We expect h2 NOT to have received it yet.
         # Sanity: the network's in_queue should still contain a pending item.
-        assert h2.network()._in_queue.qsize() > 0, "expected packet to be queued, not dispatched"  # noqa: E501
+        assert h2.network()._in_queue.qsize() > 0, (
+            "expected packet to be queued, not dispatched"
+        )  # noqa: E501
     finally:
         system.stop()
         os.unlink(path)
@@ -198,6 +206,7 @@ def test_paused_keepalive_does_not_tick():
 def test_router_protocol_restartable_after_stop():
     """Regression: RoutingProtocol.start() must be callable after stop()."""
     from entities import AS, Address, Interface, Network, NetworkAddress, Router
+
     system = AS("t")
     net = Network("lan1", NetworkAddress("10.0.0.0/24"), gate=system.gate())
     system.add_network(net)

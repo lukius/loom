@@ -133,7 +133,6 @@ def test_host_rejects_router_only_commands(client):
         assert "unknown command" in body["output"]
 
 
-
 def test_set_gateway_updates_host(client):
     r = client.post("/devices/h1/command", json={"cmd": "set_gateway 10.0.0.254"})
     assert r.status_code == 200
@@ -261,7 +260,7 @@ def test_cmd_ping_count_sends_n_probes(monkeypatch, ping_host):
     host = ping_host
     calls = []
     monkeypatch.setattr(host, "ping", lambda addr, timeout: calls.append(addr) or 0.001)
-    monkeypatch.setattr("time.sleep", lambda s: None)   # skip the default 1 s gaps
+    monkeypatch.setattr("time.sleep", lambda s: None)  # skip the default 1 s gaps
     out = cmd_ping(host, ["10.0.0.2", "-c", "3"], as_obj=None)
     assert len(calls) == 3
     assert "3 sent" in out and "received" in out
@@ -289,7 +288,7 @@ def test_cmd_ping_interval_sleeps_between_probes(monkeypatch, ping_host):
     sleeps = []
     monkeypatch.setattr("time.sleep", lambda s: sleeps.append(s))
     out = cmd_ping(host, ["10.0.0.2", "-c", "3", "-i", "2"], as_obj=None)
-    assert sleeps == [2.0, 2.0]      # 2 gaps between 3 probes
+    assert sleeps == [2.0, 2.0]  # 2 gaps between 3 probes
     assert "3 sent" in out
 
 
@@ -336,7 +335,7 @@ def test_cmd_ping_interval_uses_gate_and_aborts_on_stop(monkeypatch, ping_host):
 
         def sleep(self, _d):
             self.sleeps += 1
-            return (False, True)   # signal "stopped" on the first inter-probe wait
+            return (False, True)  # signal "stopped" on the first inter-probe wait
 
         def wait_or_stop(self, timeout=None):
             return (True, False)
@@ -443,10 +442,13 @@ internet:
 """
     client.post("/sim/stop")  # import requires idle state
     assert client.post("/topology", json={"yaml": src}).status_code == 200
-    assert client.post(
-        "/sim/protocol_config",
-        json={"hello_interval": 8, "lsa_refresh_interval": 24},
-    ).status_code == 200
+    assert (
+        client.post(
+            "/sim/protocol_config",
+            json={"hello_interval": 8, "lsa_refresh_interval": 24},
+        ).status_code
+        == 200
+    )
     dumped = yaml.safe_load(client.get("/topology").json()["yaml"])
     proto = dumped["internet"]["autonomous_systems"]["main"]["config"]["protocol"]
     assert proto["hello_interval"] == 8.0

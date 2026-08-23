@@ -15,11 +15,11 @@ class InstallResult:
     """
 
     @classmethod
-    def accepted(cls, changed_graph: bool) -> 'InstallResult':
+    def accepted(cls, changed_graph: bool) -> "InstallResult":
         return cls(accepted=True, changed_graph=changed_graph)
 
     @classmethod
-    def rejected(cls) -> 'InstallResult':
+    def rejected(cls) -> "InstallResult":
         return cls(accepted=False, changed_graph=False)
 
     def __init__(self, accepted: bool, changed_graph: bool):
@@ -42,7 +42,7 @@ class LSDB:
 
     def __init__(self, local_router):
         self._local = local_router
-        self._by_origin: dict = {}      # origin -> (LSA, installed_at)
+        self._by_origin: dict = {}  # origin -> (LSA, installed_at)
         # Highest sequence number ever accepted from each origin, retained
         # even after the origin's LSA is purged by a withdrawal. This tombstone
         # is what makes withdrawals (and post-withdrawal re-announcements)
@@ -51,7 +51,7 @@ class LSDB:
         # arrival, so it is re-flooded forever. On a topology with parallel
         # paths between two routers, a withdrawal and the subsequent
         # re-announcement then circulate indefinitely (an LSA storm).
-        self._last_seq: dict = {}       # origin -> highest seq accepted
+        self._last_seq: dict = {}  # origin -> highest seq accepted
         self._lock = threading.Lock()
 
     def install(self, lsa, now: float) -> InstallResult:
@@ -108,7 +108,8 @@ class LSDB:
     def expired_origins(self, max_age: float, now: float) -> list:
         with self._lock:
             return [
-                origin for origin, (_, installed_at) in self._by_origin.items()
+                origin
+                for origin, (_, installed_at) in self._by_origin.items()
                 if now - installed_at > max_age
             ]
 
