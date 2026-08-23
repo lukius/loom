@@ -48,7 +48,7 @@ request for a directory, `/` included, returns that directory's
 `index.html` instead of a listing or a 404. That is what makes
 `http://127.0.0.1:8000/` load the SPA.
 
-Two details of that line are load-bearing. It is mounted last, because
+Two details of that line are important. It is mounted last, because
 routes match in registration order and a mount at `/` would otherwise
 shadow every API route above it. And it is guarded by
 `web_dir.exists()`, so a checkout with no `web/` directory still starts

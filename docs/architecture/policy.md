@@ -126,32 +126,6 @@ field split and what it does to shortest-path computation.
 
 ---
 
-## What the shape leaves room for
-
-Nothing in this section is implemented. It is listed because the current
-structure was chosen to accommodate it without being redesigned, which
-makes some of the existing code read oddly until you know what the seams
-are for.
-
-- Inbound application. Policy runs on the send path only. The receive
-  path (`_handle_incoming_lsa` into `_rebuild_graph_and_recompute`) has
-  the matching slot for an inbound policy attribute, which is where
-  filtering what a router is willing to *accept* would go.
-- Mutating rules. `PolicyDecision` already carries a prefix rather than a
-  bare verdict, so a rule that rewrote some attribute of a route would
-  have somewhere to put the result.
-- Match clauses other than prefixes. `RouteMapRule.match` is a single
-  `PrefixList`. Supporting other criteria means turning it into a list of
-  typed match clauses; the first-match-wins loop does not change.
-- Per-neighbour policy. Link-state floods identically out of every
-  interface, so one outbound policy per protocol instance is enough. A
-  protocol that advertised differently to different neighbours would keep
-  a mapping from neighbour to route map instead.
-- Configuration. Route maps are constructed in Python; there is no YAML
-  syntax for them, so a topology cannot yet define its own.
-
----
-
 ## Deliberate omissions
 
 This is a teaching-grade framework, and it leaves out route-map
@@ -166,9 +140,6 @@ behaviours whose value is operational rather than conceptual:
 - No longest-match semantics among entries. `matches()` is a plain "any
   entry contains this", so entry order within a `PrefixList` carries no
   meaning.
-
-If any of these arrives later, it should be because a concrete feature
-needs it, not because production routers happen to offer it.
 
 ---
 
