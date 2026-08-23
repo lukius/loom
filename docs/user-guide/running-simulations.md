@@ -17,9 +17,9 @@ each transition and what's safe at each step.
         └────────────────────── Stop ──────────────────────┘
 ```
 
-- **idle** — nothing is simulated; the canvas is yours to edit freely.
-- **running** — every device is alive and the routing protocol is ticking.
-- **paused** — everything frozen where it stands; your edits queue up and
+- **idle**: nothing is simulated; the canvas is yours to edit freely.
+- **running**: every device is alive and the routing protocol is ticking.
+- **paused**: everything frozen where it stands; your edits queue up and
   land when you resume.
 
 The toolbar mirrors this: the **Start/Stop** and **Pause/Resume** buttons
@@ -30,7 +30,7 @@ clicked.
 
 Click **Start** (or press <kbd>Space</kbd>). What happens, in order:
 
-1. The canvas is checked for anything unfinished — every LAN and link needs
+1. The canvas is checked for anything unfinished: every LAN and link needs
    a range, every host a network and an address, every router interface an
    address. If something is missing, Start is aborted, a plain-English
    message names what to fix, and the item in question is selected so you
@@ -45,7 +45,7 @@ Click **Start** (or press <kbd>Space</kbd>). What happens, in order:
 
 If the topology was already loaded (e.g. you stopped and want to start
 again with the same one), the canvas is simply sent again unchanged.
-Either way the **session file** is brought up to date — that's the working
+Either way the **session file** is brought up to date: that's the working
 copy the simulator reads, kept separate from the file you originally
 loaded so your own file is never written to. See
 [YAML format](yaml-format.md#save-and-resume-workflow) for where it lives.
@@ -62,20 +62,20 @@ loaded so your own file is never written to. See
   they cannot be *attached*: the network picker is inert and a drag onto
   a LAN is refused. They sit unattached until you pause or stop and wire
   them up there.
-- **Drag any node or link label** to reposition it on the canvas —
-  hosts, routers, networks, and p2p link midpoint labels can all be
+- **Drag any node or link label** to reposition it on the canvas.
+  Hosts, routers, networks, and p2p link midpoint labels can all be
   moved freely while the sim runs. Repositioning is purely visual and
   does not affect the running simulation. In-flight packet animations
   follow nodes as you move them. Trying to drag a host or router onto a
   *different* network or link while running shows a red blocked cue on
-  the target and snaps the node back on release — to reassign a device
+  the target and snaps the node back on release. To reassign a device
   to a different network, stop the sim first.
 - Right-click → **Rename / Duplicate / Delete** in the canvas is
   blocked.
 - The inspector's editable fields are read-only (interface
   re-addressing and host/network reassignment require pausing or
   stopping first).
-- The **Protocol** button is active — you can re-tune the Hello and
+- The **Protocol** button is active: you can re-tune the Hello and
   LSA-refresh intervals live.
 - Right-click a router → **Halt router (graceful)**, **Crash router**, or
   **Resume router** to take a router offline or bring it back, without
@@ -85,7 +85,7 @@ loaded so your own file is never written to. See
   A downed interface's edge turns into a solid gray wire with a small ✕
   at its midpoint, so it's clearly distinct from a (dashed) point-to-point
   link. Traffic sent toward a downed interface is dropped where it would
-  enter the link — you'll see the packet leave the source and fade out
+  enter the link: you'll see the packet leave the source and fade out
   instead of reaching the device.
 
 
@@ -95,8 +95,8 @@ loaded so your own file is never written to. See
 
 **First pings may drop while the network converges.** After you click
 Start, give the routers a few seconds to exchange routes before pinging.
-Until all routers have heard from their neighbors, some packets — especially
-between hosts on different networks — will be dropped. If your first ping
+Until all routers have heard from their neighbors, some packets (especially
+between hosts on different networks) will be dropped. If your first ping
 times out, wait a moment and try again. (The default Hello interval is
 10 s; lower the **Hello interval** in the **Protocol** popover to 1 s if
 you want neighbors to be discovered faster.)
@@ -116,7 +116,9 @@ Effects, observable in the canvas:
 - The routing protocol's periodic Hello and LSA messages stop.
 - The **Pause** button becomes **Resume**.
 
-Pause is also the natural pairing with the Packets panel (see [Web UI](web-ui.md)) — frozen animations make the badge-to-row mapping easy to read.
+Pause is also the natural pairing with the Packets panel (see
+[Web UI](web-ui.md)). Frozen animations make the badge-to-row mapping
+easy to read.
 
 **While paused, you can edit:**
 
@@ -131,7 +133,7 @@ Each change appears in the **Resume** button label as a counter:
 *Resume (3 edits)*. They queue up on the canvas; nothing reaches the
 simulation until you resume.
 
-While paused there is no **Start** to press — the simulation is already
+While paused there is no **Start** to press: the simulation is already
 loaded. The main button reads **Stop**, and it works: it tears the
 simulation down and returns you to `idle`. Be aware that it also throws
 away any edits still sitting in the queue.
@@ -139,8 +141,8 @@ away any edits still sitting in the queue.
 ## Resume
 
 Click **Resume**. Your queued edits are first squared against the canvas
-as it stands now: each is sent with its current values — a LAN you added
-and then renamed goes out under the new name — and anything you deleted
+as it stands now: each is sent with its current values (a LAN you added
+and then renamed goes out under the new name), and anything you deleted
 in the meantime is dropped.
 
 They are then applied together, all or nothing:
@@ -174,13 +176,13 @@ way, the simulation is discarded, and the state returns to `idle`.
 
 What survives:
 
-- The **session file** — the working copy of your topology. The next
+- The **session file**: the working copy of your topology. The next
   Start re-reads it. See
   [YAML format](yaml-format.md#save-and-resume-workflow) for where it
   lives.
 - Everything on the canvas. Stop and Start without touching the topology
   and you're right back where you were.
-- The terminals on screen — they still refer to a simulation that no
+- The terminals on screen: they still refer to a simulation that no
   longer exists, so commands typed into them fail with *no topology
   loaded*. Close and re-open the terminal after the next Start for a
   clean session.
@@ -193,14 +195,14 @@ over at once.
 
 Click **Reset** (only enabled when idle). This:
 
-1. Deletes the session file — the working copy of your topology.
+1. Deletes the session file (the working copy of your topology).
 2. Re-clones from the source file (`samples/sample.yaml` by default, or
    whatever `LOOM_TOPOLOGY` points at).
 3. Re-parses the source into a fresh autonomous system.
 4. The canvas is replaced with the freshly loaded topology.
 
 Use Reset when the session has drifted from the source and you want to
-roll back. Your source file is **never modified** — Reset discards only
+roll back. Your source file is **never modified**: Reset discards only
 the working copy.
 
 ## Tuning the protocol intervals
@@ -208,10 +210,10 @@ the working copy.
 Click **Protocol** in the toolbar to open the Protocol settings popover.
 Two fields are tunable:
 
-- **Hello interval** — how often routers send neighbor-discovery messages
+- **Hello interval**: how often routers send neighbor-discovery messages
   (default 10 s). Lower = neighbors detected and declared alive more quickly;
   higher = quieter, but slower to detect new neighbors.
-- **LSA refresh interval** — how often routers re-advertise their full
+- **LSA refresh interval**: how often routers re-advertise their full
   link-state (default 30 s). Lower = routes re-advertise more frequently,
   faster convergence after a change; higher = quieter canvas.
 
@@ -235,10 +237,10 @@ visibly chatter on the canvas at roughly one cycle per second.
 | Convergence impact | Routers start from scratch | Existing routing state is preserved; new edges feed in | New LANs and links feed in with zero downtime |
 
 If you're prototyping ("does this CIDR work?"), idle edits + Start are
-fine — the parser tells you within seconds. If you're testing
+fine: the parser tells you within seconds. If you're testing
 incremental convergence ("what happens when I bring up a new LAN *while
 running*?"), add it live without pausing. Anything that involves
-attaching a device — a new router joining an existing LAN — needs a
+attaching a device (a new router joining an existing LAN) needs a
 pause: make the related changes together and resume atomically.
 
 ## Tips
@@ -254,6 +256,6 @@ pause: make the related changes together and resume atomically.
 - **The session file lives outside your project.** It is kept in a
   temporary directory, not next to the source, so your source tree stays
   clean and a read-only source file still works. Both files are plain
-  YAML and can be diffed — see
+  YAML and can be diffed; see
   [YAML format](yaml-format.md#save-and-resume-workflow) for the exact
   location.

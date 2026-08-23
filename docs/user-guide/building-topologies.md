@@ -8,7 +8,7 @@ A `loom` topology is built from four kinds of entities: **networks**
 
 While the sim is **idle** or **paused**, all add, rename, duplicate,
 and delete operations are available. While **running**, you can add
-networks, links, hosts, and routers directly on the canvas — each new
+networks, links, hosts, and routers directly on the canvas: each new
 entity commits to the live simulation as soon as you complete its
 address or CIDR (only filling in a new entity's address is allowed live;
 changing the address of an existing interface requires stopping first).
@@ -17,7 +17,7 @@ while running; pause first for those.
 
 If you want to use raw YAML rather than the canvas, jump to
 [YAML format](yaml-format.md) for the schema reference. The two
-approaches produce the same topology — the SPA round-trips through the
+approaches produce the same topology: the SPA round-trips through the
 parser.
 
 ---
@@ -38,14 +38,14 @@ prefix.
 
 Click the rail to select; the inspector opens. Edit:
 
-- **Name** — must be unique among networks **and** links. Auto-saved.
-- **CIDR** — any valid IPv4 prefix. Canonicalized by the parser
+- **Name**: must be unique among networks **and** links. Auto-saved.
+- **CIDR**: any valid IPv4 prefix. Canonicalized by the parser
   (`10.1.2.3/24` becomes `10.1.2.0/24`). Two LANs may not share the
   same prefix unless it is an RFC 1918 private range (`10.0.0.0/8`,
   `172.16.0.0/12`, or `192.168.0.0/16`); public prefixes must be
   unique across the topology.
 
-Multiple tenants can declare overlapping private CIDRs — for example,
+Multiple tenants can declare overlapping private CIDRs. For example,
 two independent LAN segments may both use `192.168.1.0/24`. Traffic
 originating from a private LAN and destined for a public address is
 automatically source-NATed by the egress router, so the public side
@@ -55,11 +55,11 @@ sees the router's own public IP rather than the private host's address.
 
 Drag a host or router near the rail and drop. The interface attaches
 automatically and is assigned the next free IP in the prefix. The
-inspector shows the assigned address — change it if you want a specific
+inspector shows the assigned address; change it if you want a specific
 one.
 
 A device can attach to a LAN through **one or more interfaces** (only
-routers, in practice — hosts have exactly one interface).
+routers, in practice; hosts have exactly one interface).
 
 ### Move and resize the rail
 
@@ -90,9 +90,9 @@ forward. Each host has exactly **one interface**.
 Click **Host** (or press <kbd>H</kbd>). A new host icon appears at the
 canvas center. You will be prompted (or the inspector will surface) for:
 
-- **Name** — must be unique across hosts and routers.
-- **Network** or **Link** — the fabric the host attaches to.
-- **Address** — must be a usable IP inside the chosen fabric's prefix.
+- **Name**: must be unique across hosts and routers.
+- **Network** or **Link**: the fabric the host attaches to.
+- **Address**: must be a usable IP inside the chosen fabric's prefix.
   For `/30` links, the network and broadcast IPs are reserved.
 - **Gateway** (optional):
   - On a LAN, a valid IP inside the same LAN. Required if the host
@@ -111,7 +111,7 @@ a gateway, off-link `ping`/`send` calls fail with
 *"no route to host: no gateway configured."*
 
 If the host is on a link, the gateway is the peer's IP. You don't have
-to type it — the parser fills it in, and the inspector displays it
+to type it: the parser fills it in, and the inspector displays it
 read-only.
 
 ### Multi-homed hosts?
@@ -137,10 +137,10 @@ canvas center with zero interfaces.
 Open the inspector. The router's **Interfaces** section shows an
 **+ Add interface** button. For each interface:
 
-- **Name** — unique within this router (`eth0`, `eth1`, ...).
-- **Network** or **Link** — pick one; never both.
-- **Address** — must be valid for the chosen fabric.
-- **Cost** — the metric the routing protocol uses. Set it explicitly.
+- **Name**: unique within this router (`eth0`, `eth1`, ...).
+- **Network** or **Link**: pick one; never both.
+- **Address**: must be valid for the chosen fabric.
+- **Cost**: the metric the routing protocol uses. Set it explicitly.
   Higher = less preferred. Positive integers.
 
 You can connect a router to as many LANs and links as you want, as long
@@ -155,7 +155,7 @@ The inspector lets you edit the **Cost** column inline. The change:
 
 - While **idle**, the change is saved in the browser and will apply the
   next time the topology is loaded.
-- While **running**, the toolbar disables direct cost edits — pause
+- While **running**, the toolbar disables direct cost edits; pause
   first.
 - While **paused**, the cost change is queued. On **Resume**, the
   server applies it and the routing protocol picks it up on the next
@@ -168,12 +168,12 @@ update_cost eth0 25
 ```
 
 That bypasses the inspector path and updates the router directly. Use
-either — both invoke the same backend cost-update operation.
+either; both invoke the same backend cost-update operation.
 
 ### Delete
 
 Right-click → **Delete**. Removing a router that other routers depend
-on for routing will cause routes to disappear from peers — this is
+on for routing will cause routes to disappear from peers. This is
 intentional. Their graphs will still reference the dead router until
 they receive a new advertisement that doesn't mention it (which, in
 this protocol, happens by the dead router's edges *not* being
@@ -185,20 +185,20 @@ re-advertised). In practice, restart or reset to see clean state.
 
 A **link** is a `/30` or `/31` fabric with exactly **two** endpoints.
 Either endpoint can be a router or a host (router–router, router–host,
-or host–host). No broadcast domain — frames go directly to the peer.
+or host–host). No broadcast domain: frames go directly to the peer.
 
 ### Add one
 
 There are two ways to create a link directly in the app:
 
-**Right-click wizard** — right-click any host or router and choose
+**Right-click wizard**: right-click any host or router and choose
 **New p2p link…**. A banner appears prompting you to pick the other
 endpoint. Click the peer device on the canvas; the link is created
 with both endpoints wired and appears immediately. The link starts with
-no CIDR — select it and set the CIDR and endpoint IPs in the
+no CIDR: select it and set the CIDR and endpoint IPs in the
 inspector.
 
-**Inspector button** — select a host or router in the inspector, find
+**Inspector button**: select a host or router in the inspector, find
 an interface whose fabric type is set to **Link**, and click
 **+ New link** next to the fabric selector. A fresh link is created
 and the interface is attached to it; a second interface (on any device)
@@ -216,14 +216,14 @@ text. See [YAML format](yaml-format.md) for the schema.
   with 0 or 1 endpoints (e.g. by referencing an undeclared device).
 - A `/30` link has two usable host addresses (`.1` and `.2`); `.0`
   (network) and `.3` (broadcast) are reserved.
-- A `/31` link has two usable host addresses (`.0` and `.1`) — per
+- A `/31` link has two usable host addresses (`.0` and `.1`), per
   RFC 3021.
 - A host on a link inherits the peer's IP as its gateway
   automatically.
 
 ### Why `/30` and `/31` only?
 
-A multi-access LAN already has its own model in `loom` — with
+A multi-access LAN already has its own model in `loom`, with
 broadcast semantics. A point-to-point link is the **exception** that
 allows two devices to be wired without a LAN bus between them. Any
 prefix bigger than `/30` would be ambiguous: is it a LAN with two
@@ -235,7 +235,7 @@ interpretation.
 
 Two parallel links may reuse the same `/30` without affecting
 delivery. A link delivers each frame to the endpoint that isn't the
-sender — it doesn't look the destination up by address — so collisions
+sender (it doesn't look the destination up by address), so collisions
 between unrelated links don't cross-talk. This makes copy-pasting a
 small lab topology safe.
 
@@ -291,6 +291,6 @@ validator. Common failures:
 | `<link>: invalid address for link <name>` | On `/30`, you tried to use `.0` or `.3`. |
 | `<dev>: <iface>: invalid cost` | Cost isn't an integer. |
 
-The error dialog quotes the offending entity by name — the parser is
+The error dialog quotes the offending entity by name: the parser is
 careful to surface enough context that you can find the line in YAML
 or the entity on the canvas.

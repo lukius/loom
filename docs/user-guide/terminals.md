@@ -37,7 +37,7 @@ has focus, so <kbd>Ctrl+R</kbd> is still page reload.
 The available commands depend on whether the terminal is attached to a
 host or to a router. Both kinds share `ifconfig`, `route`, and `help`.
 
-Every example below is taken from the **bundled sample topology** — three
+Every example below is taken from the **bundled sample topology**: three
 hosts (`h1`, `h2`, `h3`), three LANs (`lan1`, `lan2`, `lan3`), three
 routers (`r1`, `r2`, `r3`), and the `p2p1` link between `r1` and `r3`. It
 is what the canvas shows on a first visit; see
@@ -72,7 +72,7 @@ eth2: addr=10.0.0.1 net=p2p1 (10.0.0.0/30) cost=5 up
 Each line ends with `up` or `down` to reflect the current admin state
 of that interface. Use `ifconfig <iface> up|down` to change it.
 
-Cost on a host's interface is always `0` — costs are a routing-protocol
+Cost on a host's interface is always `0`: costs are a routing-protocol
 concept and only matter on routers.
 
 #### `route`
@@ -161,7 +161,7 @@ send h2 "hello world"
 sent 11 bytes to 100.200.0.20
 ```
 
-The destination host receives the message silently — no
+The destination host receives the message silently: no
 "message received" notification appears in the UI by default.
 
 #### `ping <dst> [-W <seconds>] [-c <count>] [-i <seconds>]`
@@ -198,10 +198,10 @@ Errors:
 ping h2: no route to host: no gateway configured
 ```
 
-— happens when the destination is off-link and the host has no gateway
-configured.
+That happens when the destination is off-link and the host has no
+gateway configured.
 
-`ping` measures round-trip time using a monotonic clock — RTTs reflect
+`ping` measures round-trip time using a monotonic clock: RTTs reflect
 the actual wall-clock time the simulator took to thread the packet
 through the topology. With a busy simulator (lots of routing chatter
 or many ping flows running in parallel), expect single-digit
@@ -231,11 +231,11 @@ seq=3 100.200.0.20: time=2.94 ms
 Because the next probe isn't sent until the previous one's animation has
 finished, that pause is a real window to change the topology mid-sequence
 and watch the change take effect. Disable an interface (or halt a router)
-on the route during the pause — the next probe is then sent fresh, so
+on the route during the pause. The next probe is then sent fresh, so
 once the network has reconverged it's forwarded along the recomputed
 route and its animation follows that new path.
 
-Use `-i <seconds>` to size the pause — make it longer if you need more
+Use `-i <seconds>` to size the pause: make it longer if you need more
 time to edit, or `-i 0` to send each probe immediately after the previous
 one finishes (still one at a time, just no pause):
 
@@ -245,7 +245,7 @@ ping h3 -c 8 -i 2
 
 The pause ends immediately if you Stop the sim.
 
-Replies appear one line at a time, as each arrives — you don't wait for
+Replies appear one line at a time, as each arrives; you don't wait for
 the whole run to finish before seeing results. Close the terminal
 mid-sequence and the remaining results are discarded silently.
 
@@ -269,7 +269,7 @@ gateway 10.0.0.1 not in host network
 
 For hosts on a `/30` or `/31` **link**, the gateway is the peer's IP
 and is set automatically by the parser. `set_gateway` for those hosts
-is allowed but pointless — change the link wiring if you want a
+is allowed but pointless; change the link wiring if you want a
 different peer.
 
 ---
@@ -396,14 +396,14 @@ foo bar
 unknown command: foo
 ```
 
-There is no shell-level pipe or redirection — each command is one
+There is no shell-level pipe or redirection: each command is one
 line, one response rendered verbatim.
 
 Quoting works as in a normal shell, so `send h2 "hello world"` delivers
 one message rather than two words.
 
-If you want to see how a typed line reaches the device — or to drive the
-same commands from outside the browser — the wire format is documented in
+If you want to see how a typed line reaches the device (or to drive the
+same commands from outside the browser), the wire format is documented in
 [the server API reference](../architecture/server-api.md#post-devicesnamecommand).
 
 ## After a Stop
@@ -419,5 +419,5 @@ ping h3
 [error] no topology loaded
 ```
 
-Click **Start** and the same command works again — same terminal, same
+Click **Start** and the same command works again: same terminal, same
 window position. Nothing needs to be reopened.

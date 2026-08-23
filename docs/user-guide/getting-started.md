@@ -44,7 +44,7 @@ INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 ```
 
 Open [http://127.0.0.1:8000](http://127.0.0.1:8000). On a first visit the
-canvas comes pre-populated with the sample topology — three hosts (`h1`,
+canvas comes pre-populated with the sample topology: three hosts (`h1`,
 `h2`, `h3`), three LANs (`lan1`, `lan2`, `lan3`), three routers (`r1`,
 `r2`, `r3`), and one `/30` point-to-point link (`p2p1`) between `r1` and
 `r3`:
@@ -186,11 +186,11 @@ devices and change interface costs; those edits are held until you click
 
 ## Where to next
 
-- [Web UI](web-ui.md) — full tour of the toolbar, canvas, inspector, and
+- [Web UI](web-ui.md): full tour of the toolbar, canvas, inspector, and
   terminals.
-- [Building topologies](building-topologies.md) — add your own LANs,
+- [Building topologies](building-topologies.md): add your own LANs,
   hosts, routers, and point-to-point links.
-- [YAML format](yaml-format.md) — write topologies by hand or import
+- [YAML format](yaml-format.md): write topologies by hand or import
   them; understand how the SPA saves and resumes.
 
 ## Troubleshooting

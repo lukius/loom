@@ -4,8 +4,8 @@
 
 A topology can have two kinds of LANs:
 
-- **Public** LANs — addresses anyone in the AS can route to.
-- **Private** LANs — RFC 1918 ranges (`10.0.0.0/8`, `172.16.0.0/12`,
+- **Public** LANs: addresses anyone in the AS can route to.
+- **Private** LANs: RFC 1918 ranges (`10.0.0.0/8`, `172.16.0.0/12`,
   `192.168.0.0/16`). Hosts on a private LAN are reachable only through
   their gateway router; their address is not visible to the rest of
   the AS.
@@ -29,7 +29,7 @@ LAN. Load it from **Import** → `multi_tenant_nat.yaml` to follow along.
 ![Private LANs (lan_tenant_a, lan_tenant_b) render muted; the public lan_isp keeps the accent color](../images/50-private-lan-tone.png)
 
 You can drop two private LANs that share the same CIDR (e.g.
-`192.168.1.0/24` on both sides) — the simulator allows the overlap as
+`192.168.1.0/24` on both sides). The simulator allows the overlap as
 long as both stay behind their own gateway router. Public LANs may not
 overlap.
 
@@ -60,10 +60,10 @@ Click the router that sits between a private and a public LAN. Below
 the routing-table panel, an **NAT table** panel lists every active
 translation, oldest first:
 
-- **Original** — the private host that initiated the conversation.
-- **Rewritten** — the public address the router translated it to.
-- **Destination** — the public address the host is talking to.
-- **Flow ID** — a per-conversation identifier; truncated for the
+- **Original**: the private host that initiated the conversation.
+- **Rewritten**: the public address the router translated it to.
+- **Destination**: the public address the host is talking to.
+- **Flow ID**: a per-conversation identifier; truncated for the
   column, hover for the full value.
 
 ![NAT table on r_a after a ping from h_a to h_public — one translation entry, with the private source rewritten to r_a's public address](../images/51-nat-panel.png)
@@ -72,7 +72,7 @@ The panel updates the moment the packet animation reaches the router,
 so the table state stays in sync with what you see on the canvas.
 
 The table is **bounded**: when it fills, the least-recently-used entry
-is evicted. There is no time-based expiry — entries persist as long
+is evicted. There is no time-based expiry; entries persist as long
 as they're being used.
 
 ## Two hosts, one destination
@@ -89,10 +89,10 @@ host.
   router has at least one public interface.
 - Translation applies to conversations the private side starts. Ping a
   private host *from* a public one whose gateway is that same router and
-  the reply comes back untouched, from the host you addressed — a router
+  the reply comes back untouched, from the host you addressed: a router
   does not translate between two of its own attached networks.
 - Two private hosts on different private LANs that share the same CIDR
-  cannot reach each other by address — each thinks the other lives on
+  cannot reach each other by address: each thinks the other lives on
   its own LAN (same-LAN delivery), but the address isn't there.
 - Routers do not advertise their private prefixes to peers, so the
   routing protocol stays clean across tenants. They do announce that they

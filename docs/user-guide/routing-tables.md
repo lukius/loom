@@ -9,7 +9,7 @@ A briefer explanation of the protocol from the user's perspective is
 inline here; the deep dive lives in
 [`docs/architecture/routing-protocol.md`](../architecture/routing-protocol.md).
 To tune Hello and LSA-refresh intervals, use the **Protocol** button in
-the toolbar — see [Web UI: Protocol settings](web-ui.md#protocol-settings).
+the toolbar (see [Web UI: Protocol settings](web-ui.md#protocol-settings)).
 
 ## How routes appear
 
@@ -34,20 +34,20 @@ a re-render of the SPA's routing-table section.
 ### From the SPA
 
 Click a router on the canvas. In the right pane, the inspector shows
-the router's interfaces and the current routing table together — no
+the router's interfaces and the current routing table together, with no
 tab to switch.
 
 ![Router r2 routing table after convergence](../images/20-routes.png)
 
 Columns:
 
-- **Prefix** — the destination network (an IPv4 CIDR).
-- **Next hop** — the IP of the next-hop router, or `0.0.0.0` if the
+- **Prefix**: the destination network (an IPv4 CIDR).
+- **Next hop**: the IP of the next-hop router, or `0.0.0.0` if the
   destination is directly connected.
-- **Iface** — which of this router's interfaces forwards traffic
+- **Iface**: which of this router's interfaces forwards traffic
   for this prefix.
 
-The table is **rebuilt from scratch** on every relevant graph change —
+The table is **rebuilt from scratch** on every relevant graph change:
 you'll see rows appear, disappear, or move between interfaces as the
 protocol converges or as you mutate costs.
 
@@ -68,7 +68,7 @@ prefix               next_hop        iface
 
 This is `r2`'s table in the sample topology. `lan1` and `lan2` are
 directly connected (`0.0.0.0`). `lan3` (`150.10.10.0/24`) is forwarded
-to `r3` (`100.200.0.10`) via `eth1` — even though `r2` has its own
+to `r3` (`100.200.0.10`) via `eth1`: even though `r2` has its own
 `eth2` on `lan3` (cost 15), the path through `lan2` to `r3` (cost 8 + 5
 = 13) is cheaper. loom-OSPF computes routes purely from Dijkstra shortest
 paths and does not give directly-connected networks automatic preference,
@@ -83,7 +83,7 @@ to that prefix.
 That withholding is about *destinations*, not about the link itself.
 `r1` and `r3` still announce that they are attached to it, so the link
 takes part in every router's shortest-path calculation and carries
-traffic bound for networks beyond it. A private network — link or LAN —
+traffic bound for networks beyond it. A private network (link or LAN)
 is invisible as a place to send packets **to**, never as a path to send
 packets **through**.
 
@@ -105,7 +105,7 @@ delivery**, not a routing-protocol failure.
 
 ## Costs and paths
 
-Every router interface has a **cost** — a positive integer metric. The
+Every router interface has a **cost**, a positive integer metric. The
 routing protocol computes Dijkstra shortest paths weighted by these
 costs.
 
@@ -152,10 +152,10 @@ in under 3 s.
 
 The protocol **does detect failures**. If a router stops sending
 neighbor-discovery messages (for example, because you crashed it), its
-peers notice the silence. After three consecutive missed intervals —
-the **dead interval**, equal to 3 × the Hello interval (default 30 s)
-— the adjacency is marked down. After two full LSA-refresh intervals
-— the **max-age** timer (default 60 s) — the dead router's
+peers notice the silence. After three consecutive missed intervals the
+adjacency is marked down. That window is the **dead interval**: 3 × the
+Hello interval, 30 s by default. Two full LSA-refresh intervals later,
+once the **max-age** timer (60 s by default) expires, the dead router's
 advertisement is purged from the network graph and every router
 recomputes its routes automatically.
 
@@ -170,7 +170,7 @@ instead.
 
 ### From the terminal
 
-A router can list its **directly-connected neighbors** — other routers
+A router can list its **directly-connected neighbors**: other routers
 on the same LAN or link.
 
 In the terminal:
@@ -186,15 +186,15 @@ neighbors
   r3     via lan3     (150.10.10.10) cost=5
 ```
 
-(That's `r2`'s neighbors in the sample topology — `r1` and `r3`,
+(That's `r2`'s neighbors in the sample topology: `r1` and `r3`,
 connected via several different LANs at different costs.)
 
-Each row is one **adjacency** — one shared fabric, one interface, one
+Each row is one **adjacency**: one shared fabric, one interface, one
 cost. A router may have multiple adjacencies with the same neighbor if
 they share more than one fabric.
 
 The neighbors command is a read-only view of the router's local view
-of the network. It updates as new routers join — but only after their
+of the network. It updates as new routers join, but only after their
 first advertisement has arrived. If a router shows no neighbors,
 either:
 
@@ -209,10 +209,10 @@ with every peer on that interface:
 
 | State | Meaning |
 |---|---|
-| **TWO_WAY** | Bidirectional — both routers have heard each other's Hello and listed each other as neighbors. Routes are exchanged normally. |
-| **INIT** | One-way — this router has heard a Hello from the peer, but the peer's Hello has not yet listed this router. Typically a transient state that resolves within one Hello interval. |
+| **TWO_WAY** | Bidirectional: both routers have heard each other's Hello and listed each other as neighbors. Routes are exchanged normally. |
+| **INIT** | One-way: this router has heard a Hello from the peer, but the peer's Hello has not yet listed this router. Typically a transient state that resolves within one Hello interval. |
 | **DOWN** | The peer is expected (another router is attached to the same LAN or link) but no recent Hello has arrived. Shown after a crash or if the peer's dead interval has elapsed. |
-| **no other routers** | The interface connects only to hosts — there is nothing to peer with. This is normal for a stub interface. |
+| **no other routers** | The interface connects only to hosts, so there is nothing to peer with. This is normal for a stub interface. |
 
 The summary line (e.g. *2 peers · 3 adjacencies · 2 TWO_WAY · 1 DOWN*)
 lets you see at a glance whether the router has fully converged or is
@@ -224,7 +224,7 @@ When you `ping h3` from `h1` in the sample topology, the routers in the
 path can be read straight off their routing tables:
 
 - `h1` (on `lan1`, gateway `200.100.0.1`) sends the packet to `r1.eth0`.
-- `r1.route` says `150.10.10.0/24 → 10.0.0.2 / eth2` — across the
+- `r1.route` says `150.10.10.0/24 → 10.0.0.2 / eth2`: across the
   `p2p1` link, next hop `r3`.
 - `r3.route` says `150.10.10.0/24 → 0.0.0.0 / eth1` (directly
   connected).
@@ -233,7 +233,7 @@ path can be read straight off their routing tables:
 The reply is a separate set of lookups, and it takes a different route.
 `h3`'s gateway is `r2` (`150.10.10.1`), and `r2` has `lan1` directly
 connected, so the reply reaches `h1` without ever touching `p2p1`.
-Forwarding is decided hop by hop and direction by direction — nothing
+Forwarding is decided hop by hop and direction by direction; nothing
 ties a reply to the path its request took.
 
 Note that `r1` routes *through* `p2p1` while nobody else holds a route
@@ -251,8 +251,8 @@ re-convergence the next ping leaves `r1` by `eth1` onto `lan2` toward
 **"My route just appeared and disappeared."** The server sends routing
 table update events on **every** recompute, including transient intermediate
 states during convergence. If you watch closely during the first
-rounds of link-state flooding, you can see routes settle in two or three passes —
-the protocol is learning the graph one flood at a time.
+rounds of link-state flooding, you can see routes settle in two or three
+passes: the protocol is learning the graph one flood at a time.
 
 **"Costs aren't symmetrical."** They aren't required to be. Each
 interface has its own cost; `r1.eth0` cost 10 and `r2.eth0` cost 5
@@ -263,10 +263,10 @@ Dijkstra search picks the asymmetric cheapest path.
 **"Why doesn't my path use the obvious shortest hop?"** Look at all the
 intermediate costs, not just the first one. The shortest *hop count*
 isn't necessarily the shortest *path cost*. `r3` in the sample topology
-reaches `lan1` **not** over its direct link to `r1` — that would cost
-5 (the link) + 10 (`r1`'s interface onto `lan1`) = 15 — but through `r2`
-across `lan3`, at 5 + 5 = 10. The direct link is one hop and still
-loses.
+does **not** reach `lan1` over its direct link to `r1`, which would cost
+5 (the link) + 10 (`r1`'s interface onto `lan1`) = 15. It goes through
+`r2` across `lan3` instead, at 5 + 5 = 10. The direct link is one hop
+and still loses.
 
 **"My routing table is empty."** Either the simulator hasn't ticked yet
 (give it a moment for the first protocol tick), or the router has no router peers

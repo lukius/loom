@@ -53,11 +53,11 @@ optional `name:` field labels the internet instance, and
 `autonomous_systems:` is a mapping where each key is the AS short name
 and each value holds that AS's entity blocks (`networks`, `links`,
 `routers`, `hosts`). Names within an AS must be unique across the kinds
-they collide with — see [Naming rules](#naming-rules) below.
+they collide with; see [Naming rules](#naming-rules) below.
 
 > **Note (SPA export):** When you **Export** from the SPA, `internet.name`
 > and the autonomous-systems key are both set to the project name you typed
-> in the header bar — the SPA keeps them in sync. The `loom` default only
+> in the header bar; the SPA keeps them in sync. The `loom` default only
 > applies when you hand-write YAML without a `name:` field.
 
 **A topology holds exactly one autonomous system.** Put a single entry
@@ -78,7 +78,7 @@ internet:
         lan1: "10.0.0.0/24"
 ```
 
-This loads but does nothing useful — no traffic to forward, no routers
+This loads but does nothing useful: no traffic to forward, no routers
 to flood. The validator does not require at least one device.
 
 ## Networks
@@ -95,7 +95,7 @@ networks:
 
 Rules:
 
-- The CIDR is **canonicalized** at parse time — host bits are zeroed.
+- The CIDR is **canonicalized** at parse time: host bits are zeroed.
   `"10.1.2.3/24"` becomes `10.1.2.0/24`.
 - Mask between 0 and 32 (in practice useful prefixes are `/8` through
   `/29`; for `/30` or `/31` use `links:` instead).
@@ -202,7 +202,7 @@ topology. Omit either one and its defaults apply.
 Placed directly under `internet:`, alongside `name:` and
 `autonomous_systems:`. Any key/value pairs you write here are stored and
 written back out verbatim on **Export**. Today `packet_duration_ms` is
-the one that has an effect — the packet animation duration in
+the one that has an effect: the packet animation duration in
 milliseconds, default 1800.
 
 ```yaml
@@ -232,7 +232,7 @@ autonomous_systems:
 
 Rules:
 - Both `hello_interval` and `lsa_refresh_interval` must be given
-  together — specifying only one is a parse error.
+  together; specifying only one is a parse error.
 - Both must be positive numbers (int or float).
 - `dead_interval` (3 × hello) and `max_age` (2 × refresh) remain
   derived and are not written to YAML.
@@ -242,9 +242,9 @@ them, so packet duration and protocol timers persist across sessions.
 
 ## Naming rules
 
-- `networks` and `links` share a namespace — no network can have the
+- `networks` and `links` share a namespace: no network can have the
   same name as a link.
-- `hosts` and `routers` share a namespace — no host can have the same
+- `hosts` and `routers` share a namespace: no host can have the same
   name as a router.
 - Names are case-sensitive ASCII; the parser doesn't sanitize them
   beyond YAML's own rules. Avoid spaces.
@@ -277,13 +277,13 @@ routers:
   r2: { interfaces: { ... } }
 ```
 
-— and they all load the same. Just don't reference a network or link
-that hasn't been declared yet in its own block.
+They all load the same. Just don't reference a network or link that
+hasn't been declared yet in its own block.
 
 ## A complete example
 
-This is the bundled `samples/sample.yaml`, verbatim — three LANs, one
-point-to-point link, three routers, three hosts:
+This is the bundled `samples/sample.yaml`, verbatim (three LANs, one
+point-to-point link, three routers, three hosts):
 
 ```yaml
 internet:
@@ -357,7 +357,7 @@ internet:
 
 Click **Import** in the SPA and pick `sample.yaml` from the list to drop
 it onto the canvas; click **Export** to save it back to disk. Neither
-`config:` block appears here — both are optional, and the defaults apply
+`config:` block appears here: both are optional, and the defaults apply
 when they are absent.
 
 ## Save and resume workflow
@@ -365,9 +365,9 @@ when they are absent.
 `loom` distinguishes between the **source file** and the **session
 file**:
 
-- **Source file** — what `LOOM_TOPOLOGY` points at (default
+- **Source file**: what `LOOM_TOPOLOGY` points at (default
   `samples/sample.yaml`). The simulator never writes to this file.
-- **Session file** — a clone kept in a temporary directory
+- **Session file**: a clone kept in a temporary directory
   (`$TMPDIR/loom` on Linux/macOS, overridable via `LOOM_SESSION_DIR`),
   named `<stem>.<8-hex-hash>.session.yaml`. The hash disambiguates two
   source files that share a basename. All in-process mutations land
@@ -384,7 +384,7 @@ Lifecycle:
 | **Resume** with pending edits | Rewritten to match the edited topology |
 | **Import** a topology | Overwritten with what you imported |
 | Press **Reset** | Deleted and cloned again from the source |
-| Quit `loom` | Left alone — it is still there next run |
+| Quit `loom` | Left alone; it is still there next run |
 
 The OS typically wipes `$TMPDIR` on reboot (Linux/macOS mount `/tmp`
 as tmpfs). Set `LOOM_SESSION_DIR` to a stable path if you want session
@@ -427,7 +427,7 @@ and the canvas redraws without surprises.
 
 The bundled `sample.yaml` leaves addresses unquoted. YAML treats
 `10.0.0.0/24` as a string anyway because of the slash, so quoting is
-purely a matter of taste — both forms parse identically:
+purely a matter of taste, and both forms parse identically:
 
 ```yaml
 networks:
