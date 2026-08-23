@@ -173,7 +173,7 @@ parser rejects them. Don't "fix" them.
 ### Python (simulator + server)
 
 ```bash
-pytest                      # full suite (547 tests)
+pytest                      # full suite (550 tests)
 pytest test/test_protocol.py        # one suite
 pytest -k routing_table             # one keyword
 pytest -x                           # stop on first failure

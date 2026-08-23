@@ -72,7 +72,7 @@ trabajos de mayor alcance, recomendamos ver [ns-3](https://www.nsnam.org/), [min
 | Servidor web       | FastAPI + Uvicorn, mount SPA estático, REST + WebSocket |
 | Interfaz web       | Módulos ES nativos + SVG (sin framework, sin bundler) |
 | Topología          | YAML (PyYAML), con validador estructural |
-| Tests              | `pytest` (547), `pytest-asyncio`, `vitest` (824), Playwright |
+| Tests              | `pytest` (550), `pytest-asyncio`, `vitest` (824), Playwright |
 | Lint / formato     | `ruff` |
 
 Sin dependencias de runtime más allá de PyYAML, FastAPI y Uvicorn (el
@@ -201,7 +201,7 @@ loom/
 │   ├── routing/           # RoutingProtocol (loom-OSPF link-state) + LSDB → NetworkGraph (Dijkstra)
 │   ├── parser/            # YAML topology loader + SystemValidator
 │   └── server/            # FastAPI app, routes, sim state machine, persistence, command dispatch
-├── test/                  # pytest suite (547 tests) + invalid YAML fixtures under resources/
+├── test/                  # pytest suite (550 tests) + invalid YAML fixtures under resources/
 ├── samples/               # sample.yaml — the bundled example topology
 ├── web/                   # SPA: ES modules, styles, favicon, vitest tests
 ├── e2e/                   # Playwright/Chromium smoke suite
