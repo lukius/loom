@@ -5,12 +5,12 @@ whether it actually should. loom expresses that decision with a *route
 map*, a construct borrowed from production router configuration and
 trimmed here to the part that carries the idea.
 
-A route map is an ordered list of rules. Each rule pairs a **match
-clause**, which says the prefixes the rule applies to, with an **action**,
+A route map is an ordered list of rules. Each rule pairs a match
+clause, which says the prefixes the rule applies to, with an action,
 either `permit` or `deny`. Applying the map to one candidate prefix walks
 the rules from the top and stops at the first one whose match clause
 fires; that rule's action is the answer, and no later rule is consulted.
-If no rule matches at all, the map's **default action** decides. The whole
+If no rule matches at all, the map's default action decides. The whole
 mechanism is therefore a single pass over a list, and "first match wins"
 is the only precedence rule there is.
 
@@ -37,8 +37,7 @@ performs the flooding. That separation is the point, and it is what would
 let later work reuse the mechanism. External routing between autonomous
 systems is the obvious candidate, since deciding what to advertise to a
 neighbour, and what to accept from one, is most of what such a protocol
-does. None of that exists yet, and nothing here should be read as a
-commitment to a particular design for it.
+does.
 
 See also: [routing-protocol.md](routing-protocol.md) (the flood site
 where outbound policy is applied) and [nat.md](nat.md) (why private

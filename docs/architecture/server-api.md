@@ -1,24 +1,64 @@
 # Server API
 
-The FastAPI app exposes four REST families and one WebSocket. All routes
-live under [`src/server/routes/`](../../src/server/routes) and share the
-application state attached to `request.app.state`:
+The app is assembled by `create_app()` in
+[`src/server/app.py`](../../src/server/app.py). It exposes four REST
+families (`/topology*`, `/samples*`, `/sim/*`, `/devices/*`) and one
+WebSocket (`/ws/events`), all defined under
+[`src/server/routes/`](../../src/server/routes). The default bind is
+`127.0.0.1:8000`, overridable with `LOOM_PORT`.
+
+## Application state
+
+Route handlers need to reach objects that live for the whole process:
+the running simulation, the event fan-out, the samples directory.
+FastAPI provides `app.state` for this. It is a plain namespace object
+hanging off the application instance, and anything `create_app()` assigns
+to it is reachable from any handler through the request, as
+`request.app.state.<name>`. It is the framework's answer to module-level
+globals, and it is what keeps the routes testable: a test builds its own
+app with its own state rather than reaching into a shared module.
+
+Three attributes are assigned:
 
 | Attribute | Type | Lifecycle |
 |---|---|---|
-| `app.state.sim_state` | `SimState` | One per process, created in `create_app()` |
-| `app.state.event_bus` | `EventBus` | One per process; loop attached in `lifespan` |
+| `app.state.sim_state` | `SimState` | One per app. Owns the live `AS`, the session file path, and the state-machine lock |
+| `app.state.event_bus` | `EventBus` | One per app. Fans worker-thread events out to every connected WebSocket; its asyncio loop is attached in `lifespan` |
+| `app.state.samples_dir` | `Path` | Resolved from `LOOM_SAMPLES`, defaulting to `<repo>/samples`. Read only by the `/samples` routes |
 
-`SimState` owns the live `AS`, the session file path, and the
-state-machine lock. `EventBus` fans worker-thread events out to all
-connected WebSockets.
+The `lifespan` context manager joins the threaded and async halves at
+startup: it hands the running asyncio loop to the `EventBus`, then
+subscribes `EventBus.emit` to the `EventTracer` so simulator events reach
+connected clients. Shutdown unsubscribes and detaches the loop, which
+turns any late emit into a safe no-op.
 
-The default bind is `127.0.0.1:8000` (override with `LOOM_PORT`). The
-SPA is served from `/` via `StaticFiles(directory="web", html=True)`.
+## Serving the SPA
+
+After every API router is registered, `create_app()` mounts the SPA at
+the root:
+
+```python
+app.mount("/", StaticFiles(directory=str(web_dir), html=True), name="web")
+```
+
+`StaticFiles` is Starlette's static-file application: it maps a URL path
+onto files under `directory` and serves them directly, with no route
+handler of its own. `html=True` puts it in single-page-app mode, so a
+request for a directory, `/` included, returns that directory's
+`index.html` instead of a listing or a 404. That is what makes
+`http://127.0.0.1:8000/` load the SPA.
+
+Two details of that line are load-bearing. It is mounted last, because
+routes match in registration order and a mount at `/` would otherwise
+shadow every API route above it. And it is guarded by
+`web_dir.exists()`, so a checkout with no `web/` directory still starts
+and still serves the API.
 
 ---
 
-## `GET /topology`
+## Topology routes
+
+### `GET /topology`
 
 Read the current topology as YAML.
 
@@ -29,18 +69,13 @@ Read the current topology as YAML.
 ```
 
 When a topology is loaded (`as_obj is not None`), returns the
-re-serialized live state via `SimState._dump_yaml()`: not the
-session file read verbatim. This means any runtime change made via
-`POST /sim/protocol_config` is reflected on the next fetch, because
-`_dump_yaml` reads the protocol timers from the live router objects and
-writes them into the `<as>.config.protocol` block. The top-level
-`internet.config` dict is re-emitted verbatim (it is stored opaquely
-and never interpreted by the backend). When no topology is loaded, the
+re-serialized live state via `SimState._dump_yaml()`, not the
+session file read verbatim. When no topology is loaded, the
 raw session-file text is returned instead.
 
 ---
 
-## `POST /topology`
+### `POST /topology`
 
 Load a new topology, replacing the current one.
 
@@ -62,8 +97,8 @@ Parse-then-commit via `SimState.load_from_text()`:
 3. On success, the temporary file is atomically moved to `session_path`
    (replacing any prior content), and the live AS is swapped in.
 
-Routers are built but not started, `start_routing=False`, so no
-routing events fire until `/sim/start` is called.
+Routers are built but not started, so no routing events fire until
+`/sim/start` is called.
 
 **Responses**
 
@@ -82,7 +117,7 @@ routing events fire until `/sim/start` is called.
 
 ---
 
-## `GET /topology/source`
+### `GET /topology/source`
 
 Return the basename of the topology source file (`LOOM_TOPOLOGY` env var).
 
@@ -97,7 +132,7 @@ dialogs). The value is the `Path.name` of the source, not a full path.
 
 ---
 
-## `POST /topology/reset`
+### `POST /topology/reset`
 
 Drop the session file and re-clone from the source.
 
@@ -350,21 +385,35 @@ Supported commands per device kind:
 | Host | `ifconfig`, `send <dst> <msg>`, `ping <dst> [-W <seconds>] [-c <n>] [-i <seconds>]`, `route`, `set_gateway <ip>`, `help` |
 | Router | `ifconfig [<iface> up\|down]`, `route`, `update_cost <iface> <cost>`, `neighbors`, `halt`, `resume`, `help` |
 
-`ifconfig [<iface> up|down]` (router)
+The four commands with behaviour worth spelling out:
 
-With no arguments, shows all interfaces. With `<iface> up` or `<iface> down`, changes that interface's admin state: bringing it down stops traffic in both directions and triggers a graceful LSA re-flood omitting the link; bringing it back up re-announces the link immediately.
+#### `ifconfig [<iface> up|down]` (router)
 
-`halt` (router)
+With no arguments, shows all interfaces. With `<iface> up` or `<iface>
+down`, changes that interface's admin state. Bringing it down stops
+traffic in both directions and triggers a graceful LSA re-flood that
+omits the link; bringing it back up re-announces the link immediately.
 
-Gracefully disables all interfaces, floods a withdrawal LSA so peers purge the router immediately, and marks the router as halted. No traffic is forwarded.
+#### `halt` (router)
 
-`resume` (router)
+Gracefully disables all interfaces, floods a withdrawal LSA so peers
+purge the router immediately, and marks the router as halted. No traffic
+is forwarded afterwards.
 
-Re-enables all previously halted interfaces and re-announces the router's links via a fresh LSA flood. Symmetrical to `halt`.
+#### `resume` (router)
 
-`ping <dst> [-W <seconds>] [-c <n>] [-i <seconds>]` (host)
+Re-enables all previously halted interfaces and re-announces the router's
+links via a fresh LSA flood. Symmetrical to `halt`.
 
-Sends one `PingRequest` per probe. `-W` sets the per-probe timeout (default 3 s); `-c` sets the probe count (default 1, max 100); `-i` sets the inter-probe interval in seconds (default 1, like real ping; max 60; use `-i 0` for a back-to-back burst). The interval wait goes through the AS `PauseGate`, so it pauses with the simulation and aborts on stop. The endpoint returns only the summary; per-probe lines are broadcast as `ping_result` events. Output summary:
+#### `ping <dst> [-W <seconds>] [-c <n>] [-i <seconds>]` (host)
+
+Sends one `PingRequest` per probe. `-W` sets the per-probe timeout
+(default 3 s); `-c` sets the probe count (default 1, max 100); `-i` sets
+the inter-probe interval in seconds (default 1, like real ping; max 60;
+use `-i 0` for a back-to-back burst). The interval wait goes through the
+AS `PauseGate`, so it pauses with the simulation and aborts on stop. The
+endpoint returns only the summary; per-probe lines are broadcast as
+`ping_result` events. Output summary:
 
 ```
 h2 (100.200.0.20): time=2.34 ms
@@ -576,11 +625,11 @@ is the exact list of ops that was applied.
 
 Emitted by `LinkStateProtocol` whenever a neighbor transitions between
 adjacency states (emitted values are lowercase: `"down"`, `"init"`,
-`"two_way"`; the enum names in `NeighborState` are uppercase). `last_hello_at` is the
-monotonic timestamp of the last Hello heard from this peer (or `null`
-before the first Hello); `peer_acked_at` is when the peer last listed
-this router in its own `neighbors_heard` list (or `null` if not yet
-acknowledged).
+`"two_way"`; the enum names in `NeighborState` are uppercase).
+`last_hello_at` is the monotonic timestamp of the last Hello heard from
+this peer (or `null` before the first Hello); `peer_acked_at` is when the
+peer last listed this router in its own `neighbors_heard` list (or `null`
+if not yet acknowledged).
 
 ```json
 {
@@ -775,7 +824,7 @@ curl -X POST http://127.0.0.1:8000/sim/edit \
 | `/sim/*` routes | [`src/server/routes/sim.py`](../../src/server/routes/sim.py) | none |
 | `/topology*` routes | [`src/server/routes/topology.py`](../../src/server/routes/topology.py) | none |
 | `/devices/*` routes | [`src/server/routes/devices.py`](../../src/server/routes/devices.py) | none |
-| `/files/*` routes | [`src/server/routes/files.py`](../../src/server/routes/files.py) | none |
+| `/samples*` routes | [`src/server/routes/files.py`](../../src/server/routes/files.py) | none |
 | `/ws/events` | [`src/server/routes/ws.py`](../../src/server/routes/ws.py) | `events` |
 | Thread → asyncio bridge | [`src/server/events.py`](../../src/server/events.py) | `EventBus.emit` |
 | Terminal command dispatch | [`src/server/command/dispatch.py`](../../src/server/command/dispatch.py) | none |
