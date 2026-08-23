@@ -4,9 +4,9 @@
 
 Una topología puede tener dos clases de LANs:
 
-- **Públicas** — con direcciones a las que puede rutear cualquiera dentro del
+- **Públicas**: con direcciones a las que puede rutear cualquiera dentro del
   AS.
-- **Privadas** — rangos RFC 1918 (`10.0.0.0/8`, `172.16.0.0/12`,
+- **Privadas**: rangos RFC 1918 (`10.0.0.0/8`, `172.16.0.0/12`,
   `192.168.0.0/16`). Los hosts de una LAN privada son alcanzables únicamente a
   través de su router gateway, y su dirección no es visible para el resto del
   AS.
@@ -61,10 +61,10 @@ Hacer click en el router que está entre una LAN privada y una pública. Debajo
 del panel de la tabla de ruteo, un panel de **tabla NAT** lista todas las
 traducciones activas, de la más vieja a la más nueva:
 
-- **Original** — el host privado que inició la conversación.
-- **Rewritten** — la dirección pública a la que el router lo tradujo.
-- **Destination** — la dirección pública con la que el host está hablando.
-- **Flow ID** — un identificador por conversación, recortado para que entre en
+- **Original**: el host privado que inició la conversación.
+- **Rewritten**: la dirección pública a la que el router lo tradujo.
+- **Destination**: la dirección pública con la que el host está hablando.
+- **Flow ID**: un identificador por conversación, recortado para que entre en
   la columna; pasar el cursor por encima muestra el valor completo.
 
 ![Tabla NAT en r_a después de un ping de h_a a h_public: una entrada de traducción, con el origen privado reescrito a la dirección pública de r_a](../../images/51-nat-panel.png)
@@ -104,4 +104,4 @@ traducen de vuelta de manera independiente y llegan al host correcto.
 
 Para conocer las herramientas de la SPA en torno al NAT, ver
 [web-ui.md](web-ui.md). Para el modelo arquitectónico y las decisiones de
-diseño, ver [la página de arquitectura de NAT](../architecture/nat.md).
+diseño, ver [la página de arquitectura de NAT](../../architecture/nat.md).

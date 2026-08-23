@@ -8,7 +8,7 @@ completarla.
 
 Acá se incluye una explicación breve del protocolo desde el punto de vista de
 quien lo usa; el detalle profundo vive en
-[`docs/architecture/routing-protocol.md`](../architecture/routing-protocol.md).
+[`docs/architecture/routing-protocol.md`](../../architecture/routing-protocol.md).
 Para ajustar los intervalos de Hello y de refresco de LSA está el botón
 **Protocol** de la barra de herramientas; ver
 [Interfaz web: configuración del protocolo](web-ui.md#configuración-del-protocolo).
@@ -44,10 +44,10 @@ cambiar de pestaña.
 
 Las columnas son:
 
-- **Prefix** — la red de destino (un CIDR IPv4).
-- **Next hop** — la IP del router siguiente, o `0.0.0.0` si el destino está
+- **Prefix**: la red de destino (un CIDR IPv4).
+- **Next hop**: la IP del router siguiente, o `0.0.0.0` si el destino está
   directamente conectado.
-- **Iface** — cuál de las interfaces de este router hace forwarding del tráfico
+- **Iface**: cuál de las interfaces de este router hace forwarding del tráfico
   para ese prefijo.
 
 La tabla se **reconstruye desde cero** ante cada cambio relevante del grafo, así

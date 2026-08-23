@@ -88,16 +88,16 @@ mientras está en `idle`. Una vez que la simulación está en ejecución (o en
 pausa), hacer click en **Protocol** abre la ventana emergente de configuración,
 que controla los dos parámetros de temporización de loom-OSPF:
 
-- **Hello interval** — cada cuánto envía cada router un Hello a sus vecinos para
+- **Hello interval**: cada cuánto envía cada router un Hello a sus vecinos para
   declararse activo (segundos, 1–300).
-- **LSA refresh interval** — cada cuánto vuelve a emitir cada router su anuncio
+- **LSA refresh interval**: cada cuánto vuelve a emitir cada router su anuncio
   link-state completo (segundos, 1–900).
 
 Junto a los campos se muestran dos valores derivados, de solo lectura:
 
-- **Dead interval** — tres veces el intervalo de Hello. Un vecino que permanece
+- **Dead interval**: tres veces el intervalo de Hello. Un vecino que permanece
   en silencio durante ese lapso se considera inalcanzable.
-- **Max age** — dos veces el intervalo de refresco de LSA. Un LSA más viejo que
+- **Max age**: dos veces el intervalo de refresco de LSA. Un LSA más viejo que
   ese valor se elimina de la base de datos link-state.
 
 Presionar **Apply** para enviar los nuevos valores a la simulación en ejecución.
@@ -107,7 +107,7 @@ necesidad de reiniciar nada.
 ![Ventana emergente de configuración del protocolo, con los valores derivados Dead interval y Max age](../../images/protocol-popover.png)
 
 Para conocer la mecánica subyacente, ver
-[`docs/architecture/routing-protocol.md`](../architecture/routing-protocol.md).
+[`docs/architecture/routing-protocol.md`](../../architecture/routing-protocol.md).
 
 ### Atajos de teclado
 
@@ -132,13 +132,13 @@ mientras se mantiene presionada alguna tecla modificadora (para que
 El _canvas_ es un SVG con tres sistemas de coordenadas (mundo / vista /
 pantalla). Se interactúa con él mediante estos gestos:
 
-- **Click en un nodo** — lo selecciona, y el inspector se completa a la derecha.
-- **Arrastrar un nodo** — lo mueve. Las coordenadas se persisten.
-- **Arrastrar el canvas vacío** — desplaza la vista, que también se persiste.
-- **Scroll sobre el canvas** — hace zoom alrededor del cursor.
-- **Click derecho en un nodo** — abre el menú contextual (renombrar, duplicar,
+- **Click en un nodo** lo selecciona, y el inspector se completa a la derecha.
+- **Arrastrar un nodo** lo mueve. Las coordenadas se persisten.
+- **Arrastrar el canvas vacío** desplaza la vista, que también se persiste.
+- **Scroll sobre el canvas** hace zoom alrededor del cursor.
+- **Click derecho en un nodo** abre el menú contextual (renombrar, duplicar,
   eliminar).
-- **Doble click en un host o router** — abre su terminal.
+- **Doble click en un host o router** abre su terminal.
 
 ### Qué se ve
 
@@ -218,12 +218,12 @@ Para seguir varios paquetes a la vez, o para mantener el contexto mientras la
 simulación sigue en ejecución, hacer click en **Packets** en la barra de
 herramientas. Un panel se desliza desde la derecha y muestra:
 
-- **In flight — user traffic.** Una fila por cada paquete que está cruzando la
+- **In flight: user traffic.** Una fila por cada paquete que está cruzando la
   red, con una insignia numérica (`#1`, `#2`, …). Esa misma insignia viaja sobre
   el punto correspondiente en el _canvas_, de manera que una fila y su paquete
   siempre quedan emparejados a la vista. Al expandir una fila se ven el
   historial de hops del paquete y las traducciones NAT ocurridas en el camino.
-- **In flight — routing chatter.** Los paquetes del protocolo de ruteo se
+- **In flight: routing chatter.** Los paquetes del protocolo de ruteo se
   resumen por defecto en una sola línea, para mantener la lista legible. Al
   expandir el resumen se ve cada uno por separado, con su propia insignia `#R1`,
   `#R2`, … y una etiqueta **Hello** / **LSA** que deja claro de un vistazo el
@@ -281,11 +281,11 @@ entre las que alternar.
 
 Para cualquier tipo de nodo:
 
-- **Identifier / name** — editable. Los cambios de nombre se validan para
+- **Identifier / name**: editable. Los cambios de nombre se validan para
   garantizar unicidad.
-- **Properties** — dirección, pertenencia a una red o link, y gateway (solo en
+- **Properties**: dirección, pertenencia a una red o link, y gateway (solo en
   hosts).
-- **Duplicate / Delete** — al final del panel. Duplicate clona el nodo con un
+- **Duplicate / Delete**: al final del panel. Duplicate clona el nodo con un
   nombre nuevo, y Delete lo elimina.
 
 Secciones específicas según el tipo:
@@ -327,9 +327,9 @@ acomodando o que tiene algunos links inalcanzables podría mostrar
 `(2 peers · 4 adjacencies · 3 TWO_WAY · 1 INIT)`. Los dos conteos miden cosas
 distintas:
 
-- **Peers** — la cantidad de *routers vecinos distintos* que este router
+- **Peers**: la cantidad de *routers vecinos distintos* que este router
   descubrió, sin importar en cuántas LANs o links compartidos se encuentren.
-- **Adjacencies** — una entrada por cada interface desde la cual un vecino es
+- **Adjacencies**: una entrada por cada interface desde la cual un vecino es
   alcanzable. Dos routers que comparten `lan1` y `lan2` cuentan como **un peer y
   dos adyacencias**, porque cada LAN forma su propia adyacencia.
 
@@ -339,7 +339,7 @@ para mantener la línea compacta.
 
 Una interface conectada a una LAN o link donde no hay ningún otro router (un
 _stub_, como una LAN que sirve solo a hosts) se muestra como
-`— no other routers` y *no* se cuenta como una adyacencia `DOWN`: no hay nada
+`no other routers` y *no* se cuenta como una adyacencia `DOWN`: no hay nada
 del otro lado con quien establecer vecindad, así que marcarla como DOWN sería
 engañoso. El caso DOWN real, el que sí suma al conteo, es el de una interface
 que *debería* tener un vecino pero todavía no escuchó ninguno (o cuyos Hellos
@@ -430,11 +430,11 @@ El menú se cierra haciendo click en cualquier lugar fuera de él o presionando
 Con la simulación en ejecución, hacer click derecho sobre un **router** agrega
 tres ítems extra por encima del grupo de modificación de la topología:
 
-- **Halt router (graceful)** — apaga el router de manera ordenada antes de
+- **Halt router (graceful)**: apaga el router de manera ordenada antes de
   dejarlo fuera de línea.
-- **Crash router** — lo hace fallar abruptamente, sin ningún cierre ordenado,
+- **Crash router**: lo hace fallar abruptamente, sin ningún cierre ordenado,
   simulando un _crash_ real.
-- **Resume router** — se muestra en lugar de los dos anteriores cuando el router
+- **Resume router**: se muestra en lugar de los dos anteriores cuando el router
   ya está detenido, y lo vuelve a poner en línea.
 
 Un router detenido o caído se ve atenuado en el _canvas_ (oscurecido y
@@ -446,9 +446,9 @@ Hello y actualizan sus tablas de ruteo en consecuencia.
 Con un router seleccionado y la simulación en ejecución, la lista de interfaces
 del inspector muestra botones de acción junto a cada una:
 
-- **Disable** — baja la interface de manera ordenada (apagado administrativo).
-- **Fail** — la hace fallar de golpe, sin cierre ordenado.
-- **Enable** — vuelve a habilitar una interface deshabilitada.
+- **Disable**: baja la interface de manera ordenada (apagado administrativo).
+- **Fail**: la hace fallar de golpe, sin cierre ordenado.
+- **Enable**: vuelve a habilitar una interface deshabilitada.
 
 En el _canvas_, la arista de una interface caída se convierte en un cable gris
 sólido con una pequeña ✕ en su punto medio, distinto del estilo punteado que

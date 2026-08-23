@@ -40,8 +40,8 @@ provisional y un prefijo `/24`.
 Hacer click en el _rail_ para seleccionarlo abre el inspector, donde se puede
 editar:
 
-- **Name** — debe ser único entre redes **y** links. Se guarda automáticamente.
-- **CIDR** — cualquier prefijo IPv4 válido. El parser lo canonicaliza
+- **Name**: debe ser único entre redes **y** links. Se guarda automáticamente.
+- **CIDR**: cualquier prefijo IPv4 válido. El parser lo canonicaliza
   (`10.1.2.3/24` pasa a ser `10.1.2.0/24`). Dos LANs no pueden compartir el
   mismo prefijo, salvo que se trate de un rango privado RFC 1918 (`10.0.0.0/8`,
   `172.16.0.0/12` o `192.168.0.0/16`); los prefijos públicos deben ser únicos en
@@ -94,9 +94,9 @@ Hacer click en **Host** (o presionar <kbd>H</kbd>). Aparece un nuevo ícono de
 host en el centro del _canvas_. Se pedirá (o el inspector mostrará) lo
 siguiente:
 
-- **Name** — debe ser único entre hosts y routers.
-- **Network** o **Link** — la red o el link al que se conecta el host.
-- **Address** — debe ser una IP utilizable dentro del prefijo elegido. En los
+- **Name**: debe ser único entre hosts y routers.
+- **Network** o **Link**: la red o el link al que se conecta el host.
+- **Address**: debe ser una IP utilizable dentro del prefijo elegido. En los
   links `/30`, las direcciones de red y de broadcast están reservadas.
 - **Gateway** (opcional):
   - En una LAN, una IP válida dentro de esa misma LAN. Es necesaria si el host
@@ -141,10 +141,10 @@ el centro del _canvas_, sin interfaces.
 Al abrir el inspector, la sección **Interfaces** del router muestra un botón
 **+ Add interface**. Para cada interface hay que indicar:
 
-- **Name** — único dentro de este router (`eth0`, `eth1`, …).
-- **Network** o **Link** — elegir uno; nunca los dos.
-- **Address** — debe ser válida para la red o el link elegido.
-- **Cost** — la métrica que usa el protocolo de ruteo. Conviene fijarla
+- **Name**: único dentro de este router (`eth0`, `eth1`, …).
+- **Network** o **Link**: elegir uno; nunca los dos.
+- **Address**: debe ser válida para la red o el link elegido.
+- **Cost**: la métrica que usa el protocolo de ruteo. Conviene fijarla
   explícitamente. Cuanto más alto, menos preferida. Se admiten enteros
   positivos.
 
@@ -197,14 +197,14 @@ No hay dominio de broadcast: los frames van directamente al peer.
 
 Hay dos maneras de crear un link directamente en la aplicación:
 
-**Asistente con click derecho** — hacer click derecho sobre cualquier host o
+**Asistente con click derecho**: hacer click derecho sobre cualquier host o
 router y elegir **New p2p link…**. Aparece un cartel pidiendo elegir el otro
 extremo. Al hacer click sobre el dispositivo peer en el _canvas_, el link se
 crea con ambos extremos conectados y aparece de inmediato. El link arranca sin
 CIDR, así que hay que seleccionarlo y configurar en el inspector tanto el CIDR
 como las IPs de los extremos.
 
-**Botón del inspector** — seleccionar un host o un router en el inspector,
+**Botón del inspector**: seleccionar un host o un router en el inspector,
 buscar una interface cuyo tipo esté configurado como **Link** y hacer click en
 **+ New link**, al lado del selector. Se crea un link nuevo y la interface queda
 conectada a él; después puede conectarse una segunda interface (de cualquier

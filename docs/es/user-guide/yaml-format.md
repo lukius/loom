@@ -368,9 +368,9 @@ los valores por defecto.
 
 `loom` distingue entre el **archivo original** y el **archivo de sesión**:
 
-- **Archivo original** — aquel al que apunta `LOOM_TOPOLOGY` (por defecto,
+- **Archivo original**: aquel al que apunta `LOOM_TOPOLOGY` (por defecto,
   `samples/sample.yaml`). El simulador nunca escribe en él.
-- **Archivo de sesión** — un clon guardado en un directorio temporal
+- **Archivo de sesión**: un clon guardado en un directorio temporal
   (`$TMPDIR/loom` en Linux y macOS, modificable con `LOOM_SESSION_DIR`), llamado
   `<stem>.<hash-de-8-hex>.session.yaml`. El hash desambigua dos archivos
   originales que compartan nombre de base. Todas las modificaciones hechas

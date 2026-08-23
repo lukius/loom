@@ -200,7 +200,7 @@ Errores:
 ping h2: no route to host: no gateway configured
 ```
 
-Este ocurre cuando el destino está fuera de la red local y el host no tiene
+Esto ocurre cuando el destino está fuera de la red local y el host no tiene
 ningún gateway configurado.
 
 `ping` mide el tiempo de ida y vuelta con un reloj monótono, así que los RTT
@@ -408,7 +408,7 @@ entrega un solo mensaje y no dos palabras sueltas.
 Para ver cómo llega al dispositivo una línea escrita en la terminal, o para
 ejecutar los mismos comandos desde afuera del navegador, el formato está
 documentado en
-[la referencia de la API del servidor](../architecture/server-api.md#post-devicesnamecommand).
+[la referencia de la API del servidor](../../architecture/server-api.md#post-devicesnamecommand).
 
 ## Después de un Stop
 

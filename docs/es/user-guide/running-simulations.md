@@ -17,10 +17,10 @@ guía explica cada transición y qué se puede hacer sin riesgo en cada paso.
         └────────────────────── Stop ──────────────────────┘
 ```
 
-- **idle** — no hay nada simulándose y el _canvas_ queda libre para editar.
-- **running** — todos los dispositivos están activos y el protocolo de ruteo
+- **idle**: no hay nada simulándose y el _canvas_ queda libre para editar.
+- **running**: todos los dispositivos están activos y el protocolo de ruteo
   está corriendo.
-- **paused** — todo queda congelado donde está, y las ediciones se van
+- **paused**: todo queda congelado donde está, y las ediciones se van
   encolando hasta reanudar.
 
 La barra de herramientas refleja esto: los botones **Start/Stop** y
@@ -214,11 +214,11 @@ solamente la copia de trabajo.
 Hacer click en **Protocol** en la barra de herramientas abre la ventana
 emergente de configuración del protocolo, con dos campos ajustables:
 
-- **Hello interval** — cada cuánto envían los routers sus mensajes de
+- **Hello interval**: cada cuánto envían los routers sus mensajes de
   descubrimiento de vecinos (10 s por defecto). Más bajo significa detectar y
   declarar vivos a los vecinos más rápido; más alto, menos ruido pero más
   demora en detectar vecinos nuevos.
-- **LSA refresh interval** — cada cuánto vuelven los routers a anunciar su
+- **LSA refresh interval**: cada cuánto vuelven los routers a anunciar su
   estado de enlace completo (30 s por defecto). Más bajo significa reanuncios
   más frecuentes y convergencia más rápida ante un cambio; más alto, un _canvas_
   más tranquilo.

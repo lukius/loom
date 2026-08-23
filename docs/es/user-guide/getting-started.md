@@ -124,11 +124,11 @@ En el _canvas_ puede seguirse el viaje del pedido, `h1` → `r1` → `r3` → `h
 tiene un costo de 5 + 5 = 10; el camino largo, pasando por `lan2`, habría
 costado 15 + 5.
 
-La respuesta **no** rehace ese camino. `h3` se la entrega a *su* propio gateway,
+La respuesta no rehace ese camino. `h3` se la entrega a su propio gateway,
 `r2`, que está directamente conectado a `lan1` y se la entrega a `h1` en un solo
 hop, sin tocar siquiera el link por el que llegó el pedido. Nada de esto es un
 error: cada dispositivo hace forwarding de manera independiente usando su propia
-tabla de ruteo, de modo que **el ruteo no tiene por qué ser simétrico**. El
+tabla de ruteo, de modo que el ruteo no tiene por qué ser simétrico. El
 camino que toma un paquete no dice nada acerca del camino que tomará su
 respuesta.
 
@@ -195,11 +195,11 @@ hasta hacer click en **Resume**, momento en el cual se aplican todas juntas. Ver
 
 ## Qué hacer a continuación
 
-- [Interfaz web](web-ui.md) — recorrido completo de la barra de herramientas, el
+- [Interfaz web](web-ui.md): recorrido completo de la barra de herramientas, el
   _canvas_, el inspector y las terminales.
-- [Construir topologías](building-topologies.md) — agregar LANs, hosts, routers
+- [Construir topologías](building-topologies.md): agregar LANs, hosts, routers
   y links punto a punto propios.
-- [Formato YAML](yaml-format.md) — escribir topologías a mano o importarlas, y
+- [Formato YAML](yaml-format.md): escribir topologías a mano o importarlas, y
   entender cómo la SPA guarda y reanuda.
 
 ## Resolución de problemas
