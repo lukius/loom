@@ -61,15 +61,14 @@ Click the green **Start** button in the toolbar (or press <kbd>Space</kbd>).
 
 What happens, in order:
 
-1. The canvas is checked for anything unfinished — a LAN without a
-   range, a host without an address. If something is missing, Start is
+1. The canvas is checked for anything unfinished (e.g. a LAN without a
+   range, a host without an address). If something is missing, Start is
    aborted and the item in question is selected so you can go fill it in.
 2. The topology is handed to the simulator, which brings every device up
    and starts each router's routing protocol.
 3. Within a few hundred milliseconds, routing-protocol packets start
-   flooding across the canvas — the small pale-indigo packets
-   ("chatter").
-4. As routers converge, their routing tables fill in — click any router
+   flooding across the canvas (the small pale-indigo packets).
+4. As routers converge, their routing tables fill in: click any router
    to watch. The toolbar's **Pause** button appears, and **Reset** stays
    unavailable until you stop.
 
@@ -77,11 +76,11 @@ What happens, in order:
 
 You can keep building while the simulation runs: add a LAN or a
 point-to-point link, give it a valid range, and it joins the live
-network right away. Attaching devices is the part that waits — hosts and
+network right away. Attaching devices is the part that waits: hosts and
 routers you add while running stay unattached until you pause or stop,
 as does renaming or re-addressing anything that already exists.
 
-If you don't see chatter, click the **Chatter** toolbar button — it
+If you don't see protocol chatter, click the **Chatter** toolbar button. It
 toggles the routing-protocol animations on and off.
 
 ## Your first ping
@@ -119,16 +118,16 @@ hands it to its default gateway `r1`, which forwards it straight across
 the `p2p1` link to `r3`, which delivers it on `lan3`. That route costs
 5 + 5 = 10; going the long way through `lan2` would have cost 15 + 5.
 
-The reply does **not** retrace that path. `h3` hands it to *its* own
+The reply does not follow that path back. `h3` hands it to its own
 gateway, `r2`, which sits directly on `lan1` and delivers it to `h1` in
-a single hop — never touching the link the request came in on. Nothing
+a single hop, never touching the link the request came in on. Nothing
 is wrong: every device forwards independently using its own routing
-table, so **routing need not be symmetric**. The route a packet takes
+table, so routing need not be symmetric. The route a packet takes
 tells you nothing about the route its reply will take.
 
 One thing you won't find in anyone else's routing table is `p2p1`'s own
 range, `10.0.0.0/30`. Routers don't advertise private ranges to their
-neighbors, so only `r1` and `r3` — the two ends — hold a route to it.
+neighbors, so only `r1` and `r3` (the two ends) hold a route to it.
 The link still carries traffic for everyone else's benefit; it just
 isn't a destination anybody outside can name. See
 [NAT and private LANs](nat-and-private-lans.md) for where that rule
@@ -160,7 +159,7 @@ seq=0 200.100.0.99: timeout
 
 ## Inspect a routing table
 
-Click any router on the canvas — say `r2`. The right pane shows the
+Click any router on the canvas, e.g. `r2`. The right pane shows the
 router's interfaces and current routing table together:
 
 ![r2 routing table](../images/04-routes.png)
@@ -168,8 +167,8 @@ router's interfaces and current routing table together:
 Each row is one rule: a destination prefix, the next-hop IP (or
 `0.0.0.0` if directly connected), and the outgoing interface name. The
 table refreshes on its own whenever the router's view of the network
-changes — a routing update arriving, a cost edit, a device added or
-removed. `r2`'s table is worth a look after the ping above: it is the
+changes (e.g. a routing update arriving, a cost edit, a device added or
+removed). `r2`'s table is worth a look after the ping above: it is the
 router that carried the reply back to `lan1`.
 
 ## Stop the simulation
@@ -179,7 +178,7 @@ The simulation returns to `idle`: routers stop exchanging routing
 messages and the network is torn down, while your topology stays on the
 canvas. **Reset** becomes available again, and **Protocol** greys out.
 
-You can also **pause** (press <kbd>P</kbd>) — that freezes the entire
+You can also **pause** (press <kbd>P</kbd>): that freezes the entire
 simulation without dropping it. While paused, you can add or remove
 devices and change interface costs; those edits are held until you click
 **Resume**, then applied together. See
@@ -202,7 +201,7 @@ launch with a different port: `LOOM_PORT=8765 python loom.py`.
 
 **The canvas is empty.** The sample topology loads by itself on a first
 visit, but a browser reload brings back whatever you last had on the
-canvas — including an empty one, if you cleared it with **New**. Click
+canvas, including an empty one, if you cleared it with **New**. Click
 **Import topology…** in the empty state and pick `sample.yaml` from the
 list to get the sample back.
 
@@ -213,8 +212,8 @@ hop, 200–5000).
 
 **A router you just added has no routes yet.** Routers greet each other
 on a timer, so a device added to a running simulation is only noticed at
-the next round of greetings — up to one **Hello interval** (10 s by
-default). Drop the **Hello interval** to `1` s in the **Protocol**
+the next round of greetings (up to one Hello interval, 10s by
+default). Drop the Hello interval to 1s in the **Protocol**
 popover to speed neighbor discovery while you explore.
 
 **A change to the YAML didn't take effect.** After startup the simulator
