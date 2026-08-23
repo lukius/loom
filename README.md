@@ -77,8 +77,8 @@ of the table is dev tooling).
 **Prerequisites:** Python 3.11+
 
 ```bash
-git clone git@gitlab.com:lukius/netrouting.git
-cd netrouting
+git clone git@github.com:lukius/loom.git
+cd loom
 
 python -m venv .venv
 source .venv/bin/activate
@@ -156,7 +156,7 @@ Start here if you want to **change** the simulator or understand how it works.
 
 ### Other top-level files
 
-- [`CONTRIBUTING.md`](CONTRIBUTING.md): dev setup, TDD workflow, MR process
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): dev setup, TDD workflow, PR process
 - [`CHANGELOG.md`](CHANGELOG.md): release history
 - [`AGENTS.md`](AGENTS.md): non-obvious project context for AI assistants and new contributors
 - [`LICENSE`](LICENSE): MIT
@@ -225,9 +225,9 @@ evolves.
 
 This project is developed test-first. See [`CONTRIBUTING.md`](CONTRIBUTING.md)
 for the development setup, the red → green → refactor cycle, the
-documentation discipline, commit conventions, and the merge-request
-process. The project is hosted on GitLab: use `glab` or the web UI for
-MRs.
+documentation discipline, commit conventions, and the pull-request
+process. The project is hosted on GitHub: use `gh` or the web UI for
+pull requests.
 
 ## License
 

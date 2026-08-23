@@ -48,4 +48,4 @@ simulation, a loom-OSPF link-state protocol, NAT and routing policy,
 failure injection, per-device terminals, and packet animations on an SVG
 canvas. See the [README](README.md) and [`docs/`](docs/) for details.
 
-[1.0.0]: https://gitlab.com/lukius/netrouting/-/tags/v1.0.0
+[1.0.0]: https://github.com/lukius/loom/releases/tag/v1.0.0

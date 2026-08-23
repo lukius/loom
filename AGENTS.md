@@ -46,7 +46,7 @@ loom/
 ├── pyproject.toml         # ruff + pytest config (sets pythonpath = ["src"], testpaths = ["test"])
 ├── requirements.txt       # Runtime deps (PyYAML, FastAPI, uvicorn)
 ├── requirements-dev.txt   # Dev deps: + pytest, pytest-asyncio, ruff, httpx
-├── CONTRIBUTING.md        # Canonical dev guide (full TDD workflow, MR process, conventions)
+├── CONTRIBUTING.md        # Canonical dev guide (full TDD workflow, PR process, conventions)
 ├── CHANGELOG.md           # Keep-a-Changelog format
 ├── LICENSE                # MIT
 ├── AGENTS.md              # This file — non-obvious context for coding agents
@@ -67,7 +67,7 @@ loom/
 
 ## Git & Remote
 
-- Hosted on **GitLab**, not GitHub: `gitlab.com:lukius/netrouting`. `gh` will not work; use `glab` or the web UI for MRs/issues.
+- Hosted on **GitHub**: `github.com/lukius/loom` (remote `origin`). Use `gh` or the web UI for PRs/issues. `gitlab.com:lukius/netrouting` remains as a push mirror on remote `gitlab`; it takes no PRs.
 
 ## Development Rules
 

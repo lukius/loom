@@ -31,8 +31,8 @@ to run the test suites, and the merge-request process.
 - A system Chromium browser (only for end-to-end tests)
 
 ```bash
-git clone git@gitlab.com:lukius/netrouting.git
-cd netrouting
+git clone git@github.com:lukius/loom.git
+cd loom
 
 # Python — create a virtualenv and install dev deps
 python -m venv .venv
@@ -206,7 +206,7 @@ ruff check src/ test/
 ruff format src/ test/      # format-only changes go in a separate commit
 ```
 
-Linting must be clean before opening a merge request.
+Linting must be clean before opening a pull request.
 
 ---
 
@@ -286,16 +286,16 @@ Rules:
 - One-liner messages only (no multi-paragraph body).
 - Imperative mood: "add forwarding test", not "added" or "adds".
 - **No co-author lines or AI attribution** in commit messages.
-- Mix categories carefully. A typical safe shape is one `feat:` per MR
+- Mix categories carefully. A typical safe shape is one `feat:` per PR
   with a small `test:` and `docs:` follow-up.
 
 ---
 
 ## Submitting Changes
 
-The project is hosted on **GitLab** (`gitlab.com:lukius/netrouting`).
-The GitHub CLI (`gh`) does not work here — use `glab` or the GitLab web UI
-for merge requests and issues.
+The project is hosted on **GitHub** (`github.com/lukius/loom`), with a
+read-only mirror on GitLab. Use `gh` or the GitHub web UI for pull
+requests and issues.
 
 1. Branch off `main`:
    ```bash
@@ -304,14 +304,14 @@ for merge requests and issues.
 2. Make your changes following the [Test-Driven Development](#test-driven-development)
    cycle.
 3. Ensure `pytest`, `npm test`, and `ruff check src/ test/` are all clean.
-4. Push and open an MR:
+4. Push and open a PR:
    ```bash
    git push -u origin feat/my-feature
-   glab mr create        # or use the web UI
+   gh pr create          # or use the web UI
    ```
-5. Describe **what** the MR does and **why** in the description; reference
-   related issues. Keep MRs focused — one logical change per MR. The
-   [MR description template](.gitlab/merge_request_templates/Default.md)
+5. Describe **what** the PR does and **why** in the description; reference
+   related issues. Keep PRs focused — one logical change per PR. The
+   [PR description template](.github/PULL_REQUEST_TEMPLATE.md)
    is applied automatically and walks through these sections.
 
 ---

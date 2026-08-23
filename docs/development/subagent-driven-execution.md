@@ -86,7 +86,7 @@ When dispatching a developer subagent, the prompt MUST include:
 - The full task instructions — DO NOT just tell them to find the task; quote the whole task block into the prompt so the subagent doesn't have to scan the plan for it.
 - Reminder that steps are TDD-shaped: write failing test, confirm it fails for the expected reason, implement minimum, run, commit. Don't skip the red step.
 - The worktree path (or instruction "you're already in the worktree").
-- Reminder of project conventions: `<type>(scope): <imperative>` commits; no co-author trailer; pytest + ruff after each step; `pytest` via `/home/lukius/repo/netrouting/.venv/bin/pytest`.
+- Reminder of project conventions: `<type>(scope): <imperative>` commits; no co-author trailer; pytest + ruff after each step; `pytest` via the repo's virtualenv (`.venv/bin/pytest`).
 - Required output: list of commits (SHAs + messages), pytest tail, ruff status, any deviations from the plan and why.
 
 If the developer is being re-dispatched to address review feedback, the prompt MUST also include:

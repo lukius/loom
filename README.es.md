@@ -80,8 +80,8 @@ resto de la tabla son herramientas de desarrollo).
 **Requisitos previos:** Python 3.11+
 
 ```bash
-git clone git@gitlab.com:lukius/netrouting.git
-cd netrouting
+git clone git@github.com:lukius/loom.git
+cd loom
 
 python -m venv .venv
 source .venv/bin/activate
@@ -160,7 +160,7 @@ Estos documentos solo están disponibles en inglés.
 
 ### Otros archivos
 
-- [`CONTRIBUTING.md`](CONTRIBUTING.md): configuración de desarrollo, flujo de trabajo TDD, proceso de MR
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): configuración de desarrollo, flujo de trabajo TDD, proceso de PR
 - [`CHANGELOG.md`](CHANGELOG.md): historial de versiones
 - [`AGENTS.md`](AGENTS.md): contexto no obvio del proyecto para asistentes de IA y nuevos contribuidores
 - [`LICENSE`](LICENSE): MIT
@@ -232,8 +232,8 @@ a medida que el proyecto evoluciona.
 Este proyecto sigue una metodología _test-first_. Ver [`CONTRIBUTING.md`](CONTRIBUTING.md)
 para los lineamientos sobre la configuración del ambiente de desarrollo, el ciclo
 rojo → verde → refactor, la disciplina de documentación, las convenciones de
-escritura de commits y el proceso de merge-request. El proyecto está alojado en
-GitLab: usar `glab` o la interfaz web para crear los MRs.
+escritura de commits y el proceso de pull request. El proyecto está alojado en
+GitHub: usar `gh` o la interfaz web para crear los pull requests.
 
 ## Licencia
 

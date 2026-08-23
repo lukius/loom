@@ -95,7 +95,7 @@ reference; the day-to-day workflow lives in
 ## Conventions used in this documentation
 
 - **Mermaid** for sequence diagrams and graphs. They render natively on
-  GitLab / GitHub.
+  GitHub.
 - **ASCII art** for component / layer diagrams where Mermaid is less
   legible than a hand-drawn box.
 - **File paths** are written relative to the repo root.

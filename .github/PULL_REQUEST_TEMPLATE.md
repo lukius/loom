@@ -43,4 +43,4 @@
 
 ## Notes for reviewer
 
-<!-- Anything else worth knowing — tricky bits, follow-ups deferred to a later MR, alternatives considered. Delete if N/A. -->
+<!-- Anything else worth knowing — tricky bits, follow-ups deferred to a later PR, alternatives considered. Delete if N/A. -->

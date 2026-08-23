@@ -15,8 +15,8 @@ objetos de tipo mensaje que se entregan intactos.
 ## Instalación
 
 ```bash
-git clone git@gitlab.com:lukius/netrouting.git
-cd netrouting
+git clone git@github.com:lukius/loom.git
+cd loom
 
 python -m venv .venv
 source .venv/bin/activate
