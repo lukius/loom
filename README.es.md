@@ -6,6 +6,9 @@
 
 # loom
 
+[![CI](https://github.com/lukius/loom/actions/workflows/ci.yml/badge.svg)](https://github.com/lukius/loom/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Un simulador Python para un sistema autónomo IPv4, controlado por una
 interfaz web interactiva y una topología YAML subyacente: hosts, routers,
 redes y links punto a punto interconectados mediante un protocolo de ruteo

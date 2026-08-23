@@ -16,6 +16,7 @@ to run the test suites, and the merge-request process.
 - [Documentation Discipline](#documentation-discipline)
 - [Commit Conventions](#commit-conventions)
 - [Submitting Changes](#submitting-changes)
+- [Releasing](#releasing)
 - [AI-Assisted Development](#ai-assisted-development)
 - [Project Conventions and Traps](#project-conventions-and-traps)
 
@@ -206,7 +207,9 @@ ruff check src/ test/
 ruff format src/ test/      # format-only changes go in a separate commit
 ```
 
-Linting must be clean before opening a pull request.
+Linting must be clean before opening a pull request. CI enforces both
+`ruff check` and `ruff format --check`, so run the formatter before you
+push. Format-only churn still belongs in its own `style:` commit.
 
 ---
 
@@ -313,6 +316,51 @@ requests and issues.
    related issues. Keep PRs focused — one logical change per PR. The
    [PR description template](.github/PULL_REQUEST_TEMPLATE.md)
    is applied automatically and walks through these sections.
+
+---
+
+## Continuous Integration
+
+Every pull request and every push to `main` runs
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml): four parallel jobs
+covering lint plus `pytest`, the vitest suite, the Playwright e2e suite
+(CI installs its own Chromium), and a Docker image build that is not
+pushed. All four must be green to merge.
+
+A flaky job is a defect, not noise. The e2e suite runs with retries
+disabled on purpose: if it goes red intermittently, reproduce it under
+load and fix the race rather than re-running the job.
+
+---
+
+## Releasing
+
+Releases are cut from `main` and driven entirely by the tag.
+
+1. Make sure `main` is green in CI.
+2. Move the release's entries in [`CHANGELOG.md`](CHANGELOG.md) from
+   `[Unreleased]` into a new `## [X.Y.Z] - YYYY-MM-DD` section, and add
+   the matching link reference at the bottom. Keep the entry short; the
+   detail lives in the commit history.
+3. Tag and push:
+   ```bash
+   git tag -a vX.Y.Z -m "loom vX.Y.Z"
+   git push origin vX.Y.Z
+   ```
+
+The tag triggers [`.github/workflows/release.yml`](.github/workflows/release.yml),
+which re-runs lint and tests as a guard, publishes a multi-arch image to
+`ghcr.io/lukius/loom`, and opens a GitHub Release whose notes are the
+changelog section for that version, with the curated source archive from
+`tools/package-release.sh` attached.
+
+Two notes:
+
+- The first release only: GHCR packages are created private. Flip the
+  package to public once under the repo's *Packages* settings, or
+  `docker pull` will ask strangers for credentials.
+- `workflow_dispatch` on the same workflow re-runs a release for an
+  existing tag, which is the escape hatch when a publish step fails.
 
 ---
 

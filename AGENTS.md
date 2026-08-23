@@ -42,6 +42,7 @@ loom/
 │   ├── user-guide/        # User manual (getting-started, web-ui, building-topologies, running-simulations, routing-tables, terminals, yaml-format, nat-and-private-lans)
 │   ├── development/       # Dev process docs (subagent-driven-execution)
 │   └── images/            # Screenshots used by user-guide
+├── .github/workflows/     # CI (PRs + main) and Release (v* tags) pipelines
 ├── Dockerfile             # Container image; tools/package-release.sh builds the release zip
 ├── docker-compose.yml     # One-service compose file for ghcr.io/lukius/loom
 ├── playwright.config.js   # E2E config: chromium-only, webServer on LOOM_PORT=8766
@@ -71,6 +72,7 @@ loom/
 ## Git & Remote
 
 - Hosted on **GitHub**: `github.com/lukius/loom` (remote `origin`). Use `gh` or the web UI for PRs/issues. `gitlab.com:lukius/netrouting` remains as a push mirror on remote `gitlab`; it takes no PRs.
+- **CI gates `ruff format --check`, not just `ruff check`.** Run `ruff format src/ test/` before pushing or the Python job fails. Releases are tag-driven: pushing `vX.Y.Z` publishes the GHCR image and the GitHub Release. See `CONTRIBUTING.md#releasing`.
 
 ## Development Rules
 

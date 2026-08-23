@@ -6,6 +6,9 @@
 
 # loom
 
+[![CI](https://github.com/lukius/loom/actions/workflows/ci.yml/badge.svg)](https://github.com/lukius/loom/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A Python simulator for an IPv4 autonomous system, driven by an interactive
 web UI and a YAML topology under the hood: hosts, routers,
 networks, and point-to-point links interconnected through a link-state
