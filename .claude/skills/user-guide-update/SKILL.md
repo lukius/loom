@@ -31,7 +31,7 @@ Skip for pure internal refactors with no observable change.
 - Code snippets unless the user actually types them (shell commands, YAML samples)
 - Patch-op names, internal helpers, threading details, queue mechanics
 
-If you find yourself reaching for any of those, the content belongs under `docs/architecture/` — link from the user-guide page if useful (`see architecture/web-spa.md`), but don't inline it.
+If you find yourself reaching for any of those, the content belongs under `docs/architecture/` — link from the user-guide page if useful (`see architecture/nat.md`), but don't inline it.
 
 **Test:** could a user who has never opened the source tree understand and act on the sentence? If not, rewrite.
 

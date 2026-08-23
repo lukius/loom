@@ -368,8 +368,9 @@ A few pointers that save time on this project specifically:
 - **For threading work**, read `docs/architecture/concurrency.md`
   before adding a new worker — every new thread must gate on the
   shared `PauseGate`, or pause/resume will be broken.
-- **For UI work**, `docs/architecture/web-spa.md` is the module map
-  and event-bus contract.
+- **For UI work**, there's no standalone architecture page — the module
+  breakdown lives in `CLAUDE.md`'s project structure and the bus event
+  names in `web/state.js`.
 
 ### Subagent-driven execution for multi-task features
 

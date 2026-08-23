@@ -136,19 +136,19 @@ Empezar aquí para **usar** el simulador.
 ### Arquitectura / Referencia técnica
 
 Empezar aquí para **modificar** el simulador o entender cómo funciona.
+Estos documentos solo están disponibles en inglés.
 
 | Archivo | Tema                                                              |
 |---|-------------------------------------------------------------------|
-| [`docs/es/architecture/overview.md`](docs/es/architecture/overview.md) | El panorama general: componentes, capas, flujo de datos           |
-| [`docs/es/architecture/entities.md`](docs/es/architecture/entities.md) | `AS`, `Router`, `Host`, `Network`, `Link`, `Interface`, `Address` |
-| [`docs/es/architecture/packets.md`](docs/es/architecture/packets.md) | `Frame`, `Datagram`, `Message` (usuario / ruteo / ping)           |
-| [`docs/es/architecture/routing-protocol.md`](docs/es/architecture/routing-protocol.md) | Protocolo link-state, flooding, Dijkstra, diagramas de secuencia  |
-| [`docs/es/architecture/concurrency.md`](docs/es/architecture/concurrency.md) | Threads, queues, `PauseGate`, ciclo de vida                       |
-| [`docs/es/architecture/parser.md`](docs/es/architecture/parser.md) | Parser YAML, validadores, flujos de error                         |
-| [`docs/es/architecture/nat.md`](docs/es/architecture/nat.md) | Source-NAT, tablas de reescritura por flujo, eventos NAT          |
-| [`docs/es/architecture/policy.md`](docs/es/architecture/policy.md) | Política de ruteo, filtro de salida RFC 1918                      |
-| [`docs/es/architecture/web-spa.md`](docs/es/architecture/web-spa.md) | Mapa de módulos de la SPA y contrato del bus de eventos           |
-| [`docs/es/architecture/server-api.md`](docs/es/architecture/server-api.md) | Referencia HTTP + WebSocket                                       |
+| [`docs/architecture/overview.md`](docs/architecture/overview.md) | El panorama general: componentes, capas, flujo de datos           |
+| [`docs/architecture/entities.md`](docs/architecture/entities.md) | `AS`, `Router`, `Host`, `Network`, `Link`, `Interface`, `Address` |
+| [`docs/architecture/packets.md`](docs/architecture/packets.md) | `Frame`, `Datagram`, `Message` (usuario / ruteo / ping)           |
+| [`docs/architecture/routing-protocol.md`](docs/architecture/routing-protocol.md) | Protocolo link-state, flooding, Dijkstra, diagramas de secuencia  |
+| [`docs/architecture/concurrency.md`](docs/architecture/concurrency.md) | Threads, queues, `PauseGate`, ciclo de vida                       |
+| [`docs/architecture/parser.md`](docs/architecture/parser.md) | Parser YAML, validadores, flujos de error                         |
+| [`docs/architecture/nat.md`](docs/architecture/nat.md) | Source-NAT, tablas de reescritura por flujo, eventos NAT          |
+| [`docs/architecture/policy.md`](docs/architecture/policy.md) | Política de ruteo, filtro de salida RFC 1918                      |
+| [`docs/architecture/server-api.md`](docs/architecture/server-api.md) | Referencia HTTP + WebSocket                                       |
 
 ### Otros archivos
 

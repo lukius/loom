@@ -1,5 +1,3 @@
-> 🌐 **English** · [Español](../es/architecture/entities.md)
-
 # Entities
 
 The simulator's domain model lives in

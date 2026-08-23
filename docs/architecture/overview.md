@@ -1,5 +1,3 @@
-> 🌐 **English** · [Español](../es/architecture/overview.md)
-
 # Architecture Overview
 
 > **Scope:** loom is deliberately L3-only. There is no L2 (MAC/ARP)
@@ -16,7 +14,7 @@ responsibility and a narrow API to its neighbors.
 │                                                                 │
 │  app.js · state.js · canvas.js · inspector.js · terminals.js    │
 │  packets.js · packetstore.js · packetspanel.js · sim.js         │
-│  yaml-io.js · utils.js · (see web-spa.md for the full map)      │
+│  yaml-io.js · utils.js                                          │
 │                                                                 │
 │  State + cross-component events flow through a bus              │
 │  (EventTarget singleton in state.js).                           │
@@ -59,6 +57,13 @@ responsibility and a narrow API to its neighbors.
                        topology YAML  (session clone of
                        LOOM_TOPOLOGY — see persistence.py)
 ```
+
+The Web SPA (`web/`) is composed of native ES modules (no build step
+or framework required). Cross-component state changes and events flow
+through a singleton `EventTarget` bus owned by `state.js`; synchronous 
+queries and DOM helpers are called directly between modules instead. It
+talks to the FastAPI server over REST for commands and a WebSocket for
+the event stream.
 
 The topology file at the bottom is never the one you edited on disk. The
 server clones `LOOM_TOPOLOGY` (default
@@ -399,4 +404,3 @@ For the deep dives, jump to:
 - [`concurrency.md`](concurrency.md): threads, gates, queues.
 - [`parser.md`](parser.md): YAML → AS.
 - [`server-api.md`](server-api.md): HTTP / WS reference.
-- [`web-spa.md`](web-spa.md): the SPA module map.

@@ -1,5 +1,3 @@
-> 🌐 **English** · [Español](../es/architecture/concurrency.md)
-
 # Concurrency
 
 `loom` runs the simulator core on threads, not asyncio. The asyncio

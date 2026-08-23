@@ -24,7 +24,6 @@ docs/
 │   ├── concurrency.md
 │   ├── nat.md
 │   ├── parser.md
-│   ├── web-spa.md
 │   └── server-api.md
 ├── images/                ← Screenshots and figures referenced by the docs
 └── manual-smoke-test.md   ← Pre-existing manual QA checklist
@@ -74,9 +73,7 @@ undergraduate networking course.
    the per-router NAT table, the conversation-keyed `flow_id`.
 7. [Parser & validator](architecture/parser.md) — YAML loading, structural
    validation, link post-pass.
-8. [Web SPA](architecture/web-spa.md) — Module map, event-bus contract,
-   state shape.
-9. [Server API](architecture/server-api.md) — REST and WebSocket endpoints.
+8. [Server API](architecture/server-api.md) — REST and WebSocket endpoints.
 
 ---
 

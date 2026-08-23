@@ -147,7 +147,6 @@ Start here if you want to **change** the simulator or understand how it works.
 | [`docs/architecture/parser.md`](docs/architecture/parser.md) | YAML parser, validators, error paths |
 | [`docs/architecture/nat.md`](docs/architecture/nat.md) | Source-NAT, per-flow rewrite tables, NAT events |
 | [`docs/architecture/policy.md`](docs/architecture/policy.md) | Routing policy, RFC 1918 outbound filter |
-| [`docs/architecture/web-spa.md`](docs/architecture/web-spa.md) | SPA module map and event-bus contract |
 | [`docs/architecture/server-api.md`](docs/architecture/server-api.md) | HTTP + WebSocket reference |
 
 ### Other top-level files

@@ -1,5 +1,3 @@
-> 🌐 **English** · [Español](../es/architecture/policy.md)
-
 # Policy framework
 
 loom's route-map / policy mechanism lives in

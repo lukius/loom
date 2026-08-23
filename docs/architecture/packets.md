@@ -1,5 +1,3 @@
-> 🌐 **English** · [Español](../es/architecture/packets.md)
-
 # Packets
 
 `loom` models two layers and a payload:

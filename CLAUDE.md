@@ -38,7 +38,7 @@ loom/
 │   └── *.test.js          # vitest tests co-located (utils, state, sim, …)
 ├── e2e/                   # Playwright smoke suite (real Chromium + spawned FastAPI)
 ├── docs/
-│   ├── architecture/      # Technical reference (overview, entities, packets, routing-protocol, concurrency, parser, server-api, web-spa, nat, policy)
+│   ├── architecture/      # Technical reference (overview, entities, packets, routing-protocol, concurrency, parser, server-api, nat, policy)
 │   ├── user-guide/        # User manual (getting-started, web-ui, building-topologies, running-simulations, routing-tables, terminals, yaml-format, nat-and-private-lans)
 │   └── images/            # Screenshots used by user-guide
 ├── playwright.config.js   # E2E config: chromium-only, webServer on LOOM_PORT=8766
@@ -86,7 +86,7 @@ loom/
 - When touching `docs/user-guide/` for a user-visible change, follow the project-local **`user-guide-update`** skill (`.claude/skills/user-guide-update/SKILL.md`) — it covers page selection, action-level wording, and capturing the screenshot via `npm run screenshot` (tool at `tools/screenshot.mjs`).
 - `CONTRIBUTING.md` is the canonical dev guide; this file (`CLAUDE.md`) is the cheat sheet of non-obvious traps. Don't duplicate content — link from one to the other.
 - If a behavior is intentionally undocumented (e.g. an internal helper), say nothing — do not write speculative docs.
-- **`docs/es/` (and `README.es.md`) is a Spanish translation of `docs/` (and `README.md`); English is canonical.** During normal development, IGNORE it: don't read it for context and don't update it alongside English doc edits — it is a periodically-refreshed translation, not a source of truth, and English is the single authority. Only touch it when explicitly doing translation work (then re-translate the changed English pages). This keeps the English docs authoritative and keeps agent context lean.
+- **`docs/es/user-guide/` (and `README.es.md`) is a Spanish translation of `docs/user-guide/` (and `README.md`); English is canonical.** There is no Spanish translation of `docs/architecture/` — it changes too often to keep a second-language copy honest, so `README.es.md`'s architecture table links straight to the English pages. During normal development, IGNORE `docs/es/`: don't read it for context and don't update it alongside English doc edits — it is a periodically-refreshed translation, not a source of truth, and English is the single authority. Only touch it when explicitly doing translation work (then re-translate the changed English user-guide pages). This keeps the English docs authoritative and keeps agent context lean.
 
 ### Linting & style
 - Run `ruff check src/ test/` before every commit; fix or `# noqa` (with reason) any reported issues. Do not commit a dirty lint.
