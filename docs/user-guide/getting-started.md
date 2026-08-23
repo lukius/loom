@@ -26,6 +26,19 @@ pip install -r requirements.txt
 `loom` has three runtime dependencies and no system-level prerequisites
 beyond Python 3.11+ itself.
 
+### Or skip the install and use Docker
+
+If you would rather not set up Python at all, one command gets you the
+same application:
+
+```bash
+docker run --rm -p 8000:8000 ghcr.io/lukius/loom:latest
+```
+
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) and jump ahead to
+[Press Start](#press-start). Everything else in this guide works the
+same way. To stop it, press <kbd>Ctrl</kbd>+<kbd>C</kbd>.
+
 ## Run the web UI
 
 The default entry point starts the FastAPI server and serves the SPA:

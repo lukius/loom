@@ -1,0 +1,15 @@
+services:
+  loom:
+    image: ghcr.io/lukius/loom:latest
+    container_name: loom
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    # To work on your own topologies, mount a directory and point loom at
+    # it. LOOM_SAMPLES makes the files show up in the UI's import picker;
+    # LOOM_TOPOLOGY picks the one loaded at startup.
+    # volumes:
+    #   - ./topologies:/topologies:ro
+    # environment:
+    #   LOOM_SAMPLES: /topologies
+    #   LOOM_TOPOLOGY: /topologies/my-network.yaml

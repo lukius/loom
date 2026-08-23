@@ -93,6 +93,29 @@ pre-populated with the bundled sample topology (3 hosts, 3 routers, 3
 LANs, 1 point-to-point link). Press **Start** in the toolbar and watch the
 routing protocol converge.
 
+### Run with Docker
+
+No Python setup, no virtualenv. Handy for handing a whole class the same
+version:
+
+```bash
+docker run --rm -p 8000:8000 ghcr.io/lukius/loom:latest
+```
+
+Then open [http://127.0.0.1:8000](http://127.0.0.1:8000). To work on your
+own topologies, mount a directory and point loom at it:
+
+```bash
+docker run --rm -p 8000:8000 \
+  -v "$PWD/topologies:/topologies:ro" \
+  -e LOOM_SAMPLES=/topologies \
+  -e LOOM_TOPOLOGY=/topologies/my-network.yaml \
+  ghcr.io/lukius/loom:latest
+```
+
+A [`docker-compose.yml`](docker-compose.yml) with the same setup is
+included.
+
 ### Topology source
 
 By default `loom` reads `samples/sample.yaml`. Override with
@@ -176,6 +199,8 @@ loom/
 ├── web/                   # SPA: ES modules, styles, favicon, vitest tests
 ├── e2e/                   # Playwright/Chromium smoke suite
 ├── docs/                  # User guide + architecture reference
+├── Dockerfile             # Container image (python:3.11-slim, static SPA, non-root)
+├── docker-compose.yml     # One-service compose file for the published image
 ├── pyproject.toml         # ruff + pytest config (pythonpath = ["src"], testpaths = ["test"])
 ├── requirements.txt       # Runtime deps (PyYAML, FastAPI, uvicorn)
 ├── requirements-dev.txt   # Dev deps (pytest, pytest-asyncio, ruff, httpx)

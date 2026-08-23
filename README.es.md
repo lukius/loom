@@ -95,6 +95,29 @@ Abrir [http://127.0.0.1:8000](http://127.0.0.1:8000). Se verá el _canvas_ preca
 la topología de ejemplo incluida (3 hosts, 3 routers, 3 LAN, 1 link punto a punto).
 Presionar **Start** en la barra de herramientas y observar cómo el protocolo de ruteo converge.
 
+### Ejecución con Docker
+
+Sin instalar Python ni crear un entorno virtual. Es la forma más simple de
+darle a toda una clase la misma versión:
+
+```bash
+docker run --rm -p 8000:8000 ghcr.io/lukius/loom:latest
+```
+
+Luego abrir [http://127.0.0.1:8000](http://127.0.0.1:8000). Para trabajar
+con topologías propias, montar un directorio y apuntar loom hacia él:
+
+```bash
+docker run --rm -p 8000:8000 \
+  -v "$PWD/topologies:/topologies:ro" \
+  -e LOOM_SAMPLES=/topologies \
+  -e LOOM_TOPOLOGY=/topologies/mi-red.yaml \
+  ghcr.io/lukius/loom:latest
+```
+
+También se incluye un [`docker-compose.yml`](docker-compose.yml) con la
+misma configuración.
+
 ### Origen de la topología
 
 Por defecto `loom` lee `samples/sample.yaml`. Se puede sobreescribir con
@@ -180,6 +203,8 @@ loom/
 ├── web/                   # SPA: ES modules, styles, favicon, vitest tests
 ├── e2e/                   # Playwright/Chromium smoke suite
 ├── docs/                  # User guide + architecture reference
+├── Dockerfile             # Imagen de contenedor (python:3.11-slim, SPA estática, sin root)
+├── docker-compose.yml     # Compose de un servicio para la imagen publicada
 ├── pyproject.toml         # ruff + pytest config (pythonpath = ["src"], testpaths = ["test"])
 ├── requirements.txt       # Runtime deps (PyYAML, FastAPI, uvicorn)
 ├── requirements-dev.txt   # Dev deps (pytest, pytest-asyncio, ruff, httpx)

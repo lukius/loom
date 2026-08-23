@@ -42,6 +42,8 @@ loom/
 │   ├── user-guide/        # User manual (getting-started, web-ui, building-topologies, running-simulations, routing-tables, terminals, yaml-format, nat-and-private-lans)
 │   ├── development/       # Dev process docs (subagent-driven-execution)
 │   └── images/            # Screenshots used by user-guide
+├── Dockerfile             # Container image; tools/package-release.sh builds the release zip
+├── docker-compose.yml     # One-service compose file for ghcr.io/lukius/loom
 ├── playwright.config.js   # E2E config: chromium-only, webServer on LOOM_PORT=8766
 ├── pyproject.toml         # ruff + pytest config (sets pythonpath = ["src"], testpaths = ["test"])
 ├── requirements.txt       # Runtime deps (PyYAML, FastAPI, uvicorn)
@@ -58,6 +60,7 @@ loom/
 
 - Requires Python 3.11+. Install runtime deps: `pip install -r requirements.txt`. For dev (tests + lint): `pip install -r requirements-dev.txt`.
 - **Web UI:** `cd src && python loom.py` — launches FastAPI on http://127.0.0.1:8000 and serves the SPA from `web/`.
+- **Container:** `docker run --rm -p 8000:8000 ghcr.io/lukius/loom:latest`. The image sets `LOOM_HOST=0.0.0.0` (a container binding loopback publishes nothing) and copies `src/`, `web/`, `samples/` into `/app` so the `_repo_root` resolution in `server/app.py` still works.
 - Topology source path: env var `LOOM_TOPOLOGY` (default `samples/sample.yaml`). The server never writes the source; it clones to a session file under a temp dir (`<system-tmp>/loom/<stem>.<hash>.session.yaml`, overridable via `LOOM_SESSION_DIR`) and writes only there.
 - HTTP bind: env vars `LOOM_HOST` (default `127.0.0.1`) and `LOOM_PORT` (default `8000`), both read by `src/loom.py`. The Playwright suite uses `8766` to avoid colliding with a dev server.
 - Run tests: `pytest` from the repo root. Single suite: `pytest test/test_address.py`.
