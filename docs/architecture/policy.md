@@ -1,65 +1,77 @@
 # Policy framework
 
-loom's route-map / policy mechanism lives in
-[`src/routing/policy.py`](../../src/routing/policy.py). This document
-describes what's wired today and what's reserved for the BGP work that
-motivated the design.
+A routing protocol has to decide, for every prefix it could advertise,
+whether it actually should. loom expresses that decision with a *route
+map*, a construct borrowed from production router configuration and
+trimmed here to the part that carries the idea.
 
-See also: [routing-protocol.md](routing-protocol.md) (the flood site where
-outbound policy is applied), [nat.md](nat.md) (why private-prefix
-filtering matters for cross-tenant isolation).
+A route map is an ordered list of rules. Each rule pairs a **match
+clause**, which says the prefixes the rule applies to, with an **action**,
+either `permit` or `deny`. Applying the map to one candidate prefix walks
+the rules from the top and stops at the first one whose match clause
+fires; that rule's action is the answer, and no later rule is consulted.
+If no rule matches at all, the map's **default action** decides. The whole
+mechanism is therefore a single pass over a list, and "first match wins"
+is the only precedence rule there is.
+
+The implementation lives in
+[`src/routing/policy.py`](../../src/routing/policy.py).
+
+## Why it exists
+
+Today the framework does exactly one job, and it is the job that
+motivated writing it. The link-state protocol must not advertise RFC 1918
+prefixes to its peers, because private ranges may legally repeat inside
+one AS, and a leaked private route would let one tenant's traffic follow
+another tenant's prefix.
+
+Before the framework, that rule was a hard-coded `if prefix.is_private():
+continue` at the flood site. It worked, but it was a special case with
+nowhere to grow: a second rule would have meant a second `if` in the same
+loop, with no way to express ordering or precedence between the two.
+
+Rewriting it as a route map changed no observable behaviour. What it
+bought is that the filter became one policy instance among possible
+others, and the decision of *what* to filter moved out of the code that
+performs the flooding. That separation is the point, and it is what would
+let later work reuse the mechanism. External routing between autonomous
+systems is the obvious candidate, since deciding what to advertise to a
+neighbour, and what to accept from one, is most of what such a protocol
+does. None of that exists yet, and nothing here should be read as a
+commitment to a particular design for it.
+
+See also: [routing-protocol.md](routing-protocol.md) (the flood site
+where outbound policy is applied) and [nat.md](nat.md) (why private
+prefixes have to stay out of peers' routing tables).
 
 ---
 
-## Why a policy framework
+## The primitives
 
-The most operationally consequential thing BGP teaches is policy:
-local-pref, AS-path manipulation, prefix-lists, route-maps, communities.
-Path-vector loop prevention is one paragraph; policy is the rest.
+Four public types, all importable from `routing.policy`:
 
-Before loom had any policy concept, the link-state protocol's "don't
-advertise RFC 1918 prefixes" rule was a hard-coded `continue` in the
-flood loop. That worked for the single case but established no shape for
-BGP-era policy. The framework introduced here:
+| Type | Constructor | Key method |
+|---|---|---|
+| `PrefixList` | `PrefixList(prefixes: list[NetworkAddress])` | `matches(candidate) -> bool`: true when *any* entry contains the candidate |
+| `RouteMapRule` | `RouteMapRule(match: PrefixList, action)` | `evaluate(prefix) -> PolicyDecision \| None`: `None` when the match clause does not fire |
+| `RouteMap` | `RouteMap(rules: list[RouteMapRule], default='permit')` | `apply(prefix) -> PolicyDecision` |
+| `PolicyDecision` | `PolicyDecision.permit(prefix)` / `.deny(prefix)` | `is_permitted()`, `is_denied()`, `prefix()` |
 
-1. Removes the special case. The RFC 1918 filter is now a route-map
-   instance with one rule (`deny` matching the three private prefixes)
-   and a `permit` default: observably identical to the previous
-   behaviour, structurally one of many policies.
-2. Reserves the BGP shape. Set clauses, inbound application,
-   AS-path matchers, and per-neighbor route-maps are all named in the
-   design but unimplemented; the shape they slot into is fixed.
+A `PrefixList` is the only kind of match clause modelled, so "does this
+rule apply?" always means "is this prefix contained in one of these
+ranges?".
 
----
+`RouteMapRule` and `RouteMap` both validate their action string at
+construction and raise `ValueError` on anything other than `'permit'` or
+`'deny'`. A typo therefore fails when the policy is built, rather than
+silently permitting something later.
 
-## What's wired today
+`PolicyDecision` reports its outcome through predicates rather than by
+subclass, and carries the prefix it was asked about. Carrying the prefix
+is deliberate: a decision is a natural place for a future rule to hand
+back a *modified* prefix instead of a verdict on the original.
 
-Public types (all from `routing.policy`):
-
-- `PrefixList(prefixes: list[NetworkAddress])`
-  - `matches(candidate) -> bool`, true if any entry contains the candidate
-- `RouteMapRule(match: PrefixList, action: 'permit' | 'deny')`
-  - `evaluate(prefix) -> Optional[PolicyDecision]`, `None` when match fails
-- `RouteMap(rules: list[RouteMapRule], default: 'permit' | 'deny')`
-  - `apply(prefix) -> PolicyDecision`
-- `PolicyDecision`
-  - `is_permitted() -> bool`, `is_denied() -> bool`, `prefix()`
-  - constructors: `PolicyDecision.permit(prefix)`, `PolicyDecision.deny(prefix)`
-
-`LinkStateProtocol` holds a `RouteMap` as its outbound policy, applied
-to each prefix the router considers advertising. The default is
-`RFC1918_OUTBOUND`: deny the three RFC 1918 ranges, permit everything
-else. Construction site: `LinkStateProtocol.__init__(router, outbound_policy=None)`.
-
-The policy governs reachability, not topology. An LSA advertises one
-*attachment* per fabric the router is on, carrying the fabric, the cost,
-and, only when the policy permits, the fabric's prefix. Denying
-`192.168.0.0/16` means "no peer should install a route to this private
-range", not "this LAN does not exist": the fabric still appears in every
-peer's graph, so traffic transits it normally. See
-[routing-protocol.md](routing-protocol.md#lsa) for the field split.
-
-Data flow:
+Evaluation in full:
 
 ```
 NetworkAddress (prefix)
@@ -75,68 +87,89 @@ NetworkAddress (prefix)
 
 ---
 
-## Reserved for BGP
+## Where it is applied today
 
-Each of these slots into the existing shape without redesigning it:
+Two route maps ship as module-level constants, and `LinkStateProtocol`
+uses both. They differ only in which side of the router the advertisement
+is headed for:
 
-- **Set clauses.** A future `RouteMapRule.set_clauses` attribute will
-  carry mutations to apply when the match clause fires: `set
-  local-preference 200`, `set as-path prepend 65001 65001`, `set
-  community 65001:1234`. `PolicyDecision.prefix()` already returns a
-  routed prefix object so set-clauses have a place to mutate.
-- **Inbound application.** Outbound policy is applied today in
-  `LSA.from_router` (invoked from `_emit_lsa_on_up_interfaces` with
-  `self._outbound_policy`). The receive path, `_handle_incoming_lsa`
-  → `_rebuild_graph_and_recompute`, has the obvious slot for an
-  inbound policy attribute; BGP will use it for inbound filtering and
-  attribute rewriting on EBGP receive.
-- Communities and AS-path matchers. `PrefixList` is the only match
-  type modelled. `RouteMapRule.match` will become a list of typed match
-  clauses (`MatchPrefix`, `MatchCommunity`, `MatchASPath`) when BGP
-  introduces non-prefix matches.
-- **Per-neighbor route-maps.** Link-state floods to broadcast, so one
-  outbound policy per protocol instance is enough. BGP advertises per
-  neighbor with potentially distinct route-maps per direction per peer:
-  that becomes a `dict[neighbor_id, RouteMap]` attribute on the BGP
-  protocol when it lands.
-- **YAML configuration.** No YAML syntax for route-maps yet. When BGP
-  ships, the YAML grows a `policies:` block at AS scope and per-router
-  references to it.
+| Policy | Definition | Used for |
+|---|---|---|
+| `PERMIT_ALL` | no rules, `default='permit'` | the LSA the router installs in its own LSDB |
+| `RFC1918_OUTBOUND` | one `deny` rule matching `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`; `default='permit'` | the LSA the router floods to peers |
+
+`LinkStateProtocol.__init__(router, outbound_policy=None)` takes the
+outbound policy as a parameter and falls back to `RFC1918_OUTBOUND`. That
+is the only injection point; the local policy is fixed at `PERMIT_ALL`.
+Both are consumed in `LSA.from_router`, which calls
+`policy.apply(fabric.address())` once per up interface.
+
+The asymmetry is what makes a private LAN usable at all. Under
+`PERMIT_ALL` the router's own graph contains every directly-connected
+prefix, private ones included, so it can route to its own LANs. Under
+`RFC1918_OUTBOUND` the copy that leaves the router omits them, so no peer
+installs a route to a range that might belong to somebody else.
 
 ---
 
-## BGP best-path selection
+## Reachability, not topology
 
-Once BGP is the second protocol, the canonical best-path tiebreaker
-order will be:
+The policy decides whether a prefix is *announced*, never whether a
+fabric is *advertised*. An LSA carries one attachment per fabric the
+router sits on, holding the fabric, the cost, and, only when the policy
+permits, that fabric's prefix.
 
-1. **Highest local-preference** (most administrators' primary lever)
-2. **Shortest AS-path** (loop prevention + traffic-engineering)
-3. **Lowest origin** (IGP < EGP < incomplete)
-4. **Lowest MED**, optionally only among routes with the same first AS in
-   the AS-path
-5. Lowest IGP cost to the BGP next-hop
-
-This logic will live in one function in the future BGP protocol module.
-Plain control flow; no need for a class hierarchy.
+So denying `192.168.0.0/16` means "no peer should install a route to this
+private range". It does not mean "this LAN does not exist": the fabric
+still appears as a node in every peer's graph, and traffic transits it
+normally. See [routing-protocol.md](routing-protocol.md#lsa) for the
+field split and what it does to shortest-path computation.
 
 ---
 
-## Honest disclaimers
+## What the shape leaves room for
 
-This is a teaching-grade framework. It deliberately omits production
-behaviours that aren't pedagogically load-bearing at loom's scale:
+Nothing in this section is implemented. It is listed because the current
+structure was chosen to accommodate it without being redesigned, which
+makes some of the existing code read oddly until you know what the seams
+are for.
 
-- No route-map `continue` / numbered sequence semantics. `RouteMap`
-  rules execute in list order with first-match-wins, full stop.
-- No prefix-list `permit` rows. `PrefixList` is a pure match clause;
-  permit/deny lives on the surrounding `RouteMapRule`.
-- No prefix-list `le` / `ge` length constraints. Only
-  exact-or-contained matching.
-- No regex AS-path matchers.
+- Inbound application. Policy runs on the send path only. The receive
+  path (`_handle_incoming_lsa` into `_rebuild_graph_and_recompute`) has
+  the matching slot for an inbound policy attribute, which is where
+  filtering what a router is willing to *accept* would go.
+- Mutating rules. `PolicyDecision` already carries a prefix rather than a
+  bare verdict, so a rule that rewrote some attribute of a route would
+  have somewhere to put the result.
+- Match clauses other than prefixes. `RouteMapRule.match` is a single
+  `PrefixList`. Supporting other criteria means turning it into a list of
+  typed match clauses; the first-match-wins loop does not change.
+- Per-neighbour policy. Link-state floods identically out of every
+  interface, so one outbound policy per protocol instance is enough. A
+  protocol that advertised differently to different neighbours would keep
+  a mapping from neighbour to route map instead.
+- Configuration. Route maps are constructed in Python; there is no YAML
+  syntax for them, so a topology cannot yet define its own.
 
-If a feature gets imported, it'll be because something in BGP's syllabus
-needs it, not because Cisco IOS happens to have it.
+---
+
+## Deliberate omissions
+
+This is a teaching-grade framework, and it leaves out route-map
+behaviours whose value is operational rather than conceptual:
+
+- No `continue` or numbered sequence semantics. Rules execute in list
+  order, first match wins, and evaluation stops there.
+- No `permit` / `deny` rows inside a prefix-list. `PrefixList` is a pure
+  match clause; the verdict lives on the enclosing `RouteMapRule`.
+- No `le` / `ge` prefix-length constraints. An entry matches by
+  containment only.
+- No longest-match semantics among entries. `matches()` is a plain "any
+  entry contains this", so entry order within a `PrefixList` carries no
+  meaning.
+
+If any of these arrives later, it should be because a concrete feature
+needs it, not because production routers happen to offer it.
 
 ---
 
@@ -145,7 +178,8 @@ needs it, not because Cisco IOS happens to have it.
 | Concern | File | Symbol |
 |---|---|---|
 | Policy primitives | [`src/routing/policy.py`](../../src/routing/policy.py) | `PrefixList`, `RouteMapRule`, `RouteMap`, `PolicyDecision` |
-| Default RFC 1918 policy | [`src/routing/policy.py`](../../src/routing/policy.py) | `RFC1918_OUTBOUND` |
-| Outbound policy wiring | [`src/routing/protocol.py`](../../src/routing/protocol.py) | `LinkStateProtocol.__init__` |
-| Outbound policy application | [`src/routing/lsa.py`](../../src/routing/lsa.py) | `LSA.from_router` (called from `_emit_lsa_on_up_interfaces`) |
-| Receive path | [`src/routing/protocol.py`](../../src/routing/protocol.py) | `_handle_incoming_lsa`, `_rebuild_graph_and_recompute` |
+| Shipped policies | [`src/routing/policy.py`](../../src/routing/policy.py) | `PERMIT_ALL`, `RFC1918_OUTBOUND` |
+| Policy injection | [`src/routing/protocol.py`](../../src/routing/protocol.py) | `LinkStateProtocol.__init__` |
+| Policy application | [`src/routing/lsa.py`](../../src/routing/lsa.py) | `LSA.from_router`, called from `_emit_lsa_on_up_interfaces` |
+| Receive path (no policy today) | [`src/routing/protocol.py`](../../src/routing/protocol.py) | `_handle_incoming_lsa`, `_rebuild_graph_and_recompute` |
+| Tests | [`test/test_policy.py`](../../test/test_policy.py) | none |
