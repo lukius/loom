@@ -317,6 +317,13 @@ requests and issues.
    [PR description template](.github/PULL_REQUEST_TEMPLATE.md)
    is applied automatically and walks through these sections.
 
+`main` is protected: merging needs a pull request whose four CI jobs
+(`Python`, `Web`, `E2E`, `Docker build`) are green and whose branch is up
+to date with `main`. History is linear, so merge with a squash or a
+rebase rather than a merge commit. Approvals are not required, since a
+solo maintainer cannot approve their own PR; the gate is CI, not a
+reviewer. Force pushes to `main` and deleting it are blocked outright.
+
 ---
 
 ## Continuous Integration

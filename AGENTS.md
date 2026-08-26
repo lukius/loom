@@ -73,6 +73,7 @@ loom/
 
 - Hosted on **GitHub**: `github.com/lukius/loom` (remote `origin`). Use `gh` or the web UI for PRs/issues. `gitlab.com:lukius/netrouting` remains as a push mirror on remote `gitlab`; it takes no PRs.
 - **CI gates `ruff format --check`, not just `ruff check`.** Run `ruff format src/ test/` before pushing or the Python job fails. Releases are tag-driven: pushing `vX.Y.Z` publishes the GHCR image and the GitHub Release. See `CONTRIBUTING.md#releasing`.
+- **`main` is protected and expects PRs**, gated on the four CI jobs with linear history (squash/rebase, no merge commits). Repo admins can still push straight to `main`; that is a deliberate hotfix escape hatch, not the normal path, so branch and open a PR by default.
 
 ## Development Rules
 
