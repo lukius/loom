@@ -1,0 +1,42 @@
+name: Image CVE scan
+
+# Scans the image users actually pull. A failure means a HIGH or CRITICAL CVE in
+# it now has a fix: merge any Dependabot PR for it, then cut a release, because
+# a rebuild is what picks up new Debian packages and base image fixes.
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/image-scan.yml
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Scan published image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/lukius/loom:latest
+          scanners: vuln
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          format: table
+          output: trivy.txt
+          exit-code: '1'
+      - name: Publish results
+        if: always()
+        run: |
+          {
+            echo '### Fixable HIGH and CRITICAL CVEs in `loom:latest`'
+            echo '```'
+            cat trivy.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat trivy.txt

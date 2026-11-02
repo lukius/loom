@@ -339,6 +339,17 @@ A flaky job is a defect, not noise. The e2e suite runs with retries
 disabled on purpose: if it goes red intermittently, reproduce it under
 load and fix the race rather than re-running the job.
 
+Two more automations watch dependencies. Neither is a merge gate:
+
+- [Dependabot](.github/dependabot.yml) opens weekly update PRs for pip, npm,
+  Docker and GitHub Actions, plus security updates as advisories are published.
+- [`.github/workflows/image-scan.yml`](.github/workflows/image-scan.yml) runs
+  Trivy against `ghcr.io/lukius/loom:latest` every Monday and on demand. It
+  fails when a HIGH or CRITICAL CVE has a fix available, and lists the findings
+  in the job summary. To clear it, merge any Dependabot PR for the finding and
+  cut a release: a rebuild is what picks up new Debian packages and base image
+  fixes.
+
 ---
 
 ## Releasing

@@ -42,7 +42,7 @@ loom/
 │   ├── user-guide/        # User manual (getting-started, web-ui, building-topologies, running-simulations, routing-tables, terminals, yaml-format, nat-and-private-lans)
 │   ├── development/       # Dev process docs (subagent-driven-execution)
 │   └── images/            # Screenshots used by user-guide
-├── .github/workflows/     # CI (PRs + main) and Release (v* tags) pipelines
+├── .github/workflows/     # CI (PRs + main), Release (v* tags), weekly image CVE scan
 ├── Dockerfile             # Container image; tools/package-release.sh builds the release zip
 ├── docker-compose.yml     # One-service compose file for ghcr.io/lukius/loom
 ├── playwright.config.js   # E2E config: chromium-only, webServer on LOOM_PORT=8766
@@ -73,6 +73,7 @@ loom/
 
 - Hosted on **GitHub**: `github.com/lukius/loom` (remote `origin`). Use `gh` or the web UI for PRs/issues. `gitlab.com:lukius/netrouting` remains as a push mirror on remote `gitlab`; it takes no PRs.
 - **CI gates `ruff format --check`, not just `ruff check`.** Run `ruff format src/ test/` before pushing or the Python job fails. Releases are tag-driven: pushing `vX.Y.Z` publishes the GHCR image and the GitHub Release. See `CONTRIBUTING.md#releasing`.
+- **Dependabot doesn't see Python transitive dependencies; the image scan does.** `requirements.txt` lists only direct dependencies, so GitHub's dependency graph has no `starlette` (it comes through `fastapi`) and raises no alert for it. `image-scan.yml` covers that gap, plus Debian packages, by scanning the published image weekly. Merging an update doesn't reach users until a release is cut. GitHub disables scheduled workflows after 60 days without repo activity, so re-enable the scan if it goes quiet.
 - **`main` is protected and expects PRs**, gated on the four CI jobs with linear history (squash/rebase, no merge commits). Repo admins can still push straight to `main`; that is a deliberate hotfix escape hatch, not the normal path, so branch and open a PR by default.
 
 ## Development Rules
