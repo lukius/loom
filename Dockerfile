@@ -15,11 +15,12 @@ ENV PYTHONUNBUFFERED=1 \
 
 COPY requirements.txt ./
 # The base image's pip vendors a stale CA bundle that still trusts distrusted
-# roots. Install against the OS store instead, then drop pip: nothing needs it
-# at runtime. Use --cert, not --use-feature=truststore: pip 24.0 still honours
-# its vendored bundle with truststore enabled.
+# roots. Install against the OS store instead, then drop the packaging tools:
+# nothing needs them at runtime, and setuptools vendors packages with CVEs of
+# its own. Use --cert, not --use-feature=truststore: pip 24.0 still honours its
+# vendored bundle with truststore enabled.
 RUN pip install --no-cache-dir --cert /etc/ssl/certs/ca-certificates.crt -r requirements.txt \
-    && pip uninstall -y pip
+    && pip uninstall -y setuptools wheel pip
 
 # The server resolves `web/` and `samples/` relative to the parent of
 # `src/`, so this layout has to mirror the repo's.
