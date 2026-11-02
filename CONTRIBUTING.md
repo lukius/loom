@@ -332,7 +332,8 @@ Every pull request and every push to `main` runs
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml): four parallel jobs
 covering lint plus `pytest`, the vitest suite, the Playwright e2e suite
 (CI installs its own Chromium), and a Docker image build that is not
-pushed. All four must be green to merge.
+pushed but is checked with `tools/check-image.sh`. All four must be green to
+merge.
 
 A flaky job is a defect, not noise. The e2e suite runs with retries
 disabled on purpose: if it goes red intermittently, reproduce it under
