@@ -9,7 +9,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-Nothing yet.
+The browser now loads js-yaml 4.3.2, which fixes denial-of-service advisories
+reachable by importing a crafted YAML file.
 
 ---
 

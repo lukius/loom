@@ -325,7 +325,7 @@ describe('deleteSelected — link kind', () => {
     };
     state.selection = { kind: 'link', name: 'p2p1' };
     // Stub confirm to return true
-    vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
+    vi.stubGlobal('confirm', vi.fn().mockReturnValueOnce(true));
     deleteSelected();
     expect(state.links.p2p1).toBeUndefined();
     expect(state.routers.r1.interfaces.eth0.link).toBeUndefined();
@@ -341,7 +341,7 @@ describe('deleteSelected — link kind', () => {
     };
     state.routers = {};
     state.selection = { kind: 'link', name: 'p2p1' };
-    vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
+    vi.stubGlobal('confirm', vi.fn().mockReturnValueOnce(true));
     deleteSelected();
     expect(state.links.p2p1).toBeUndefined();
     expect(state.hosts.h1.link).toBeUndefined();
@@ -2131,7 +2131,7 @@ describe('deleteSelected (B2): blocks in-use LAN delete while sim is running', (
     state.networks = { lan1: { cidr: '10.0.0.0/24', x: 0, y: 0 } };
     state.hosts = { h1: { network: 'lan1', address: '10.0.0.2', x: 0, y: 0 } };
     state.selection = { kind: 'network', name: 'lan1' };
-    vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
+    vi.stubGlobal('confirm', vi.fn().mockReturnValueOnce(true));
 
     deleteSelected();
 

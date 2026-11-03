@@ -4,6 +4,7 @@
 // Other importYaml / exportYaml coverage lives in state.test.js — this file
 // focuses exclusively on the position-snapshot/reapply contract.
 
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { state } from './state.js';
 import { importYaml, exportYaml } from './yaml-io.js';
@@ -457,5 +458,16 @@ internet:
     // one; nothing was imported.
     importYaml(YAML_ONE_NET, { silent: true });
     expect(document.getElementById('toasts').textContent).not.toContain('Topology imported');
+  });
+});
+
+// The browser loads js-yaml from a CDN, which neither Dependabot nor the image
+// scan can see. Tying it to the npm version means a dependency update that
+// leaves the CDN behind fails here.
+describe('js-yaml version', () => {
+  it('loads the same version in the browser as the tests run against', () => {
+    const html = readFileSync('web/index.html', 'utf8');
+    const { version } = JSON.parse(readFileSync('node_modules/js-yaml/package.json', 'utf8'));
+    expect(html).toContain(`js-yaml@${version}/`);
   });
 });

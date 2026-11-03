@@ -27,7 +27,7 @@ to run the test suites, and the merge-request process.
 **Prerequisites**
 
 - Python 3.11+
-- Node.js 18+ (only required for the JS unit tests and the Playwright
+- Node.js 20.19+ (only required for the JS unit tests and the Playwright
   end-to-end suite)
 - A system Chromium browser (only for end-to-end tests)
 
