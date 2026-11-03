@@ -9,8 +9,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-The container image no longer ships setuptools or wheel, and picks up current
-Debian security fixes from a rebuilt base image.
+Nothing yet.
+
+---
+
+## [1.0.1] - 2026-11-02
+
+Security patch for the container image: it no longer ships setuptools or wheel,
+and picks up current Debian security fixes from a rebuilt base image, which
+clears all fixable HIGH and CRITICAL CVEs in a Trivy scan.
 
 ---
 
@@ -24,5 +31,6 @@ an SVG canvas. Ships as a source checkout and as a container image
 (`ghcr.io/lukius/loom`). See the [README](README.md) and [`docs/`](docs/)
 for details.
 
-[Unreleased]: https://github.com/lukius/loom/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/lukius/loom/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/lukius/loom/releases/tag/v1.0.1
 [1.0.0]: https://github.com/lukius/loom/releases/tag/v1.0.0
