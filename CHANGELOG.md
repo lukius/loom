@@ -9,11 +9,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Security
+Nothing yet.
 
-- The container image now upgrades its Debian packages at build time, and
-  release builds skip the layer cache, so a release picks up OS security
-  fixes before the Python base image does.
+---
+
+## [1.0.3] - 2026-11-09
+
+Security patch for the container image: it now upgrades its Debian packages
+at build time, and release builds skip the layer cache, so a release picks up
+OS security fixes before the Python base image does.
 
 ---
 
@@ -42,7 +46,8 @@ an SVG canvas. Ships as a source checkout and as a container image
 (`ghcr.io/lukius/loom`). See the [README](README.md) and [`docs/`](docs/)
 for details.
 
-[Unreleased]: https://github.com/lukius/loom/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/lukius/loom/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/lukius/loom/releases/tag/v1.0.3
 [1.0.2]: https://github.com/lukius/loom/releases/tag/v1.0.2
 [1.0.1]: https://github.com/lukius/loom/releases/tag/v1.0.1
 [1.0.0]: https://github.com/lukius/loom/releases/tag/v1.0.0
