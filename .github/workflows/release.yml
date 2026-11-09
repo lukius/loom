@@ -81,8 +81,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # A cached `apt-get upgrade` layer would ship stale Debian packages
+          # whenever the base image digest hasn't moved.
+          no-cache: true
 
   release:
     name: Create GitHub release

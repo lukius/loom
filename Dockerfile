@@ -13,6 +13,13 @@ ENV PYTHONUNBUFFERED=1 \
     LOOM_HOST=0.0.0.0 \
     LOOM_PORT=8000
 
+# The python base image lags Debian security updates by days, so upgrade the
+# OS packages here rather than wait for it. The release build skips the layer
+# cache, so every release re-runs this against the current archive.
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt ./
 # The base image's pip vendors a stale CA bundle that still trusts distrusted
 # roots. Install against the OS store instead, then drop the packaging tools:

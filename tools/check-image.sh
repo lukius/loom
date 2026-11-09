@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
 # Check a built loom image: it must not carry a stale CA bundle, must have
-# been built against a CA store without the distrusted emSign root, and
-# must still boot without packaging tools.
+# been built against a CA store without the distrusted emSign root, must
+# not keep the apt package lists from its OS upgrade, and must still boot
+# without packaging tools.
 #
 # Usage:
 #   tools/check-image.sh <image>
@@ -24,6 +25,10 @@ docker run --rm --network none --entrypoint sh "$image" -c '
       exit 1
     fi
   done
+  if find /var/lib/apt/lists -type f ! -name lock 2>/dev/null | grep -q .; then
+    echo "image keeps apt package lists in /var/lib/apt/lists" >&2
+    exit 1
+  fi
   if ls /etc/ssl/certs | grep -qi "emSign_ECC_Root_CA_-_G3"; then
     echo "system CA store still trusts emSign ECC Root CA - G3" >&2
     exit 1
