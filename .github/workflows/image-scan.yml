@@ -1,8 +1,9 @@
 name: Image CVE scan
 
 # Scans the image users actually pull. A failure means a HIGH or CRITICAL CVE in
-# it now has a fix: merge any Dependabot PR for it, then cut a release, because
-# a rebuild is what picks up new Debian packages and base image fixes.
+# it now has a fix: merge any Dependabot PR for it, then cut a release. The
+# release build upgrades Debian packages without the layer cache, so it picks
+# up OS fixes even before the Python base image does.
 on:
   schedule:
     - cron: '0 6 * * 1'
