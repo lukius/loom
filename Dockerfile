@@ -13,7 +13,7 @@ ENV PYTHONUNBUFFERED=1 \
     LOOM_HOST=0.0.0.0 \
     LOOM_PORT=8000
 
-# The python base image lags Debian security updates by days, so upgrade the
+# The Python base image lags Debian security updates by days, so upgrade the
 # OS packages here rather than wait for it. The release build skips the layer
 # cache, so every release re-runs this against the current archive.
 RUN apt-get update \
