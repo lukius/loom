@@ -12,6 +12,6 @@
     "@playwright/test": "1.64",
     "happy-dom": "^21.0.4",
     "js-yaml": "^4.3.2",
-    "vitest": "^4.1.12"
+    "vitest": "^5.1.0"
   }
 }
