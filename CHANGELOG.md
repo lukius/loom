@@ -13,7 +13,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - The container image now upgrades its Debian packages at build time, and
   release builds skip the layer cache, so a release picks up OS security
-  fixes (currently apt and zlib) before the python base image does.
+  fixes before the Python base image does.
 
 ---
 
