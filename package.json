@@ -9,7 +9,7 @@
     "screenshot": "node tools/screenshot.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "1.64",
+    "@playwright/test": "1.65",
     "happy-dom": "^21.0.4",
     "js-yaml": "^4.3.2",
     "vitest": "^4.1.12"
